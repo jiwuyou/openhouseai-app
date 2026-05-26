@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="surface">#F3F0E7</color>
+    <color name="panel">#FFFDF8</color>
+    <color name="textPrimary">#1E241C</color>
+    <color name="textSecondary">#5D6458</color>
+    <color name="accent">#355C4A</color>
+    <color name="stageChecking">#E7E0D3</color>
+    <color name="stageCheckingText">#5B6258</color>
+    <color name="stageReady">#C9D9D0</color>
+    <color name="stageReadyText">#203C31</color>
+    <color name="stageRunning">#D89A3D</color>
+    <color name="stageRunningText">#2C1A07</color>
+    <color name="stageComplete">#3E6B53</color>
+    <color name="stageFailed">#8A6A3A</color>
+    <color name="stageBlocked">#D9D1C3</color>
+    <color name="stageBlockedText">#5B5347</color>
+    <color name="stageOnDark">#FFFDF8</color>
+    <color name="openhouseIconBackground">#F3E9CF</color>
+</resources>

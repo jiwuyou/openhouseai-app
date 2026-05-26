@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "version": "2026.05.26.1",
+  "title": "OpenHouseAI 维护器",
+  "sourceName": "OpenHouseAI APK 原始插件",
+  "updatedAt": "2026-05-26",
+  "bootstrapUrl": "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh",
+  "defaultOneClickAction": "full",
+  "stageFlow": [
+    {
+      "title": "准备手机环境",
+      "description": "准备 Termux 基础包和 Ubuntu rootfs。",
+      "stages": ["prepare", "termux_packages", "install_ubuntu"]
+    },
+    {
+      "title": "更新 Ubuntu 基础包",
+      "description": "安装 Ubuntu 内 curl、git、证书、procps、ripgrep、unzip 等基础工具。",
+      "stages": ["ubuntu_packages"]
+    },
+    {
+      "title": "安装 Agent CLI",
+      "description": "安装 OpenCode、Codex 和 Claude Code。",
+      "stages": ["install_opencode", "install_nodejs", "install_codex", "install_claude_code"]
+    }
+  ],
+  "sections": [
+    {
+      "id": "agent_cli_repair",
+      "type": "actions",
+      "title": "AI 工具补装与修复",
+      "description": "单独补装或修复 OpenCode、Codex、Claude Code。",
+      "items": [
+        {
+          "id": "install_opencode",
+          "type": "button",
+          "label": "安装 OpenCode",
+          "description": "在 Ubuntu 内安装或检查 OpenCode。",
+          "action": { "type": "bootstrap", "args": ["opencode"] }
+        },
+        {
+          "id": "install_codex",
+          "type": "button",
+          "label": "安装 Codex",
+          "description": "在 Ubuntu 内安装 OpenAI Codex CLI。",
+          "action": { "type": "bootstrap", "args": ["codex"] }
+        },
+        {
+          "id": "install_claude_code",
+          "type": "button",
+          "label": "安装 Claude Code",
+          "description": "在 Ubuntu 内安装 Anthropic Claude Code。",
+          "action": { "type": "bootstrap", "args": ["claude-code"] }
+        }
+      ]
+    }
+  ],
+  "stages": [
+    {
+      "id": "prepare",
+      "title": "准备 Termux",
+      "description": "创建 OpenHouseAI 文档目录、工作区和 Termux 配置，并安装基础包。",
+      "action": { "type": "bootstrap", "args": ["prepare"] }
+    },
+    {
+      "id": "termux_packages",
+      "title": "下载 Termux 基础包",
+      "description": "pkg 安装 proot-distro、curl、openssl、ca-certificates、git。",
+      "action": { "type": "bootstrap", "args": ["prepare"] }
+    },
+    {
+      "id": "install_ubuntu",
+      "title": "下载 Ubuntu rootfs",
+      "description": "proot-distro install ubuntu。",
+      "action": { "type": "bootstrap", "args": ["ubuntu"] }
+    },
+    {
+      "id": "ubuntu_packages",
+      "title": "下载 Ubuntu 基础包",
+      "description": "apt 安装 curl、ca-certificates、git、procps、ripgrep、unzip。",
+      "action": { "type": "bootstrap", "args": ["ubuntu-packages"] }
+    },
+    {
+      "id": "install_opencode",
+      "title": "下载 OpenCode",
+      "description": "从 OpenCode 安装源下载并安装 opencode。",
+      "action": { "type": "bootstrap", "args": ["opencode"] }
+    },
+    {
+      "id": "install_nodejs",
+      "title": "下载 Node.js",
+      "description": "在 Ubuntu 内安装或检查 Node.js 与 npm，供 Codex 和 Claude Code 使用。",
+      "action": { "type": "bootstrap", "args": ["codex"] }
+    },
+    {
+      "id": "install_codex",
+      "title": "下载 Codex CLI",
+      "description": "npm 安装 @openai/codex。",
+      "action": { "type": "bootstrap", "args": ["codex"] }
+    },
+    {
+      "id": "install_claude_code",
+      "title": "下载 Claude Code",
+      "description": "npm 安装 @anthropic-ai/claude-code。",
+      "action": { "type": "bootstrap", "args": ["claude-code"] }
+    }
+  ]
+}

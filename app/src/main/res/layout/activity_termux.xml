@@ -1,0 +1,162 @@
+<com.termux.app.terminal.TermuxActivityRootView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/activity_termux_root_view"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true">
+
+    <RelativeLayout
+        android:id="@+id/activity_termux_root_relative_layout"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginHorizontal="3dp"
+        android:layout_marginVertical="0dp"
+        android:orientation="vertical">
+
+        <androidx.drawerlayout.widget.DrawerLayout
+            android:id="@+id/drawer_layout"
+            android:layout_width="match_parent"
+            android:layout_alignParentTop="true"
+            android:layout_above="@+id/terminal_toolbar_view_pager"
+            android:layout_height="match_parent">
+
+            <com.termux.view.TerminalView
+                android:id="@+id/terminal_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:defaultFocusHighlightEnabled="false"
+                android:focusableInTouchMode="true"
+                android:scrollbarThumbVertical="@drawable/terminal_scroll_shape"
+                android:scrollbars="vertical"
+                tools:ignore="UnusedAttribute" />
+
+            <LinearLayout
+                android:id="@+id/left_drawer"
+                android:layout_width="240dp"
+                android:layout_height="match_parent"
+                android:layout_gravity="start"
+                android:choiceMode="singleChoice"
+                android:divider="@android:color/transparent"
+                android:dividerHeight="0dp"
+                android:descendantFocusability="blocksDescendants"
+                android:orientation="vertical"
+                android:background="?attr/termuxActivityDrawerBackground">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <ImageButton
+                        android:id="@+id/settings_button"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:src="@drawable/ic_settings"
+                        android:background="@null"
+                        android:contentDescription="@string/action_open_settings"
+                        app:tint="?attr/termuxActivityDrawerImageTint" />
+                </LinearLayout>
+
+                <ListView
+                    android:id="@+id/terminal_sessions_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_gravity="top"
+                    android:layout_weight="1"
+                    android:choiceMode="singleChoice"
+                    android:longClickable="true" />
+
+                <LinearLayout
+                    style="?android:attr/buttonBarStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/toggle_keyboard_button"
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/action_toggle_soft_keyboard" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/new_session_button"
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/action_new_session" />
+                </LinearLayout>
+            </LinearLayout>
+
+        </androidx.drawerlayout.widget.DrawerLayout>
+
+        <androidx.viewpager.widget.ViewPager
+            android:id="@+id/terminal_toolbar_view_pager"
+            android:visibility="gone"
+            android:layout_width="match_parent"
+            android:layout_height="37.5dp"
+            android:background="@color/black"
+            android:layout_alignParentBottom="true" />
+
+        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+            android:id="@+id/opencode_quick_launch_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_above="@id/maintenance_center_button"
+            android:layout_marginEnd="18dp"
+            android:layout_marginBottom="14dp"
+            android:contentDescription="@string/action_launch_opencode_default"
+            android:text="@string/action_launch_opencode_short"
+            android:textColor="@color/stageReadyText"
+            app:backgroundTint="@color/stageReady"
+            app:icon="@drawable/ic_opencode_launch"
+            app:iconTint="@color/stageReadyText" />
+
+        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+            android:id="@+id/maintenance_center_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_above="@id/terminal_toolbar_view_pager"
+            android:layout_marginEnd="18dp"
+            android:layout_marginBottom="18dp"
+            android:contentDescription="@string/action_open_maintenance_center"
+            android:text="@string/action_open_maintenance_center_short"
+            android:textColor="@color/stageOnDark"
+            app:backgroundTint="@color/accent"
+            app:icon="@drawable/ic_maintainer"
+            app:iconTint="@color/stageOnDark" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/quick_buttons_visibility_handle"
+            android:layout_width="64dp"
+            android:layout_height="48dp"
+            android:layout_alignParentEnd="true"
+            android:layout_above="@id/opencode_quick_launch_button"
+            android:layout_marginEnd="18dp"
+            android:layout_marginBottom="14dp"
+            android:alpha="0.62"
+            android:contentDescription="@string/action_toggle_quick_buttons_visibility"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/action_toggle_quick_buttons_visibility_short"
+            android:textColor="@color/stageOnDark"
+            app:backgroundTint="@color/stageRunning"
+            app:cornerRadius="24dp" />
+
+    </RelativeLayout>
+
+    <View
+        android:id="@+id/activity_termux_bottom_space_view"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@android:color/transparent" />
+
+</com.termux.app.terminal.TermuxActivityRootView>
