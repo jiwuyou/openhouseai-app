@@ -9,7 +9,10 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -77,6 +80,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private static final String LOG_TAG = "MaintenanceCenter";
     private static final int LOG_CHAR_LIMIT = 24000;
+    private static final long TERMINAL_UI_UPDATE_DELAY_MS = 250;
+    private static final long TERMINAL_LIVE_LOG_REFRESH_MIN_INTERVAL_MS = 1000;
+    private static final long TERMINAL_COMPLETION_SCAN_MIN_INTERVAL_MS = 500;
     private static final Pattern DONE_PATTERN = Pattern.compile("__TERMUX_MAINT_DONE__:([a-zA-Z0-9_-]+):(\\d+)");
     private static final String OFFICIAL_DOCS_ASSET_DIR = "openhouse/docs-public";
     private static final String BUNDLED_MAINTENANCE_PLUGIN_ASSET = "openhouse/plugins/original/openhouse-manifest.json";
@@ -167,10 +173,16 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean oneClickStageMode;
     private boolean oneClickStagesInFlight;
     private boolean openMaintenanceWebAfterStage;
+    private boolean terminalTextUpdateScheduled;
+    private long lastLiveLogRefreshUptimeMs;
+    private long lastCompletionScanUptimeMs;
+    private TerminalSession pendingTerminalUpdateSession;
     private MaintenanceManifest activeManifest;
     private String activeManifestError;
     private SharedPreferences maintenancePreferences;
 
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Object terminalUpdateLock = new Object();
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     private final EnumMap<StageAction, Button> stageButtons = new EnumMap<>(StageAction.class);
     private final EnumMap<StageAction, StagePresentation> stagePresentations = new EnumMap<>(StageAction.class);
@@ -2782,6 +2794,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         viewFullLogButton.setEnabled(currentStageSlug != null && MaintainerLogStore.hasLog(currentStageSlug));
     }
 
+    private void refreshLiveLogThrottled(boolean force) {
+        long now = SystemClock.uptimeMillis();
+        if (!force && now - lastLiveLogRefreshUptimeMs < TERMINAL_LIVE_LOG_REFRESH_MIN_INTERVAL_MS) {
+            return;
+        }
+        lastLiveLogRefreshUptimeMs = now;
+        refreshLiveLog();
+    }
+
     private void refreshLiveLog() {
         if (currentStageSlug == null || currentStageSlug.isEmpty()) {
             liveLogView.setText(R.string.result_placeholder);
@@ -2797,9 +2818,37 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         updateLogButtonState();
     }
 
+    private void inspectCompletionThrottled(TerminalSession terminalSession, boolean force) {
+        long now = SystemClock.uptimeMillis();
+        if (!force && now - lastCompletionScanUptimeMs < TERMINAL_COMPLETION_SCAN_MIN_INTERVAL_MS) {
+            return;
+        }
+        lastCompletionScanUptimeMs = now;
+        inspectTranscriptForCompletion(terminalSession);
+        inspectCurrentLogForCompletion();
+    }
+
     private void inspectTranscriptForCompletion(TerminalSession terminalSession) {
         String transcript = ShellUtils.getTerminalSessionTranscriptText(terminalSession, false, false);
         Matcher matcher = DONE_PATTERN.matcher(transcript);
+        handleCompletionMatcher(matcher);
+    }
+
+    private void inspectCurrentLogForCompletion() {
+        if (currentStageSlug == null || currentStageSlug.isEmpty()) {
+            return;
+        }
+
+        try {
+            String content = MaintainerLogStore.readTail(currentStageSlug, 4096);
+            Matcher matcher = DONE_PATTERN.matcher(content);
+            handleCompletionMatcher(matcher);
+        } catch (IOException e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to inspect maintenance log for completion", e);
+        }
+    }
+
+    private void handleCompletionMatcher(Matcher matcher) {
         String foundMarker = null;
         String foundSlug = null;
         int foundExitCode = 0;
@@ -3125,17 +3174,36 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private final class MaintenanceTerminalSessionClient extends TermuxTerminalSessionClientBase implements TermuxSession.TermuxSessionClient {
         @Override
         public void onTextChanged(TerminalSession changedSession) {
-            runOnUiThread(() -> {
+            synchronized (terminalUpdateLock) {
+                pendingTerminalUpdateSession = changedSession;
+                if (terminalTextUpdateScheduled) {
+                    return;
+                }
+                terminalTextUpdateScheduled = true;
+            }
+
+            mainHandler.postDelayed(() -> {
+                TerminalSession session;
+                synchronized (terminalUpdateLock) {
+                    session = pendingTerminalUpdateSession;
+                    pendingTerminalUpdateSession = null;
+                    terminalTextUpdateScheduled = false;
+                }
+
+                if (session == null || isFinishing() || isDestroyed()) {
+                    return;
+                }
+
                 try {
                     terminalView.onScreenUpdated();
-                    refreshLiveLog();
-                    inspectTranscriptForCompletion(changedSession);
+                    refreshLiveLogThrottled(false);
+                    inspectCompletionThrottled(session, false);
                 } catch (Throwable throwable) {
                     terminalFailureMessage = throwable.getClass().getSimpleName() + ": " + throwable.getMessage();
                     Logger.logStackTraceWithMessage(LOG_TAG, "Failed to process maintenance terminal text update", throwable);
                     refreshStatus();
                 }
-            });
+            }, TERMINAL_UI_UPDATE_DELAY_MS);
         }
 
         @Override
@@ -3145,7 +3213,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                     terminalView.onScreenUpdated();
                     terminalStatusView.setText(R.string.embedded_terminal_status_closed);
                     commandInFlight = false;
-                    refreshLiveLog();
+                    refreshLiveLogThrottled(true);
+                    inspectCompletionThrottled(finishedSession, true);
                     requestStageStatusRefresh();
                     refreshStatus();
                 } catch (Throwable throwable) {
