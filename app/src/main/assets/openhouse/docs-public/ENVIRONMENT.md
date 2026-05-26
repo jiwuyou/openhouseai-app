@@ -1,0 +1,60 @@
+# 运行环境说明
+
+OpenHouseAI 运行在 Android 手机上，结构如下：
+
+- Android 是宿主系统。
+- Termux 提供终端环境和包管理。
+- Ubuntu 通过 `proot-distro` 安装在 Termux 内。
+- OpenCode、Codex CLI、Claude Code 安装在 Ubuntu 内。
+
+## 安装范围
+
+OpenHouseAI 只负责安装和检测：
+
+- Ubuntu proot
+- OpenCode
+- Codex CLI
+- Claude Code
+
+Node.js 不作为单独可见阶段。Codex 和 Claude Code 安装阶段会在内部检测并按需安装 Node.js。
+
+## 阶段顺序
+
+维护中心的一键阶段顺序是：
+
+1. 准备 Termux 路径和基础包。
+2. 安装 Ubuntu rootfs。
+3. 同步 OpenHouseAI 文档。
+4. 安装 Ubuntu 基础包。
+5. 设置打开 Termux 后默认进入 Ubuntu。
+6. 安装 OpenCode。
+7. 安装 Codex CLI。
+8. 安装 Claude Code。
+
+默认进入 Ubuntu 必须在安装 OpenCode、Codex CLI 和 Claude Code 之前完成。
+
+## 路径
+
+- Termux 主目录：`/data/data/com.termux/files/home`
+- 工作区：`/data/data/com.termux/files/home/workspace`
+- 官方文档：`/data/data/com.termux/files/home/openhouseai-docs/official`
+- Agent 笔记：`/data/data/com.termux/files/home/openhouseai-docs/agent-notes`
+- 启动入口配置：`/data/data/com.termux/files/home/.openhouseai`
+
+Ubuntu 中如果存在以下短路径，优先使用短路径：
+
+- `~/openhouseai-docs/official`
+- `~/openhouseai-docs/agent-notes`
+- `~/openhouseai-links/docs-path.txt`
+- `~/openhouseai-links/workspace-path.txt`
+
+## 环境检测
+
+每个安装阶段都会先检测当前终端环境。
+
+预期探测命令：
+
+- Termux：`openhouseai-env-probe`
+- Ubuntu：`~/bin/openhouseai-env-probe`
+
+如果 Agent 不确定当前运行在哪里，应先读取本文件，再执行用户任务。

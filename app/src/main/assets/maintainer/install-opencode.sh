@@ -48,6 +48,6 @@ else
 fi
 
 log "正在 Ubuntu 主目录内写入产品路径辅助文件"
-run_ubuntu_logged bash -lc 'set -euo pipefail; mkdir -p "$HOME/product-links"; printf "%s\n" "/data/data/com.termux/files/home/product-docs" > "$HOME/product-links/docs-path.txt"; printf "%s\n" "/data/data/com.termux/files/home/workspace" > "$HOME/product-links/workspace-path.txt"; echo "文档路径：$(cat "$HOME/product-links/docs-path.txt")"; echo "工作区路径：$(cat "$HOME/product-links/workspace-path.txt")"'
+run_ubuntu_logged bash -lc 'set -euo pipefail; mkdir -p "$HOME/openhouseai-links"; printf "%s\n" "/data/data/com.termux/files/home/openhouseai-docs" > "$HOME/openhouseai-links/docs-path.txt"; printf "%s\n" "/data/data/com.termux/files/home/workspace" > "$HOME/openhouseai-links/workspace-path.txt"; echo "文档路径：$(cat "$HOME/openhouseai-links/docs-path.txt")"; echo "工作区路径：$(cat "$HOME/openhouseai-links/workspace-path.txt")"'
 
 log "OpenCode 安装阶段已完成。"

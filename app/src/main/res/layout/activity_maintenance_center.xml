@@ -370,19 +370,19 @@
                     android:textAllCaps="false" />
 
                 <Button
+                    android:id="@+id/buttonConfigureEntryUbuntu"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/button_configure_entry_ubuntu"
+                    android:textAllCaps="false" />
+
+                <Button
                     android:id="@+id/buttonInstallOpenCode"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
                     android:text="@string/button_install_opencode"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallNodeJs"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_nodejs"
                     android:textAllCaps="false" />
 
                 <Button
@@ -399,102 +399,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
                     android:text="@string/button_install_claude_code"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallSystemEnvSkill"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_system_env_skill"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallRequiredComponents"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_required_components"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallOpenHouseBootstrap"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_openhouse_bootstrap"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallServiceManager"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_service_manager"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallCcConnect"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_cc_connect"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallCcProxy"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_cc_proxy"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallOpenHouseKeyTool"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_openhouse_key_tool"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallSmallPhone"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_smallphone"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonSyncGuideSite"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_sync_guide_site"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallDocsDeps"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_docs_deps"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonStart"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_start"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonRestart"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_restart"
                     android:textAllCaps="false" />
 
                 <Button

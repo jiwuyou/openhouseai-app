@@ -1,29 +1,25 @@
 # OpenHouseAI Termux App
 
-OpenHouseAI Termux App is a Termux fork that adds a narrow maintenance center
-for bootstrapping Ubuntu and installing OpenCode, Codex, and Claude Code on
-Android.
+OpenHouseAI Termux App 是一个 Termux fork，维护中心只负责在 Android 上准备 Ubuntu，并安装 OpenCode、Codex CLI 和 Claude Code。
 
 This repository is based on [`termux/termux-app`](https://github.com/termux/termux-app). It is not an official Termux release. The upstream Termux README is kept below for build, install, signing, and compatibility details.
 
-OpenHouseAI-specific documentation:
+OpenHouseAI 文档：
 
-- [OpenHouse overview](docs/OPENHOUSE.md)
-- [Open source notes](docs/OPENHOUSE_OPEN_SOURCE.md)
-- [Security notes](SECURITY_OPENHOUSE.md)
+- [OpenHouseAI 概览](docs/OPENHOUSEAI.md)
+- [开源说明](docs/OPENHOUSEAI_OPEN_SOURCE.md)
+- [安全说明](SECURITY_OPENHOUSEAI.md)
 
-## Current OpenHouseAI Scope
+## 当前范围
 
-- Maintenance center UI with permission gating, step-by-step mode, and one-click stage mode.
-- Dynamic maintenance manifest support from bundled, local user, or GitHub raw sources.
-- Ubuntu proot bootstrap.
-- OpenCode installation.
-- Codex installation.
-- Claude Code installation.
+- 维护中心 UI，包含权限区、分步执行和阶段一键执行。
+- 支持 APK 内置、本地用户文件和 GitHub raw 在线维护清单。
+- Ubuntu proot bootstrap。
+- OpenCode 安装。
+- Codex CLI 安装。
+- Claude Code 安装。
 
-OpenHouseAI intentionally excludes SmallPhone, service-manager, cc-connect,
-cc-proxy, OpenHouse key tooling, guide/docs site deployment, local web
-maintenance orchestration, and other OpenHouse runtime components.
+OpenHouseAI 不安装上述范围之外的运行时服务、站点、组件或文档构建流程。
 
 ## Quick Build
 

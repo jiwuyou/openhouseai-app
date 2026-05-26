@@ -247,56 +247,56 @@
     <string name="agreement_screen_title">使用说明与免责声明</string>
     <string name="agreement_screen_subtitle">进入维护中心前，请先阅读并同意以下内容。协议同意状态仅保存在应用私有存储中，不会同步到 Termux 或 Ubuntu 目录。</string>
     <string name="agreement_human_readable_title">人话版</string>
-    <string name="agreement_human_readable_content"><![CDATA[欢迎使用 OpenHouse。
+    <string name="agreement_human_readable_content"><![CDATA[欢迎使用 OpenHouseAI。
 
-OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，用来帮助准备和维护本地环境，例如安装 Ubuntu、安装和启动 OpenCode、同步文档、查看日志，以及执行一些本地维护操作。
+OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上，用来帮助准备和维护本地环境，例如安装 Ubuntu、安装和启动 OpenCode、同步文档、查看日志，以及执行一些本地维护操作。
 
 请先明确以下几点：
 
-1. OpenHouse 不是在线服务，也不是商业产品。
-2. OpenHouse 没有官方服务器、没有账号系统、没有后台数据收集。
-3. OpenHouse 本身不会主动上传、存储或分析你的聊天内容、文档内容、日志内容、终端输出或个人信息。
-4. 如果你主动使用第三方 AI、第三方网站、第三方仓库、第三方模型接口或其他联网功能，那是你与第三方之间的直接交互，不属于 OpenHouse 本身。
+1. OpenHouseAI 不是在线服务，也不是商业产品。
+2. OpenHouseAI 没有官方服务器、没有账号系统、没有后台数据收集。
+3. OpenHouseAI 本身不会主动上传、存储或分析你的聊天内容、文档内容、日志内容、终端输出或个人信息。
+4. 如果你主动使用第三方 AI、第三方网站、第三方仓库、第三方模型接口或其他联网功能，那是你与第三方之间的直接交互，不属于 OpenHouseAI 本身。
 5. 你需要对自己在设备上的所有操作负责，包括安装的软件、执行的脚本、开放的端口、接入的 Agent、使用的模型服务，以及由此产生的后果。
 6. 如果你自行修改环境、安装插件、扩展脚本、引入第三方内容，相关风险由你自己承担。
-7. OpenHouse 按现状提供，不保证一定可用、稳定、无错误，也不保证适用于你的具体设备或用途。
-8. 作者、维护者和贡献者不对你因使用 OpenHouse 或第三方组件而产生的损失负责。
-9. 请仅将 OpenHouse 用于合法、正当的用途。
-10. OpenHouse 的最新说明会以项目仓库中的版本为准。你最好在使用前先看一下最新内容。
+7. OpenHouseAI 按现状提供，不保证一定可用、稳定、无错误，也不保证适用于你的具体设备或用途。
+8. 作者、维护者和贡献者不对你因使用 OpenHouseAI 或第三方组件而产生的损失负责。
+9. 请仅将 OpenHouseAI 用于合法、正当的用途。
+10. OpenHouseAI 的最新说明会以项目仓库中的版本为准。你最好在使用前先看一下最新内容。
 
-如果你继续使用 OpenHouse，就表示你已经理解并接受以上内容。]]></string>
+如果你继续使用 OpenHouseAI，就表示你已经理解并接受以上内容。]]></string>
     <string name="agreement_formal_title">正式版</string>
-    <string name="agreement_formal_content"><![CDATA[欢迎使用 OpenHouse。为避免争议，请在使用前仔细阅读以下说明。你下载、安装、运行、修改、分发或继续使用 OpenHouse 的任何部分，即视为你已阅读、理解并同意本说明全部内容。
+    <string name="agreement_formal_content"><![CDATA[欢迎使用 OpenHouseAI。为避免争议，请在使用前仔细阅读以下说明。你下载、安装、运行、修改、分发或继续使用 OpenHouseAI 的任何部分，即视为你已阅读、理解并同意本说明全部内容。
 
-1. OpenHouse 是一个开源的、本地运行的工具项目，仅按其当前状态提供。OpenHouse 不是在线服务，不构成任何商业产品承诺、持续服务承诺、适配承诺、可用性承诺或技术支持承诺。
+1. OpenHouseAI 是一个开源的、本地运行的工具项目，仅按其当前状态提供。OpenHouseAI 不是在线服务，不构成任何商业产品承诺、持续服务承诺、适配承诺、可用性承诺或技术支持承诺。
 
-2. OpenHouse 不提供官方服务器、官方账号体系、官方云端托管、官方远程同步或官方数据运营服务。除用户主动调用的第三方网络服务外，OpenHouse 本身不以收集、上传、存储、分析用户数据为目的设计和运营。
+2. OpenHouseAI 不提供官方服务器、官方账号体系、官方云端托管、官方远程同步或官方数据运营服务。除用户主动调用的第三方网络服务外，OpenHouseAI 本身不以收集、上传、存储、分析用户数据为目的设计和运营。
 
-3. OpenHouse 及其作者、维护者、贡献者、分发者不对软件的可用性、稳定性、连续性、兼容性、安全性、准确性、完整性、适销性、特定用途适用性或不侵权作出任何明示或默示保证。OpenHouse 按“现状”“现有”提供，全部使用风险由用户自行承担。
+3. OpenHouseAI 及其作者、维护者、贡献者、分发者不对软件的可用性、稳定性、连续性、兼容性、安全性、准确性、完整性、适销性、特定用途适用性或不侵权作出任何明示或默示保证。OpenHouseAI 按“现状”“现有”提供，全部使用风险由用户自行承担。
 
-4. 用户应自行判断是否安装、运行、修改或依赖 OpenHouse，并应自行承担由此产生的一切风险与后果，包括但不限于设备异常、系统损坏、配置错误、数据丢失、服务中断、端口暴露、权限风险、兼容性问题、安全问题、第三方争议、账号问题、网络问题及其他任何直接或间接损失。
+4. 用户应自行判断是否安装、运行、修改或依赖 OpenHouseAI，并应自行承担由此产生的一切风险与后果，包括但不限于设备异常、系统损坏、配置错误、数据丢失、服务中断、端口暴露、权限风险、兼容性问题、安全问题、第三方争议、账号问题、网络问题及其他任何直接或间接损失。
 
-5. 用户通过 OpenHouse 发起、触发、执行或间接促成的全部操作，均由用户本人独立负责。包括但不限于安装第三方软件、执行脚本或命令、调用 AI 服务、访问网页、连接外部仓库、开放本地或局域网端口、引入插件、扩展、Agent、MCP、模型服务、浏览器调试能力及其他第三方能力。
+5. 用户通过 OpenHouseAI 发起、触发、执行或间接促成的全部操作，均由用户本人独立负责。包括但不限于安装第三方软件、执行脚本或命令、调用 AI 服务、访问网页、连接外部仓库、开放本地或局域网端口、引入插件、扩展、Agent、MCP、模型服务、浏览器调试能力及其他第三方能力。
 
-6. 对于任何第三方项目、第三方脚本、第三方软件包、第三方仓库、第三方模型服务、第三方网站、第三方接口、第三方插件或用户自行添加的任何内容，OpenHouse 及其作者、维护者、贡献者、分发者均不承担任何责任，也不对其合法性、安全性、稳定性、持续性、隐私处理方式或结果作任何保证。用户应自行审查、判断并承担全部风险。
+6. 对于任何第三方项目、第三方脚本、第三方软件包、第三方仓库、第三方模型服务、第三方网站、第三方接口、第三方插件或用户自行添加的任何内容，OpenHouseAI 及其作者、维护者、贡献者、分发者均不承担任何责任，也不对其合法性、安全性、稳定性、持续性、隐私处理方式或结果作任何保证。用户应自行审查、判断并承担全部风险。
 
-7. 用户因使用、误用、修改、分发 OpenHouse，或因使用与 OpenHouse 相关的任何第三方组件、脚本、服务、文档、说明或衍生内容所造成的任何损害、损失、责任、处罚、索赔、争议、诉讼、行政后果或其他不利后果，均由用户自行承担。作者、维护者、贡献者、分发者在任何情况下均不承担任何责任。
+7. 用户因使用、误用、修改、分发 OpenHouseAI，或因使用与 OpenHouseAI 相关的任何第三方组件、脚本、服务、文档、说明或衍生内容所造成的任何损害、损失、责任、处罚、索赔、争议、诉讼、行政后果或其他不利后果，均由用户自行承担。作者、维护者、贡献者、分发者在任何情况下均不承担任何责任。
 
-8. 在适用法律允许的最大范围内，对于因下载、安装、使用、无法使用、误用、依赖、修改、分发 OpenHouse 或其相关内容而导致的任何直接、间接、附带、特殊、惩罚性、后果性损害，或任何利润损失、业务损失、机会损失、数据损失、设备损失、安全损失、商誉损失，作者、维护者、贡献者、分发者均不承担责任，即使其已被告知可能发生此类损害亦不例外。
+8. 在适用法律允许的最大范围内，对于因下载、安装、使用、无法使用、误用、依赖、修改、分发 OpenHouseAI 或其相关内容而导致的任何直接、间接、附带、特殊、惩罚性、后果性损害，或任何利润损失、业务损失、机会损失、数据损失、设备损失、安全损失、商誉损失，作者、维护者、贡献者、分发者均不承担责任，即使其已被告知可能发生此类损害亦不例外。
 
-9. 用户承诺仅将 OpenHouse 用于合法、正当用途，不得用于任何违法违规、侵权、攻击、滥用自动化、绕过限制、干扰第三方服务、传播恶意内容或其他不当用途。因用户行为违反法律法规、平台规则、第三方协议或社会公共秩序而产生的一切后果，由用户自行承担；如因此给作者、维护者、贡献者、分发者带来任何损失，用户应负责赔偿。
+9. 用户承诺仅将 OpenHouseAI 用于合法、正当用途，不得用于任何违法违规、侵权、攻击、滥用自动化、绕过限制、干扰第三方服务、传播恶意内容或其他不当用途。因用户行为违反法律法规、平台规则、第三方协议或社会公共秩序而产生的一切后果，由用户自行承担；如因此给作者、维护者、贡献者、分发者带来任何损失，用户应负责赔偿。
 
-10. 用户自行对本地数据、文档、日志、密钥、令牌、账号、端口、网络访问权限及设备安全负责。OpenHouse 及其作者、维护者、贡献者、分发者无义务为用户提供数据恢复、安全保障、兼容修复、持续维护或任何形式的个别支持。
+10. 用户自行对本地数据、文档、日志、密钥、令牌、账号、端口、网络访问权限及设备安全负责。OpenHouseAI 及其作者、维护者、贡献者、分发者无义务为用户提供数据恢复、安全保障、兼容修复、持续维护或任何形式的个别支持。
 
-11. OpenHouse 的使用说明、免责声明及相关规则可以随时在项目仓库、随附文档或工具内页面中更新。除另有明确说明外，项目仓库中发布的最新版本文本视为当前有效版本。用户有义务自行、主动、定期查看项目仓库中的最新内容；默认情况下，用户每次使用 OpenHouse 前均应自行查看最新版本。用户在相关内容更新后继续下载、安装、运行、修改、分发或使用 OpenHouse 的，即视为其已阅读、理解并接受最新版本的全部内容，且无需另行单独通知。
+11. OpenHouseAI 的使用说明、免责声明及相关规则可以随时在项目仓库、随附文档或工具内页面中更新。除另有明确说明外，项目仓库中发布的最新版本文本视为当前有效版本。用户有义务自行、主动、定期查看项目仓库中的最新内容；默认情况下，用户每次使用 OpenHouseAI 前均应自行查看最新版本。用户在相关内容更新后继续下载、安装、运行、修改、分发或使用 OpenHouseAI 的，即视为其已阅读、理解并接受最新版本的全部内容，且无需另行单独通知。
 
-12. 作者、维护者、贡献者、分发者有权随时修改、暂停、停止维护、删除、重构、替换或终止 OpenHouse 的全部或部分内容，而无须对任何用户承担责任。
+12. 作者、维护者、贡献者、分发者有权随时修改、暂停、停止维护、删除、重构、替换或终止 OpenHouseAI 的全部或部分内容，而无须对任何用户承担责任。
 
 13. 用户不得以未阅读、未注意、未知悉、未收到单独通知或未及时查看仓库更新为由，对项目仓库中已经公开发布的最新规则、说明、免责声明或相关文本提出相反主张。
 
 14. 如本说明的任何条款被认定为无效或不可执行，不影响其余条款的效力。其余条款仍然有效并继续适用。
 
-15. 你一旦下载、安装、复制、运行、修改、分发或继续使用 OpenHouse，即表示你已完全理解并接受本说明及项目仓库中届时公布的最新版本内容；如你不同意其中任何内容，应立即停止使用。]]></string>
+15. 你一旦下载、安装、复制、运行、修改、分发或继续使用 OpenHouseAI，即表示你已完全理解并接受本说明及项目仓库中届时公布的最新版本内容；如你不同意其中任何内容，应立即停止使用。]]></string>
     <string name="agreement_accept_checkbox">我已阅读以上内容，并理解应自行查看仓库中的最新版本</string>
     <string name="agreement_accept_button">我已阅读并同意</string>
     <string name="agreement_cancel_button">暂不进入维护中心</string>
@@ -356,7 +356,7 @@ OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，�
     <string name="button_stage_one_click_mode">阶段一键执行</string>
     <string name="button_start_one_click_stages">开始执行阶段\n从第一个未完成下载项开始，直到三个 Agent CLI 全部就绪</string>
     <string name="button_stop_one_click_stages">停止一键执行</string>
-    <string name="one_click_stage_summary_idle">权限已经单独处理后，再点这里。系统按真实下载依赖排序：先系统基础包，再安装 OpenCode、Codex 和 Claude Code。</string>
+    <string name="one_click_stage_summary_idle">权限已经单独处理后，再点这里。系统按真实下载依赖排序：先准备 Ubuntu 和文档，再设置默认进入 Ubuntu，最后安装 OpenCode、Codex 和 Claude Code。</string>
     <string name="one_click_stage_summary_running">阶段一键执行中：%1$s</string>
     <string name="one_click_stage_summary_complete">阶段一键执行已完成，OpenCode、Codex 和 Claude Code 已安装。</string>
     <string name="one_click_stage_summary_waiting">阶段一键执行已暂停：%1$s</string>
@@ -381,10 +381,8 @@ OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，�
     <string name="one_click_auto_codex_detail">在 Ubuntu 内通过 npm 安装 OpenAI Codex CLI</string>
     <string name="one_click_auto_claude_code_title">下载 Claude Code</string>
     <string name="one_click_auto_claude_code_detail">在 Ubuntu 内通过 npm 安装 Anthropic Claude Code</string>
-    <string name="one_click_auto_skill_title">写入 OpenCode skills</string>
-    <string name="one_click_auto_skill_detail">复制系统环境和 Agent 安装说明；不需要下载</string>
-    <string name="one_click_auto_required_components_title">已排除的 OpenHouse 运行时组件</string>
-    <string name="one_click_auto_required_components_detail">OpenHouseAI 不安装 service-manager、cc-connect、cc-proxy、openhouse-key-tool 或 smallphone</string>
+    <string name="one_click_auto_agents_title">安装 Agent CLI</string>
+    <string name="one_click_auto_agents_detail">在 Ubuntu 内安装 OpenCode、Codex 和 Claude Code；Codex/Claude 所需 Node.js 由各自阶段内部处理</string>
     <string name="one_click_auto_start_title">启动 OpenCode</string>
     <string name="one_click_auto_start_detail">完成后打开浏览器地址</string>
     <string name="one_click_auto_item_text">%1$d · %2$s · %3$s\n%4$s</string>
@@ -397,19 +395,8 @@ OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，�
     <string name="button_ubuntu_packages">下载 Ubuntu 基础包</string>
     <string name="button_configure_entry_ubuntu">启动后直接进入 Ubuntu</string>
     <string name="button_install_opencode">下载 OpenCode</string>
-    <string name="button_install_nodejs">下载 Node.js</string>
     <string name="button_install_codex">下载 Codex CLI</string>
     <string name="button_install_claude_code">下载 Claude Code</string>
-    <string name="button_install_system_env_skill">写入 OpenCode skills</string>
-    <string name="button_install_openhouse_bootstrap">下载 OpenHouseAI bootstrap</string>
-    <string name="button_install_required_components">下载必要运行时组件</string>
-    <string name="button_install_service_manager">下载 service-manager</string>
-    <string name="button_install_cc_connect">下载 cc-connect</string>
-    <string name="button_install_cc_proxy">下载 cc-proxy</string>
-    <string name="button_install_openhouse_key_tool">下载 openhouse-key-tool</string>
-    <string name="button_install_smallphone">下载 smallphone</string>
-    <string name="button_sync_guide_site">可选：同步 guide site</string>
-    <string name="button_install_docs_deps">可选：下载 docs 构建依赖</string>
     <string name="button_start">启动 OpenCode</string>
     <string name="button_restart">重启 OpenCode</string>
     <string name="button_configure_default_port">设置默认端口</string>
@@ -432,7 +419,7 @@ OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，�
     <string name="button_open_maintenance_web">启动并打开本地网页维护器</string>
     <string name="button_stop_maintenance_web">关闭本地网页维护器</string>
     <string name="help_title">说明</string>
-    <string name="help_body">1. 建议先完成“权限获取”中的系统权限，再按顺序从上到下点击每个阶段，并观察底部终端中的原始输入输出。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “写入路径和文档”会创建基础目录、占位文档和 Termux 配置。\n\n4. “更新 Termux 软件包”会安装 proot-distro 和 curl。\n\n5. “下载 Ubuntu”会安装 Ubuntu rootfs。\n\n6. “同步官方文档”会把 app 内置的 OpenHouse 官方文档同步到 ~/product-docs/official。\n\n7. “更新 Ubuntu 软件包”会在 Ubuntu 内安装 curl、证书、git 和 procps。\n\n8. “安装 OpenCode”会在安装前按下载策略选择官方源或 GitHub 备用源，并在自动模式下失败后切换重试一次。\n\n9. “写入 OpenCode 技能”会把系统环境说明，以及 OpenCode、Codex、Claude Code 的安装、登录和第三方 API 配置说明写入 OpenCode 用户级 skill。\n\n10. “设置默认端口”会修改维护中心和主界面快捷启动共用的 OpenCode 端口。\n\n11. “启动 OpenCode”会按当前默认端口启动网页服务。\n\n12. “自定义端口启动 OpenCode”允许你输入任意端口启动网页服务，适合和默认端口并行排障。</string>
+    <string name="help_body">1. 建议先完成“权限获取”中的系统权限，再按顺序从上到下点击每个阶段，并观察底部终端中的原始输入输出。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “准备本地目录”会创建 OpenHouseAI 文档目录、工作区和 Termux 配置。\n\n4. “下载 Termux 基础包”会安装 proot-distro、curl、git 和证书依赖。\n\n5. “下载 Ubuntu rootfs”会安装 Ubuntu，并注入环境探测命令。\n\n6. “同步官方文档”会把 app 内置的 OpenHouseAI 文档同步到 ~/openhouseai-docs/official。\n\n7. “下载 Ubuntu 基础包”会在 Ubuntu 内安装 curl、证书、git、procps、ripgrep 和 unzip。\n\n8. “启动后直接进入 Ubuntu”会在安装 Agent CLI 前设置默认终端入口。\n\n9. “下载 OpenCode”“下载 Codex CLI”“下载 Claude Code”会分别安装三个 Agent CLI；Codex 和 Claude Code 所需 Node.js 由对应安装阶段内部检测和安装。\n\n10. 每个安装阶段都会先执行终端环境检测，确认当前在 Termux 或 Ubuntu 中。</string>
     <string name="custom_port_dialog_title">输入 OpenCode 端口</string>
     <string name="custom_port_dialog_hint">例如 8766</string>
     <string name="custom_port_invalid">请输入 1 到 65535 之间的端口号</string>
@@ -486,7 +473,7 @@ OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，�
     <string name="stage_badge_blocked">待前置</string>
     <string name="stage_detail_checking">正在读取完成状态</string>
     <string name="stage_detail_running">正在执行并写入实时日志</string>
-    <string name="stage_detail_prepare_ready">创建 product-docs、workspace 和 Termux 配置；不联网</string>
+    <string name="stage_detail_prepare_ready">创建 openhouseai-docs、workspace 和 Termux 配置；不联网</string>
     <string name="stage_detail_prepare_complete">文档、工作区和外部接口已就绪</string>
     <string name="stage_detail_prepare_failed">上次写入未通过，请查看完整日志</string>
     <string name="stage_detail_termux_packages_ready">pkg 安装 proot-distro、curl、openssl、ca-certificates、git</string>
@@ -497,7 +484,7 @@ OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，�
     <string name="stage_detail_install_ubuntu_failed">Ubuntu 仍不可登录，请查看日志</string>
     <string name="stage_detail_install_ubuntu_blocked">先完成“更新 Termux 软件包”</string>
     <string name="stage_detail_sync_official_docs_ready">复制 APK/维护源内置文档；通常不联网</string>
-    <string name="stage_detail_sync_official_docs_complete">官方文档已同步到 ~/product-docs/official</string>
+    <string name="stage_detail_sync_official_docs_complete">官方文档已同步到 ~/openhouseai-docs/official</string>
     <string name="stage_detail_sync_official_docs_failed">官方文档同步未通过，请查看日志</string>
     <string name="stage_detail_sync_official_docs_blocked">先完成“下载 Ubuntu”</string>
     <string name="stage_detail_ubuntu_packages_ready">apt 安装 curl、ca-certificates、git、procps、ripgrep、unzip</string>
@@ -512,10 +499,6 @@ OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，�
     <string name="stage_detail_install_opencode_complete">OpenCode 和产品路径辅助文件已就绪</string>
     <string name="stage_detail_install_opencode_failed">OpenCode 未装好，请查看日志；自动模式会优先选择更快的下载源</string>
     <string name="stage_detail_install_opencode_blocked">先完成“启动后直接进入 Ubuntu”</string>
-    <string name="stage_detail_install_nodejs_ready">Codex/Claude/组件安装需要 node 和 npm</string>
-    <string name="stage_detail_install_nodejs_complete">Node.js 和 npm 已安装</string>
-    <string name="stage_detail_install_nodejs_failed">Node.js 或 npm 未装好，请查看日志</string>
-    <string name="stage_detail_install_nodejs_blocked">先完成“下载 Ubuntu 基础包”</string>
     <string name="stage_detail_install_codex_ready">会在 Ubuntu 内通过 npm 安装 @openai/codex</string>
     <string name="stage_detail_install_codex_complete">Codex CLI 已安装</string>
     <string name="stage_detail_install_codex_failed">Codex CLI 未装好，请查看日志</string>
@@ -524,14 +507,6 @@ OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，�
     <string name="stage_detail_install_claude_code_complete">Claude Code 已安装</string>
     <string name="stage_detail_install_claude_code_failed">Claude Code 未装好，请查看日志</string>
     <string name="stage_detail_install_claude_code_blocked">先完成“安装 OpenCode”</string>
-    <string name="stage_detail_install_system_env_skill_ready">复制系统环境和 Agent 安装说明；不联网</string>
-    <string name="stage_detail_install_system_env_skill_complete">OpenCode 用户级技能已写入</string>
-    <string name="stage_detail_install_system_env_skill_failed">OpenCode 技能未写入成功，请查看日志</string>
-    <string name="stage_detail_install_system_env_skill_blocked">先完成“安装 OpenCode”</string>
-    <string name="stage_detail_install_required_components_ready">OpenHouseAI 范围内不需要安装这些运行时组件</string>
-    <string name="stage_detail_install_required_components_complete">OpenHouseAI 已跳过 OpenHouse 运行时组件</string>
-    <string name="stage_detail_install_required_components_failed">OpenHouseAI 不应执行该阶段，请检查插件源</string>
-    <string name="stage_detail_install_required_components_blocked">先完成“写入 OpenCode 技能”</string>
     <string name="stage_detail_start_ready">OpenCode 已安装，可启动网页服务</string>
     <string name="stage_detail_start_complete">OpenCode 网页服务正在运行</string>
     <string name="stage_detail_start_failed">服务未启动成功，请查看日志</string>

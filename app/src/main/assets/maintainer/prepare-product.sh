@@ -1,8 +1,8 @@
 TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
 TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 TERMUX_BIN_DIR="$TERMUX_PREFIX/bin"
-ENV_PROBE_COMMAND="$TERMUX_BIN_DIR/openhouse-env-probe"
-DOC_DIR="$TERMUX_HOME/product-docs"
+ENV_PROBE_COMMAND="$TERMUX_BIN_DIR/openhouseai-env-probe"
+DOC_DIR="$TERMUX_HOME/openhouseai-docs"
 WORKSPACE_DIR="$TERMUX_HOME/workspace"
 TERMUX_CONFIG_DIR="$TERMUX_HOME/.termux"
 TERMUX_PROPERTIES_FILE="$TERMUX_CONFIG_DIR/termux.properties"
@@ -53,9 +53,9 @@ detect_ubuntu_rootfs() {
 }
 
 main() {
-  printf 'OPENHOUSE_INSTALL_SIDE=%s\n' "$INSTALL_SIDE"
-  printf 'OPENHOUSE_RUNTIME=%s\n' "$(detect_runtime)"
-  printf 'OPENHOUSE_UBUNTU_ROOTFS=%s\n' "$(detect_ubuntu_rootfs)"
+  printf 'OPENHOUSEAI_INSTALL_SIDE=%s\n' "$INSTALL_SIDE"
+  printf 'OPENHOUSEAI_RUNTIME=%s\n' "$(detect_runtime)"
+  printf 'OPENHOUSEAI_UBUNTU_ROOTFS=%s\n' "$(detect_ubuntu_rootfs)"
 }
 
 main "$@"
@@ -76,31 +76,31 @@ else
   printf '\nallow-external-apps = true\n' >> "$TERMUX_PROPERTIES_FILE"
 fi
 
-log "正在将产品文档写入 $DOC_DIR"
+log "正在将 OpenHouseAI 文档写入 $DOC_DIR"
 cat > "$DOC_DIR/README.md" <<'EOF'
-# Product Docs
+# OpenHouseAI 文档
 
-This directory is visible to OpenCode. Put stable product notes here.
+本目录用于保存 OpenHouseAI 文档和本机笔记。
+
+正式说明会由“同步官方文档”阶段写入 `official/`：
+- `official/ENVIRONMENT.md`
+- `official/MODEL_API_SETUP.md`
 EOF
 
-cat > "$DOC_DIR/USER_GUIDE.md" <<'EOF'
-# User Guide
+cat > "$DOC_DIR/ENVIRONMENT.md" <<'EOF'
+# 运行环境说明
 
-1. Open the browser page served by OpenCode.
-2. Ask the agent to read AI_GUIDE.md before starting work.
-3. Keep your projects under ~/workspace.
+OpenHouseAI 运行在 Android Termux 中，并通过 `proot-distro` 提供 Ubuntu。OpenCode、Codex CLI 和 Claude Code 安装在 Ubuntu 内。
+
+工作区路径：`/data/data/com.termux/files/home/workspace`
 EOF
 
-cat > "$DOC_DIR/AI_GUIDE.md" <<'EOF'
-# AI Guide
+cat > "$DOC_DIR/MODEL_API_SETUP.md" <<'EOF'
+# Codex 和 Claude Code 登录/API 配置
 
-You are operating inside a local product workspace.
+正式配置说明会由“同步官方文档”阶段写入 `official/MODEL_API_SETUP.md`。
 
-Rules:
-- Read README.md and this AI_GUIDE.md before making changes.
-- Treat ~/workspace as the writable area for user projects.
-- Keep generated artifacts organized and explain what was changed.
-- Prefer publishing completed projects through git when the user requests it.
+不要把 API key 写入 git 仓库、共享文档、APK 资源、日志或截图。
 EOF
 
 install_env_probe_cli

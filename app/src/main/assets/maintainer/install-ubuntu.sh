@@ -1,8 +1,8 @@
 TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
-UBUNTU_PROBE_STAGING="$TERMUX_HOME/.maintainer-logs/openhouse-env-probe-ubuntu.sh"
+UBUNTU_PROBE_STAGING="$TERMUX_HOME/.maintainer-logs/openhouseai-env-probe-ubuntu.sh"
 
 install_ubuntu_env_probe_cli() {
-  if proot-distro login ubuntu -- bash -lc 'test -x "$HOME/bin/openhouse-env-probe"' >/dev/null 2>&1; then
+  if proot-distro login ubuntu -- bash -lc 'test -x "$HOME/bin/openhouseai-env-probe"' >/dev/null 2>&1; then
     log "Ubuntu 侧环境探测 CLI 已存在。"
     return 0
   fi
@@ -47,17 +47,17 @@ detect_ubuntu_rootfs() {
 }
 
 main() {
-  printf 'OPENHOUSE_INSTALL_SIDE=%s\n' "$INSTALL_SIDE"
-  printf 'OPENHOUSE_RUNTIME=%s\n' "$(detect_runtime)"
-  printf 'OPENHOUSE_UBUNTU_ROOTFS=%s\n' "$(detect_ubuntu_rootfs)"
+  printf 'OPENHOUSEAI_INSTALL_SIDE=%s\n' "$INSTALL_SIDE"
+  printf 'OPENHOUSEAI_RUNTIME=%s\n' "$(detect_runtime)"
+  printf 'OPENHOUSEAI_UBUNTU_ROOTFS=%s\n' "$(detect_ubuntu_rootfs)"
 }
 
 main "$@"
 EOF
   chmod 755 "$UBUNTU_PROBE_STAGING"
-  run_logged proot-distro login ubuntu -- bash -lc 'mkdir -p "$HOME/bin"; cp "/data/data/com.termux/files/home/.maintainer-logs/openhouse-env-probe-ubuntu.sh" "$HOME/bin/openhouse-env-probe"; chmod 755 "$HOME/bin/openhouse-env-probe"; "$HOME/bin/openhouse-env-probe"'
+  run_logged proot-distro login ubuntu -- bash -lc 'mkdir -p "$HOME/bin"; cp "/data/data/com.termux/files/home/.maintainer-logs/openhouseai-env-probe-ubuntu.sh" "$HOME/bin/openhouseai-env-probe"; chmod 755 "$HOME/bin/openhouseai-env-probe"; "$HOME/bin/openhouseai-env-probe"'
   rm -f "$UBUNTU_PROBE_STAGING"
-  log "已注入 Ubuntu 侧环境探测 CLI：~/bin/openhouse-env-probe"
+  log "已注入 Ubuntu 侧环境探测 CLI：~/bin/openhouseai-env-probe"
 }
 
 if ! command -v proot-distro >/dev/null 2>&1; then

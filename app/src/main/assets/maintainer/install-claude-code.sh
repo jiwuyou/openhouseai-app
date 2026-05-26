@@ -24,7 +24,7 @@ for PROFILE_FILE in "$HOME/.profile" "$HOME/.bashrc"; do
   touch "$PROFILE_FILE"
   if ! grep -Fq "$PATH_LINE" "$PROFILE_FILE"; then
     {
-      printf "\n# OpenHouse agent tools\n"
+      printf "\n# OpenHouseAI agent tools\n"
       printf "%s\n" "$PATH_LINE"
     } >> "$PROFILE_FILE"
   fi
