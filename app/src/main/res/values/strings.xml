@@ -1,0 +1,549 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!DOCTYPE resources [
+    <!ENTITY TERMUX_PACKAGE_NAME "com.termux">
+    <!ENTITY TERMUX_APP_NAME "openhouse">
+    <!ENTITY TERMUX_API_APP_NAME "openhouse:API">
+    <!ENTITY TERMUX_BOOT_APP_NAME "openhouse:Boot">
+    <!ENTITY TERMUX_FLOAT_APP_NAME "openhouse:Float">
+    <!ENTITY TERMUX_STYLING_APP_NAME "openhouse:Styling">
+    <!ENTITY TERMUX_TASKER_APP_NAME "openhouse:Tasker">
+    <!ENTITY TERMUX_WIDGET_APP_NAME "openhouse:Widget">
+    ]>
+
+<resources>
+
+    <string name="application_name">&TERMUX_APP_NAME;</string>
+    <string name="shared_user_label">&TERMUX_APP_NAME; user</string>
+
+
+
+    <!-- Termux RUN_COMMAND permission -->
+    <string name="permission_run_command_label">Run commands in &TERMUX_APP_NAME; environment</string>
+    <string name="permission_run_command_description">execute arbitrary commands within &TERMUX_APP_NAME;
+        environment and access files</string>
+
+
+
+    <!-- Termux Bootstrap Packages Installation -->
+    <string name="bootstrap_installer_body">Installing bootstrap packages…</string>
+    <string name="bootstrap_error_title">Unable to install bootstrap</string>
+    <string name="bootstrap_error_body">&TERMUX_APP_NAME; was unable to install the bootstrap packages.</string>
+    <string name="bootstrap_error_abort">Abort</string>
+    <string name="bootstrap_error_try_again">Try again</string>
+    <string name="bootstrap_error_not_primary_user_message">&TERMUX_APP_NAME; can only be run as the primary user.
+        \nBootstrap binaries compiled for &TERMUX_APP_NAME; have hardcoded $PREFIX path and cannot be installed
+        under any path other than:\n%1$s.</string>
+    <string name="bootstrap_error_installed_on_portable_sd">&TERMUX_APP_NAME; cannot be installed on
+        portable/external/removable sd card on your device.
+        \nBootstrap binaries compiled for &TERMUX_APP_NAME; have hardcoded $PREFIX path and cannot be installed
+        under any path other than:\n%1$s.</string>
+
+
+
+    <!-- Terminal Sidebar and Shortcuts -->
+    <string name="action_new_session">New session</string>
+    <string name="action_new_session_failsafe">Failsafe</string>
+    <string name="title_max_terminals_reached">Max terminals reached</string>
+    <string name="msg_max_terminals_reached">Close down existing ones before creating new.</string>
+
+    <string name="title_rename_session">Set session name</string>
+    <string name="action_rename_session_confirm">Set</string>
+    <string name="title_create_named_session">New named session</string>
+    <string name="action_create_named_session_confirm">Create</string>
+
+    <string name="action_toggle_soft_keyboard">Keyboard</string>
+
+    <string name="msg_enabling_terminal_toolbar">Enabling Terminal Toolbar</string>
+    <string name="msg_disabling_terminal_toolbar">Disabling Terminal Toolbar</string>
+
+
+
+    <!-- Terminal Popup -->
+    <string name="action_select_url">Select URL</string>
+    <string name="title_select_url_dialog">Click URL to copy or long press to open</string>
+    <string name="title_select_url_none_found">No URL found in the terminal.</string>
+    <string name="msg_select_url_copied_to_clipboard">URL copied to clipboard</string>
+
+    <string name="action_share_transcript">Share transcript</string>
+    <string name="title_share_transcript">Terminal transcript</string>
+    <string name="title_share_transcript_with">Send transcript to:</string>
+
+    <string name="action_share_selected_text">Share selected text</string>
+    <string name="title_share_selected_text">Terminal Text</string>
+    <string name="title_share_selected_text_with">Send selected text to:</string>
+
+    <string name="action_autofill_username">Autofill username</string>
+    <string name="action_autofill_password">Autofill password</string>
+
+    <string name="action_reset_terminal">Reset</string>
+    <string name="msg_terminal_reset">Terminal reset</string>
+
+    <string name="action_kill_process">Kill process (%d)</string>
+    <string name="title_confirm_kill_process">Really kill this session?</string>
+
+    <string name="action_style_terminal">Style</string>
+    <string name="action_toggle_keep_screen_on">Keep screen on</string>
+    <string name="action_open_help">Help</string>
+    <string name="action_open_settings">Settings</string>
+    <string name="action_open_maintenance_center">打开维护中心</string>
+    <string name="action_open_maintenance_center_short">维护</string>
+    <string name="action_launch_opencode_default">启动默认端口 OpenCode</string>
+    <string name="action_launch_opencode_short">OC</string>
+    <string name="action_toggle_quick_buttons_visibility">显示或隐藏维护和 OC 快捷按钮</string>
+    <string name="action_toggle_quick_buttons_visibility_short">显隐</string>
+
+    <string name="action_report_issue">Report Issue</string>
+    <string name="msg_generating_report">Generating Report</string>
+    <string name="msg_add_termux_debug_info">Add termux debug info to report?</string>
+
+    <string name="error_styling_not_installed">The &TERMUX_STYLING_APP_NAME; Plugin App is not installed.</string>
+    <string name="action_styling_install">Install</string>
+
+
+
+    <!-- Termux Notifications -->
+    <string name="notification_action_exit">Exit</string>
+    <string name="notification_action_wake_lock">Acquire wakelock</string>
+    <string name="notification_action_wake_unlock">Release wakelock</string>
+
+
+
+    <!-- TermuxService -->
+    <string name="error_display_over_other_apps_permission_not_granted_to_start_terminal">&TERMUX_APP_NAME; requires
+        \"Display over other apps\" permission to start terminal sessions from background on Android >= 10.
+        Grants it from Settings -> Apps -> &TERMUX_APP_NAME; -> Advanced</string>
+    <string name="error_termux_service_invalid_execution_command_runner">Invalid execution command runner to TermuxService: `%1$s`</string>
+    <string name="error_termux_service_unsupported_execution_command_runner">Unsupported execution command runner to TermuxService: `%1$s`</string>
+    <string name="error_termux_service_unsupported_execution_command_shell_create_mode">Unsupported execution command shell create mode to TermuxService: `%1$s`</string>
+    <string name="error_termux_service_execution_command_shell_name_unset">Shell name not set but `%1$s` shell create mode passed</string>
+
+
+
+    <!-- Termux RunCommandService -->
+    <string name="error_run_command_service_invalid_intent_action">Invalid intent action to RunCommandService: `%1$s`</string>
+    <string name="error_run_command_service_invalid_execution_command_runner">Invalid execution command runner to RunCommandService: `%1$s`</string>
+    <string name="error_run_command_service_mandatory_extra_missing">Mandatory extra missing to RunCommandService: \"%1$s\"</string>
+    <string name="error_run_command_service_api_help">Visit %1$s for more info on RUN_COMMAND Intent usage.</string>
+
+
+
+    <!-- Termux File Receiver -->
+    <string name="title_file_received">Save file in ~/downloads/</string>
+    <string name="action_file_received_edit">Edit</string>
+    <string name="action_file_received_open_directory">Open directory</string>
+
+
+
+    <!-- Miscellaneous -->
+    <string name="error_termux_service_start_failed_general">Failed to start TermuxService. Check logcat for exception message.</string>
+    <string name="error_termux_service_start_failed_bg">Failed to start TermuxService while app is in background due to android bg restrictions.</string>
+
+
+
+    <!-- Termux Settings -->
+    <string name="title_activity_termux_settings">&TERMUX_APP_NAME; Settings</string>
+
+    <!-- Termux App Preferences -->
+    <string name="termux_preferences_title">&TERMUX_APP_NAME;</string>
+    <string name="termux_preferences_summary">Preferences for &TERMUX_APP_NAME; app</string>
+
+        <!-- Debugging Preferences -->
+        <string name="termux_debugging_preferences_title">Debugging</string>
+        <string name="termux_debugging_preferences_summary">Preferences for debugging</string>
+
+            <!-- Logging Category -->
+            <string name="termux_logging_header">Logging</string>
+
+                <!-- Log Level -->
+                <string name="termux_log_level_title">Log Level</string>
+
+                <!-- Terminal View Key Logging -->
+                <string name="termux_terminal_view_key_logging_enabled_title">Terminal View Key Logging</string>
+                <string name="termux_terminal_view_key_logging_enabled_off">Logs will not have entries for terminal view keys. (Default)</string>
+                <string name="termux_terminal_view_key_logging_enabled_on">Logcat logs will have entries for terminal view keys.
+                    These are very verbose and should be disabled under normal circumstances or will cause performance issues.</string>
+
+                <!-- Plugin Error Notifications -->
+                <string name="termux_plugin_error_notifications_enabled_title">Plugin Error Notifications</string>
+                <string name="termux_plugin_error_notifications_enabled_off">Disable flashes and notifications for plugin errors.</string>
+                <string name="termux_plugin_error_notifications_enabled_on">Show flashes and notifications for plugin errors. (Default)</string>
+
+                <!-- Crash Report Notifications -->
+                <string name="termux_crash_report_notifications_enabled_title">Crash Report Notifications</string>
+                <string name="termux_crash_report_notifications_enabled_off">Disable notifications for crash reports.</string>
+                <string name="termux_crash_report_notifications_enabled_on">Show notifications for crash reports. (Default)</string>
+
+
+        <!-- Terminal IO Preferences -->
+        <string name="termux_terminal_io_preferences_title">Terminal I/O</string>
+        <string name="termux_terminal_io_preferences_summary">Preferences for terminal I/O</string>
+
+            <!-- Keyboard Category -->
+            <string name="termux_keyboard_header">Keyboard</string>
+
+                <!-- Soft Keyboard -->
+                <string name="termux_soft_keyboard_enabled_title">Soft Keyboard Enabled</string>
+                <string name="termux_soft_keyboard_enabled_off">Soft keyboard will be disabled.</string>
+                <string name="termux_soft_keyboard_enabled_on">Soft keyboard will be enabled. (Default)</string>
+
+                <!-- Soft Keyboard Only If No Hardware-->
+                <string name="termux_soft_keyboard_enabled_only_if_no_hardware_title">Soft Keyboard Only If No Hardware</string>
+                <string name="termux_soft_keyboard_enabled_only_if_no_hardware_off">Soft keyboard will be enabled even if
+                    hardware keyboard is connected. (Default)</string>
+                <string name="termux_soft_keyboard_enabled_only_if_no_hardware_on">Soft keyboard will be enabled only if
+                    no hardware keyboard is connected.</string>
+
+
+        <!-- Terminal View Preferences -->
+        <string name="termux_terminal_view_preferences_title">Terminal View</string>
+        <string name="termux_terminal_view_preferences_summary">Preferences for terminal view</string>
+
+            <!-- View Category -->
+            <string name="termux_terminal_view_view_header">View</string>
+
+                <!-- Terminal View Margin Adjustment -->
+                <string name="termux_terminal_view_terminal_margin_adjustment_title">Terminal Margin Adjustment</string>
+                <string name="termux_terminal_view_terminal_margin_adjustment_off">Terminal margin adjustment will be disabled.</string>
+                <string name="termux_terminal_view_terminal_margin_adjustment_on">Terminal margin adjustment will be enabled.
+                    It should be enabled to try to fix the issue where soft keyboard covers part of extra keys/terminal view.
+                    If it causes screen flickering on your devices, then disable it. (Default)</string>
+
+
+
+    <!-- Termux:API App Preferences -->
+    <string name="termux_api_preferences_title">&TERMUX_API_APP_NAME;</string>
+    <string name="termux_api_preferences_summary">Preferences for &TERMUX_API_APP_NAME; app</string>
+
+
+
+    <!-- Termux:Float App Preferences -->
+    <string name="termux_float_preferences_title">&TERMUX_FLOAT_APP_NAME;</string>
+    <string name="termux_float_preferences_summary">Preferences for &TERMUX_FLOAT_APP_NAME; app</string>
+
+
+
+    <!-- Termux:Tasker App Preferences -->
+    <string name="termux_tasker_preferences_title">&TERMUX_TASKER_APP_NAME;</string>
+    <string name="termux_tasker_preferences_summary">Preferences for &TERMUX_TASKER_APP_NAME; app</string>
+
+
+
+    <!-- Termux:Widget App Preferences -->
+    <string name="termux_widget_preferences_title">&TERMUX_WIDGET_APP_NAME;</string>
+    <string name="termux_widget_preferences_summary">Preferences for &TERMUX_WIDGET_APP_NAME; app</string>
+
+
+
+    <!-- About Preference -->
+    <string name="about_preference_title">About</string>
+
+    <!-- Donate Preference -->
+    <string name="donate_preference_title">Donate</string>
+
+    <string name="maintenance_center_title">维护中心</string>
+    <string name="maintenance_center_subtitle">按阶段完成 Ubuntu 和 OpenCode 的安装、启动与修复。页面底部保留真实终端，便于直接查看原始输入输出。</string>
+    <string name="maintenance_center_instruction">请依次在权限获取中点击。这个屏幕上面部分支持滑动查看，请一点点的往下面滑动，完成初始化。权限完成后，可在下方选择分步执行或阶段一键执行。</string>
+    <string name="agreement_screen_title">使用说明与免责声明</string>
+    <string name="agreement_screen_subtitle">进入维护中心前，请先阅读并同意以下内容。协议同意状态仅保存在应用私有存储中，不会同步到 Termux 或 Ubuntu 目录。</string>
+    <string name="agreement_human_readable_title">人话版</string>
+    <string name="agreement_human_readable_content"><![CDATA[欢迎使用 OpenHouse。
+
+OpenHouse 是一个开源的本地工具。它运行在你自己的设备上，用来帮助准备和维护本地环境，例如安装 Ubuntu、安装和启动 OpenCode、同步文档、查看日志，以及执行一些本地维护操作。
+
+请先明确以下几点：
+
+1. OpenHouse 不是在线服务，也不是商业产品。
+2. OpenHouse 没有官方服务器、没有账号系统、没有后台数据收集。
+3. OpenHouse 本身不会主动上传、存储或分析你的聊天内容、文档内容、日志内容、终端输出或个人信息。
+4. 如果你主动使用第三方 AI、第三方网站、第三方仓库、第三方模型接口或其他联网功能，那是你与第三方之间的直接交互，不属于 OpenHouse 本身。
+5. 你需要对自己在设备上的所有操作负责，包括安装的软件、执行的脚本、开放的端口、接入的 Agent、使用的模型服务，以及由此产生的后果。
+6. 如果你自行修改环境、安装插件、扩展脚本、引入第三方内容，相关风险由你自己承担。
+7. OpenHouse 按现状提供，不保证一定可用、稳定、无错误，也不保证适用于你的具体设备或用途。
+8. 作者、维护者和贡献者不对你因使用 OpenHouse 或第三方组件而产生的损失负责。
+9. 请仅将 OpenHouse 用于合法、正当的用途。
+10. OpenHouse 的最新说明会以项目仓库中的版本为准。你最好在使用前先看一下最新内容。
+
+如果你继续使用 OpenHouse，就表示你已经理解并接受以上内容。]]></string>
+    <string name="agreement_formal_title">正式版</string>
+    <string name="agreement_formal_content"><![CDATA[欢迎使用 OpenHouse。为避免争议，请在使用前仔细阅读以下说明。你下载、安装、运行、修改、分发或继续使用 OpenHouse 的任何部分，即视为你已阅读、理解并同意本说明全部内容。
+
+1. OpenHouse 是一个开源的、本地运行的工具项目，仅按其当前状态提供。OpenHouse 不是在线服务，不构成任何商业产品承诺、持续服务承诺、适配承诺、可用性承诺或技术支持承诺。
+
+2. OpenHouse 不提供官方服务器、官方账号体系、官方云端托管、官方远程同步或官方数据运营服务。除用户主动调用的第三方网络服务外，OpenHouse 本身不以收集、上传、存储、分析用户数据为目的设计和运营。
+
+3. OpenHouse 及其作者、维护者、贡献者、分发者不对软件的可用性、稳定性、连续性、兼容性、安全性、准确性、完整性、适销性、特定用途适用性或不侵权作出任何明示或默示保证。OpenHouse 按“现状”“现有”提供，全部使用风险由用户自行承担。
+
+4. 用户应自行判断是否安装、运行、修改或依赖 OpenHouse，并应自行承担由此产生的一切风险与后果，包括但不限于设备异常、系统损坏、配置错误、数据丢失、服务中断、端口暴露、权限风险、兼容性问题、安全问题、第三方争议、账号问题、网络问题及其他任何直接或间接损失。
+
+5. 用户通过 OpenHouse 发起、触发、执行或间接促成的全部操作，均由用户本人独立负责。包括但不限于安装第三方软件、执行脚本或命令、调用 AI 服务、访问网页、连接外部仓库、开放本地或局域网端口、引入插件、扩展、Agent、MCP、模型服务、浏览器调试能力及其他第三方能力。
+
+6. 对于任何第三方项目、第三方脚本、第三方软件包、第三方仓库、第三方模型服务、第三方网站、第三方接口、第三方插件或用户自行添加的任何内容，OpenHouse 及其作者、维护者、贡献者、分发者均不承担任何责任，也不对其合法性、安全性、稳定性、持续性、隐私处理方式或结果作任何保证。用户应自行审查、判断并承担全部风险。
+
+7. 用户因使用、误用、修改、分发 OpenHouse，或因使用与 OpenHouse 相关的任何第三方组件、脚本、服务、文档、说明或衍生内容所造成的任何损害、损失、责任、处罚、索赔、争议、诉讼、行政后果或其他不利后果，均由用户自行承担。作者、维护者、贡献者、分发者在任何情况下均不承担任何责任。
+
+8. 在适用法律允许的最大范围内，对于因下载、安装、使用、无法使用、误用、依赖、修改、分发 OpenHouse 或其相关内容而导致的任何直接、间接、附带、特殊、惩罚性、后果性损害，或任何利润损失、业务损失、机会损失、数据损失、设备损失、安全损失、商誉损失，作者、维护者、贡献者、分发者均不承担责任，即使其已被告知可能发生此类损害亦不例外。
+
+9. 用户承诺仅将 OpenHouse 用于合法、正当用途，不得用于任何违法违规、侵权、攻击、滥用自动化、绕过限制、干扰第三方服务、传播恶意内容或其他不当用途。因用户行为违反法律法规、平台规则、第三方协议或社会公共秩序而产生的一切后果，由用户自行承担；如因此给作者、维护者、贡献者、分发者带来任何损失，用户应负责赔偿。
+
+10. 用户自行对本地数据、文档、日志、密钥、令牌、账号、端口、网络访问权限及设备安全负责。OpenHouse 及其作者、维护者、贡献者、分发者无义务为用户提供数据恢复、安全保障、兼容修复、持续维护或任何形式的个别支持。
+
+11. OpenHouse 的使用说明、免责声明及相关规则可以随时在项目仓库、随附文档或工具内页面中更新。除另有明确说明外，项目仓库中发布的最新版本文本视为当前有效版本。用户有义务自行、主动、定期查看项目仓库中的最新内容；默认情况下，用户每次使用 OpenHouse 前均应自行查看最新版本。用户在相关内容更新后继续下载、安装、运行、修改、分发或使用 OpenHouse 的，即视为其已阅读、理解并接受最新版本的全部内容，且无需另行单独通知。
+
+12. 作者、维护者、贡献者、分发者有权随时修改、暂停、停止维护、删除、重构、替换或终止 OpenHouse 的全部或部分内容，而无须对任何用户承担责任。
+
+13. 用户不得以未阅读、未注意、未知悉、未收到单独通知或未及时查看仓库更新为由，对项目仓库中已经公开发布的最新规则、说明、免责声明或相关文本提出相反主张。
+
+14. 如本说明的任何条款被认定为无效或不可执行，不影响其余条款的效力。其余条款仍然有效并继续适用。
+
+15. 你一旦下载、安装、复制、运行、修改、分发或继续使用 OpenHouse，即表示你已完全理解并接受本说明及项目仓库中届时公布的最新版本内容；如你不同意其中任何内容，应立即停止使用。]]></string>
+    <string name="agreement_accept_checkbox">我已阅读以上内容，并理解应自行查看仓库中的最新版本</string>
+    <string name="agreement_accept_button">我已阅读并同意</string>
+    <string name="agreement_cancel_button">暂不进入维护中心</string>
+    <string name="download_source_title">下载源</string>
+    <string name="button_configure_download_source">设置下载策略</string>
+    <string name="button_probe_download_source">重新探测 OpenCode 下载源</string>
+    <string name="button_configure_download_source_with_value">设置下载策略（当前 %1$s）</string>
+    <string name="download_source_mode_auto">自动（推荐）</string>
+    <string name="download_source_mode_official_only">仅官方源</string>
+    <string name="download_source_mode_mirror_only">仅 GitHub 备用源</string>
+    <string name="download_source_current_line">当前优先：%1$s</string>
+    <string name="download_source_strategy_line">下载策略：%1$s</string>
+    <string name="download_source_summary_pending">尚未探测，将在安装 OpenCode 前自动选择。</string>
+    <string name="download_source_summary_running">正在探测 OpenCode 下载源。</string>
+    <string name="download_source_summary_manual_official">已锁定官方源，不自动切换。</string>
+    <string name="download_source_summary_manual_mirror">已锁定 GitHub 备用源，不自动切换。</string>
+    <string name="download_source_label_official">官方源</string>
+    <string name="download_source_label_mirror">GitHub 备用源</string>
+    <string name="download_source_probe_stage_label">探测 OpenCode 下载源</string>
+    <string name="download_source_probe_success_toast">OpenCode 下载源探测完成</string>
+    <string name="download_source_probe_failed_toast">下载源探测失败，安装时将先尝试官方源</string>
+    <string name="download_source_mode_saved">下载策略已更新为 %1$s</string>
+    <string name="maintenance_source_title">插件源</string>
+    <string name="maintenance_source_summary_loading">正在读取维护器插件；失败时会使用 APK 内置方案。</string>
+    <string name="maintenance_source_summary">当前：%1$s\n版本：%2$s\n地址：%3$s</string>
+    <string name="maintenance_source_summary_failed">远程维护源不可用，当前使用 APK 内置方案。\n地址：%1$s\n原因：%2$s</string>
+    <string name="button_refresh_maintenance_source">刷新插件源</string>
+    <string name="button_configure_maintenance_source">切换插件源</string>
+    <string name="maintenance_source_dialog_title">插件源</string>
+    <string name="maintenance_source_dialog_hint">https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/openhouseai-manifest.json</string>
+    <string name="maintenance_source_reset">恢复默认在线源</string>
+    <string name="maintenance_source_saved">插件源已更新</string>
+    <string name="maintenance_source_invalid">请输入可访问的 manifest URL</string>
+    <string name="maintenance_source_refresh_ok">插件源已刷新</string>
+    <string name="maintenance_source_refresh_failed">插件源刷新失败，已使用内置方案</string>
+    <string name="plugin_source_choice_bundled">使用 APK 原始插件</string>
+    <string name="plugin_source_choice_user">使用用户本地插件</string>
+    <string name="plugin_source_choice_online">使用在线插件</string>
+    <string name="plugin_source_label_bundled">原始插件</string>
+    <string name="plugin_source_label_user">用户插件</string>
+    <string name="plugin_source_label_online">在线插件</string>
+    <string name="plugin_source_online_title">在线插件 manifest URL</string>
+    <string name="plugin_source_user_title">用户本地插件 manifest</string>
+    <string name="plugin_source_user_message">默认路径会在首次使用时从 APK 原始插件复制一份，之后你可以在 Termux 里自行编辑。</string>
+    <string name="plugin_source_use_default_path">使用默认路径</string>
+    <string name="plugin_source_user_path_invalid">请输入本地 manifest 文件路径</string>
+    <string name="permissions_title">权限获取</string>
+    <string name="permissions_legend">建议先完成以下系统权限，再执行下方阶段操作。电池优化默认是必选项；悬浮窗和存储访问仅作为可选增强。</string>
+    <string name="button_permission_battery">忽略电池优化</string>
+    <string name="button_permission_overlay">悬浮窗权限</string>
+    <string name="button_permission_storage">存储访问</string>
+    <string name="permission_requirement_hint">电池优化默认会阻止下方阶段操作。若你确认不需要这条约束，可在这里关闭“电池优化必选”。</string>
+    <string name="switch_disable_battery_requirement">关闭“电池优化必选”</string>
+    <string name="execution_mode_title">执行模式</string>
+    <string name="execution_mode_legend">权限需要单独点击授权。权限完成后，可以分步执行，也可以让维护中心按顺序自动执行阶段。</string>
+    <string name="button_stage_manual_mode">分步执行</string>
+    <string name="button_stage_one_click_mode">阶段一键执行</string>
+    <string name="button_start_one_click_stages">开始执行阶段\n从第一个未完成下载项开始，直到三个 Agent CLI 全部就绪</string>
+    <string name="button_stop_one_click_stages">停止一键执行</string>
+    <string name="one_click_stage_summary_idle">权限已经单独处理后，再点这里。系统按真实下载依赖排序：先系统基础包，再安装 OpenCode、Codex 和 Claude Code。</string>
+    <string name="one_click_stage_summary_running">阶段一键执行中：%1$s</string>
+    <string name="one_click_stage_summary_complete">阶段一键执行已完成，OpenCode、Codex 和 Claude Code 已安装。</string>
+    <string name="one_click_stage_summary_waiting">阶段一键执行已暂停：%1$s</string>
+    <string name="one_click_stage_toast_complete">阶段一键执行已完成</string>
+    <string name="one_click_stage_toast_stopped">阶段一键执行已停止</string>
+    <string name="one_click_stage_toast_blocked">阶段一键执行已暂停，请先处理：%1$s</string>
+    <string name="one_click_auto_status_done">已完成</string>
+    <string name="one_click_auto_status_next">下一步</string>
+    <string name="one_click_auto_status_waiting">等待</string>
+    <string name="one_click_auto_status_running">执行中</string>
+    <string name="one_click_auto_status_blocked">暂停</string>
+    <string name="one_click_auto_status_checking">检查中</string>
+    <string name="one_click_auto_prepare_title">基础准备</string>
+    <string name="one_click_auto_prepare_detail">创建产品文档、工作区和 Termux 配置；再下载 Termux 基础包、Ubuntu rootfs，并同步内置官方文档</string>
+    <string name="one_click_auto_ubuntu_title">下载 Ubuntu 基础包</string>
+    <string name="one_click_auto_ubuntu_detail">apt 安装 curl、ca-certificates、git、procps、ripgrep、unzip</string>
+    <string name="one_click_auto_entry_ubuntu_title">设置启动入口</string>
+    <string name="one_click_auto_entry_ubuntu_detail">打开 Termux 后直接进入 Ubuntu</string>
+    <string name="one_click_auto_opencode_title">下载 OpenCode</string>
+    <string name="one_click_auto_opencode_detail">从 OpenCode 安装源下载并安装 opencode</string>
+    <string name="one_click_auto_codex_title">下载 Codex CLI</string>
+    <string name="one_click_auto_codex_detail">在 Ubuntu 内通过 npm 安装 OpenAI Codex CLI</string>
+    <string name="one_click_auto_claude_code_title">下载 Claude Code</string>
+    <string name="one_click_auto_claude_code_detail">在 Ubuntu 内通过 npm 安装 Anthropic Claude Code</string>
+    <string name="one_click_auto_skill_title">写入 OpenCode skills</string>
+    <string name="one_click_auto_skill_detail">复制系统环境和 Agent 安装说明；不需要下载</string>
+    <string name="one_click_auto_required_components_title">已排除的 OpenHouse 运行时组件</string>
+    <string name="one_click_auto_required_components_detail">OpenHouseAI 不安装 service-manager、cc-connect、cc-proxy、openhouse-key-tool 或 smallphone</string>
+    <string name="one_click_auto_start_title">启动 OpenCode</string>
+    <string name="one_click_auto_start_detail">完成后打开浏览器地址</string>
+    <string name="one_click_auto_item_text">%1$d · %2$s · %3$s\n%4$s</string>
+    <string name="actions_title">阶段操作</string>
+    <string name="actions_legend">颜色说明：绿色表示已完成，青色表示可执行，橙色表示执行中，灰棕表示等待前置，褐色表示需要修复。</string>
+    <string name="button_prepare">准备本地目录</string>
+    <string name="button_termux_packages">下载 Termux 基础包</string>
+    <string name="button_install_ubuntu">下载 Ubuntu rootfs</string>
+    <string name="button_sync_official_docs">同步官方文档</string>
+    <string name="button_ubuntu_packages">下载 Ubuntu 基础包</string>
+    <string name="button_configure_entry_ubuntu">启动后直接进入 Ubuntu</string>
+    <string name="button_install_opencode">下载 OpenCode</string>
+    <string name="button_install_nodejs">下载 Node.js</string>
+    <string name="button_install_codex">下载 Codex CLI</string>
+    <string name="button_install_claude_code">下载 Claude Code</string>
+    <string name="button_install_system_env_skill">写入 OpenCode skills</string>
+    <string name="button_install_openhouse_bootstrap">下载 OpenHouseAI bootstrap</string>
+    <string name="button_install_required_components">下载必要运行时组件</string>
+    <string name="button_install_service_manager">下载 service-manager</string>
+    <string name="button_install_cc_connect">下载 cc-connect</string>
+    <string name="button_install_cc_proxy">下载 cc-proxy</string>
+    <string name="button_install_openhouse_key_tool">下载 openhouse-key-tool</string>
+    <string name="button_install_smallphone">下载 smallphone</string>
+    <string name="button_sync_guide_site">可选：同步 guide site</string>
+    <string name="button_install_docs_deps">可选：下载 docs 构建依赖</string>
+    <string name="button_start">启动 OpenCode</string>
+    <string name="button_restart">重启 OpenCode</string>
+    <string name="button_configure_default_port">设置默认端口</string>
+    <string name="button_configure_default_port_with_value">设置默认端口（当前 %1$d）</string>
+    <string name="button_start_custom_port">自定义端口启动 OpenCode</string>
+    <string name="button_open_browser">打开浏览器</string>
+    <string name="button_view_full_log">查看完整日志</string>
+    <string name="button_refresh_log">刷新日志</string>
+    <string name="current_stage_title">当前阶段</string>
+    <string name="current_stage_placeholder">当前没有运行中的阶段。</string>
+    <string name="result_title">最近日志</string>
+    <string name="result_placeholder">还没有执行任何阶段。</string>
+    <string name="local_maintenance_web_title">本地网页维护器</string>
+    <string name="local_maintenance_web_summary">完成后台权限后，点击启动按钮会先启动本地服务，再打开浏览器网页。网页由本机服务执行安装、设置和日志操作。\n当前端口：%1$d\n访问地址：%2$s</string>
+    <string name="button_configure_maintenance_web_port">修改本地维护器端口（当前 %1$d）</string>
+    <string name="local_maintenance_web_port_dialog_title">本地维护器端口</string>
+    <string name="local_maintenance_web_port_dialog_hint">输入 10000 到 65535 的端口</string>
+    <string name="local_maintenance_web_port_invalid">端口必须是 10000 到 65535 的数字</string>
+    <string name="local_maintenance_web_port_saved">本地维护器端口已设置为 %1$d</string>
+    <string name="button_open_maintenance_web">启动并打开本地网页维护器</string>
+    <string name="button_stop_maintenance_web">关闭本地网页维护器</string>
+    <string name="help_title">说明</string>
+    <string name="help_body">1. 建议先完成“权限获取”中的系统权限，再按顺序从上到下点击每个阶段，并观察底部终端中的原始输入输出。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “写入路径和文档”会创建基础目录、占位文档和 Termux 配置。\n\n4. “更新 Termux 软件包”会安装 proot-distro 和 curl。\n\n5. “下载 Ubuntu”会安装 Ubuntu rootfs。\n\n6. “同步官方文档”会把 app 内置的 OpenHouse 官方文档同步到 ~/product-docs/official。\n\n7. “更新 Ubuntu 软件包”会在 Ubuntu 内安装 curl、证书、git 和 procps。\n\n8. “安装 OpenCode”会在安装前按下载策略选择官方源或 GitHub 备用源，并在自动模式下失败后切换重试一次。\n\n9. “写入 OpenCode 技能”会把系统环境说明，以及 OpenCode、Codex、Claude Code 的安装、登录和第三方 API 配置说明写入 OpenCode 用户级 skill。\n\n10. “设置默认端口”会修改维护中心和主界面快捷启动共用的 OpenCode 端口。\n\n11. “启动 OpenCode”会按当前默认端口启动网页服务。\n\n12. “自定义端口启动 OpenCode”允许你输入任意端口启动网页服务，适合和默认端口并行排障。</string>
+    <string name="custom_port_dialog_title">输入 OpenCode 端口</string>
+    <string name="custom_port_dialog_hint">例如 8766</string>
+    <string name="custom_port_invalid">请输入 1 到 65535 之间的端口号</string>
+    <string name="custom_port_stage_label">启动 OpenCode（端口 %1$d）</string>
+    <string name="default_port_saved">默认端口已更新为 %1$d</string>
+    <string name="default_port_label">默认端口：%1$d</string>
+    <string name="default_browser_label">浏览器地址：%1$s</string>
+    <string name="permission_overview_label">系统权限：%1$d/3 已开启</string>
+    <string name="permission_badge_open">去开启</string>
+    <string name="permission_badge_enabled">已开启</string>
+    <string name="permission_badge_required">必选</string>
+    <string name="permission_badge_optional">可选</string>
+    <string name="permission_detail_battery_ready">建议开启，降低后台被系统回收的概率；默认会阻止阶段操作</string>
+    <string name="permission_detail_battery_complete">电池优化豁免已开启</string>
+    <string name="permission_detail_overlay_ready">用于悬浮入口和部分后台拉起辅助</string>
+    <string name="permission_detail_overlay_complete">悬浮窗权限已开启</string>
+    <string name="permission_detail_storage_ready">用于完整访问共享存储与产品文档</string>
+    <string name="permission_detail_storage_complete">存储访问已开启</string>
+    <string name="permission_requirement_state_required">电池优化要求：必选</string>
+    <string name="permission_requirement_state_disabled">电池优化要求：已关闭必选，仅作提醒</string>
+    <string name="permission_battery_required_toast">请先完成必选权限“忽略电池优化”，或在权限区底部关闭这个必选项。</string>
+    <string name="permission_open_battery_fallback_hint">已打开电池优化设置，请找到 openhouse 并允许忽略优化。</string>
+    <string name="permission_open_battery_failed">无法打开电池优化设置</string>
+    <string name="permission_open_overlay_failed">无法打开悬浮窗设置</string>
+    <string name="permission_open_storage_failed">无法打开存储权限设置</string>
+    <string name="quick_launch_busy">OpenCode 启动中，请稍候。</string>
+    <string name="quick_launch_starting">正在启动 OpenCode，端口 %1$d</string>
+    <string name="quick_launch_ready">OpenCode 已可通过端口 %1$d 访问</string>
+    <string name="quick_launch_failed">OpenCode 启动失败，请到维护中心查看日志</string>
+    <string name="quick_launch_missing">OpenCode 尚未安装，请先到维护中心完成安装</string>
+    <string name="quick_launch_browser_tab">已通过 9222 调试端口打开浏览器标签</string>
+    <string name="quick_launch_browser_fallback">9222 未就绪，已回退到系统打开方式</string>
+    <string name="status_ready_title">维护环境就绪</string>
+    <string name="status_running_title">阶段执行中</string>
+    <string name="status_terminal_starting">正在启动维护终端</string>
+    <string name="status_terminal_ready">维护终端已就绪</string>
+    <string name="status_terminal_failed">维护终端异常</string>
+    <string name="status_terminal_closed">维护终端已退出</string>
+    <string name="embedded_terminal_title">底部终端</string>
+    <string name="embedded_terminal_status_starting">初始化中</string>
+    <string name="embedded_terminal_status_ready">可输入</string>
+    <string name="embedded_terminal_status_busy">执行中</string>
+    <string name="embedded_terminal_status_failed">初始化失败</string>
+    <string name="embedded_terminal_status_closed">已退出</string>
+    <string name="command_busy">已有一个阶段正在执行。</string>
+    <string name="stage_badge_checking">检查中</string>
+    <string name="stage_badge_ready">可执行</string>
+    <string name="stage_badge_running">执行中</string>
+    <string name="stage_badge_complete">已完成</string>
+    <string name="stage_badge_failed">需修复</string>
+    <string name="stage_badge_blocked">待前置</string>
+    <string name="stage_detail_checking">正在读取完成状态</string>
+    <string name="stage_detail_running">正在执行并写入实时日志</string>
+    <string name="stage_detail_prepare_ready">创建 product-docs、workspace 和 Termux 配置；不联网</string>
+    <string name="stage_detail_prepare_complete">文档、工作区和外部接口已就绪</string>
+    <string name="stage_detail_prepare_failed">上次写入未通过，请查看完整日志</string>
+    <string name="stage_detail_termux_packages_ready">pkg 安装 proot-distro、curl、openssl、ca-certificates、git</string>
+    <string name="stage_detail_termux_packages_complete">Termux 依赖已安装</string>
+    <string name="stage_detail_termux_packages_failed">Termux 依赖未装齐，请重新执行</string>
+    <string name="stage_detail_install_ubuntu_ready">proot-distro install ubuntu</string>
+    <string name="stage_detail_install_ubuntu_complete">Ubuntu rootfs 已可登录</string>
+    <string name="stage_detail_install_ubuntu_failed">Ubuntu 仍不可登录，请查看日志</string>
+    <string name="stage_detail_install_ubuntu_blocked">先完成“更新 Termux 软件包”</string>
+    <string name="stage_detail_sync_official_docs_ready">复制 APK/维护源内置文档；通常不联网</string>
+    <string name="stage_detail_sync_official_docs_complete">官方文档已同步到 ~/product-docs/official</string>
+    <string name="stage_detail_sync_official_docs_failed">官方文档同步未通过，请查看日志</string>
+    <string name="stage_detail_sync_official_docs_blocked">先完成“下载 Ubuntu”</string>
+    <string name="stage_detail_ubuntu_packages_ready">apt 安装 curl、ca-certificates、git、procps、ripgrep、unzip</string>
+    <string name="stage_detail_ubuntu_packages_complete">Ubuntu 依赖已可用</string>
+    <string name="stage_detail_ubuntu_packages_failed">Ubuntu 依赖不完整，请重新执行</string>
+    <string name="stage_detail_ubuntu_packages_blocked">先完成“同步官方文档”</string>
+    <string name="stage_detail_configure_entry_ubuntu_ready">会设置打开 Termux 后直接进入 Ubuntu</string>
+    <string name="stage_detail_configure_entry_ubuntu_complete">启动入口已设置为直接进入 Ubuntu</string>
+    <string name="stage_detail_configure_entry_ubuntu_failed">启动入口未设置成功，请查看日志</string>
+    <string name="stage_detail_configure_entry_ubuntu_blocked">先完成“更新 Ubuntu 软件包”</string>
+    <string name="stage_detail_install_opencode_ready">从 OpenCode 安装源下载 opencode</string>
+    <string name="stage_detail_install_opencode_complete">OpenCode 和产品路径辅助文件已就绪</string>
+    <string name="stage_detail_install_opencode_failed">OpenCode 未装好，请查看日志；自动模式会优先选择更快的下载源</string>
+    <string name="stage_detail_install_opencode_blocked">先完成“启动后直接进入 Ubuntu”</string>
+    <string name="stage_detail_install_nodejs_ready">Codex/Claude/组件安装需要 node 和 npm</string>
+    <string name="stage_detail_install_nodejs_complete">Node.js 和 npm 已安装</string>
+    <string name="stage_detail_install_nodejs_failed">Node.js 或 npm 未装好，请查看日志</string>
+    <string name="stage_detail_install_nodejs_blocked">先完成“下载 Ubuntu 基础包”</string>
+    <string name="stage_detail_install_codex_ready">会在 Ubuntu 内通过 npm 安装 @openai/codex</string>
+    <string name="stage_detail_install_codex_complete">Codex CLI 已安装</string>
+    <string name="stage_detail_install_codex_failed">Codex CLI 未装好，请查看日志</string>
+    <string name="stage_detail_install_codex_blocked">先完成“安装 OpenCode”</string>
+    <string name="stage_detail_install_claude_code_ready">会在 Ubuntu 内通过 npm 安装 @anthropic-ai/claude-code</string>
+    <string name="stage_detail_install_claude_code_complete">Claude Code 已安装</string>
+    <string name="stage_detail_install_claude_code_failed">Claude Code 未装好，请查看日志</string>
+    <string name="stage_detail_install_claude_code_blocked">先完成“安装 OpenCode”</string>
+    <string name="stage_detail_install_system_env_skill_ready">复制系统环境和 Agent 安装说明；不联网</string>
+    <string name="stage_detail_install_system_env_skill_complete">OpenCode 用户级技能已写入</string>
+    <string name="stage_detail_install_system_env_skill_failed">OpenCode 技能未写入成功，请查看日志</string>
+    <string name="stage_detail_install_system_env_skill_blocked">先完成“安装 OpenCode”</string>
+    <string name="stage_detail_install_required_components_ready">OpenHouseAI 范围内不需要安装这些运行时组件</string>
+    <string name="stage_detail_install_required_components_complete">OpenHouseAI 已跳过 OpenHouse 运行时组件</string>
+    <string name="stage_detail_install_required_components_failed">OpenHouseAI 不应执行该阶段，请检查插件源</string>
+    <string name="stage_detail_install_required_components_blocked">先完成“写入 OpenCode 技能”</string>
+    <string name="stage_detail_start_ready">OpenCode 已安装，可启动网页服务</string>
+    <string name="stage_detail_start_complete">OpenCode 网页服务正在运行</string>
+    <string name="stage_detail_start_failed">服务未启动成功，请查看日志</string>
+    <string name="stage_detail_start_blocked">先完成“下载 Claude Code”</string>
+    <string name="stage_detail_restart_ready_running">服务运行中，可执行重启</string>
+    <string name="stage_detail_restart_ready_stopped">服务未运行，也可用来重启拉起</string>
+    <string name="stage_detail_restart_blocked">先完成“下载 Claude Code”</string>
+    <string name="full_log_title">完整日志</string>
+    <string name="full_log_title_with_stage">完整日志：%1$s</string>
+    <string name="full_log_path">日志文件：%1$s</string>
+    <string name="full_log_empty">当前阶段还没有完整日志。</string>
+    <string name="full_log_error">读取日志失败：%1$s</string>
+    <string name="full_log_unavailable">当前阶段还没有完整日志。</string>
+
+</resources>
