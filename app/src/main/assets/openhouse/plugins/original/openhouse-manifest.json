@@ -1,15 +1,15 @@
 {
   "schema": 1,
-  "version": "2026.05.26.2",
+  "version": "2026.05.27.1",
   "title": "OpenHouseAI 维护器",
   "sourceName": "OpenHouseAI APK 原始插件",
-  "updatedAt": "2026-05-26",
+  "updatedAt": "2026-05-27",
   "bootstrapUrl": "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh",
   "defaultOneClickAction": "full",
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "准备 Termux 基础包、Ubuntu rootfs，并同步 OpenHouseAI 文档。",
+      "description": "准备 Termux 路径和文档、安装 Termux 基础包、Ubuntu rootfs，并同步 OpenHouseAI 文档。",
       "stages": ["prepare", "termux_packages", "install_ubuntu", "sync_official_docs"]
     },
     {
@@ -63,19 +63,19 @@
     {
       "id": "prepare",
       "title": "准备 Termux",
-      "description": "创建 OpenHouseAI 文档目录、工作区和 Termux 配置，并安装基础包。",
+      "description": "创建 OpenHouseAI 文档目录、工作区和 Termux 配置。",
       "action": { "type": "bootstrap", "args": ["prepare"] }
     },
     {
       "id": "termux_packages",
       "title": "下载 Termux 基础包",
-      "description": "pkg 安装 proot-distro、curl、openssl、ca-certificates、git。",
-      "action": { "type": "bootstrap", "args": ["prepare"] }
+      "description": "pkg 安装 proot-distro、curl、openssl、ca-certificates。",
+      "action": { "type": "bootstrap", "args": ["termux-packages"] }
     },
     {
       "id": "install_ubuntu",
       "title": "下载 Ubuntu rootfs",
-      "description": "proot-distro install ubuntu，并注入 Ubuntu 侧环境探测命令。",
+      "description": "测速并选择 Ubuntu rootfs 镜像源，再注入 Ubuntu 侧环境探测命令。",
       "action": { "type": "bootstrap", "args": ["ubuntu"] }
     },
     {

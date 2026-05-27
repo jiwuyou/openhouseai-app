@@ -22,16 +22,19 @@ Node.js 不作为单独可见阶段。Codex 和 Claude Code 安装阶段会在�
 
 维护中心的一键阶段顺序是：
 
-1. 准备 Termux 路径和基础包。
-2. 安装 Ubuntu rootfs。
-3. 同步 OpenHouseAI 文档。
-4. 安装 Ubuntu 基础包。
-5. 设置打开 Termux 后默认进入 Ubuntu。
-6. 安装 OpenCode。
-7. 安装 Codex CLI。
-8. 安装 Claude Code。
+1. 准备 Termux 路径、配置和文档。
+2. 安装 Termux 基础包。
+3. 测速并选择 Ubuntu rootfs 镜像源，然后安装 Ubuntu rootfs。
+4. 同步 OpenHouseAI 文档。
+5. 安装 Ubuntu 基础包。
+6. 设置打开 Termux 后默认进入 Ubuntu。
+7. 安装 OpenCode。
+8. 安装 Codex CLI。
+9. 安装 Claude Code。
 
 默认进入 Ubuntu 必须在安装 OpenCode、Codex CLI 和 Claude Code 之前完成。
+
+Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubuntu cloud image 镜像源，选择当前可达且较快的 rootfs URL，再执行 `proot-distro install -n ubuntu <rootfs-url>`。如需指定源，可在执行前设置 `OPENHOUSEAI_UBUNTU_ROOTFS_URL`。
 
 ## 路径
 

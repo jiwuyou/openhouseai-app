@@ -83,6 +83,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final long TERMINAL_UI_UPDATE_DELAY_MS = 250;
     private static final long TERMINAL_LIVE_LOG_REFRESH_MIN_INTERVAL_MS = 1000;
     private static final long TERMINAL_COMPLETION_SCAN_MIN_INTERVAL_MS = 500;
+    private static final long TERMINAL_COMPLETION_POLL_INTERVAL_MS = 1000;
     private static final Pattern DONE_PATTERN = Pattern.compile("__TERMUX_MAINT_DONE__:([a-zA-Z0-9_-]+):(\\d+)");
     private static final String OFFICIAL_DOCS_ASSET_DIR = "openhouse/docs-public";
     private static final String BUNDLED_MAINTENANCE_PLUGIN_ASSET = "openhouse/plugins/original/openhouse-manifest.json";
@@ -174,6 +175,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean oneClickStagesInFlight;
     private boolean openMaintenanceWebAfterStage;
     private boolean terminalTextUpdateScheduled;
+    private boolean terminalCompletionPollScheduled;
     private long lastLiveLogRefreshUptimeMs;
     private long lastCompletionScanUptimeMs;
     private TerminalSession pendingTerminalUpdateSession;
@@ -183,6 +185,35 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Object terminalUpdateLock = new Object();
+    private final Runnable terminalCompletionPollRunnable = new Runnable() {
+        @Override
+        public void run() {
+            terminalCompletionPollScheduled = false;
+            if (isFinishing() || isDestroyed() || !commandInFlight) {
+                return;
+            }
+
+            try {
+                refreshLiveLogThrottled(false);
+                TerminalSession terminalSession = maintenanceSession == null
+                    ? null
+                    : maintenanceSession.getTerminalSession();
+                if (terminalSession != null) {
+                    inspectCompletionThrottled(terminalSession, false);
+                } else {
+                    inspectCurrentLogForCompletion();
+                }
+            } catch (Throwable throwable) {
+                terminalFailureMessage = throwable.getClass().getSimpleName() + ": " + throwable.getMessage();
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to poll maintenance stage completion", throwable);
+                refreshStatus();
+            }
+
+            if (commandInFlight) {
+                scheduleTerminalCompletionPoll();
+            }
+        }
+    };
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     private final EnumMap<StageAction, Button> stageButtons = new EnumMap<>(StageAction.class);
     private final EnumMap<StageAction, StagePresentation> stagePresentations = new EnumMap<>(StageAction.class);
@@ -266,12 +297,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         scheduleMaintenanceSessionInit();
         refreshStatus();
         requestStageStatusRefresh();
+        scheduleTerminalCompletionPoll();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         maintenanceSessionInitPosted = false;
+        terminalCompletionPollScheduled = false;
+        mainHandler.removeCallbacks(terminalCompletionPollRunnable);
         backgroundExecutor.shutdownNow();
         try {
             if (maintenanceSession != null && maintenanceSession.getTerminalSession() != null) {
@@ -1377,6 +1411,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         commandInFlight = true;
         openMaintenanceWebAfterStage = false;
         lastHandledMarker = null;
+        scheduleTerminalCompletionPoll();
         terminalStatusView.setText(R.string.embedded_terminal_status_busy);
         liveLogView.setText(getString(R.string.result_placeholder));
         stagePresentations.put(stageAction, StagePresentation.running(this));
@@ -1401,10 +1436,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private String buildStageExecutionCommand(StageAction stageAction) throws IOException {
         ManifestStage manifestStage = activeManifest == null ? null : activeManifest.stages.get(stageAction.slug);
         if (manifestStage != null) {
+            OpenCodeInstallSpec installSpec = stageAction == StageAction.INSTALL_OPENCODE
+                ? resolveOpenCodeInstallSpec()
+                : OpenCodeInstallSpec.defaultSpec(this);
+            String fallbackScriptBody = buildAssetScriptBody(stageAction, stageAction.assetName, getDefaultOpenCodePort(), installSpec);
             return buildRemoteBootstrapExecutionCommand(
                 manifestStage.title,
                 stageAction.slug,
-                manifestStage.action
+                manifestStage.action,
+                fallbackScriptBody
             );
         }
 
@@ -1440,6 +1480,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         oneClickStagesInFlight = "manifest_full".equals(stageSlug);
         openMaintenanceWebAfterStage = false;
         lastHandledMarker = null;
+        scheduleTerminalCompletionPoll();
         terminalStatusView.setText(R.string.embedded_terminal_status_busy);
         liveLogView.setText(getString(R.string.result_placeholder));
         updateLogButtonState();
@@ -1524,6 +1565,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         commandInFlight = true;
         openMaintenanceWebAfterStage = false;
         lastHandledMarker = null;
+        scheduleTerminalCompletionPoll();
         terminalStatusView.setText(R.string.embedded_terminal_status_busy);
         liveLogView.setText(getString(R.string.result_placeholder));
         updateLogButtonState();
@@ -1571,6 +1613,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         commandInFlight = true;
         openMaintenanceWebAfterStage = "local_maintenance_web".equals(stageSlug);
         lastHandledMarker = null;
+        scheduleTerminalCompletionPoll();
         terminalStatusView.setText(R.string.embedded_terminal_status_busy);
         liveLogView.setText(getString(R.string.result_placeholder));
         updateLogButtonState();
@@ -1594,19 +1637,55 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildRemoteBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action) throws IOException {
+        return buildRemoteBootstrapExecutionCommand(stageLabel, stageSlug, action, null);
+    }
+
+    private String buildRemoteBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String fallbackScriptBody) throws IOException {
         if (activeManifest == null) {
             throw new IOException("远程维护源尚未加载");
         }
 
-        return buildBootstrapExecutionCommand(stageLabel, stageSlug, action, activeManifest.bootstrapUrl);
+        return buildBootstrapExecutionCommand(stageLabel, stageSlug, action, activeManifest.bootstrapUrl, fallbackScriptBody);
     }
 
     private String buildBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String bootstrapUrl) throws IOException {
+        return buildBootstrapExecutionCommand(stageLabel, stageSlug, action, bootstrapUrl, null);
+    }
+
+    private String buildBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String bootstrapUrl, String fallbackScriptBody) throws IOException {
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("BOOTSTRAP_URL=").append(shellQuote(bootstrapUrl)).append('\n');
+        scriptBody.append("select_fastest_termux_main_repo(){\n");
+        scriptBody.append("  local candidates='https://packages-cf.termux.dev/apt/termux-main https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main https://mirrors.ustc.edu.cn/termux/apt/termux-main https://mirror.sunred.org/termux/termux-main'\n");
+        scriptBody.append("  local repo best_repo='' best_time='' repo_time probe_url metrics http_code\n");
+        scriptBody.append("  for repo in $candidates; do\n");
+        scriptBody.append("    probe_url=\"$repo/dists/stable/InRelease\"\n");
+        scriptBody.append("    metrics=\"$(curl -fsSL --connect-timeout 5 --max-time 12 -o /dev/null -w '%{time_total} %{http_code}' \"$probe_url\" 2>/dev/null || true)\"\n");
+        scriptBody.append("    repo_time=\"${metrics%% *}\"\n");
+        scriptBody.append("    http_code=\"${metrics##* }\"\n");
+        scriptBody.append("    if [ \"$http_code\" = '200' ] && [ -n \"$repo_time\" ]; then\n");
+        scriptBody.append("      printf '[OpenHouseAI] Termux 镜像测速：%s %ss\\n' \"$repo\" \"$repo_time\" >&2\n");
+        scriptBody.append("      if [ -z \"$best_time\" ] || awk \"BEGIN{exit !($repo_time < $best_time)}\"; then best_time=\"$repo_time\"; best_repo=\"$repo\"; fi\n");
+        scriptBody.append("    else\n");
+        scriptBody.append("      printf '[OpenHouseAI] Termux 镜像不可用：%s\\n' \"$repo\" >&2\n");
+        scriptBody.append("    fi\n");
+        scriptBody.append("  done\n");
+        scriptBody.append("  if [ -n \"$best_repo\" ]; then printf '[OpenHouseAI] 选择最快 Termux main 镜像源：%s\\n' \"$best_repo\" >&2; printf '%s\\n' \"$best_repo\"; else printf '[OpenHouseAI] Termux 镜像测速失败，回退到 packages-cf.termux.dev\\n' >&2; printf '%s\\n' 'https://packages-cf.termux.dev/apt/termux-main'; fi\n");
+        scriptBody.append("}\n");
+        scriptBody.append("configure_termux_main_repo(){\n");
+        scriptBody.append("  local sources_file=\"${PREFIX:-/data/data/com.termux/files/usr}/etc/apt/sources.list\"\n");
+        scriptBody.append("  local repo_url=\"${OPENHOUSEAI_TERMUX_MAIN_REPO:-}\"\n");
+        scriptBody.append("  [ -d \"$(dirname \"$sources_file\")\" ] || return 0\n");
+        scriptBody.append("  if [ -z \"$repo_url\" ]; then repo_url=\"$(select_fastest_termux_main_repo)\"; else log \"使用指定 Termux main 镜像源：$repo_url\"; fi\n");
+        scriptBody.append("  if [ -f \"$sources_file\" ] && grep -Fq \"$repo_url\" \"$sources_file\"; then log \"Termux main 镜像源已是：$repo_url\"; return 0; fi\n");
+        scriptBody.append("  log \"切换 Termux main 镜像源：$repo_url\"\n");
+        scriptBody.append("  cp \"$sources_file\" \"$sources_file.openhouseai.bak\" 2>/dev/null || true\n");
+        scriptBody.append("  printf 'deb %s stable main\\n' \"$repo_url\" > \"$sources_file\"\n");
+        scriptBody.append("}\n");
         scriptBody.append("ensure_curl(){\n");
         scriptBody.append("  log '正在更新 Termux 包索引并修复 curl 网络依赖。'\n");
         scriptBody.append("  if command -v pkg >/dev/null 2>&1; then\n");
+        scriptBody.append("    configure_termux_main_repo\n");
         scriptBody.append("    run_logged pkg update -y || true\n");
         scriptBody.append("    run_logged pkg install -y curl libcurl libngtcp2 libnghttp2 openssl ca-certificates || true\n");
         scriptBody.append("  else\n");
@@ -1621,19 +1700,20 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         scriptBody.append("  local url=\"$1\" output=\"$2\" attempt=1\n");
         scriptBody.append("  while [ \"$attempt\" -le 5 ]; do\n");
         scriptBody.append("    log \"下载：$url（第 $attempt 次）\"\n");
-        scriptBody.append("    if run_logged curl -fL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors \"$url\" -o \"$output\"; then return 0; fi\n");
+        scriptBody.append("    if run_logged curl -fL --connect-timeout 10 --max-time 25 --speed-time 10 --speed-limit 1024 --retry 1 --retry-delay 2 --retry-all-errors \"$url\" -o \"$output\"; then return 0; fi\n");
         scriptBody.append("    attempt=$((attempt + 1))\n");
         scriptBody.append("    sleep 2\n");
         scriptBody.append("  done\n");
         scriptBody.append("  return 1\n");
         scriptBody.append("}\n");
-        scriptBody.append("ensure_curl\n");
-        scriptBody.append("log \"正在下载远程维护脚本：$BOOTSTRAP_URL\"\n");
-        scriptBody.append("download_file \"$BOOTSTRAP_URL\" \"$HOME/openhouseai-bootstrap.sh\"\n");
-        scriptBody.append("chmod +x \"$HOME/openhouseai-bootstrap.sh\"\n");
-        scriptBody.append("log \"正在执行远程维护动作：").append(action.toDisplayString()).append("\"\n");
+        scriptBody.append("run_remote_bootstrap(){\n");
+        scriptBody.append("  ensure_curl\n");
+        scriptBody.append("  log \"正在探测远程维护脚本：$BOOTSTRAP_URL\"\n");
+        scriptBody.append("  if ! download_file \"$BOOTSTRAP_URL\" \"$HOME/openhouseai-bootstrap.sh\"; then return 21; fi\n");
+        scriptBody.append("  chmod +x \"$HOME/openhouseai-bootstrap.sh\"\n");
+        scriptBody.append("  log \"正在执行远程维护动作：").append(action.toDisplayString()).append("\"\n");
         StageAction bootstrapStageAction = StageAction.fromSlug(stageSlug);
-        scriptBody.append("run_logged env OPENHOUSEAI_PORT=").append(shellQuote(Integer.toString(getDefaultOpenCodePort())))
+        scriptBody.append("  run_logged env OPENHOUSEAI_PORT=").append(shellQuote(Integer.toString(getDefaultOpenCodePort())))
             .append(" OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())));
         if (bootstrapStageAction != null && bootstrapStageAction.requiredComponentTargets != null) {
             scriptBody.append(" OPENHOUSEAI_REQUIRED_COMPONENT_TARGETS=")
@@ -1644,6 +1724,21 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             scriptBody.append(' ').append(shellQuote(arg));
         }
         scriptBody.append('\n');
+        scriptBody.append("}\n");
+        if (fallbackScriptBody != null) {
+            scriptBody.append("if run_remote_bootstrap; then\n");
+            scriptBody.append("  log '远程维护动作完成。'\n");
+            scriptBody.append("else\n");
+            scriptBody.append("  remote_status=\"$?\"\n");
+            scriptBody.append("  log \"远程维护源不可用或执行失败（退出码：$remote_status），切换到 APK 内置阶段脚本。\"\n");
+            scriptBody.append(fallbackScriptBody);
+            if (!fallbackScriptBody.endsWith("\n")) {
+                scriptBody.append('\n');
+            }
+            scriptBody.append("fi\n");
+        } else {
+            scriptBody.append("run_remote_bootstrap\n");
+        }
 
         String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody.toString());
         String tempScriptPath = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs/run-" + stageSlug + ".sh";
@@ -1706,17 +1801,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildAssetExecutionCommand(StageAction stageAction, String stageLabel, String stageSlug, String assetName, int port, OpenCodeInstallSpec installSpec) throws IOException {
-        String scriptBody = loadAsset(assetName)
-            .replace("__PORT__", Integer.toString(port))
-            .replace("__BOOTSTRAP_URL__", getBootstrapUrlForLocalMaintenance())
-            .replace("__REQUIRED_COMPONENT_TARGETS__", stageAction.requiredComponentTargets == null ? "" : stageAction.requiredComponentTargets)
-            .replace("__LOCAL_MAINTENANCE_WEB_PORT__", Integer.toString(getLocalMaintenanceWebPort()))
-            .replace("__BUNDLED_OFFICIAL_DOCS__", buildBundledAssetWriteSnippet(OFFICIAL_DOCS_ASSET_DIR, "OFFICIAL_DOC_DIR"))
-            .replace("__OPENCODE_INSTALL_PRIMARY_URL__", installSpec.primaryUrl)
-            .replace("__OPENCODE_INSTALL_PRIMARY_LABEL__", installSpec.primaryLabel)
-            .replace("__OPENCODE_INSTALL_SECONDARY_URL__", installSpec.secondaryUrl)
-            .replace("__OPENCODE_INSTALL_SECONDARY_LABEL__", installSpec.secondaryLabel)
-            .replace("__OPENCODE_INSTALL_ALLOW_FALLBACK__", installSpec.allowFallback ? "1" : "0");
+        String scriptBody = buildAssetScriptBody(stageAction, assetName, port, installSpec);
         String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody);
         String tempScriptPath = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs/run-" + stageSlug + ".sh";
 
@@ -1731,6 +1816,20 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         builder.append("/data/data/com.termux/files/usr/bin/bash ").append(shellQuote(tempScriptPath)).append('\n');
         builder.append("rm -f ").append(shellQuote(tempScriptPath)).append('\n');
         return builder.toString();
+    }
+
+    private String buildAssetScriptBody(StageAction stageAction, String assetName, int port, OpenCodeInstallSpec installSpec) throws IOException {
+        return loadAsset(assetName)
+            .replace("__PORT__", Integer.toString(port))
+            .replace("__BOOTSTRAP_URL__", getBootstrapUrlForLocalMaintenance())
+            .replace("__REQUIRED_COMPONENT_TARGETS__", stageAction.requiredComponentTargets == null ? "" : stageAction.requiredComponentTargets)
+            .replace("__LOCAL_MAINTENANCE_WEB_PORT__", Integer.toString(getLocalMaintenanceWebPort()))
+            .replace("__BUNDLED_OFFICIAL_DOCS__", buildBundledAssetWriteSnippet(OFFICIAL_DOCS_ASSET_DIR, "OFFICIAL_DOC_DIR"))
+            .replace("__OPENCODE_INSTALL_PRIMARY_URL__", installSpec.primaryUrl)
+            .replace("__OPENCODE_INSTALL_PRIMARY_LABEL__", installSpec.primaryLabel)
+            .replace("__OPENCODE_INSTALL_SECONDARY_URL__", installSpec.secondaryUrl)
+            .replace("__OPENCODE_INSTALL_SECONDARY_LABEL__", installSpec.secondaryLabel)
+            .replace("__OPENCODE_INSTALL_ALLOW_FALLBACK__", installSpec.allowFallback ? "1" : "0");
     }
 
     private void showCustomPortDialog() {
@@ -1851,6 +1950,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         currentStageLabel = getString(R.string.custom_port_stage_label, port);
         commandInFlight = true;
         lastHandledMarker = null;
+        scheduleTerminalCompletionPoll();
         terminalStatusView.setText(R.string.embedded_terminal_status_busy);
         liveLogView.setText(getString(R.string.result_placeholder));
         updateLogButtonState();
@@ -2801,6 +2901,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
         lastLiveLogRefreshUptimeMs = now;
         refreshLiveLog();
+    }
+
+    private void scheduleTerminalCompletionPoll() {
+        if (!commandInFlight || terminalCompletionPollScheduled || isFinishing() || isDestroyed()) {
+            return;
+        }
+
+        terminalCompletionPollScheduled = true;
+        mainHandler.postDelayed(terminalCompletionPollRunnable, TERMINAL_COMPLETION_POLL_INTERVAL_MS);
     }
 
     private void refreshLiveLog() {
