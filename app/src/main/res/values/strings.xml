@@ -369,6 +369,7 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="one_click_auto_status_running">执行中</string>
     <string name="one_click_auto_status_blocked">暂停</string>
     <string name="one_click_auto_status_checking">检查中</string>
+    <string name="one_click_auto_status_optional">可选</string>
     <string name="one_click_auto_prepare_title">基础准备</string>
     <string name="one_click_auto_prepare_detail">创建产品文档、工作区和 Termux 配置；再下载 Termux 基础包、Ubuntu rootfs，并同步内置官方文档</string>
     <string name="one_click_auto_ubuntu_title">下载 Ubuntu 基础包</string>
@@ -385,6 +386,7 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="one_click_auto_agents_detail">在 Ubuntu 内安装 OpenCode、Codex 和 Claude Code；Codex/Claude 所需 Node.js 由各自阶段内部处理</string>
     <string name="one_click_auto_start_title">启动 OpenCode</string>
     <string name="one_click_auto_start_detail">完成后打开浏览器地址</string>
+    <string name="deepseek_key_guide_one_click_detail">可选：打开 DeepSeek 控制台申请 API Key；启动 OpenCode 后用 /connect 选择 DeepSeek 并粘贴 Key。</string>
     <string name="one_click_auto_item_text">%1$d · %2$s · %3$s\n%4$s</string>
     <string name="actions_title">阶段操作</string>
     <string name="actions_legend">颜色说明：绿色表示已完成，青色表示可执行，橙色表示执行中，灰棕表示等待前置，褐色表示需要修复。</string>
@@ -397,6 +399,7 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="button_install_opencode">下载 OpenCode</string>
     <string name="button_install_codex">下载 Codex CLI</string>
     <string name="button_install_claude_code">下载 Claude Code</string>
+    <string name="button_deepseek_key_guide">申请 DeepSeek API Key</string>
     <string name="button_start">启动 OpenCode（4096）</string>
     <string name="button_restart">重启 OpenCode（4096）</string>
     <string name="opencode_start_title">OpenCode 启动</string>
@@ -429,6 +432,9 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="default_port_saved">默认端口已更新为 %1$d</string>
     <string name="default_port_label">默认启动端口：%1$d</string>
     <string name="default_browser_label">浏览器地址：%1$s</string>
+    <string name="deepseek_key_guide_title">申请并填写 DeepSeek API Key</string>
+    <string name="deepseek_key_guide_message">1. 点击“打开 DeepSeek API Keys”，登录 DeepSeek 控制台并创建 API Key。\n\n2. 启动 OpenCode 后，在 OpenCode 输入框中执行 /connect，选择 DeepSeek，然后粘贴刚创建的 API Key。\n\n3. 再执行 /models，选择需要使用的 DeepSeek 模型。\n\n不要把 API Key 发到聊天、日志、截图或仓库里。</string>
+    <string name="deepseek_key_guide_open_button">打开 DeepSeek API Keys</string>
     <string name="permission_overview_label">系统权限：%1$d/3 已开启</string>
     <string name="permission_badge_open">去开启</string>
     <string name="permission_badge_enabled">已开启</string>

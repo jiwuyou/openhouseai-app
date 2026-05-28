@@ -133,6 +133,23 @@ source ~/.bashrc
 claude
 ```
 
+## OpenCode 使用 DeepSeek
+
+DeepSeek API Key 获取地址：
+
+```text
+https://platform.deepseek.com/api_keys
+```
+
+在 OpenCode 网页启动后：
+
+1. 在 OpenCode 输入框执行 `/connect`。
+2. 选择 `DeepSeek`。
+3. 粘贴 DeepSeek API Key。
+4. 再执行 `/models`，选择要使用的 DeepSeek 模型。
+
+如果还没有 API Key，先打开 DeepSeek 控制台，登录后创建 API Key。不要把 API Key 粘贴到聊天内容、日志、截图或仓库中。
+
 ## 配置检查
 
 重新打开 Termux 后会默认进入 Ubuntu。进入后检查：

@@ -26,6 +26,11 @@
       "title": "安装 Agent CLI",
       "description": "安装 OpenCode、Codex 和 Claude Code；Node.js 由 Codex/Claude 阶段内部检测安装。",
       "stages": ["install_opencode", "install_codex", "install_claude_code"]
+    },
+    {
+      "title": "启动 OpenCode",
+      "description": "可选先申请 DeepSeek API Key，然后启动 4096 端口的 OpenCode 网页。",
+      "stages": ["start"]
     }
   ],
   "sections": [

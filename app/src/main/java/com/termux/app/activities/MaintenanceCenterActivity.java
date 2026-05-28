@@ -95,6 +95,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final String PREF_LOCAL_MAINTENANCE_WEB_PORT = "local_maintenance_web_port";
     private static final String DEFAULT_MAINTENANCE_MANIFEST_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/openhouseai-manifest.json";
     private static final String DEFAULT_BOOTSTRAP_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh";
+    private static final String DEEPSEEK_API_KEYS_URL = "https://platform.deepseek.com/api_keys";
     private static final String DEFAULT_USER_PLUGIN_PATH = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openhouseai/plugins/user/openhouseai-manifest.json";
     private static final int DEFAULT_LOCAL_MAINTENANCE_WEB_PORT = 38423;
     private static final int MIN_LOCAL_MAINTENANCE_WEB_PORT = 10000;
@@ -113,7 +114,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageAction.CONFIGURE_ENTRY_UBUNTU,
         StageAction.INSTALL_OPENCODE,
         StageAction.INSTALL_CODEX,
-        StageAction.INSTALL_CLAUDE_CODE
+        StageAction.INSTALL_CLAUDE_CODE,
+        StageAction.START
     };
 
     private TextView statusHeadlineView;
@@ -139,6 +141,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private Button stageManualModeButton;
     private Button stageOneClickModeButton;
     private Button startOneClickStagesButton;
+    private Button deepSeekKeyGuideButton;
     private Button startButton;
     private Button restartButton;
     private Button customPortButton;
@@ -252,6 +255,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         stageManualModeButton = findViewById(R.id.buttonStageManualMode);
         stageOneClickModeButton = findViewById(R.id.buttonStageOneClickMode);
         startOneClickStagesButton = findViewById(R.id.buttonStartOneClickStages);
+        deepSeekKeyGuideButton = findViewById(R.id.buttonDeepSeekKeyGuide);
         startButton = findViewById(R.id.buttonStart);
         restartButton = findViewById(R.id.buttonRestart);
         customPortButton = findViewById(R.id.buttonStartCustomPort);
@@ -333,6 +337,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         bindStageButton(StageAction.INSTALL_CLAUDE_CODE, R.id.buttonInstallClaudeCode);
         bindStageButton(StageAction.START, R.id.buttonStart);
         bindStageButton(StageAction.RESTART, R.id.buttonRestart);
+        deepSeekKeyGuideButton.setOnClickListener(v -> showDeepSeekKeyGuideDialog());
         customPortButton.setOnClickListener(v -> showCustomPortDialog());
         openBrowserButton.setOnClickListener(v -> openBrowser());
         openMaintenanceWebButton.setOnClickListener(v -> startLocalMaintenanceWeb());
@@ -878,9 +883,17 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         if (oneClickStageItemsContainer != null) {
             setLegacyOneClickStageItemsVisibility(View.GONE);
             oneClickStageItemsContainer.removeAllViews();
+            int displayNumber = 1;
             for (int i = 0; i < sequence.size(); i++) {
-                TextView row = createOneClickStageItemView(i == 0);
-                updateOneClickStageActionItem(row, i + 1, sequence.get(i), nextStageAction);
+                StageAction stageAction = sequence.get(i);
+                if (stageAction == StageAction.START) {
+                    TextView deepSeekRow = createOneClickStageItemView(displayNumber == 1);
+                    updateDeepSeekKeyGuideItem(deepSeekRow, displayNumber++);
+                    oneClickStageItemsContainer.addView(deepSeekRow);
+                }
+
+                TextView row = createOneClickStageItemView(displayNumber == 1);
+                updateOneClickStageActionItem(row, displayNumber++, stageAction, nextStageAction);
                 oneClickStageItemsContainer.addView(row);
             }
             return;
@@ -996,6 +1009,21 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         ));
         view.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(this, backgroundColorRes)));
         view.setTextColor(ContextCompat.getColor(this, textColorRes));
+    }
+
+    private void updateDeepSeekKeyGuideItem(TextView view, int number) {
+        if (view == null) return;
+        view.setText(getString(
+            R.string.one_click_auto_item_text,
+            number,
+            getString(R.string.button_deepseek_key_guide),
+            getString(R.string.one_click_auto_status_optional),
+            getString(R.string.deepseek_key_guide_one_click_detail)
+        ));
+        view.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(this, R.color.stageReady)));
+        view.setTextColor(ContextCompat.getColor(this, R.color.stageReadyText));
+        view.setClickable(true);
+        view.setOnClickListener(v -> showDeepSeekKeyGuideDialog());
     }
 
     private StageAction findNextOneClickStage() {
@@ -1497,7 +1525,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             String fallbackScriptBody = "manifest_full".equals(stageSlug)
                 ? buildFullInstallFallbackScript()
                 : null;
-            String command = buildRemoteBootstrapExecutionCommand(stageLabel, stageSlug, action, fallbackScriptBody);
+            String postRemoteScriptBody = "manifest_full".equals(stageSlug)
+                ? buildPostRemoteOneClickScript()
+                : null;
+            String command = buildRemoteBootstrapExecutionCommand(stageLabel, stageSlug, action, fallbackScriptBody, postRemoteScriptBody);
             maintenanceSession.getTerminalSession().write(command);
             if (!command.endsWith("\n")) {
                 maintenanceSession.getTerminalSession().write("\n");
@@ -1650,18 +1681,26 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildRemoteBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String fallbackScriptBody) throws IOException {
+        return buildRemoteBootstrapExecutionCommand(stageLabel, stageSlug, action, fallbackScriptBody, null);
+    }
+
+    private String buildRemoteBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String fallbackScriptBody, String postRemoteScriptBody) throws IOException {
         if (activeManifest == null) {
             throw new IOException("远程维护源尚未加载");
         }
 
-        return buildBootstrapExecutionCommand(stageLabel, stageSlug, action, activeManifest.bootstrapUrl, fallbackScriptBody);
+        return buildBootstrapExecutionCommand(stageLabel, stageSlug, action, activeManifest.bootstrapUrl, fallbackScriptBody, postRemoteScriptBody);
     }
 
     private String buildBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String bootstrapUrl) throws IOException {
-        return buildBootstrapExecutionCommand(stageLabel, stageSlug, action, bootstrapUrl, null);
+        return buildBootstrapExecutionCommand(stageLabel, stageSlug, action, bootstrapUrl, null, null);
     }
 
     private String buildBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String bootstrapUrl, String fallbackScriptBody) throws IOException {
+        return buildBootstrapExecutionCommand(stageLabel, stageSlug, action, bootstrapUrl, fallbackScriptBody, null);
+    }
+
+    private String buildBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String bootstrapUrl, String fallbackScriptBody, String postRemoteScriptBody) throws IOException {
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("BOOTSTRAP_URL=").append(shellQuote(bootstrapUrl)).append('\n');
         scriptBody.append("select_fastest_termux_main_repo(){\n");
@@ -1737,6 +1776,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         if (fallbackScriptBody != null) {
             scriptBody.append("if run_remote_bootstrap; then\n");
             scriptBody.append("  log '远程维护动作完成。'\n");
+            if (postRemoteScriptBody != null) {
+                scriptBody.append(postRemoteScriptBody);
+                if (!postRemoteScriptBody.endsWith("\n")) {
+                    scriptBody.append('\n');
+                }
+            }
             scriptBody.append("else\n");
             scriptBody.append("  remote_status=\"$?\"\n");
             scriptBody.append("  log \"远程维护源不可用或执行失败（退出码：$remote_status），切换到 APK 内置阶段脚本。\"\n");
@@ -1858,6 +1903,32 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
         scriptBody.append("log 'APK 内置一键安装流程已完成。'\n");
         return scriptBody.toString();
+    }
+
+    private String buildPostRemoteOneClickScript() throws IOException {
+        StringBuilder scriptBody = new StringBuilder();
+        scriptBody.append("log '远程一键安装完成，继续通过 APK 内置脚本启动 OpenCode。'\n");
+        scriptBody.append("run_environment_probe\n");
+        scriptBody.append(buildAssetScriptBody(
+            StageAction.START,
+            StageAction.START.assetName,
+            getDefaultOpenCodePort(),
+            OpenCodeInstallSpec.defaultSpec(this)
+        ));
+        if (scriptBody.charAt(scriptBody.length() - 1) != '\n') {
+            scriptBody.append('\n');
+        }
+        return scriptBody.toString();
+    }
+
+    private void showDeepSeekKeyGuideDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.deepseek_key_guide_title)
+            .setMessage(R.string.deepseek_key_guide_message)
+            .setPositiveButton(R.string.deepseek_key_guide_open_button,
+                (dialog, which) -> openUrl(DEEPSEEK_API_KEYS_URL, "DeepSeek API Keys"))
+            .setNegativeButton(android.R.string.ok, null)
+            .show();
     }
 
     private void showCustomPortDialog() {
