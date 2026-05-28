@@ -386,7 +386,7 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="one_click_auto_agents_detail">在 Ubuntu 内安装 OpenCode、Codex 和 Claude Code；Codex/Claude 所需 Node.js 由各自阶段内部处理</string>
     <string name="one_click_auto_start_title">启动 OpenCode</string>
     <string name="one_click_auto_start_detail">完成后打开浏览器地址</string>
-    <string name="deepseek_key_guide_one_click_detail">可选：打开 DeepSeek 控制台申请 API Key；启动 OpenCode 后用 /connect 选择 DeepSeek 并粘贴 Key。</string>
+    <string name="deepseek_key_config_one_click_detail">可选：拿到 DeepSeek API Key 后点击填写，自动配置 OpenCode 和 Claude Code。</string>
     <string name="one_click_auto_item_text">%1$d · %2$s · %3$s\n%4$s</string>
     <string name="actions_title">阶段操作</string>
     <string name="actions_legend">颜色说明：绿色表示已完成，青色表示可执行，橙色表示执行中，灰棕表示等待前置，褐色表示需要修复。</string>
@@ -400,6 +400,7 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="button_install_codex">下载 Codex CLI</string>
     <string name="button_install_claude_code">下载 Claude Code</string>
     <string name="button_deepseek_key_guide">申请 DeepSeek API Key</string>
+    <string name="button_configure_deepseek_key">填写 DeepSeek Key 并配置</string>
     <string name="button_start">启动 OpenCode（4096）</string>
     <string name="button_restart">重启 OpenCode（4096）</string>
     <string name="opencode_start_title">OpenCode 启动</string>
@@ -435,6 +436,11 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="deepseek_key_guide_title">申请并填写 DeepSeek API Key</string>
     <string name="deepseek_key_guide_message">1. 点击“打开 DeepSeek API Keys”，登录 DeepSeek 控制台并创建 API Key。\n\n2. 启动 OpenCode 后，在 OpenCode 输入框中执行 /connect，选择 DeepSeek，然后粘贴刚创建的 API Key。\n\n3. 再执行 /models，选择需要使用的 DeepSeek 模型。\n\n不要把 API Key 发到聊天、日志、截图或仓库里。</string>
     <string name="deepseek_key_guide_open_button">打开 DeepSeek API Keys</string>
+    <string name="deepseek_key_config_title">填写 DeepSeek API Key</string>
+    <string name="deepseek_key_config_message">如果还没有 Key，先打开 DeepSeek API Keys 页面创建。提交后会自动配置 OpenCode 和 Claude Code；Key 不会写入终端日志。</string>
+    <string name="deepseek_key_config_hint">粘贴 DeepSeek API Key</string>
+    <string name="deepseek_key_config_save_button">保存并配置</string>
+    <string name="deepseek_key_config_empty">DeepSeek API Key 不能为空</string>
     <string name="permission_overview_label">系统权限：%1$d/3 已开启</string>
     <string name="permission_badge_open">去开启</string>
     <string name="permission_badge_enabled">已开启</string>
@@ -515,6 +521,10 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="stage_detail_install_claude_code_complete">Claude Code 已安装</string>
     <string name="stage_detail_install_claude_code_failed">Claude Code 未装好，请查看日志</string>
     <string name="stage_detail_install_claude_code_blocked">先完成“安装 OpenCode”</string>
+    <string name="stage_detail_configure_deepseek_ready">填写 DeepSeek API Key 后自动配置 OpenCode 和 Claude Code</string>
+    <string name="stage_detail_configure_deepseek_complete">DeepSeek Key 已配置到 OpenCode 和 Claude Code</string>
+    <string name="stage_detail_configure_deepseek_failed">DeepSeek Key 配置未完成，请重新填写</string>
+    <string name="stage_detail_configure_deepseek_blocked">先完成“下载 Ubuntu rootfs”</string>
     <string name="stage_detail_start_ready">OpenCode 已安装，可用 4096 启动网页服务</string>
     <string name="stage_detail_start_complete">OpenCode 网页服务正在运行</string>
     <string name="stage_detail_start_failed">服务未启动成功，请查看日志</string>

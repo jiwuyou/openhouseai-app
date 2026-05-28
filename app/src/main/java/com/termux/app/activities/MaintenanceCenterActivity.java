@@ -14,6 +14,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.text.InputType;
+import android.text.method.PasswordTransformationMethod;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -142,6 +143,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private Button stageOneClickModeButton;
     private Button startOneClickStagesButton;
     private Button deepSeekKeyGuideButton;
+    private Button deepSeekKeyConfigButton;
     private Button startButton;
     private Button restartButton;
     private Button customPortButton;
@@ -256,6 +258,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         stageOneClickModeButton = findViewById(R.id.buttonStageOneClickMode);
         startOneClickStagesButton = findViewById(R.id.buttonStartOneClickStages);
         deepSeekKeyGuideButton = findViewById(R.id.buttonDeepSeekKeyGuide);
+        deepSeekKeyConfigButton = findViewById(R.id.buttonDeepSeekKeyConfig);
         startButton = findViewById(R.id.buttonStart);
         restartButton = findViewById(R.id.buttonRestart);
         customPortButton = findViewById(R.id.buttonStartCustomPort);
@@ -338,6 +341,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         bindStageButton(StageAction.START, R.id.buttonStart);
         bindStageButton(StageAction.RESTART, R.id.buttonRestart);
         deepSeekKeyGuideButton.setOnClickListener(v -> showDeepSeekKeyGuideDialog());
+        stageButtons.put(StageAction.CONFIGURE_DEEPSEEK, deepSeekKeyConfigButton);
+        deepSeekKeyConfigButton.setOnClickListener(v -> showDeepSeekKeyConfigDialog());
         customPortButton.setOnClickListener(v -> showCustomPortDialog());
         openBrowserButton.setOnClickListener(v -> openBrowser());
         openMaintenanceWebButton.setOnClickListener(v -> startLocalMaintenanceWeb());
@@ -886,15 +891,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             int displayNumber = 1;
             for (int i = 0; i < sequence.size(); i++) {
                 StageAction stageAction = sequence.get(i);
-                if (stageAction == StageAction.START) {
-                    TextView deepSeekRow = createOneClickStageItemView(displayNumber == 1);
-                    updateDeepSeekKeyGuideItem(deepSeekRow, displayNumber++);
-                    oneClickStageItemsContainer.addView(deepSeekRow);
-                }
-
                 TextView row = createOneClickStageItemView(displayNumber == 1);
                 updateOneClickStageActionItem(row, displayNumber++, stageAction, nextStageAction);
                 oneClickStageItemsContainer.addView(row);
+
+                if (stageAction == StageAction.INSTALL_CLAUDE_CODE) {
+                    TextView deepSeekRow = createOneClickStageItemView(false);
+                    updateDeepSeekKeyConfigItem(deepSeekRow, displayNumber++);
+                    oneClickStageItemsContainer.addView(deepSeekRow);
+                }
             }
             return;
         }
@@ -1011,19 +1016,27 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         view.setTextColor(ContextCompat.getColor(this, textColorRes));
     }
 
-    private void updateDeepSeekKeyGuideItem(TextView view, int number) {
+    private void updateDeepSeekKeyConfigItem(TextView view, int number) {
         if (view == null) return;
+        StagePresentation presentation = stagePresentations.get(StageAction.CONFIGURE_DEEPSEEK);
+        boolean complete = presentation != null && presentation.state == StageUiState.COMPLETE;
         view.setText(getString(
             R.string.one_click_auto_item_text,
             number,
-            getString(R.string.button_deepseek_key_guide),
-            getString(R.string.one_click_auto_status_optional),
-            getString(R.string.deepseek_key_guide_one_click_detail)
+            getString(R.string.button_configure_deepseek_key),
+            complete ? getString(R.string.one_click_auto_status_done) : getString(R.string.one_click_auto_status_optional),
+            complete ? getString(R.string.stage_detail_configure_deepseek_complete) : getString(R.string.deepseek_key_config_one_click_detail)
         ));
-        view.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(this, R.color.stageReady)));
-        view.setTextColor(ContextCompat.getColor(this, R.color.stageReadyText));
+        view.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(
+            this,
+            complete ? R.color.stageComplete : R.color.stageReady
+        )));
+        view.setTextColor(ContextCompat.getColor(
+            this,
+            complete ? R.color.stageOnDark : R.color.stageReadyText
+        ));
         view.setClickable(true);
-        view.setOnClickListener(v -> showDeepSeekKeyGuideDialog());
+        view.setOnClickListener(v -> showDeepSeekKeyConfigDialog());
     }
 
     private StageAction findNextOneClickStage() {
@@ -1285,6 +1298,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 return getString(R.string.button_install_codex);
             case INSTALL_CLAUDE_CODE:
                 return getString(R.string.button_install_claude_code);
+            case CONFIGURE_DEEPSEEK:
+                return getString(R.string.button_configure_deepseek_key);
             case RESTART:
                 return getString(R.string.button_restart);
             case START:
@@ -1878,6 +1893,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             .replace("__BOOTSTRAP_URL__", getBootstrapUrlForLocalMaintenance())
             .replace("__REQUIRED_COMPONENT_TARGETS__", stageAction.requiredComponentTargets == null ? "" : stageAction.requiredComponentTargets)
             .replace("__LOCAL_MAINTENANCE_WEB_PORT__", Integer.toString(getLocalMaintenanceWebPort()))
+            .replace("__DEEPSEEK_KEY_FILE__", getDeepSeekKeyTempFile().getAbsolutePath())
             .replace("__BUNDLED_OFFICIAL_DOCS__", buildBundledAssetWriteSnippet(OFFICIAL_DOCS_ASSET_DIR, "OFFICIAL_DOC_DIR"))
             .replace("__OPENCODE_INSTALL_PRIMARY_URL__", installSpec.primaryUrl)
             .replace("__OPENCODE_INSTALL_PRIMARY_LABEL__", installSpec.primaryLabel)
@@ -1929,6 +1945,102 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 (dialog, which) -> openUrl(DEEPSEEK_API_KEYS_URL, "DeepSeek API Keys"))
             .setNegativeButton(android.R.string.ok, null)
             .show();
+    }
+
+    private void showDeepSeekKeyConfigDialog() {
+        if (commandInFlight) {
+            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        input.setTransformationMethod(PasswordTransformationMethod.getInstance());
+        input.setHint(getString(R.string.deepseek_key_config_hint));
+
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.deepseek_key_config_title)
+            .setMessage(R.string.deepseek_key_config_message)
+            .setView(input)
+            .setNeutralButton(R.string.deepseek_key_guide_open_button,
+                (dialog, which) -> openUrl(DEEPSEEK_API_KEYS_URL, "DeepSeek API Keys"))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.deepseek_key_config_save_button, (dialog, which) -> {
+                String apiKey = input.getText() == null ? "" : input.getText().toString().trim();
+                if (apiKey.isEmpty()) {
+                    Toast.makeText(this, R.string.deepseek_key_config_empty, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                runDeepSeekKeyConfig(apiKey);
+            })
+            .show();
+    }
+
+    private void runDeepSeekKeyConfig(String apiKey) {
+        if (commandInFlight) {
+            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        try {
+            writeDeepSeekKeyTempFile(apiKey);
+            String command = buildAssetExecutionCommand(
+                StageAction.CONFIGURE_DEEPSEEK,
+                StageAction.CONFIGURE_DEEPSEEK.label(this),
+                StageAction.CONFIGURE_DEEPSEEK.slug,
+                StageAction.CONFIGURE_DEEPSEEK.assetName,
+                getDefaultOpenCodePort(),
+                OpenCodeInstallSpec.defaultSpec(this)
+            );
+
+            ensureMaintenanceSession();
+            if (maintenanceSession == null || maintenanceSession.getTerminalSession() == null
+                || !maintenanceSession.getTerminalSession().isRunning()) {
+                Toast.makeText(this, R.string.status_terminal_failed, Toast.LENGTH_SHORT).show();
+                refreshStatus();
+                return;
+            }
+
+            currentStageSlug = StageAction.CONFIGURE_DEEPSEEK.slug;
+            currentStageLabel = StageAction.CONFIGURE_DEEPSEEK.label(this);
+            commandInFlight = true;
+            lastHandledMarker = null;
+            scheduleTerminalCompletionPoll();
+            terminalStatusView.setText(R.string.embedded_terminal_status_busy);
+            liveLogView.setText(getString(R.string.result_placeholder));
+            updateLogButtonState();
+            refreshStatus();
+            updateExecutionModeViews();
+
+            maintenanceSession.getTerminalSession().write(command);
+            if (!command.endsWith("\n")) {
+                maintenanceSession.getTerminalSession().write("\n");
+            }
+        } catch (IOException e) {
+            commandInFlight = false;
+            liveLogView.setText(getString(R.string.full_log_error, e.getMessage()));
+            refreshStatus();
+            updateExecutionModeViews();
+        }
+    }
+
+    private void writeDeepSeekKeyTempFile(String apiKey) throws IOException {
+        File keyFile = getDeepSeekKeyTempFile();
+        File parent = keyFile.getParentFile();
+        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+            throw new IOException("无法创建目录：" + parent.getAbsolutePath());
+        }
+        try (FileOutputStream outputStream = new FileOutputStream(keyFile, false)) {
+            outputStream.write(apiKey.getBytes(StandardCharsets.UTF_8));
+        }
+        keyFile.setReadable(false, false);
+        keyFile.setWritable(false, false);
+        keyFile.setReadable(true, true);
+        keyFile.setWritable(true, true);
+    }
+
+    private File getDeepSeekKeyTempFile() {
+        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".maintainer-logs/deepseek-api-key.tmp");
     }
 
     private void showCustomPortDialog() {
@@ -2673,6 +2785,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean openCodeInstalled = entryUbuntuConfigured && isOpenCodeInstalled();
         boolean codexInstalled = openCodeInstalled && isCodexInstalled();
         boolean claudeCodeInstalled = openCodeInstalled && isClaudeCodeInstalled();
+        boolean deepSeekConfigured = ubuntuInstalled && isDeepSeekConfigured();
         boolean openCodeRunning = openCodeInstalled && isOpenCodeWebReachable();
 
         snapshot.opencodeReachable = openCodeRunning;
@@ -2780,6 +2893,17 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                     : failedOrReady(installClaudeCodeExitCode,
                         getString(R.string.stage_detail_install_claude_code_failed),
                         getString(R.string.stage_detail_install_claude_code_ready)))
+        );
+
+        snapshot.presentations.put(
+            StageAction.CONFIGURE_DEEPSEEK,
+            deepSeekConfigured
+                ? StagePresentation.complete(this, getString(R.string.stage_detail_configure_deepseek_complete))
+                : (!ubuntuInstalled
+                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_configure_deepseek_blocked))
+                    : failedOrReady(readLastExitCode(StageAction.CONFIGURE_DEEPSEEK),
+                        getString(R.string.stage_detail_configure_deepseek_failed),
+                        getString(R.string.stage_detail_configure_deepseek_ready)))
         );
 
         snapshot.presentations.put(
@@ -2896,6 +3020,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean isEntryUbuntuConfigured() {
         return runTermuxCommand(
             "test \"$(tr -d '[:space:]' < \"$HOME/.openhouseai/entry-mode\" 2>/dev/null || true)\" = ubuntu && test -f \"$HOME/.openhouseai/entry.sh\" && grep -Fq '# OpenHouseAI startup entry' \"$HOME/.bashrc\""
+        ).isSuccess();
+    }
+
+    private boolean isDeepSeekConfigured() {
+        return runTermuxCommand(
+            "proot-distro login ubuntu -- bash -lc 'test -s \"$HOME/.config/openhouseai/deepseek-api-key\" && test -f \"$HOME/.config/opencode/opencode.json\" && grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.bashrc\"'"
         ).isSuccess();
     }
 
@@ -3929,6 +4059,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         INSTALL_OPENCODE("install_opencode", "install-opencode.sh"),
         INSTALL_CODEX("install_codex", "install-codex.sh"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh"),
+        CONFIGURE_DEEPSEEK("configure_deepseek", "configure-deepseek-key.sh"),
         START("start", "start-opencode.sh"),
         RESTART("restart", "restart-opencode.sh");
 
