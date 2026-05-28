@@ -164,21 +164,21 @@
                     android:orientation="horizontal">
 
                     <Button
-                        android:id="@+id/buttonStageManualMode"
+                        android:id="@+id/buttonStageOneClickMode"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginEnd="5dp"
                         android:layout_weight="1"
-                        android:text="@string/button_stage_manual_mode"
+                        android:text="@string/button_stage_one_click_mode"
                         android:textAllCaps="false" />
 
                     <Button
-                        android:id="@+id/buttonStageOneClickMode"
+                        android:id="@+id/buttonStageManualMode"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="5dp"
                         android:layout_weight="1"
-                        android:text="@string/button_stage_one_click_mode"
+                        android:text="@string/button_stage_manual_mode"
                         android:textAllCaps="false" />
                 </LinearLayout>
 
@@ -401,6 +401,40 @@
                     android:text="@string/button_install_claude_code"
                     android:textAllCaps="false" />
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="@string/opencode_start_title"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/buttonStart"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/button_start"
+                    android:textAllCaps="false" />
+
+                <Button
+                    android:id="@+id/buttonRestart"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/button_restart"
+                    android:textAllCaps="false" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="@string/opencode_custom_port_title"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
                 <Button
                     android:id="@+id/buttonStartCustomPort"
                     android:layout_width="match_parent"
@@ -598,7 +632,8 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
                     android:text="@string/button_configure_default_port"
-                    android:textAllCaps="false" />
+                    android:textAllCaps="false"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <LinearLayout

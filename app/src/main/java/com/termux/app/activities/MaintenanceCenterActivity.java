@@ -139,6 +139,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private Button stageManualModeButton;
     private Button stageOneClickModeButton;
     private Button startOneClickStagesButton;
+    private Button startButton;
+    private Button restartButton;
     private Button customPortButton;
     private Button openMaintenanceWebButton;
     private Button stopMaintenanceWebButton;
@@ -250,6 +252,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         stageManualModeButton = findViewById(R.id.buttonStageManualMode);
         stageOneClickModeButton = findViewById(R.id.buttonStageOneClickMode);
         startOneClickStagesButton = findViewById(R.id.buttonStartOneClickStages);
+        startButton = findViewById(R.id.buttonStart);
+        restartButton = findViewById(R.id.buttonRestart);
         customPortButton = findViewById(R.id.buttonStartCustomPort);
         openMaintenanceWebButton = findViewById(R.id.buttonOpenMaintenanceWeb);
         stopMaintenanceWebButton = findViewById(R.id.buttonStopMaintenanceWeb);
@@ -327,6 +331,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         bindStageButton(StageAction.INSTALL_OPENCODE, R.id.buttonInstallOpenCode);
         bindStageButton(StageAction.INSTALL_CODEX, R.id.buttonInstallCodex);
         bindStageButton(StageAction.INSTALL_CLAUDE_CODE, R.id.buttonInstallClaudeCode);
+        bindStageButton(StageAction.START, R.id.buttonStart);
+        bindStageButton(StageAction.RESTART, R.id.buttonRestart);
         customPortButton.setOnClickListener(v -> showCustomPortDialog());
         openBrowserButton.setOnClickListener(v -> openBrowser());
         openMaintenanceWebButton.setOnClickListener(v -> startLocalMaintenanceWeb());
@@ -758,7 +764,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             }
             startOneClickStages();
         });
-        setOneClickStageMode(false);
+        setOneClickStageMode(true);
     }
 
     private void setOneClickStageMode(boolean enabled) {
@@ -778,9 +784,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             return;
         }
 
-        if (activeManifest != null
-            && (activeManifest.stageFlowGroups == null || activeManifest.stageFlowGroups.isEmpty())
-            && activeManifest.defaultOneClickAction != null) {
+        if (activeManifest != null && activeManifest.defaultOneClickAction != null) {
             runRemoteBootstrapAction(
                 "manifest_full",
                 getString(R.string.button_stage_one_click_mode),
@@ -1253,6 +1257,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 return getString(R.string.button_install_codex);
             case INSTALL_CLAUDE_CODE:
                 return getString(R.string.button_install_claude_code);
+            case RESTART:
+                return getString(R.string.button_restart);
             case START:
             default:
                 return getString(R.string.button_start);
@@ -1488,7 +1494,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         updateExecutionModeViews();
 
         try {
-            String command = buildRemoteBootstrapExecutionCommand(stageLabel, stageSlug, action);
+            String fallbackScriptBody = "manifest_full".equals(stageSlug)
+                ? buildFullInstallFallbackScript()
+                : null;
+            String command = buildRemoteBootstrapExecutionCommand(stageLabel, stageSlug, action, fallbackScriptBody);
             maintenanceSession.getTerminalSession().write(command);
             if (!command.endsWith("\n")) {
                 maintenanceSession.getTerminalSession().write("\n");
@@ -1830,6 +1839,25 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             .replace("__OPENCODE_INSTALL_SECONDARY_URL__", installSpec.secondaryUrl)
             .replace("__OPENCODE_INSTALL_SECONDARY_LABEL__", installSpec.secondaryLabel)
             .replace("__OPENCODE_INSTALL_ALLOW_FALLBACK__", installSpec.allowFallback ? "1" : "0");
+    }
+
+    private String buildFullInstallFallbackScript() throws IOException {
+        StringBuilder scriptBody = new StringBuilder();
+        scriptBody.append("log '远程一键维护不可用，开始执行 APK 内置一键安装流程。'\n");
+        for (StageAction stageAction : ONE_CLICK_STAGE_SEQUENCE) {
+            OpenCodeInstallSpec installSpec = stageAction == StageAction.INSTALL_OPENCODE
+                ? resolveOpenCodeInstallSpec()
+                : OpenCodeInstallSpec.defaultSpec(this);
+            scriptBody.append("log ").append(shellQuote("内置阶段开始：" + stageAction.label(this))).append('\n');
+            scriptBody.append("run_environment_probe\n");
+            scriptBody.append(buildAssetScriptBody(stageAction, stageAction.assetName, getDefaultOpenCodePort(), installSpec));
+            if (scriptBody.charAt(scriptBody.length() - 1) != '\n') {
+                scriptBody.append('\n');
+            }
+            scriptBody.append("log ").append(shellQuote("内置阶段完成：" + stageAction.label(this))).append('\n');
+        }
+        scriptBody.append("log 'APK 内置一键安装流程已完成。'\n");
+        return scriptBody.toString();
     }
 
     private void showCustomPortDialog() {
@@ -2683,6 +2711,28 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                         getString(R.string.stage_detail_install_claude_code_ready)))
         );
 
+        snapshot.presentations.put(
+            StageAction.START,
+            openCodeRunning
+                ? StagePresentation.complete(this, getString(R.string.stage_detail_start_complete))
+                : (!openCodeInstalled
+                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_start_blocked))
+                    : failedOrReady(readLastExitCode(StageAction.START),
+                        getString(R.string.stage_detail_start_failed),
+                        getString(R.string.stage_detail_start_ready)))
+        );
+
+        snapshot.presentations.put(
+            StageAction.RESTART,
+            !openCodeInstalled
+                ? StagePresentation.blocked(this, getString(R.string.stage_detail_restart_blocked))
+                : failedOrReady(readLastExitCode(StageAction.RESTART),
+                    getString(R.string.stage_detail_restart_failed),
+                    openCodeRunning
+                        ? getString(R.string.stage_detail_restart_ready_running)
+                        : getString(R.string.stage_detail_restart_ready_stopped))
+        );
+
         return snapshot;
     }
 
@@ -2870,11 +2920,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private int getDefaultOpenCodePort() {
-        return OpenCodeSettings.getDefaultPort(this);
+        return OpenCodeSettings.DEFAULT_OPENCODE_PORT;
     }
 
     private String getOpenCodeUrl() {
-        return OpenCodeSettings.getDefaultLoopbackUrl(this);
+        return OpenCodeSettings.getLoopbackUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
     }
 
     private int getLocalMaintenanceWebPort() {
@@ -3808,7 +3858,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         INSTALL_OPENCODE("install_opencode", "install-opencode.sh"),
         INSTALL_CODEX("install_codex", "install-codex.sh"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh"),
-        START("start", "start-opencode.sh");
+        START("start", "start-opencode.sh"),
+        RESTART("restart", "restart-opencode.sh");
 
         final String slug;
         final String assetName;
@@ -3834,7 +3885,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 || this == CONFIGURE_ENTRY_UBUNTU
                 || this == INSTALL_CODEX
                 || this == INSTALL_CLAUDE_CODE
-                || this == START;
+                || this == START
+                || this == RESTART;
         }
 
         static StageAction fromSlug(String slug) {

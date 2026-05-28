@@ -755,12 +755,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             return;
         }
 
-        int port = OpenCodeSettings.getDefaultPort(this);
+        int port = OpenCodeSettings.DEFAULT_OPENCODE_PORT;
         mOpenCodeLaunchInFlight = true;
         showToast(getString(R.string.quick_launch_starting, port), false);
         mOpenCodeLaunchExecutor.execute(() -> {
             try {
-                if (isOpenCodeReachable(port)) {
+                if (isOpenCodeReachable(port) && isOpenCodeWorkingDirectoryRoot(port)) {
                     postToast(getString(R.string.quick_launch_ready, port), false);
                     return;
                 }
@@ -774,8 +774,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 }
 
                 runTermuxShellCommand(
-                    "mkdir -p \"$HOME/.maintainer-logs\" && " +
-                        "nohup proot-distro login ubuntu -- bash -lc 'set -euo pipefail; export PATH=\"$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; export BROWSER=/bin/true; exec opencode web --hostname 127.0.0.1 --port " + port + " --print-logs >\"$HOME/.opencode-web.log\" 2>&1' >>\"$HOME/.maintainer-logs/opencode-quick-launch.log\" 2>&1 < /dev/null &"
+                    "proot-distro login ubuntu -- bash -lc 'pkill -f \"opencode web.*--port " + port + "\" >/dev/null 2>&1 || true' && " +
+                        "mkdir -p \"$HOME/.maintainer-logs\" && " +
+                        "nohup proot-distro login ubuntu -- bash -lc 'set -euo pipefail; cd \"$HOME\"; export PATH=\"$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; export BROWSER=/bin/true; exec opencode web --hostname 127.0.0.1 --port " + port + " --print-logs >\"$HOME/.opencode-web.log\" 2>&1' >>\"$HOME/.maintainer-logs/opencode-quick-launch.log\" 2>&1 < /dev/null &"
                 );
 
                 for (int attempt = 0; attempt < 10; attempt++) {
@@ -799,6 +800,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private boolean isOpenCodeReachable(int port) {
         return runTermuxShellCommand(
             "proot-distro login ubuntu -- bash -lc 'curl -fsS --max-time 3 http://127.0.0.1:" + port + "/ >/dev/null 2>&1'"
+        ).isSuccess();
+    }
+
+    private boolean isOpenCodeWorkingDirectoryRoot(int port) {
+        return runTermuxShellCommand(
+            "proot-distro login ubuntu -- bash -lc 'set -euo pipefail; for pid in $(pgrep -f \"opencode web.*--port " + port + "\" 2>/dev/null || true); do cwd=$(readlink \"/proc/$pid/cwd\" 2>/dev/null || true); [ \"$cwd\" = \"$HOME\" ] || [ \"$cwd\" = \"/root\" ]; exit $?; done; exit 1'"
         ).isSuccess();
     }
 

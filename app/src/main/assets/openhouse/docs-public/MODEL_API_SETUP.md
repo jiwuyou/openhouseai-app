@@ -78,6 +78,61 @@ export ANTHROPIC_API_KEY="你的 Anthropic API key"
 printf '\nexport ANTHROPIC_API_KEY="你的 Anthropic API key"\n' >> ~/.bashrc
 ```
 
+### 一键配置 Claude Code 使用 DeepSeek
+
+如果要让 Claude Code 使用 DeepSeek 的 Anthropic 兼容接口，可以在 Ubuntu 终端中创建一个本机配置工具：
+
+```bash
+mkdir -p "$HOME/bin"
+cat > "$HOME/bin/openhouseai-configure-claude-deepseek" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+read -r -p "请输入 DeepSeek API Key: " deepseek_key
+if [ -z "$deepseek_key" ]; then
+  echo "API Key 不能为空。" >&2
+  exit 1
+fi
+
+config_file="$HOME/.bashrc"
+start_marker="# >>> OpenHouseAI Claude Code DeepSeek >>>"
+end_marker="# <<< OpenHouseAI Claude Code DeepSeek <<<"
+tmp_file="$(mktemp)"
+
+awk -v start="$start_marker" -v end="$end_marker" '
+  $0 == start { skip=1; next }
+  $0 == end { skip=0; next }
+  skip != 1 { print }
+' "$config_file" 2>/dev/null > "$tmp_file" || true
+
+cat >> "$tmp_file" <<CONFIG
+$start_marker
+export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+export ANTHROPIC_AUTH_TOKEN=$deepseek_key
+export ANTHROPIC_MODEL=deepseek-v4-pro
+export ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-pro
+export ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-pro
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_EFFORT_LEVEL=max
+$end_marker
+CONFIG
+
+mv "$tmp_file" "$config_file"
+chmod 600 "$config_file"
+echo "Claude Code DeepSeek 配置已写入 $config_file。请执行：source ~/.bashrc"
+EOF
+chmod +x "$HOME/bin/openhouseai-configure-claude-deepseek"
+```
+
+之后运行：
+
+```bash
+openhouseai-configure-claude-deepseek
+source ~/.bashrc
+claude
+```
+
 ## 配置检查
 
 重新打开 Termux 后会默认进入 Ubuntu。进入后检查：
