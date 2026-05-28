@@ -32,7 +32,32 @@ log "正在通过 $source_label 安装 OpenCode（如尚未安装，安装源：
     OPENHOUSE_OPENCODE_INSTALL_URL="$install_url" \
     OPENCODE_INSTALL_URL="$install_url" \
     OPENHOUSE_OPENCODE_VERSION="$OPENHOUSE_OPENCODE_VERSION" \
-    bash -lc 'set -euo pipefail; export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"; INSTALL_URL="${OPENHOUSE_OPENCODE_INSTALL_URL:-${OPENCODE_INSTALL_URL:-https://opencode.ai/install}}"; if command -v opencode >/dev/null 2>&1 || test -x "$HOME/.opencode/bin/opencode"; then echo "OpenCode 已安装。"; else curl -fsSL "$INSTALL_URL" | VERSION="$OPENHOUSE_OPENCODE_VERSION" bash; fi; export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"; if command -v opencode >/dev/null 2>&1; then command -v opencode; elif test -x "$HOME/.opencode/bin/opencode"; then echo "$HOME/.opencode/bin/opencode"; else echo "OpenCode 安装后仍未找到可执行文件。" >&2; exit 4; fi'
+    bash -lc 'set -euo pipefail
+export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+INSTALL_URL="${OPENHOUSE_OPENCODE_INSTALL_URL:-${OPENCODE_INSTALL_URL:-https://opencode.ai/install}}"
+download_installer() {
+  local url="$1"
+  local output="$2"
+  echo "正在下载 OpenCode 安装脚本：$url"
+  curl -fL --connect-timeout 10 --max-time 90 --speed-time 20 --speed-limit 1024 --retry 1 --retry-delay 2 --retry-all-errors "$url" -o "$output"
+}
+if command -v opencode >/dev/null 2>&1 || test -x "$HOME/.opencode/bin/opencode"; then
+  echo "OpenCode 已安装。"
+else
+  tmp_installer="$(mktemp "${TMPDIR:-/tmp}/opencode-install.XXXXXX")"
+  trap '\''rm -f "$tmp_installer"'\'' EXIT
+  download_installer "$INSTALL_URL" "$tmp_installer"
+  VERSION="$OPENHOUSE_OPENCODE_VERSION" bash "$tmp_installer"
+fi
+export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+if command -v opencode >/dev/null 2>&1; then
+  command -v opencode
+elif test -x "$HOME/.opencode/bin/opencode"; then
+  echo "$HOME/.opencode/bin/opencode"
+else
+  echo "OpenCode 安装后仍未找到可执行文件。" >&2
+  exit 4
+fi'
 }
 
 if install_opencode_from "$PRIMARY_LABEL" "$PRIMARY_URL"; then

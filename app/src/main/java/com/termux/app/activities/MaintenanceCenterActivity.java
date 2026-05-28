@@ -85,6 +85,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final long TERMINAL_LIVE_LOG_REFRESH_MIN_INTERVAL_MS = 1000;
     private static final long TERMINAL_COMPLETION_SCAN_MIN_INTERVAL_MS = 500;
     private static final long TERMINAL_COMPLETION_POLL_INTERVAL_MS = 1000;
+    private static final long ONE_CLICK_STATUS_REFRESH_INTERVAL_MS = 5000;
     private static final Pattern DONE_PATTERN = Pattern.compile("__TERMUX_MAINT_DONE__:([a-zA-Z0-9_-]+):(\\d+)");
     private static final String OFFICIAL_DOCS_ASSET_DIR = "openhouse/docs-public";
     private static final String BUNDLED_MAINTENANCE_PLUGIN_ASSET = "openhouse/plugins/original/openhouse-manifest.json";
@@ -185,6 +186,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean terminalCompletionPollScheduled;
     private long lastLiveLogRefreshUptimeMs;
     private long lastCompletionScanUptimeMs;
+    private long lastOneClickStatusRefreshUptimeMs;
     private TerminalSession pendingTerminalUpdateSession;
     private MaintenanceManifest activeManifest;
     private String activeManifestError;
@@ -210,6 +212,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 } else {
                     inspectCurrentLogForCompletion();
                 }
+                requestOneClickStatusRefreshIfDue();
             } catch (Throwable throwable) {
                 terminalFailureMessage = throwable.getClass().getSimpleName() + ": " + throwable.getMessage();
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to poll maintenance stage completion", throwable);
@@ -1527,6 +1530,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         currentStageLabel = stageLabel;
         commandInFlight = true;
         oneClickStagesInFlight = "manifest_full".equals(stageSlug);
+        lastOneClickStatusRefreshUptimeMs = 0L;
         openMaintenanceWebAfterStage = false;
         lastHandledMarker = null;
         scheduleTerminalCompletionPoll();
@@ -1776,8 +1780,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         scriptBody.append("  chmod +x \"$HOME/openhouseai-bootstrap.sh\"\n");
         scriptBody.append("  log \"正在执行远程维护动作：").append(action.toDisplayString()).append("\"\n");
         StageAction bootstrapStageAction = StageAction.fromSlug(stageSlug);
+        OpenCodeInstallSpec remoteOpenCodeInstallSpec = resolveOpenCodeInstallSpec();
         scriptBody.append("  run_logged env OPENHOUSEAI_PORT=").append(shellQuote(Integer.toString(getDefaultOpenCodePort())))
-            .append(" OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())));
+            .append(" OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())))
+            .append(" OPENCODE_INSTALL_URL=").append(shellQuote(remoteOpenCodeInstallSpec.primaryUrl))
+            .append(" OPENHOUSE_OPENCODE_VERSION='0.0.55'");
         if (bootstrapStageAction != null && bootstrapStageAction.requiredComponentTargets != null) {
             scriptBody.append(" OPENHOUSEAI_REQUIRED_COMPONENT_TARGETS=")
                 .append(shellQuote(bootstrapStageAction.requiredComponentTargets));
@@ -2776,20 +2783,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private StageCheckSnapshot inspectStageStatuses() {
         StageCheckSnapshot snapshot = new StageCheckSnapshot();
 
-        boolean prepareComplete = isPrepareStageComplete();
-        boolean termuxPackagesComplete = isTermuxPackagesStageComplete();
-        boolean ubuntuInstalled = termuxPackagesComplete && isUbuntuInstalled();
-        boolean officialDocsSynced = ubuntuInstalled && isOfficialDocsSynced();
-        boolean ubuntuPackagesComplete = officialDocsSynced && isUbuntuPackagesStageComplete();
-        boolean entryUbuntuConfigured = ubuntuPackagesComplete && isEntryUbuntuConfigured();
-        boolean openCodeInstalled = entryUbuntuConfigured && isOpenCodeInstalled();
-        boolean codexInstalled = openCodeInstalled && isCodexInstalled();
-        boolean claudeCodeInstalled = openCodeInstalled && isClaudeCodeInstalled();
-        boolean deepSeekConfigured = ubuntuInstalled && isDeepSeekConfigured();
-        boolean openCodeRunning = openCodeInstalled && isOpenCodeWebReachable();
-
-        snapshot.opencodeReachable = openCodeRunning;
-
         Integer prepareExitCode = readLastExitCode(StageAction.PREPARE);
         Integer termuxPackagesExitCode = readLastExitCode(StageAction.TERMUX_PACKAGES);
         Integer installUbuntuExitCode = readLastExitCode(StageAction.INSTALL_UBUNTU);
@@ -2799,6 +2792,24 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         Integer installOpenCodeExitCode = readLastExitCode(StageAction.INSTALL_OPENCODE);
         Integer installCodexExitCode = readLastExitCode(StageAction.INSTALL_CODEX);
         Integer installClaudeCodeExitCode = readLastExitCode(StageAction.INSTALL_CLAUDE_CODE);
+        Integer configureDeepSeekExitCode = readLastExitCode(StageAction.CONFIGURE_DEEPSEEK);
+        Integer startExitCode = readLastExitCode(StageAction.START);
+        Integer restartExitCode = readLastExitCode(StageAction.RESTART);
+
+        boolean prepareComplete = isPrepareStageComplete() || isLastExitSuccess(prepareExitCode);
+        boolean termuxPackagesComplete = isTermuxPackagesStageComplete() || isLastExitSuccess(termuxPackagesExitCode);
+        boolean ubuntuInstalled = termuxPackagesComplete && (isUbuntuInstalled() || isLastExitSuccess(installUbuntuExitCode));
+        boolean officialDocsSynced = ubuntuInstalled && (isOfficialDocsSynced() || isLastExitSuccess(syncOfficialDocsExitCode));
+        boolean ubuntuPackagesComplete = officialDocsSynced && (isUbuntuPackagesStageComplete() || isLastExitSuccess(ubuntuPackagesExitCode));
+        boolean entryUbuntuConfigured = ubuntuPackagesComplete && (isEntryUbuntuConfigured() || isLastExitSuccess(configureEntryUbuntuExitCode));
+        boolean openCodeInstalled = entryUbuntuConfigured && (isOpenCodeInstalled() || isLastExitSuccess(installOpenCodeExitCode));
+        boolean codexInstalled = openCodeInstalled && (isCodexInstalled() || isLastExitSuccess(installCodexExitCode));
+        boolean claudeCodeInstalled = openCodeInstalled && (isClaudeCodeInstalled() || isLastExitSuccess(installClaudeCodeExitCode));
+        boolean deepSeekConfigured = ubuntuInstalled && (isDeepSeekConfigured() || isLastExitSuccess(configureDeepSeekExitCode));
+        boolean openCodeReachableNow = openCodeInstalled && isOpenCodeWebReachable();
+        boolean startStageComplete = openCodeReachableNow || isLastExitSuccess(startExitCode);
+
+        snapshot.opencodeReachable = openCodeReachableNow;
 
         snapshot.presentations.put(
             StageAction.PREPARE,
@@ -2901,18 +2912,18 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_configure_deepseek_complete))
                 : (!ubuntuInstalled
                     ? StagePresentation.blocked(this, getString(R.string.stage_detail_configure_deepseek_blocked))
-                    : failedOrReady(readLastExitCode(StageAction.CONFIGURE_DEEPSEEK),
+                    : failedOrReady(configureDeepSeekExitCode,
                         getString(R.string.stage_detail_configure_deepseek_failed),
                         getString(R.string.stage_detail_configure_deepseek_ready)))
         );
 
         snapshot.presentations.put(
             StageAction.START,
-            openCodeRunning
+            startStageComplete
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_start_complete))
                 : (!openCodeInstalled
                     ? StagePresentation.blocked(this, getString(R.string.stage_detail_start_blocked))
-                    : failedOrReady(readLastExitCode(StageAction.START),
+                    : failedOrReady(startExitCode,
                         getString(R.string.stage_detail_start_failed),
                         getString(R.string.stage_detail_start_ready)))
         );
@@ -2921,14 +2932,18 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             StageAction.RESTART,
             !openCodeInstalled
                 ? StagePresentation.blocked(this, getString(R.string.stage_detail_restart_blocked))
-                : failedOrReady(readLastExitCode(StageAction.RESTART),
+                : failedOrReady(restartExitCode,
                     getString(R.string.stage_detail_restart_failed),
-                    openCodeRunning
+                    openCodeReachableNow
                         ? getString(R.string.stage_detail_restart_ready_running)
                         : getString(R.string.stage_detail_restart_ready_stopped))
         );
 
         return snapshot;
+    }
+
+    private boolean isLastExitSuccess(Integer exitCode) {
+        return exitCode != null && exitCode == 0;
     }
 
     private StagePresentation failedOrReady(Integer exitCode, String failedDetail, String readyDetail) {
@@ -3186,6 +3201,20 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         lastCompletionScanUptimeMs = now;
         inspectTranscriptForCompletion(terminalSession);
         inspectCurrentLogForCompletion();
+    }
+
+    private void requestOneClickStatusRefreshIfDue() {
+        if (!commandInFlight || !oneClickStagesInFlight || !"manifest_full".equals(currentStageSlug)) {
+            return;
+        }
+
+        long now = SystemClock.uptimeMillis();
+        if (now - lastOneClickStatusRefreshUptimeMs < ONE_CLICK_STATUS_REFRESH_INTERVAL_MS) {
+            return;
+        }
+
+        lastOneClickStatusRefreshUptimeMs = now;
+        requestStageStatusRefresh();
     }
 
     private void inspectTranscriptForCompletion(TerminalSession terminalSession) {
