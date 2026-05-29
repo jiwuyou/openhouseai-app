@@ -8,7 +8,7 @@ public final class OpenCodeDownloadSourceSettings {
     public static final String SOURCE_OFFICIAL = "official";
     public static final String SOURCE_MIRROR = "mirror";
     public static final String OFFICIAL_INSTALL_URL = "https://opencode.ai/install";
-    public static final String MIRROR_INSTALL_URL = "https://raw.githubusercontent.com/anomalyco/opencode/refs/heads/main/install";
+    public static final String MIRROR_INSTALL_URL = "https://raw.githubusercontent.com/sst/opencode/refs/heads/dev/install";
     public static final long PROBE_FRESH_DURATION_MS = 24L * 60L * 60L * 1000L;
 
     private static final String PREFS_NAME = "opencode_download_source_settings";

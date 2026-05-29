@@ -1401,13 +1401,16 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         command.commandLabel = "Maintainer Terminal";
         command.setShellCommandShellEnvironment = true;
 
+        HashMap<String, String> maintenanceEnvironment = new HashMap<>();
+        maintenanceEnvironment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
+
         maintenanceSession = TermuxSession.execute(
             this,
             command,
             terminalSessionClient,
             terminalSessionClient,
             new TermuxShellEnvironment(),
-            null,
+            maintenanceEnvironment,
             false
         );
 
@@ -1783,8 +1786,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         OpenCodeInstallSpec remoteOpenCodeInstallSpec = resolveOpenCodeInstallSpec();
         scriptBody.append("  run_logged env OPENHOUSEAI_PORT=").append(shellQuote(Integer.toString(getDefaultOpenCodePort())))
             .append(" OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())))
-            .append(" OPENCODE_INSTALL_URL=").append(shellQuote(remoteOpenCodeInstallSpec.primaryUrl))
-            .append(" OPENHOUSE_OPENCODE_VERSION='0.0.55'");
+            .append(" OPENCODE_INSTALL_URL=").append(shellQuote(remoteOpenCodeInstallSpec.primaryUrl));
         if (bootstrapStageAction != null && bootstrapStageAction.requiredComponentTargets != null) {
             scriptBody.append(" OPENHOUSEAI_REQUIRED_COMPONENT_TARGETS=")
                 .append(shellQuote(bootstrapStageAction.requiredComponentTargets));

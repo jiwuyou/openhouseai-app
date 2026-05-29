@@ -3,7 +3,7 @@ PRIMARY_LABEL="__OPENCODE_INSTALL_PRIMARY_LABEL__"
 SECONDARY_URL="__OPENCODE_INSTALL_SECONDARY_URL__"
 SECONDARY_LABEL="__OPENCODE_INSTALL_SECONDARY_LABEL__"
 ALLOW_FALLBACK="__OPENCODE_INSTALL_ALLOW_FALLBACK__"
-OPENHOUSE_OPENCODE_VERSION="${OPENHOUSE_OPENCODE_VERSION:-0.0.55}"
+OPENHOUSE_OPENCODE_VERSION="${OPENHOUSE_OPENCODE_VERSION:-}"
 
 require_ubuntu
 
@@ -47,7 +47,11 @@ else
   tmp_installer="$(mktemp "${TMPDIR:-/tmp}/opencode-install.XXXXXX")"
   trap '\''rm -f "$tmp_installer"'\'' EXIT
   download_installer "$INSTALL_URL" "$tmp_installer"
-  VERSION="$OPENHOUSE_OPENCODE_VERSION" bash "$tmp_installer"
+  if [ -n "${OPENHOUSE_OPENCODE_VERSION:-}" ]; then
+    VERSION="$OPENHOUSE_OPENCODE_VERSION" bash "$tmp_installer"
+  else
+    bash "$tmp_installer"
+  fi
 fi
 export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
 if command -v opencode >/dev/null 2>&1; then
