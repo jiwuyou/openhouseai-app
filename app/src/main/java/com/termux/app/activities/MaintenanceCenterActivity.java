@@ -36,6 +36,7 @@ import com.termux.R;
 import com.termux.app.OpenCodeCdpBridge;
 import com.termux.app.OpenCodeDownloadSourceSettings;
 import com.termux.app.OpenCodeSettings;
+import com.termux.app.TermuxActivity;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.shell.ShellUtils;
@@ -140,6 +141,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private Button probeDownloadSourceButton;
     private Button configureMaintenanceSourceButton;
     private Button refreshMaintenanceSourceButton;
+    private Button restartEntryTerminalButton;
     private Button stageManualModeButton;
     private Button stageOneClickModeButton;
     private Button startOneClickStagesButton;
@@ -260,6 +262,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         probeDownloadSourceButton = findViewById(R.id.buttonProbeDownloadSource);
         configureMaintenanceSourceButton = findViewById(R.id.buttonConfigureMaintenanceSource);
         refreshMaintenanceSourceButton = findViewById(R.id.buttonRefreshMaintenanceSource);
+        restartEntryTerminalButton = findViewById(R.id.buttonRestartEntryTerminal);
         stageManualModeButton = findViewById(R.id.buttonStageManualMode);
         stageOneClickModeButton = findViewById(R.id.buttonStageOneClickMode);
         startOneClickStagesButton = findViewById(R.id.buttonStartOneClickStages);
@@ -300,6 +303,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         probeDownloadSourceButton.setOnClickListener(v -> runOpenCodeSourceProbe(false));
         configureMaintenanceSourceButton.setOnClickListener(v -> showMaintenanceSourceDialog());
         refreshMaintenanceSourceButton.setOnClickListener(v -> refreshMaintenanceManifest(true));
+        restartEntryTerminalButton.setOnClickListener(v -> showRestartEntryTerminalDialog());
         viewFullLogButton.setOnClickListener(v -> openFullLog());
         updateLogButtonState();
         updateMaintenanceSourceCard();
@@ -366,6 +370,21 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             refreshStatus();
             applyStagePresentations();
         });
+    }
+
+    private void showRestartEntryTerminalDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.entry_terminal_restart_dialog_title)
+            .setMessage(R.string.entry_terminal_restart_dialog_message)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.entry_terminal_restart_dialog_confirm, (dialog, which) -> restartEntryTerminalSession())
+            .show();
+    }
+
+    private void restartEntryTerminalSession() {
+        Intent intent = TermuxActivity.newInstance(this);
+        intent.putExtra(TermuxActivity.EXTRA_RESTART_ENTRY_SESSION, true);
+        startActivity(intent);
     }
 
     private void showMaintenanceSourceDialog() {

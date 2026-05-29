@@ -650,6 +650,14 @@
                     android:text="@string/button_configure_default_port"
                     android:textAllCaps="false"
                     android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/buttonRestartEntryTerminal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/button_restart_entry_terminal"
+                    android:textAllCaps="false" />
             </LinearLayout>
 
             <LinearLayout

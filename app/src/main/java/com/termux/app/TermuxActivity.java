@@ -59,6 +59,7 @@ import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxUtils;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
+import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.theme.NightMode;
 import com.termux.shared.view.ViewUtils;
 import com.termux.terminal.TerminalSession;
@@ -206,6 +207,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
 
     private static final String LOG_TAG = "TermuxActivity";
+    public static final String EXTRA_RESTART_ENTRY_SESSION = "com.termux.app.extra.RESTART_ENTRY_SESSION";
     private static final String PREF_QUICK_BUTTONS = "openhouse_quick_buttons";
     private static final String PREF_QUICK_BUTTONS_VISIBLE = "quick_buttons_visible";
     private static final String PREF_QUICK_HANDLE_LEFT = "quick_handle_left";
@@ -421,6 +423,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         final Intent intent = getIntent();
         setIntent(null);
 
+        if (shouldRestartEntrySession(intent)) {
+            mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
+            restartEntryTerminalSession();
+            return;
+        }
+
         if (mTermuxService.isTermuxSessionsEmpty()) {
             if (mIsVisible) {
                 TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
@@ -457,11 +465,51 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (shouldRestartEntrySession(intent)) {
+            setIntent(null);
+            restartEntryTerminalSession();
+        } else {
+            setIntent(intent);
+        }
+    }
+
+    @Override
     public void onServiceDisconnected(ComponentName name) {
         Logger.logDebug(LOG_TAG, "onServiceDisconnected");
 
         // Respect being stopped from the {@link TermuxService} notification action.
         finishActivityIfNotFinishing();
+    }
+
+    private boolean shouldRestartEntrySession(Intent intent) {
+        return intent != null && intent.getBooleanExtra(EXTRA_RESTART_ENTRY_SESSION, false);
+    }
+
+    private void restartEntryTerminalSession() {
+        if (mTermuxService == null || mTermuxTerminalSessionActivityClient == null) {
+            setIntent(new Intent(this, TermuxActivity.class).putExtra(EXTRA_RESTART_ENTRY_SESSION, true));
+            return;
+        }
+
+        for (int i = mTermuxService.getTermuxSessionsSize() - 1; i >= 0; i--) {
+            TermuxSession termuxSession = mTermuxService.getTermuxSession(i);
+            TerminalSession terminalSession = termuxSession == null ? null : termuxSession.getTerminalSession();
+            if (terminalSession != null) {
+                terminalSession.finishIfRunning();
+            }
+        }
+
+        String workingDirectory = getProperties().getDefaultWorkingDirectory();
+        TermuxSession newTermuxSession = mTermuxService.createTermuxSession(null, null, null, workingDirectory, false, null);
+        if (newTermuxSession == null || newTermuxSession.getTerminalSession() == null) {
+            showToast(getString(R.string.entry_terminal_restart_failed), true);
+            return;
+        }
+
+        mTermuxTerminalSessionActivityClient.setCurrentSession(newTermuxSession.getTerminalSession());
+        showToast(getString(R.string.entry_terminal_restart_started), false);
     }
 
 

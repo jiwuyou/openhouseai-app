@@ -424,6 +424,12 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="local_maintenance_web_port_saved">本地维护器端口已设置为 %1$d</string>
     <string name="button_open_maintenance_web">启动并打开本地网页维护器</string>
     <string name="button_stop_maintenance_web">关闭本地网页维护器</string>
+    <string name="button_restart_entry_terminal">重启入口终端并进入 Ubuntu</string>
+    <string name="entry_terminal_restart_dialog_title">重启入口终端</string>
+    <string name="entry_terminal_restart_dialog_message">这会关闭从应用首页进入的普通终端会话，并新建一个会话。维护中心底部终端不会受影响。请先确认“启动后直接进入 Ubuntu”阶段已经完成。</string>
+    <string name="entry_terminal_restart_dialog_confirm">重启入口终端</string>
+    <string name="entry_terminal_restart_started">入口终端已重新创建</string>
+    <string name="entry_terminal_restart_failed">入口终端重启失败</string>
     <string name="help_title">说明</string>
     <string name="help_body">1. 建议先完成“权限获取”中的系统权限，再按顺序从上到下点击每个阶段，并观察底部终端中的原始输入输出。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “准备本地目录”会创建 OpenHouseAI 文档目录、工作区和 Termux 配置。\n\n4. “下载 Termux 基础包”会安装 proot-distro、curl 和证书依赖。\n\n5. “下载 Ubuntu rootfs”会先测速 Ubuntu rootfs 镜像源，再安装 Ubuntu 并注入环境探测命令。\n\n6. “同步官方文档”会把 app 内置的 OpenHouseAI 文档同步到 ~/openhouseai-docs/official。\n\n7. “下载 Ubuntu 基础包”会在 Ubuntu 内安装 curl、证书、git、procps、ripgrep 和 unzip。\n\n8. “启动后直接进入 Ubuntu”会在安装 Agent CLI 前设置默认终端入口。\n\n9. “下载 OpenCode”“下载 Codex CLI”“下载 Claude Code”会分别通过 npm 安装 Agent CLI；所需 Node.js 由对应安装阶段内部检测和安装。\n\n10. 每个安装阶段都会先执行终端环境检测，确认当前在 Termux 或 Ubuntu 中。</string>
     <string name="custom_port_dialog_title">输入 OpenCode 端口</string>
