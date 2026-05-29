@@ -1,80 +1,60 @@
-PRIMARY_URL="__OPENCODE_INSTALL_PRIMARY_URL__"
-PRIMARY_LABEL="__OPENCODE_INSTALL_PRIMARY_LABEL__"
-SECONDARY_URL="__OPENCODE_INSTALL_SECONDARY_URL__"
-SECONDARY_LABEL="__OPENCODE_INSTALL_SECONDARY_LABEL__"
-ALLOW_FALLBACK="__OPENCODE_INSTALL_ALLOW_FALLBACK__"
-OPENHOUSE_OPENCODE_VERSION="${OPENHOUSE_OPENCODE_VERSION:-}"
-
 require_ubuntu
 
-resolve_opencode_install_url() {
-  local default_url="$1"
-  if [ -n "${OPENHOUSE_OPENCODE_INSTALL_URL:-}" ]; then
-    printf '%s\n' "$OPENHOUSE_OPENCODE_INSTALL_URL"
-    return 0
-  fi
-  if [ -n "${OPENCODE_INSTALL_URL:-}" ]; then
-    printf '%s\n' "$OPENCODE_INSTALL_URL"
-    return 0
-  fi
-  printf '%s\n' "$default_url"
-}
+log "正在 Ubuntu 内通过 npm 安装或检查 OpenCode。"
+run_ubuntu_logged bash -lc 'set -euo pipefail
+export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
 
-install_opencode_from() {
-  local source_label="$1"
-  local source_url="$2"
-  local install_url
-
-  install_url="$(resolve_opencode_install_url "$source_url")"
-
-log "正在通过 $source_label 安装 OpenCode（如尚未安装，安装源：$install_url）"
-  run_ubuntu_logged env \
-    OPENHOUSE_OPENCODE_INSTALL_URL="$install_url" \
-    OPENCODE_INSTALL_URL="$install_url" \
-    OPENHOUSE_OPENCODE_VERSION="$OPENHOUSE_OPENCODE_VERSION" \
-    bash -lc 'set -euo pipefail
-export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
-INSTALL_URL="${OPENHOUSE_OPENCODE_INSTALL_URL:-${OPENCODE_INSTALL_URL:-https://opencode.ai/install}}"
-download_installer() {
-  local url="$1"
-  local output="$2"
-  echo "正在下载 OpenCode 安装脚本：$url"
-  curl -fL --connect-timeout 10 --max-time 90 --speed-time 20 --speed-limit 1024 --retry 1 --retry-delay 2 --retry-all-errors "$url" -o "$output"
-}
-if command -v opencode >/dev/null 2>&1 || test -x "$HOME/.opencode/bin/opencode"; then
-  echo "OpenCode 已安装。"
-else
-  tmp_installer="$(mktemp "${TMPDIR:-/tmp}/opencode-install.XXXXXX")"
-  trap '\''rm -f "$tmp_installer"'\'' EXIT
-  download_installer "$INSTALL_URL" "$tmp_installer"
-  if [ -n "${OPENHOUSE_OPENCODE_VERSION:-}" ]; then
-    VERSION="$OPENHOUSE_OPENCODE_VERSION" bash "$tmp_installer"
-  else
-    bash "$tmp_installer"
-  fi
-fi
-export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
 if command -v opencode >/dev/null 2>&1; then
-  command -v opencode
-elif test -x "$HOME/.opencode/bin/opencode"; then
-  echo "$HOME/.opencode/bin/opencode"
-else
-  echo "OpenCode 安装后仍未找到可执行文件。" >&2
-  exit 4
-fi'
-}
-
-if install_opencode_from "$PRIMARY_LABEL" "$PRIMARY_URL"; then
-  log "OpenCode 主下载源安装已完成。"
-else
-  primary_status=$?
-  if [ "$ALLOW_FALLBACK" = "1" ] && [ "$SECONDARY_URL" != "$PRIMARY_URL" ]; then
-    log "主下载源失败，正在切换到 $SECONDARY_LABEL 重试。"
-    install_opencode_from "$SECONDARY_LABEL" "$SECONDARY_URL" || exit $?
-  else
-    exit "$primary_status"
-  fi
+  echo "OpenCode 已安装：$(command -v opencode)"
+  opencode --version || true
+  exit 0
 fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt update
+  apt install -y nodejs npm
+fi
+
+mkdir -p "$HOME/.npm-global/bin"
+npm config set prefix "$HOME/.npm-global"
+npm config set registry "${NPM_REGISTRY:-https://registry.npmjs.org/}"
+npm config set fetch-retries "${OPENHOUSEAI_NPM_FETCH_RETRIES:-5}"
+npm config set fetch-retry-mintimeout "${OPENHOUSEAI_NPM_FETCH_RETRY_MINTIMEOUT:-20000}"
+npm config set fetch-retry-maxtimeout "${OPENHOUSEAI_NPM_FETCH_RETRY_MAXTIMEOUT:-120000}"
+npm config set fetch-timeout "${OPENHOUSEAI_NPM_FETCH_TIMEOUT:-600000}"
+
+install_timeout="${OPENHOUSEAI_NPM_INSTALL_TIMEOUT:-7200s}"
+for attempt in 1 2 3; do
+  echo "正在安装 opencode-ai（第 $attempt 次，最长等待 $install_timeout）"
+  if command -v timeout >/dev/null 2>&1; then
+    if timeout -k 30s "$install_timeout" npm install -g opencode-ai --no-audit --no-fund --loglevel=verbose; then
+      break
+    fi
+  elif npm install -g opencode-ai --no-audit --no-fund --loglevel=verbose; then
+    break
+  fi
+  if [ "$attempt" -eq 3 ]; then
+    echo "opencode-ai 安装失败，请检查网络或 npm registry。" >&2
+    exit 1
+  fi
+  sleep $((attempt * 10))
+done
+
+export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+command -v opencode
+opencode --version || true
+
+PATH_LINE="export PATH=\"\$HOME/.local/node/bin:\$HOME/.npm-global/bin:\$HOME/.opencode/bin:\$HOME/.local/bin:\$PATH\""
+for PROFILE_FILE in "$HOME/.profile" "$HOME/.bashrc"; do
+  touch "$PROFILE_FILE"
+  if ! grep -Fq "$PATH_LINE" "$PROFILE_FILE"; then
+    {
+      printf "\n# OpenHouseAI agent tools\n"
+      printf "%s\n" "$PATH_LINE"
+    } >> "$PROFILE_FILE"
+  fi
+done'
 
 log "正在 Ubuntu 主目录内写入产品路径辅助文件"
 run_ubuntu_logged bash -lc 'set -euo pipefail; mkdir -p "$HOME/openhouseai-links"; printf "%s\n" "/data/data/com.termux/files/home/openhouseai-docs" > "$HOME/openhouseai-links/docs-path.txt"; printf "%s\n" "/data/data/com.termux/files/home/workspace" > "$HOME/openhouseai-links/workspace-path.txt"; echo "文档路径：$(cat "$HOME/openhouseai-links/docs-path.txt")"; echo "工作区路径：$(cat "$HOME/openhouseai-links/workspace-path.txt")"'

@@ -181,6 +181,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean stageStatusCheckQueued;
     private boolean oneClickStageMode;
     private boolean oneClickStagesInFlight;
+    private boolean oneClickRemoteProbeInFlight;
+    private boolean oneClickUseBundledStages;
+    private boolean currentStageUsedRemote;
     private boolean openMaintenanceWebAfterStage;
     private boolean terminalTextUpdateScheduled;
     private boolean terminalCompletionPollScheduled;
@@ -797,23 +800,23 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             return;
         }
 
-        if (activeManifest != null && activeManifest.defaultOneClickAction != null) {
-            runRemoteBootstrapAction(
-                "manifest_full",
-                getString(R.string.button_stage_one_click_mode),
-                activeManifest.defaultOneClickAction
-            );
-            return;
-        }
-
         oneClickStagesInFlight = true;
+        oneClickUseBundledStages = false;
+        currentStageUsedRemote = false;
         setOneClickStageMode(true);
-        oneClickStageSummaryView.setText(getString(R.string.one_click_stage_summary_running, "刷新阶段状态"));
-        requestStageStatusRefresh();
+        if (activeManifest != null && activeManifest.bootstrapUrl != null && isHttpUrl(activeManifest.bootstrapUrl)) {
+            startOneClickRemoteProbe();
+        } else {
+            oneClickUseBundledStages = true;
+            oneClickStageSummaryView.setText(getString(R.string.one_click_stage_summary_running, "使用 APK 内置阶段"));
+            requestStageStatusRefresh();
+        }
     }
 
     private void stopOneClickStages(String message) {
         oneClickStagesInFlight = false;
+        oneClickRemoteProbeInFlight = false;
+        currentStageUsedRemote = false;
         if (oneClickStageSummaryView != null) {
             oneClickStageSummaryView.setText(getString(R.string.one_click_stage_summary_waiting, message));
         }
@@ -821,8 +824,38 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
+    private void startOneClickRemoteProbe() {
+        if (oneClickRemoteProbeInFlight) return;
+
+        oneClickRemoteProbeInFlight = true;
+        currentStageSlug = "one_click_remote_probe";
+        currentStageLabel = "探测远程维护源";
+        currentStageView.setText("执行中：探测远程维护源");
+        terminalStatusView.setText(R.string.embedded_terminal_status_ready);
+        oneClickStageSummaryView.setText(getString(R.string.one_click_stage_summary_running, "探测远程维护源"));
+        updateExecutionModeViews();
+        refreshStatus();
+
+        backgroundExecutor.execute(() -> {
+            boolean available = isBootstrapSourceAvailable();
+            runOnUiThread(() -> {
+                oneClickRemoteProbeInFlight = false;
+                if (!oneClickStagesInFlight || isFinishing() || isDestroyed()) return;
+
+                oneClickUseBundledStages = !available;
+                oneClickStageSummaryView.setText(getString(
+                    R.string.one_click_stage_summary_running,
+                    available ? "远程维护源可用，按阶段执行" : "远程维护源不可用，使用 APK 内置阶段"
+                ));
+                requestStageStatusRefresh();
+                updateExecutionModeViews();
+                refreshStatus();
+            });
+        });
+    }
+
     private void continueOneClickStages() {
-        if (!oneClickStagesInFlight || commandInFlight || stageStatusCheckInFlight) return;
+        if (!oneClickStagesInFlight || oneClickRemoteProbeInFlight || commandInFlight || stageStatusCheckInFlight) return;
 
         for (StageAction stageAction : getOneClickStageSequence()) {
             StagePresentation presentation = stagePresentations.get(stageAction);
@@ -851,6 +884,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
 
         oneClickStagesInFlight = false;
+        currentStageUsedRemote = false;
         oneClickStageSummaryView.setText(R.string.one_click_stage_summary_complete);
         updateExecutionModeViews();
         Toast.makeText(this, R.string.one_click_stage_toast_complete, Toast.LENGTH_SHORT).show();
@@ -1464,6 +1498,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         currentStageLabel = stageAction.label(this);
         currentStageView.setText(currentStageLabel);
         commandInFlight = true;
+        currentStageUsedRemote = shouldUseRemoteStage(stageAction);
         openMaintenanceWebAfterStage = false;
         lastHandledMarker = null;
         scheduleTerminalCompletionPoll();
@@ -1489,12 +1524,16 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildStageExecutionCommand(StageAction stageAction) throws IOException {
-        ManifestStage manifestStage = activeManifest == null ? null : activeManifest.stages.get(stageAction.slug);
+        ManifestStage manifestStage = shouldUseRemoteStage(stageAction) && activeManifest != null
+            ? activeManifest.stages.get(stageAction.slug)
+            : null;
         if (manifestStage != null) {
             OpenCodeInstallSpec installSpec = stageAction == StageAction.INSTALL_OPENCODE
                 ? resolveOpenCodeInstallSpec()
                 : OpenCodeInstallSpec.defaultSpec(this);
-            String fallbackScriptBody = buildAssetScriptBody(stageAction, stageAction.assetName, getDefaultOpenCodePort(), installSpec);
+            String fallbackScriptBody = oneClickStagesInFlight
+                ? null
+                : buildAssetScriptBody(stageAction, stageAction.assetName, getDefaultOpenCodePort(), installSpec);
             return buildRemoteBootstrapExecutionCommand(
                 manifestStage.title,
                 stageAction.slug,
@@ -1507,6 +1546,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             ? resolveOpenCodeInstallSpec()
             : OpenCodeInstallSpec.defaultSpec(this);
         return buildAssetExecutionCommand(stageAction, stageAction.label(this), stageAction.slug, stageAction.assetName, getDefaultOpenCodePort(), installSpec);
+    }
+
+    private boolean shouldUseRemoteStage(StageAction stageAction) {
+        return activeManifest != null
+            && activeManifest.stages.containsKey(stageAction.slug)
+            && (!oneClickStagesInFlight || !oneClickUseBundledStages);
     }
 
     private void runRemoteBootstrapAction(String stageSlug, String stageLabel, BootstrapAction action) {
@@ -2481,8 +2526,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private boolean shouldProbeOpenCodeSourceBeforeInstall() {
-        return OpenCodeDownloadSourceSettings.getMode(this) == OpenCodeDownloadSourceSettings.Mode.AUTO
-            && !OpenCodeDownloadSourceSettings.isLastProbeFresh(this);
+        return false;
     }
 
     private void runOpenCodeSourceProbe(boolean continueWithInstall) {
@@ -3018,7 +3062,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private boolean isOpenCodeInstalled() {
         return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; (command -v opencode >/dev/null 2>&1 || test -x \"$HOME/.opencode/bin/opencode\") && test -f \"$HOME/openhouseai-links/docs-path.txt\" && test -f \"$HOME/openhouseai-links/workspace-path.txt\"'"
+            "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; (command -v opencode >/dev/null 2>&1 || test -x \"$HOME/.opencode/bin/opencode\") && test -f \"$HOME/openhouseai-links/docs-path.txt\" && test -f \"$HOME/openhouseai-links/workspace-path.txt\"'"
         ).isSuccess();
     }
 
@@ -3259,6 +3303,24 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             currentStageView.setText((foundExitCode == 0 ? "已完成：" : "失败：") + currentStageLabel);
             terminalStatusView.setText(R.string.embedded_terminal_status_ready);
             if (oneClickStagesInFlight) {
+                if (foundExitCode != 0 && currentStageUsedRemote) {
+                    StageAction failedStageAction = StageAction.fromSlug(foundSlug);
+                    currentStageUsedRemote = false;
+                    oneClickUseBundledStages = true;
+                    if (oneClickStageSummaryView != null) {
+                        oneClickStageSummaryView.setText(getString(
+                            R.string.one_click_stage_summary_running,
+                            "远程阶段失败，切换到 APK 内置阶段"
+                        ));
+                    }
+                    refreshLiveLog();
+                    updateExecutionModeViews();
+                    if (failedStageAction != null) {
+                        mainHandler.post(() -> runStage(failedStageAction, true));
+                    }
+                    return;
+                }
+                currentStageUsedRemote = false;
                 if (foundExitCode == 0 && "manifest_full".equals(foundSlug)) {
                     oneClickStagesInFlight = false;
                     if (oneClickStageSummaryView != null) {
@@ -3273,6 +3335,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                     Toast.makeText(this, getString(R.string.one_click_stage_toast_blocked, currentStageLabel), Toast.LENGTH_LONG).show();
                 }
             }
+            currentStageUsedRemote = false;
             boolean shouldOpenMaintenanceWeb = openMaintenanceWebAfterStage && foundExitCode == 0;
             openMaintenanceWebAfterStage = false;
             refreshLiveLog();
@@ -3350,6 +3413,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private static String shellQuote(String value) {
         return "'" + value.replace("'", "'\"'\"'") + "'";
+    }
+
+    private boolean isBootstrapSourceAvailable() {
+        if (activeManifest == null || activeManifest.bootstrapUrl == null || !isHttpUrl(activeManifest.bootstrapUrl)) {
+            return false;
+        }
+        return measureSource("bootstrap", activeManifest.bootstrapUrl).success;
     }
 
     private OpenCodeSourceProbeResult probeOpenCodeSource() {
