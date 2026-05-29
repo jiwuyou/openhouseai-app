@@ -303,7 +303,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         probeDownloadSourceButton.setOnClickListener(v -> runOpenCodeSourceProbe(false));
         configureMaintenanceSourceButton.setOnClickListener(v -> showMaintenanceSourceDialog());
         refreshMaintenanceSourceButton.setOnClickListener(v -> refreshMaintenanceManifest(true));
-        restartEntryTerminalButton.setOnClickListener(v -> showRestartEntryTerminalDialog());
         viewFullLogButton.setOnClickListener(v -> openFullLog());
         updateLogButtonState();
         updateMaintenanceSourceCard();
@@ -350,9 +349,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         bindStageButton(StageAction.INSTALL_CLAUDE_CODE, R.id.buttonInstallClaudeCode);
         bindStageButton(StageAction.START, R.id.buttonStart);
         bindStageButton(StageAction.RESTART, R.id.buttonRestart);
-        deepSeekKeyGuideButton.setOnClickListener(v -> showDeepSeekKeyGuideDialog());
+        bindStageButton(StageAction.REQUEST_DEEPSEEK_KEY, R.id.buttonDeepSeekKeyGuide);
         stageButtons.put(StageAction.CONFIGURE_DEEPSEEK, deepSeekKeyConfigButton);
         deepSeekKeyConfigButton.setOnClickListener(v -> showDeepSeekKeyConfigDialog());
+        bindStageButton(StageAction.RESTART_ENTRY_TERMINAL, R.id.buttonRestartEntryTerminal);
         customPortButton.setOnClickListener(v -> showCustomPortDialog());
         openBrowserButton.setOnClickListener(v -> openBrowser());
         openMaintenanceWebButton.setOnClickListener(v -> startLocalMaintenanceWeb());
@@ -952,9 +952,43 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 oneClickStageItemsContainer.addView(row);
 
                 if (stageAction == StageAction.INSTALL_CLAUDE_CODE) {
-                    TextView deepSeekRow = createOneClickStageItemView(false);
-                    updateDeepSeekKeyConfigItem(deepSeekRow, displayNumber++);
-                    oneClickStageItemsContainer.addView(deepSeekRow);
+                    TextView deepSeekGuideRow = createOneClickStageItemView(false);
+                    updateOneClickClickableStageItem(
+                        deepSeekGuideRow,
+                        displayNumber++,
+                        StageAction.REQUEST_DEEPSEEK_KEY,
+                        v -> showDeepSeekKeyGuideDialog()
+                    );
+                    oneClickStageItemsContainer.addView(deepSeekGuideRow);
+
+                    TextView deepSeekConfigRow = createOneClickStageItemView(false);
+                    updateOneClickClickableStageItem(
+                        deepSeekConfigRow,
+                        displayNumber++,
+                        StageAction.CONFIGURE_DEEPSEEK,
+                        v -> showDeepSeekKeyConfigDialog()
+                    );
+                    oneClickStageItemsContainer.addView(deepSeekConfigRow);
+
+                    TextView restartEntryRow = createOneClickStageItemView(false);
+                    updateOneClickClickableStageItem(
+                        restartEntryRow,
+                        displayNumber++,
+                        StageAction.RESTART_ENTRY_TERMINAL,
+                        v -> showRestartEntryTerminalDialog()
+                    );
+                    oneClickStageItemsContainer.addView(restartEntryRow);
+                }
+
+                if (stageAction == StageAction.START) {
+                    TextView restartOpenCodeRow = createOneClickStageItemView(false);
+                    updateOneClickClickableStageItem(
+                        restartOpenCodeRow,
+                        displayNumber++,
+                        StageAction.RESTART,
+                        v -> runStage(StageAction.RESTART)
+                    );
+                    oneClickStageItemsContainer.addView(restartOpenCodeRow);
                 }
             }
             return;
@@ -1072,27 +1106,46 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         view.setTextColor(ContextCompat.getColor(this, textColorRes));
     }
 
-    private void updateDeepSeekKeyConfigItem(TextView view, int number) {
+    private void updateOneClickClickableStageItem(
+        TextView view,
+        int number,
+        StageAction stageAction,
+        View.OnClickListener listener
+    ) {
         if (view == null) return;
-        StagePresentation presentation = stagePresentations.get(StageAction.CONFIGURE_DEEPSEEK);
-        boolean complete = presentation != null && presentation.state == StageUiState.COMPLETE;
+        StagePresentation presentation = stagePresentations.get(stageAction);
+        StageUiState state = presentation == null ? StageUiState.CHECKING : presentation.state;
+        boolean complete = state == StageUiState.COMPLETE;
+        boolean enabled = !commandInFlight
+            && !oneClickStagesInFlight
+            && state != StageUiState.CHECKING
+            && state != StageUiState.BLOCKED;
+        int statusRes = complete
+            ? R.string.one_click_auto_status_done
+            : (enabled ? R.string.one_click_auto_status_optional : R.string.one_click_auto_status_waiting);
+        int backgroundColorRes = complete
+            ? R.color.stageComplete
+            : (enabled ? R.color.stageReady : R.color.stageBlocked);
+        int textColorRes = complete
+            ? R.color.stageOnDark
+            : (enabled ? R.color.stageReadyText : R.color.stageBlockedText);
+        String detail = presentation == null
+            ? getString(R.string.stage_detail_checking)
+            : getStageDescription(stageAction, presentation.detail);
+
         view.setText(getString(
             R.string.one_click_auto_item_text,
             number,
-            getString(R.string.button_configure_deepseek_key),
-            complete ? getString(R.string.one_click_auto_status_done) : getString(R.string.one_click_auto_status_optional),
-            complete ? getString(R.string.stage_detail_configure_deepseek_complete) : getString(R.string.deepseek_key_config_one_click_detail)
+            stageAction.label(this),
+            getString(statusRes),
+            detail
         ));
-        view.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(
-            this,
-            complete ? R.color.stageComplete : R.color.stageReady
-        )));
-        view.setTextColor(ContextCompat.getColor(
-            this,
-            complete ? R.color.stageOnDark : R.color.stageReadyText
-        ));
-        view.setClickable(true);
-        view.setOnClickListener(v -> showDeepSeekKeyConfigDialog());
+        view.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(this, backgroundColorRes)));
+        view.setTextColor(ContextCompat.getColor(this, textColorRes));
+        view.setEnabled(enabled);
+        view.setAlpha(enabled ? 1.0f : 0.78f);
+        view.setClickable(enabled);
+        view.setOnClickListener(enabled ? listener : null);
     }
 
     private StageAction findNextOneClickStage() {
@@ -1154,6 +1207,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 StageAction.INSTALL_CODEX,
                 StageAction.INSTALL_CLAUDE_CODE
             }
+        ));
+        groups.add(new StageFlowGroup(
+            getString(R.string.one_click_auto_start_title),
+            getString(R.string.one_click_auto_start_detail),
+            new StageAction[] { StageAction.START }
         ));
         return groups;
     }
@@ -1354,8 +1412,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 return getString(R.string.button_install_codex);
             case INSTALL_CLAUDE_CODE:
                 return getString(R.string.button_install_claude_code);
+            case REQUEST_DEEPSEEK_KEY:
+                return getString(R.string.button_deepseek_key_guide);
             case CONFIGURE_DEEPSEEK:
                 return getString(R.string.button_configure_deepseek_key);
+            case RESTART_ENTRY_TERMINAL:
+                return getString(R.string.button_restart_entry_terminal);
             case RESTART:
                 return getString(R.string.button_restart);
             case START:
@@ -1480,6 +1542,16 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void runStage(StageAction stageAction, boolean skipPreflightRefresh) {
+        if (stageAction == StageAction.REQUEST_DEEPSEEK_KEY) {
+            showDeepSeekKeyGuideDialog();
+            return;
+        }
+
+        if (stageAction == StageAction.RESTART_ENTRY_TERMINAL) {
+            showRestartEntryTerminalDialog();
+            return;
+        }
+
         if (commandInFlight) {
             Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
             return;
@@ -2833,7 +2905,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             button.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(this, presentation.backgroundColorRes)));
             button.setTextColor(ContextCompat.getColor(this, presentation.textColorRes));
             button.setEnabled(!commandInFlight
-                && !batteryRequirementBlocking
+                && (!batteryRequirementBlocking || stageAction.isUiOnly())
                 && presentation.state != StageUiState.CHECKING
                 && presentation.state != StageUiState.BLOCKED);
             button.setAlpha(button.isEnabled() ? 1.0f : 0.78f);
@@ -2972,6 +3044,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         );
 
         snapshot.presentations.put(
+            StageAction.REQUEST_DEEPSEEK_KEY,
+            deepSeekConfigured
+                ? StagePresentation.complete(this, getString(R.string.stage_detail_deepseek_key_guide_complete))
+                : StagePresentation.ready(this, getString(R.string.stage_detail_deepseek_key_guide_ready))
+        );
+
+        snapshot.presentations.put(
             StageAction.CONFIGURE_DEEPSEEK,
             deepSeekConfigured
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_configure_deepseek_complete))
@@ -2980,6 +3059,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                     : failedOrReady(configureDeepSeekExitCode,
                         getString(R.string.stage_detail_configure_deepseek_failed),
                         getString(R.string.stage_detail_configure_deepseek_ready)))
+        );
+
+        snapshot.presentations.put(
+            StageAction.RESTART_ENTRY_TERMINAL,
+            StagePresentation.ready(this, getString(R.string.stage_detail_restart_entry_terminal_ready))
         );
 
         snapshot.presentations.put(
@@ -4179,7 +4263,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         INSTALL_OPENCODE("install_opencode", "install-opencode.sh"),
         INSTALL_CODEX("install_codex", "install-codex.sh"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh"),
+        REQUEST_DEEPSEEK_KEY("request_deepseek_key", null),
         CONFIGURE_DEEPSEEK("configure_deepseek", "configure-deepseek-key.sh"),
+        RESTART_ENTRY_TERMINAL("restart_entry_terminal", null),
         START("start", "start-opencode.sh"),
         RESTART("restart", "restart-opencode.sh");
 
@@ -4209,6 +4295,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 || this == INSTALL_CLAUDE_CODE
                 || this == START
                 || this == RESTART;
+        }
+
+        boolean isUiOnly() {
+            return this == REQUEST_DEEPSEEK_KEY
+                || this == RESTART_ENTRY_TERMINAL;
         }
 
         static StageAction fromSlug(String slug) {

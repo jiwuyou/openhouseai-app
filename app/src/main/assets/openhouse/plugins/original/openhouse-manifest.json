@@ -29,7 +29,7 @@
     },
     {
       "title": "启动 OpenCode",
-      "description": "可选先申请 DeepSeek API Key，然后启动 4096 端口的 OpenCode 网页。",
+      "description": "申请并填写 DeepSeek API Key 后，可启动或重启 4096 端口的 OpenCode 网页。",
       "stages": ["start"]
     }
   ],
@@ -104,7 +104,7 @@
     {
       "id": "install_opencode",
       "title": "下载 OpenCode",
-      "description": "从 OpenCode 安装源下载并安装 opencode。",
+      "description": "检测终端环境后通过 npm 安装 opencode-ai。",
       "action": { "type": "bootstrap", "args": ["opencode"] }
     },
     {
