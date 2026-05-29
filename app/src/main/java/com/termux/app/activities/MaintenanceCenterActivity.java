@@ -117,8 +117,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageAction.CONFIGURE_ENTRY_UBUNTU,
         StageAction.INSTALL_OPENCODE,
         StageAction.INSTALL_CODEX,
-        StageAction.INSTALL_CLAUDE_CODE,
-        StageAction.START
+        StageAction.INSTALL_CLAUDE_CODE
     };
 
     private TextView statusHeadlineView;
@@ -979,18 +978,24 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                     );
                     oneClickStageItemsContainer.addView(restartEntryRow);
                 }
-
-                if (stageAction == StageAction.START) {
-                    TextView restartOpenCodeRow = createOneClickStageItemView(false);
-                    updateOneClickClickableStageItem(
-                        restartOpenCodeRow,
-                        displayNumber++,
-                        StageAction.RESTART,
-                        v -> runStage(StageAction.RESTART)
-                    );
-                    oneClickStageItemsContainer.addView(restartOpenCodeRow);
-                }
             }
+            TextView startOpenCodeRow = createOneClickStageItemView(false);
+            updateOneClickClickableStageItem(
+                startOpenCodeRow,
+                displayNumber++,
+                StageAction.START,
+                v -> runStage(StageAction.START)
+            );
+            oneClickStageItemsContainer.addView(startOpenCodeRow);
+
+            TextView restartOpenCodeRow = createOneClickStageItemView(false);
+            updateOneClickClickableStageItem(
+                restartOpenCodeRow,
+                displayNumber++,
+                StageAction.RESTART,
+                v -> runStage(StageAction.RESTART)
+            );
+            oneClickStageItemsContainer.addView(restartOpenCodeRow);
             return;
         }
 
@@ -1207,11 +1212,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 StageAction.INSTALL_CODEX,
                 StageAction.INSTALL_CLAUDE_CODE
             }
-        ));
-        groups.add(new StageFlowGroup(
-            getString(R.string.one_click_auto_start_title),
-            getString(R.string.one_click_auto_start_detail),
-            new StageAction[] { StageAction.START }
         ));
         return groups;
     }
@@ -2068,17 +2068,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private String buildPostRemoteOneClickScript() throws IOException {
         StringBuilder scriptBody = new StringBuilder();
-        scriptBody.append("log '远程一键安装完成，继续通过 APK 内置脚本启动 OpenCode。'\n");
-        scriptBody.append("run_environment_probe\n");
-        scriptBody.append(buildAssetScriptBody(
-            StageAction.START,
-            StageAction.START.assetName,
-            getDefaultOpenCodePort(),
-            OpenCodeInstallSpec.defaultSpec(this)
-        ));
-        if (scriptBody.charAt(scriptBody.length() - 1) != '\n') {
-            scriptBody.append('\n');
-        }
+        scriptBody.append("log '远程一键安装完成。OpenCode 需要点击启动按钮后再启动。'\n");
         return scriptBody.toString();
     }
 

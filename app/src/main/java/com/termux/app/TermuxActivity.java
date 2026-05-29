@@ -822,9 +822,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 }
 
                 runTermuxShellCommand(
-                    "proot-distro login ubuntu -- bash -lc 'pkill -f \"opencode web.*--port " + port + "\" >/dev/null 2>&1 || true' && " +
+                    "proot-distro login ubuntu -- bash -lc 'set -euo pipefail; pids=\"\"; while read -r pid comm args; do [ -n \"$pid\" ] || continue; case \"$comm\" in opencode*) ;; *) continue ;; esac; case \" $args \" in *\" web \"*\"--port " + port + "\"*) pids=\"$pids $pid\" ;; esac; done < <(ps -eo pid=,comm=,args=); if [ -n \"$pids\" ]; then kill $pids 2>/dev/null || true; sleep 1; kill -9 $pids 2>/dev/null || true; fi' && " +
                         "mkdir -p \"$HOME/.maintainer-logs\" && " +
-                        "nohup proot-distro login ubuntu -- bash -lc 'set -euo pipefail; export HOME=/root; cd /root; export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; export BROWSER=/bin/true; exec opencode web --hostname 127.0.0.1 --port " + port + " --print-logs >\"$HOME/.opencode-web.log\" 2>&1' >>\"$HOME/.maintainer-logs/opencode-quick-launch.log\" 2>&1 < /dev/null &"
+                        "nohup proot-distro login ubuntu -- bash -lc 'set -euo pipefail; export HOME=/root PWD=/root; cd /root; export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; export BROWSER=/bin/true; exec opencode web --hostname 127.0.0.1 --port " + port + " --print-logs >\"$HOME/.opencode-web.log\" 2>&1' >>\"$HOME/.maintainer-logs/opencode-quick-launch.log\" 2>&1 < /dev/null &"
                 );
 
                 for (int attempt = 0; attempt < 10; attempt++) {
@@ -853,7 +853,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private boolean isOpenCodeWorkingDirectoryRoot(int port) {
         return runTermuxShellCommand(
-            "proot-distro login ubuntu -- bash -lc 'set -euo pipefail; for pid in $(pgrep -f \"opencode web.*--port " + port + "\" 2>/dev/null || true); do cwd=$(readlink \"/proc/$pid/cwd\" 2>/dev/null || true); [ \"$cwd\" = \"/root\" ]; exit $?; done; exit 1'"
+            "proot-distro login ubuntu -- bash -lc 'set -euo pipefail; while read -r pid comm args; do [ -n \"$pid\" ] || continue; case \"$comm\" in opencode*) ;; *) continue ;; esac; case \" $args \" in *\" web \"*\"--port " + port + "\"*) ;; *) continue ;; esac; tr \"\\0\" \"\\n\" < \"/proc/$pid/environ\" 2>/dev/null | grep -Fxq \"PWD=/root\"; exit $?; done < <(ps -eo pid=,comm=,args=); exit 1'"
         ).isSuccess();
     }
 

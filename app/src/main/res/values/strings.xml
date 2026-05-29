@@ -358,7 +358,7 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="button_stop_one_click_stages">停止一键执行</string>
     <string name="one_click_stage_summary_idle">权限已经单独处理后，再点这里。系统按真实下载依赖排序：先准备 Ubuntu 和文档，再设置默认进入 Ubuntu，最后安装 OpenCode、Codex 和 Claude Code。</string>
     <string name="one_click_stage_summary_running">阶段一键执行中：%1$s</string>
-    <string name="one_click_stage_summary_complete">阶段一键执行已完成，OpenCode、Codex 和 Claude Code 已安装。</string>
+    <string name="one_click_stage_summary_complete">阶段一键执行已完成，OpenCode、Codex 和 Claude Code 已安装。OpenCode 需要手动点击启动。</string>
     <string name="one_click_stage_summary_waiting">阶段一键执行已暂停：%1$s</string>
     <string name="one_click_stage_toast_complete">阶段一键执行已完成</string>
     <string name="one_click_stage_toast_stopped">阶段一键执行已停止</string>
@@ -385,7 +385,7 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="one_click_auto_agents_title">安装 Agent CLI</string>
     <string name="one_click_auto_agents_detail">在 Ubuntu 内安装 OpenCode、Codex 和 Claude Code；Codex/Claude 所需 Node.js 由各自阶段内部处理</string>
     <string name="one_click_auto_start_title">启动 OpenCode</string>
-    <string name="one_click_auto_start_detail">完成后打开浏览器地址</string>
+    <string name="one_click_auto_start_detail">安装完成后手动点击启动，不随一键执行自动启动</string>
     <string name="deepseek_key_config_one_click_detail">拿到 DeepSeek API Key 后点击填写，自动配置 OpenCode 和 Claude Code。</string>
     <string name="one_click_auto_item_text">%1$d · %2$s · %3$s\n%4$s</string>
     <string name="actions_title">阶段操作</string>
