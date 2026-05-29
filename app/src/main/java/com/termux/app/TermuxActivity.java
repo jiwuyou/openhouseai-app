@@ -809,6 +809,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mOpenCodeLaunchExecutor.execute(() -> {
             try {
                 if (isOpenCodeReachable(port) && isOpenCodeWorkingDirectoryRoot(port)) {
+                    openOpenCodeInBrowser(port);
                     postToast(getString(R.string.quick_launch_ready, port), false);
                     return;
                 }
@@ -858,7 +859,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void openOpenCodeInBrowser(int port) {
-        String url = OpenCodeSettings.getLoopbackUrl(port);
+        String url = OpenCodeSettings.getRootProjectUrl(port);
         if (OpenCodeCdpBridge.isCdpActive() && OpenCodeCdpBridge.openTab(url)) {
             postToast(getString(R.string.quick_launch_browser_tab), false);
             return;

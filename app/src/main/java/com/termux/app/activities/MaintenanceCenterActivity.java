@@ -3279,7 +3279,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String getOpenCodeUrl() {
-        return OpenCodeSettings.getLoopbackUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+        return OpenCodeSettings.getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
     }
 
     private int getLocalMaintenanceWebPort() {

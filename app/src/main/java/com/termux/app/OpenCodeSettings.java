@@ -6,6 +6,8 @@ import android.content.SharedPreferences;
 public final class OpenCodeSettings {
 
     public static final int DEFAULT_OPENCODE_PORT = 4096;
+    public static final String DEFAULT_PROJECT_DIRECTORY = "/root";
+    private static final String DEFAULT_PROJECT_ROUTE = "L3Jvb3Q";
     private static final String PREFS_NAME = "opencode_settings";
     private static final String KEY_DEFAULT_PORT = "default_port";
 
@@ -36,7 +38,15 @@ public final class OpenCodeSettings {
         return "http://127.0.0.1:" + port;
     }
 
+    public static String getRootProjectUrl(int port) {
+        return getLoopbackUrl(port) + "/" + DEFAULT_PROJECT_ROUTE + "/session";
+    }
+
     public static String getDefaultLoopbackUrl(Context context) {
         return getLoopbackUrl(getDefaultPort(context));
+    }
+
+    public static String getDefaultRootProjectUrl(Context context) {
+        return getRootProjectUrl(getDefaultPort(context));
     }
 }
