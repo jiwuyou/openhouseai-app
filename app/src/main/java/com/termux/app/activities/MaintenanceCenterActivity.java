@@ -1,6 +1,8 @@
 package com.termux.app.activities;
 
 import android.Manifest;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.res.ColorStateList;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -302,6 +304,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         probeDownloadSourceButton.setOnClickListener(v -> runOpenCodeSourceProbe(false));
         configureMaintenanceSourceButton.setOnClickListener(v -> showMaintenanceSourceDialog());
         refreshMaintenanceSourceButton.setOnClickListener(v -> refreshMaintenanceManifest(true));
+        findViewById(R.id.buttonCopyOpenCodeUrl).setOnClickListener(v ->
+            copyToClipboard(getString(R.string.button_copy_opencode_url), getOpenCodeUrl()));
+        findViewById(R.id.buttonCopyDeepSeekKeyUrl).setOnClickListener(v ->
+            copyToClipboard(getString(R.string.button_copy_deepseek_key_url), DEEPSEEK_API_KEYS_URL));
         viewFullLogButton.setOnClickListener(v -> openFullLog());
         updateLogButtonState();
         updateMaintenanceSourceCard();
@@ -2369,6 +2375,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private void openBrowser() {
         openUrl(getOpenCodeUrl(), "OpenCode browser URL");
+    }
+
+    private void copyToClipboard(String label, String text) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            return;
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, text));
+        Toast.makeText(this, getString(R.string.clipboard_copy_toast, label), Toast.LENGTH_SHORT).show();
     }
 
     private void openUrl(String url, String label) {
