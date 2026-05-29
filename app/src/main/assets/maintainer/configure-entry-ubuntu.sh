@@ -22,7 +22,9 @@ if [ -f "$MODE_FILE" ]; then
   MODE="$(tr -d '[:space:]' < "$MODE_FILE")"
 fi
 
-if [ "$MODE" = "ubuntu" ] && [ -z "${OPENHOUSEAI_NO_AUTO_UBUNTU:-}" ]; then
+if [ "$MODE" = "ubuntu" ] \
+  && [ -z "${OPENHOUSEAI_NO_AUTO_UBUNTU:-}" ] \
+  && [ -z "${TERMUX_NO_AUTO_UBUNTU:-}" ]; then
   if command -v proot-distro >/dev/null 2>&1 && proot-distro login ubuntu -- true >/dev/null 2>&1; then
     printf '[OpenHouseAI] 正在进入 Ubuntu。退出 Ubuntu 后会回到 Termux。\n'
     OPENHOUSEAI_NO_AUTO_UBUNTU=1 proot-distro login ubuntu -- bash -l

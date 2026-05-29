@@ -1511,8 +1511,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         terminalStatusView.setText(R.string.embedded_terminal_status_starting);
         ExecutionCommand command = new ExecutionCommand(
             TermuxShellManager.getNextShellId(),
-            null,
-            null,
+            TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash",
+            new String[] { "--noprofile", "--norc", "-i" },
             null,
             TermuxConstants.TERMUX_HOME_DIR_PATH,
             ExecutionCommand.Runner.TERMINAL_SESSION.getName(),
@@ -1524,6 +1524,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         HashMap<String, String> maintenanceEnvironment = new HashMap<>();
         maintenanceEnvironment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
+        maintenanceEnvironment.put("TERMUX_NO_AUTO_UBUNTU", "1");
 
         maintenanceSession = TermuxSession.execute(
             this,
@@ -3215,6 +3216,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             environment.put("LD_LIBRARY_PATH", TermuxConstants.TERMUX_LIB_PREFIX_DIR_PATH);
             environment.put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
             environment.put("LANG", "C.UTF-8");
+            environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
+            environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
 
             process = processBuilder.start();
             StringBuilder output = new StringBuilder();
