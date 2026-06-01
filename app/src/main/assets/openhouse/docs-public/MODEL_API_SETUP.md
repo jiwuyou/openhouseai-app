@@ -1,6 +1,6 @@
-# Codex 和 Claude Code 登录/API 配置
+# Codex、Claude Code 和 Reasonix 登录/API 配置
 
-本文件说明安装完成后，如何让 Codex CLI 和 Claude Code 连接大模型服务。
+本文件说明安装完成后，如何让 Codex CLI、Claude Code 和 Reasonix 连接大模型服务。
 
 不要把 API key 写入 git 仓库、共享文档、APK 资源、日志或截图。优先使用工具自带登录流程，或只在本机 shell 配置环境变量。
 
@@ -150,6 +150,26 @@ https://platform.deepseek.com/api_keys
 
 如果还没有 API Key，先打开 DeepSeek 控制台，登录后创建 API Key。不要把 API Key 粘贴到聊天内容、日志、截图或仓库中。
 
+## Reasonix 使用 DeepSeek
+
+维护中心的“填写 DeepSeek Key 并配置”会写入：
+
+```text
+~/.reasonix/config.json
+```
+
+配置中的关键字段是：
+
+```json
+{
+  "lang": "zh-CN",
+  "apiKey": "你的 DeepSeek API Key",
+  "model": "deepseek-v4-pro"
+}
+```
+
+不要手动把真实 API Key 写进文档、截图或仓库。
+
 ## 配置检查
 
 重新打开 Termux 后会默认进入 Ubuntu。进入后检查：
@@ -157,8 +177,10 @@ https://platform.deepseek.com/api_keys
 ```bash
 command -v codex
 command -v claude
+command -v reasonix
 codex --version
 claude --version
+reasonix --version
 ```
 
 检查环境变量是否存在：
@@ -174,7 +196,7 @@ printenv ANTHROPIC_API_KEY
 
 ### 命令不存在
 
-重新执行维护中心里的 `下载 Codex CLI` 或 `下载 Claude Code` 阶段。
+重新执行维护中心里的 `下载 Codex CLI`、`下载 Claude Code` 或 `下载 Reasonix` 阶段。
 
 ### API key 配置后仍不可用
 
@@ -197,6 +219,7 @@ source ~/.bashrc
 ```bash
 codex --help
 claude --help
+reasonix --help
 ```
 
 以当前安装版本的帮助信息为准。

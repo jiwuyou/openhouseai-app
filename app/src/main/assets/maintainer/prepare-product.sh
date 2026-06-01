@@ -90,13 +90,13 @@ EOF
 cat > "$DOC_DIR/ENVIRONMENT.md" <<'EOF'
 # 运行环境说明
 
-OpenHouseAI 运行在 Android Termux 中，并通过 `proot-distro` 提供 Ubuntu。OpenCode、Codex CLI 和 Claude Code 安装在 Ubuntu 内。
+OpenHouseAI 运行在 Android Termux 中，并通过 `proot-distro` 提供 Ubuntu。OpenCode、Codex CLI、Claude Code 和 Reasonix 安装在 Ubuntu 内。
 
 工作区路径：`/data/data/com.termux/files/home/workspace`
 EOF
 
 cat > "$DOC_DIR/MODEL_API_SETUP.md" <<'EOF'
-# Codex 和 Claude Code 登录/API 配置
+# Codex、Claude Code 和 Reasonix 登录/API 配置
 
 正式配置说明会由“同步官方文档”阶段写入 `official/MODEL_API_SETUP.md`。
 

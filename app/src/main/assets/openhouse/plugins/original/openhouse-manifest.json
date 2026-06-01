@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "version": "2026.05.27.1",
+  "version": "2026.06.01.1",
   "title": "OpenHouseAI 维护器",
   "sourceName": "OpenHouseAI APK 原始插件",
-  "updatedAt": "2026-05-27",
+  "updatedAt": "2026-06-01",
   "bootstrapUrl": "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh",
   "defaultOneClickAction": "full",
   "stageFlow": [
@@ -24,8 +24,8 @@
     },
     {
       "title": "安装 Agent CLI",
-      "description": "安装 OpenCode、Codex 和 Claude Code；Node.js 由 Codex/Claude 阶段内部检测安装。",
-      "stages": ["install_opencode", "install_codex", "install_claude_code"]
+      "description": "安装 OpenCode、Codex、Claude Code 和 Reasonix；Node.js 由安装阶段内部检测安装。",
+      "stages": ["install_opencode", "install_codex", "install_claude_code", "install_reasonix"]
     }
   ],
   "sections": [
@@ -33,7 +33,7 @@
       "id": "agent_cli_repair",
       "type": "actions",
       "title": "AI 工具补装与修复",
-      "description": "单独补装或修复 OpenCode、Codex、Claude Code。",
+      "description": "单独补装或修复 OpenCode、Codex、Claude Code、Reasonix。",
       "items": [
         {
           "id": "install_opencode",
@@ -55,6 +55,13 @@
           "label": "安装 Claude Code",
           "description": "在 Ubuntu 内安装 Anthropic Claude Code。",
           "action": { "type": "bootstrap", "args": ["claude-code"] }
+        },
+        {
+          "id": "install_reasonix",
+          "type": "button",
+          "label": "安装 Reasonix",
+          "description": "在 Ubuntu 内安装 DeepSeek-native Reasonix。",
+          "action": { "type": "bootstrap", "args": ["reasonix"] }
         }
       ]
     }
@@ -113,6 +120,12 @@
       "title": "下载 Claude Code",
       "description": "检测终端环境后通过 npm 安装 @anthropic-ai/claude-code。",
       "action": { "type": "bootstrap", "args": ["claude-code"] }
+    },
+    {
+      "id": "install_reasonix",
+      "title": "下载 Reasonix",
+      "description": "检测终端环境后通过 npm 安装 reasonix。",
+      "action": { "type": "bootstrap", "args": ["reasonix"] }
     }
   ]
 }

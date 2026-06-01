@@ -119,7 +119,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageAction.CONFIGURE_ENTRY_UBUNTU,
         StageAction.INSTALL_OPENCODE,
         StageAction.INSTALL_CODEX,
-        StageAction.INSTALL_CLAUDE_CODE
+        StageAction.INSTALL_CLAUDE_CODE,
+        StageAction.INSTALL_REASONIX
     };
 
     private TextView statusHeadlineView;
@@ -352,6 +353,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         bindStageButton(StageAction.INSTALL_OPENCODE, R.id.buttonInstallOpenCode);
         bindStageButton(StageAction.INSTALL_CODEX, R.id.buttonInstallCodex);
         bindStageButton(StageAction.INSTALL_CLAUDE_CODE, R.id.buttonInstallClaudeCode);
+        bindStageButton(StageAction.INSTALL_REASONIX, R.id.buttonInstallReasonix);
         bindStageButton(StageAction.START, R.id.buttonStart);
         bindStageButton(StageAction.RESTART, R.id.buttonRestart);
         bindStageButton(StageAction.REQUEST_DEEPSEEK_KEY, R.id.buttonDeepSeekKeyGuide);
@@ -956,7 +958,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 updateOneClickStageActionItem(row, displayNumber++, stageAction, nextStageAction);
                 oneClickStageItemsContainer.addView(row);
 
-                if (stageAction == StageAction.INSTALL_CLAUDE_CODE) {
+                if (stageAction == StageAction.INSTALL_REASONIX) {
                     TextView deepSeekGuideRow = createOneClickStageItemView(false);
                     updateOneClickClickableStageItem(
                         deepSeekGuideRow,
@@ -1216,7 +1218,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             new StageAction[] {
                 StageAction.INSTALL_OPENCODE,
                 StageAction.INSTALL_CODEX,
-                StageAction.INSTALL_CLAUDE_CODE
+                StageAction.INSTALL_CLAUDE_CODE,
+                StageAction.INSTALL_REASONIX
             }
         ));
         return groups;
@@ -1418,6 +1421,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 return getString(R.string.button_install_codex);
             case INSTALL_CLAUDE_CODE:
                 return getString(R.string.button_install_claude_code);
+            case INSTALL_REASONIX:
+                return getString(R.string.button_install_reasonix);
             case REQUEST_DEEPSEEK_KEY:
                 return getString(R.string.button_deepseek_key_guide);
             case CONFIGURE_DEEPSEEK:
@@ -2935,6 +2940,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         Integer installOpenCodeExitCode = readLastExitCode(StageAction.INSTALL_OPENCODE);
         Integer installCodexExitCode = readLastExitCode(StageAction.INSTALL_CODEX);
         Integer installClaudeCodeExitCode = readLastExitCode(StageAction.INSTALL_CLAUDE_CODE);
+        Integer installReasonixExitCode = readLastExitCode(StageAction.INSTALL_REASONIX);
         Integer configureDeepSeekExitCode = readLastExitCode(StageAction.CONFIGURE_DEEPSEEK);
         Integer startExitCode = readLastExitCode(StageAction.START);
         Integer restartExitCode = readLastExitCode(StageAction.RESTART);
@@ -2948,7 +2954,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean openCodeInstalled = entryUbuntuConfigured && (isOpenCodeInstalled() || isLastExitSuccess(installOpenCodeExitCode));
         boolean codexInstalled = openCodeInstalled && (isCodexInstalled() || isLastExitSuccess(installCodexExitCode));
         boolean claudeCodeInstalled = openCodeInstalled && (isClaudeCodeInstalled() || isLastExitSuccess(installClaudeCodeExitCode));
-        boolean deepSeekConfigured = ubuntuInstalled && (isDeepSeekConfigured() || isLastExitSuccess(configureDeepSeekExitCode));
+        boolean reasonixInstalled = claudeCodeInstalled && (isReasonixInstalled() || isLastExitSuccess(installReasonixExitCode));
+        boolean deepSeekConfigured = ubuntuInstalled && reasonixInstalled && (isDeepSeekConfigured() || isLastExitSuccess(configureDeepSeekExitCode));
         boolean openCodeReachableNow = openCodeInstalled && isOpenCodeWebReachable();
         boolean startStageComplete = openCodeReachableNow || isLastExitSuccess(startExitCode);
 
@@ -3047,6 +3054,17 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                     : failedOrReady(installClaudeCodeExitCode,
                         getString(R.string.stage_detail_install_claude_code_failed),
                         getString(R.string.stage_detail_install_claude_code_ready)))
+        );
+
+        snapshot.presentations.put(
+            StageAction.INSTALL_REASONIX,
+            reasonixInstalled
+                ? StagePresentation.complete(this, getString(R.string.stage_detail_install_reasonix_complete))
+                : (!claudeCodeInstalled
+                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_reasonix_blocked))
+                    : failedOrReady(installReasonixExitCode,
+                        getString(R.string.stage_detail_install_reasonix_failed),
+                        getString(R.string.stage_detail_install_reasonix_ready)))
         );
 
         snapshot.presentations.put(
@@ -3187,6 +3205,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         ).isSuccess();
     }
 
+    private boolean isReasonixInstalled() {
+        return runTermuxCommand(
+            "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; command -v reasonix >/dev/null 2>&1'"
+        ).isSuccess();
+    }
+
     private boolean isEntryUbuntuConfigured() {
         return runTermuxCommand(
             "test \"$(tr -d '[:space:]' < \"$HOME/.openhouseai/entry-mode\" 2>/dev/null || true)\" = ubuntu && test -f \"$HOME/.openhouseai/entry.sh\" && grep -Fq '# OpenHouseAI startup entry' \"$HOME/.bashrc\""
@@ -3195,7 +3219,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private boolean isDeepSeekConfigured() {
         return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'test -s \"$HOME/.config/openhouseai/deepseek-api-key\" && test -f \"$HOME/.config/opencode/opencode.json\" && grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.bashrc\"'"
+            "proot-distro login ubuntu -- bash -lc 'test -s \"$HOME/.config/openhouseai/deepseek-api-key\" && test -f \"$HOME/.config/opencode/opencode.json\" && test -f \"$HOME/.reasonix/config.json\" && grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.bashrc\"'"
         ).isSuccess();
     }
 
@@ -4271,6 +4295,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         INSTALL_OPENCODE("install_opencode", "install-opencode.sh"),
         INSTALL_CODEX("install_codex", "install-codex.sh"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh"),
+        INSTALL_REASONIX("install_reasonix", "install-reasonix.sh"),
         REQUEST_DEEPSEEK_KEY("request_deepseek_key", null),
         CONFIGURE_DEEPSEEK("configure_deepseek", "configure-deepseek-key.sh"),
         RESTART_ENTRY_TERMINAL("restart_entry_terminal", null),
@@ -4301,6 +4326,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 || this == CONFIGURE_ENTRY_UBUNTU
                 || this == INSTALL_CODEX
                 || this == INSTALL_CLAUDE_CODE
+                || this == INSTALL_REASONIX
                 || this == START
                 || this == RESTART;
         }
