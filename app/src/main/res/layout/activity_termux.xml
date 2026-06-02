@@ -102,6 +102,27 @@
             android:background="@color/black"
             android:layout_alignParentBottom="true" />
 
+        <FrameLayout
+            android:id="@+id/openhouse_onboarding_overlay_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_alignParentTop="true"
+            android:layout_above="@id/terminal_toolbar_view_pager" />
+
+        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+            android:id="@+id/openhouse_menu_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_above="@id/opencode_quick_launch_button"
+            android:layout_marginEnd="18dp"
+            android:layout_marginBottom="14dp"
+            android:contentDescription="@string/openhouse_action_menu"
+            android:text="@string/openhouse_action_menu"
+            android:textColor="@color/stageOnDark"
+            android:visibility="gone"
+            app:backgroundTint="@color/stageComplete" />
+
         <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
             android:id="@+id/opencode_quick_launch_button"
             android:layout_width="wrap_content"
@@ -113,6 +134,7 @@
             android:contentDescription="@string/action_launch_opencode_default"
             android:text="@string/action_launch_opencode_short"
             android:textColor="@color/stageReadyText"
+            android:visibility="gone"
             app:backgroundTint="@color/stageReady"
             app:icon="@drawable/ic_opencode_launch"
             app:iconTint="@color/stageReadyText" />
@@ -128,6 +150,7 @@
             android:contentDescription="@string/action_open_maintenance_center"
             android:text="@string/action_open_maintenance_center_short"
             android:textColor="@color/stageOnDark"
+            android:visibility="gone"
             app:backgroundTint="@color/accent"
             app:icon="@drawable/ic_maintainer"
             app:iconTint="@color/stageOnDark" />
@@ -137,7 +160,7 @@
             android:layout_width="64dp"
             android:layout_height="48dp"
             android:layout_alignParentEnd="true"
-            android:layout_above="@id/opencode_quick_launch_button"
+            android:layout_above="@id/openhouse_menu_button"
             android:layout_marginEnd="18dp"
             android:layout_marginBottom="14dp"
             android:alpha="0.62"
@@ -148,6 +171,7 @@
             android:paddingEnd="8dp"
             android:text="@string/action_toggle_quick_buttons_visibility_short"
             android:textColor="@color/stageOnDark"
+            android:visibility="gone"
             app:backgroundTint="@color/stageRunning"
             app:cornerRadius="24dp" />
 

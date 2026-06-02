@@ -90,7 +90,7 @@
     <string name="action_open_maintenance_center_short">维护</string>
     <string name="action_launch_opencode_default">启动默认端口 OpenCode</string>
     <string name="action_launch_opencode_short">OC</string>
-    <string name="action_toggle_quick_buttons_visibility">显示或隐藏维护和 OC 快捷按钮</string>
+    <string name="action_toggle_quick_buttons_visibility">显示或隐藏菜单和快捷按钮</string>
     <string name="action_toggle_quick_buttons_visibility_short">显隐</string>
 
     <string name="action_report_issue">Report Issue</string>
@@ -408,8 +408,8 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="button_restart">重启 OpenCode（4096）</string>
     <string name="opencode_start_title">OpenCode 启动</string>
     <string name="opencode_custom_port_title">自定义端口</string>
-    <string name="button_configure_default_port">设置默认端口</string>
-    <string name="button_configure_default_port_with_value">设置默认端口（当前 %1$d）</string>
+    <string name="button_configure_default_port">OpenCode 固定端口</string>
+    <string name="button_configure_default_port_with_value">OpenCode 固定端口：%1$d</string>
     <string name="button_start_custom_port">自定义端口启动 OpenCode</string>
     <string name="button_open_browser">打开浏览器</string>
     <string name="button_view_full_log">查看完整日志</string>
@@ -444,8 +444,8 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="custom_port_dialog_hint">例如 8766</string>
     <string name="custom_port_invalid">请输入 1 到 65535 之间的端口号</string>
     <string name="custom_port_stage_label">启动 OpenCode（端口 %1$d）</string>
-    <string name="default_port_saved">默认端口已更新为 %1$d</string>
-    <string name="default_port_label">默认启动端口：%1$d</string>
+    <string name="default_port_saved">OpenCode 固定端口为 %1$d</string>
+    <string name="default_port_label">OpenCode 固定端口：%1$d</string>
     <string name="default_browser_label">浏览器地址：%1$s</string>
     <string name="deepseek_key_guide_title">申请 DeepSeek API Key</string>
     <string name="deepseek_key_guide_message">1. 点击“打开 DeepSeek API Keys”，登录 DeepSeek 控制台并创建 API Key。\n\n2. 启动 OpenCode 后，在 OpenCode 输入框中执行 /connect，选择 DeepSeek，然后粘贴刚创建的 API Key。\n\n3. 再执行 /models，选择需要使用的 DeepSeek 模型。\n\n不要把 API Key 发到聊天、日志、截图或仓库里。</string>

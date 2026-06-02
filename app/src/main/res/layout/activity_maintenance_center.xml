@@ -1,10 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/surface"
     android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/surface"
+        android:orientation="vertical"
+        android:paddingHorizontal="20dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="10dp">
+
+        <Button
+            android:id="@+id/buttonReturnHome"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center"
+            android:text="@string/openhouse_return_terminal_main"
+            android:textAllCaps="false"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <ScrollView
         android:layout_width="match_parent"
@@ -18,124 +37,9 @@
             android:orientation="vertical"
             android:padding="20dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/maintenance_center_title"
-                android:textColor="@color/textPrimary"
-                android:textSize="24sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/maintenance_center_subtitle"
-                android:textColor="@color/textSecondary"
-                android:textSize="14sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="@string/maintenance_center_instruction"
-                android:textColor="@color/textPrimary"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                android:background="@drawable/panel_bg"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/permissions_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingExtra="2dp"
-                    android:text="@string/permissions_legend"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="13sp" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/buttonPermissionBattery"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:background="@drawable/one_click_item_bg"
-                    android:gravity="center_vertical|start"
-                    android:layoutDirection="rtl"
-                    android:minHeight="56dp"
-                    android:padding="12dp"
-                    android:text="@string/button_permission_battery"
-                    android:textColor="@color/textPrimary"
-                    android:textDirection="ltr"
-                    android:textSize="13sp" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/buttonPermissionOverlay"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:background="@drawable/one_click_item_bg"
-                    android:gravity="center_vertical|start"
-                    android:layoutDirection="rtl"
-                    android:minHeight="56dp"
-                    android:padding="12dp"
-                    android:text="@string/button_permission_overlay"
-                    android:textColor="@color/textPrimary"
-                    android:textDirection="ltr"
-                    android:textSize="13sp" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/buttonPermissionStorage"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:background="@drawable/one_click_item_bg"
-                    android:gravity="center_vertical|start"
-                    android:layoutDirection="rtl"
-                    android:minHeight="56dp"
-                    android:padding="12dp"
-                    android:text="@string/button_permission_storage"
-                    android:textColor="@color/textPrimary"
-                    android:textDirection="ltr"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/permissionRequirementHint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:lineSpacingExtra="2dp"
-                    android:text="@string/permission_requirement_hint"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="13sp" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchDisableBatteryRequirement"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/switch_disable_battery_requirement"
-                    android:textColor="@color/textPrimary" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
                 android:background="@drawable/panel_bg"
                 android:orientation="vertical"
                 android:padding="16dp">
@@ -148,15 +52,6 @@
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingExtra="2dp"
-                    android:text="@string/execution_mode_legend"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="13sp" />
-
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -167,7 +62,6 @@
                         android:id="@+id/buttonStageOneClickMode"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="5dp"
                         android:layout_weight="1"
                         android:text="@string/button_stage_one_click_mode"
                         android:textAllCaps="false" />
@@ -176,10 +70,11 @@
                         android:id="@+id/buttonStageManualMode"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="5dp"
+                        android:layout_marginStart="10dp"
                         android:layout_weight="1"
                         android:text="@string/button_stage_manual_mode"
-                        android:textAllCaps="false" />
+                        android:textAllCaps="false"
+                        android:visibility="gone" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -187,8 +82,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:orientation="vertical"
-                    android:visibility="gone">
+                    android:orientation="vertical">
 
                     <TextView
                         android:id="@+id/oneClickStageSummary"
@@ -211,597 +105,330 @@
                         android:textStyle="bold" />
 
                     <LinearLayout
+                        android:id="@+id/sharedInstallProgressPanel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:background="@drawable/one_click_item_bg"
+                        android:orientation="vertical"
+                        android:padding="12dp">
+
+                        <TextView
+                            android:id="@+id/sharedInstallProgress"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:lineSpacingExtra="2dp"
+                            android:text="@string/openhouse_shared_install_waiting"
+                            android:textColor="@color/textPrimary"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/sharedInstallDetail"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:lineSpacingExtra="2dp"
+                            android:text="@string/openhouse_shared_install_waiting_detail"
+                            android:textColor="@color/textSecondary"
+                            android:textSize="13sp" />
+
+                        <androidx.core.widget.NestedScrollView
+                            android:id="@+id/sharedInstallLogScroll"
+                            android:layout_width="match_parent"
+                            android:layout_height="160dp"
+                            android:layout_marginTop="10dp"
+                            android:background="@color/black"
+                            android:fillViewport="true"
+                            android:padding="10dp">
+
+                            <TextView
+                                android:id="@+id/sharedInstallLog"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:lineSpacingExtra="2dp"
+                                android:text="暂无共享安装日志。"
+                                android:textColor="#D7E4DA"
+                                android:textSize="12sp" />
+                        </androidx.core.widget.NestedScrollView>
+                    </LinearLayout>
+
+                    <LinearLayout
                         android:id="@+id/oneClickStageItemsContainer"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="14dp"
                         android:orientation="vertical" />
-
-                    <TextView
-                        android:id="@+id/oneClickPrepareItem"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:background="@drawable/one_click_item_bg"
-                        android:lineSpacingExtra="2dp"
-                        android:padding="12dp"
-                        android:textColor="@color/textSecondary"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
-
-                    <TextView
-                        android:id="@+id/oneClickUbuntuPackagesItem"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/one_click_item_bg"
-                        android:lineSpacingExtra="2dp"
-                        android:padding="12dp"
-                        android:textColor="@color/textSecondary"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
-
-                    <TextView
-                        android:id="@+id/oneClickOpenCodeItem"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/one_click_item_bg"
-                        android:lineSpacingExtra="2dp"
-                        android:padding="12dp"
-                        android:textColor="@color/textSecondary"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
-
-                    <TextView
-                        android:id="@+id/oneClickCodexItem"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/one_click_item_bg"
-                        android:lineSpacingExtra="2dp"
-                        android:padding="12dp"
-                        android:textColor="@color/textSecondary"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
-
-                    <TextView
-                        android:id="@+id/oneClickClaudeCodeItem"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/one_click_item_bg"
-                        android:lineSpacingExtra="2dp"
-                        android:padding="12dp"
-                        android:textColor="@color/textSecondary"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
-
-                    <TextView
-                        android:id="@+id/oneClickSkillItem"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/one_click_item_bg"
-                        android:lineSpacingExtra="2dp"
-                        android:padding="12dp"
-                        android:textColor="@color/textSecondary"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
-
-                    <TextView
-                        android:id="@+id/oneClickStartItem"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/one_click_item_bg"
-                        android:lineSpacingExtra="2dp"
-                        android:padding="12dp"
-                        android:textColor="@color/textSecondary"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
                 </LinearLayout>
             </LinearLayout>
 
             <LinearLayout
-                android:id="@+id/stageActionsPanel"
+                android:id="@+id/maintenanceLegacyBindings"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/panel_bg"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:visibility="gone">
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/buttonPermissionBattery"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/buttonPermissionOverlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/buttonPermissionStorage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:id="@+id/permissionRequirementHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchDisableBatteryRequirement"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <LinearLayout
+                    android:id="@+id/stageActionsPanel"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/actions_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:orientation="vertical">
+
+                    <Button
+                        android:id="@+id/buttonPrepare"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonTermuxPackages"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonInstallUbuntu"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonSyncOfficialDocs"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonUbuntuPackages"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonConfigureEntryUbuntu"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonInstallOpenCode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonInstallCodex"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonInstallClaudeCode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonInstallReasonix"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonDeepSeekKeyGuide"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonDeepSeekKeyConfig"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonRestartEntryTerminal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonStart"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonRestart"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonStartCustomPort"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonOpenBrowser"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
 
                 <TextView
+                    android:id="@+id/oneClickPrepareItem"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingExtra="2dp"
-                    android:text="@string/actions_legend"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="13sp" />
-
-                <Button
-                    android:id="@+id/buttonPrepare"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/button_prepare"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonTermuxPackages"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_termux_packages"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallUbuntu"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_ubuntu"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonSyncOfficialDocs"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_sync_official_docs"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonUbuntuPackages"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_ubuntu_packages"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonConfigureEntryUbuntu"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_configure_entry_ubuntu"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallOpenCode"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_opencode"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallCodex"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_codex"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallClaudeCode"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_claude_code"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonInstallReasonix"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_install_reasonix"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonDeepSeekKeyGuide"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_deepseek_key_guide"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonDeepSeekKeyConfig"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_configure_deepseek_key"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonRestartEntryTerminal"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_restart_entry_terminal"
-                    android:textAllCaps="false" />
+                    android:layout_height="wrap_content" />
 
                 <TextView
+                    android:id="@+id/oneClickUbuntuPackagesItem"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="@string/opencode_start_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/buttonStart"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_start"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonRestart"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_restart"
-                    android:textAllCaps="false" />
+                    android:layout_height="wrap_content" />
 
                 <TextView
+                    android:id="@+id/oneClickOpenCodeItem"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="@string/opencode_custom_port_title"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/buttonStartCustomPort"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_start_custom_port"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/buttonOpenBrowser"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_open_browser"
-                    android:textAllCaps="false" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/panel_bg"
-                android:orientation="vertical"
-                android:padding="16dp">
+                    android:layout_height="wrap_content" />
 
                 <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/quick_usage_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:id="@+id/oneClickCodexItem"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
 
                 <TextView
+                    android:id="@+id/oneClickClaudeCodeItem"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingExtra="2dp"
-                    android:text="@string/quick_usage_body"
-                    android:textColor="@color/textSecondary"
-                    android:textIsSelectable="true"
-                    android:textSize="13sp" />
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:id="@+id/oneClickSkillItem"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:id="@+id/oneClickStartItem"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonCopyOpenCodeUrl"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/button_copy_opencode_url"
-                    android:textAllCaps="false" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonCopyDeepSeekKeyUrl"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/button_copy_deepseek_key_url"
-                    android:textAllCaps="false" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/panel_bg"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/current_stage_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:layout_height="wrap_content" />
 
                 <TextView
                     android:id="@+id/currentStage"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/current_stage_placeholder"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="14sp" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonViewFullLog"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/button_view_full_log"
-                    android:textAllCaps="false" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/panel_bg"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/result_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:layout_height="wrap_content" />
 
                 <androidx.core.widget.NestedScrollView
                     android:id="@+id/liveLogScroll"
                     android:layout_width="match_parent"
-                    android:layout_height="220dp"
-                    android:layout_marginTop="10dp"
-                    android:fillViewport="true"
-                    android:scrollbars="vertical">
+                    android:layout_height="wrap_content">
 
                     <TextView
                         android:id="@+id/liveLog"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="monospace"
-                        android:lineSpacingExtra="2dp"
-                        android:text="@string/result_placeholder"
-                        android:textColor="@color/textSecondary"
-                        android:textIsSelectable="true"
-                        android:textSize="13sp" />
+                        android:layout_height="wrap_content" />
                 </androidx.core.widget.NestedScrollView>
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/panel_bg"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/local_maintenance_web_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/localMaintenanceWebSummary"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingExtra="2dp"
-                    android:text="@string/local_maintenance_web_summary"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="13sp" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonConfigureMaintenanceWebPort"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/button_configure_maintenance_web_port"
-                    android:textAllCaps="false" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonOpenMaintenanceWeb"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/button_open_maintenance_web"
-                    android:textAllCaps="false" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonStopMaintenanceWeb"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/button_stop_maintenance_web"
-                    android:textAllCaps="false" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/panel_bg"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/help_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:layout_height="wrap_content" />
 
                 <TextView
                     android:id="@+id/helpBody"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:lineSpacingExtra="3dp"
-                    android:textColor="@color/textSecondary"
-                    android:textIsSelectable="true"
-                    android:textSize="14sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/panel_bg"
-                android:orientation="vertical"
-                android:padding="16dp">
+                    android:layout_height="wrap_content" />
 
                 <TextView
                     android:id="@+id/statusHeadline"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
 
                 <TextView
                     android:id="@+id/statusBody"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:lineSpacingExtra="2dp"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="14sp" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonConfigureDefaultPort"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/button_configure_default_port"
-                    android:textAllCaps="false"
-                    android:visibility="gone" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/panel_bg"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/download_source_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:layout_height="wrap_content" />
 
                 <TextView
                     android:id="@+id/downloadSourceSummary"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingExtra="2dp"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="13sp" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonConfigureDownloadSource"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/button_configure_download_source"
-                    android:textAllCaps="false" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonProbeDownloadSource"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_probe_download_source"
-                    android:textAllCaps="false" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/panel_bg"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/maintenance_source_title"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:layout_height="wrap_content" />
 
                 <TextView
                     android:id="@+id/maintenanceSourceSummary"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingExtra="2dp"
-                    android:text="@string/maintenance_source_summary_loading"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="13sp" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonRefreshMaintenanceSource"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/button_refresh_maintenance_source"
-                    android:textAllCaps="false" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/buttonConfigureMaintenanceSource"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/button_configure_maintenance_source"
-                    android:textAllCaps="false" />
-            </LinearLayout>
+                    android:layout_height="wrap_content" />
 
-            <LinearLayout
-                android:id="@+id/dynamicPluginSections"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
-                android:orientation="vertical" />
+                <LinearLayout
+                    android:id="@+id/dynamicPluginSections"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 
@@ -824,7 +451,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/embedded_terminal_title"
+                android:text="@string/openhouse_maintenance_terminal_title"
                 android:textColor="@color/white"
                 android:textSize="16sp"
                 android:textStyle="bold" />

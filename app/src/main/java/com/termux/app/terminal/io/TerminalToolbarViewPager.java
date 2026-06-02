@@ -28,7 +28,7 @@ public class TerminalToolbarViewPager {
 
         @Override
         public int getCount() {
-            return 2;
+            return mActivity.getTermuxTerminalExtraKeys().getExtraKeysPageCount() + 1;
         }
 
         @Override
@@ -41,13 +41,15 @@ public class TerminalToolbarViewPager {
         public Object instantiateItem(@NonNull ViewGroup collection, int position) {
             LayoutInflater inflater = LayoutInflater.from(mActivity);
             View layout;
-            if (position == 0) {
+            int extraKeysPageCount = mActivity.getTermuxTerminalExtraKeys().getExtraKeysPageCount();
+            if (position < extraKeysPageCount) {
                 layout = inflater.inflate(R.layout.view_terminal_toolbar_extra_keys, collection, false);
+                layout.setTag(position);
                 ExtraKeysView extraKeysView = (ExtraKeysView) layout;
                 extraKeysView.setExtraKeysViewClient(mActivity.getTermuxTerminalExtraKeys());
-                extraKeysView.setButtonTextAllCaps(mActivity.getProperties().shouldExtraKeysTextBeAllCaps());
-                mActivity.setExtraKeysView(extraKeysView);
-                extraKeysView.reload(mActivity.getTermuxTerminalExtraKeys().getExtraKeysInfo(),
+                extraKeysView.setButtonTextAllCaps(shouldExtraKeysTextBeAllCaps());
+                if (position == 0) mActivity.setExtraKeysView(extraKeysView);
+                extraKeysView.reload(mActivity.getTermuxTerminalExtraKeys().getExtraKeysInfo(position),
                     mActivity.getTerminalToolbarDefaultHeight());
 
                 // apply extra keys fix if enabled in prefs
@@ -83,6 +85,10 @@ public class TerminalToolbarViewPager {
             return layout;
         }
 
+        private boolean shouldExtraKeysTextBeAllCaps() {
+            return mActivity.shouldExtraKeysTextBeAllCaps();
+        }
+
         @Override
         public void destroyItem(@NonNull ViewGroup collection, int position, @NonNull Object view) {
             collection.removeView((View) view);
@@ -104,12 +110,24 @@ public class TerminalToolbarViewPager {
 
         @Override
         public void onPageSelected(int position) {
-            if (position == 0) {
+            if (position < mActivity.getTermuxTerminalExtraKeys().getExtraKeysPageCount()) {
+                ExtraKeysView extraKeysView = findExtraKeysViewForPosition(position);
+                if (extraKeysView != null) mActivity.setExtraKeysView(extraKeysView);
                 mActivity.getTerminalView().requestFocus();
             } else {
                 final EditText editText = mTerminalToolbarViewPager.findViewById(R.id.terminal_toolbar_text_input);
                 if (editText != null) editText.requestFocus();
             }
+        }
+
+        private ExtraKeysView findExtraKeysViewForPosition(int position) {
+            for (int i = 0; i < mTerminalToolbarViewPager.getChildCount(); i++) {
+                View child = mTerminalToolbarViewPager.getChildAt(i);
+                Object tag = child.getTag();
+                if (child instanceof ExtraKeysView && tag instanceof Integer && ((Integer) tag) == position)
+                    return (ExtraKeysView) child;
+            }
+            return null;
         }
 
     }

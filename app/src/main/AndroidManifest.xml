@@ -74,6 +74,15 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <activity
+            android:name=".app.activities.OpenHouseHomeActivity"
+            android:exported="true"
+            android:label="@string/application_name"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
+            tools:targetApi="n" />
+
         <activity-alias
             android:name=".HomeActivity"
             android:exported="true"

@@ -33,6 +33,8 @@ import com.termux.app.OpenCodeCdpBridge;
 import com.termux.app.OpenHouseAgreement;
 import com.termux.app.OpenCodeSettings;
 import com.termux.app.api.file.FileReceiverActivity;
+import com.termux.app.openhouse.onboarding.OpenHouseOnboardingOverlay;
+import com.termux.app.openhouse.terminal.OpenHouseTerminalTutorial;
 import com.termux.app.terminal.TermuxActivityRootView;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
 import com.termux.app.terminal.io.TermuxTerminalExtraKeys;
@@ -47,6 +49,7 @@ import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY;
 import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.MaintenanceCenterActivity;
 import com.termux.app.activities.OpenHouseAgreementActivity;
+import com.termux.app.activities.OpenHouseHomeActivity;
 import com.termux.app.activities.SettingsActivity;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
@@ -188,6 +191,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private int mNavBarHeight;
 
     private float mTerminalToolbarDefaultHeight;
+    private boolean mPendingOpenHouseTerminalTutorial;
+    private boolean mOpenHouseTerminalTutorialShown;
+    private OpenHouseTerminalTutorial mOpenHouseTerminalTutorial;
+    private OpenHouseOnboardingOverlay mOpenHouseOnboardingOverlay;
 
 
     private static final int CONTEXT_MENU_SELECT_URL_ID = 0;
@@ -205,9 +212,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
+    private static final String ARG_OPENHOUSE_TERMINAL_TUTORIAL_PENDING = "openhouse_terminal_tutorial_pending";
+    private static final String ARG_OPENHOUSE_TERMINAL_TUTORIAL_SHOWN = "openhouse_terminal_tutorial_shown";
 
     private static final String LOG_TAG = "TermuxActivity";
     public static final String EXTRA_RESTART_ENTRY_SESSION = "com.termux.app.extra.RESTART_ENTRY_SESSION";
+    public static final String EXTRA_OPENHOUSE_TERMINAL_TUTORIAL = "com.termux.app.extra.OPENHOUSE_TERMINAL_TUTORIAL";
+    private static final String EXTRA_OPENHOUSE_TERMINAL_TEACHING = "com.termux.app.openhouse.extra.TERMINAL_TEACHING";
     private static final String PREF_QUICK_BUTTONS = "openhouse_quick_buttons";
     private static final String PREF_QUICK_BUTTONS_VISIBLE = "quick_buttons_visible";
     private static final String PREF_QUICK_HANDLE_LEFT = "quick_handle_left";
@@ -220,8 +231,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Logger.logDebug(LOG_TAG, "onCreate");
         mIsOnResumeAfterOnCreate = true;
 
-        if (savedInstanceState != null)
+        if (savedInstanceState != null) {
             mIsActivityRecreated = savedInstanceState.getBoolean(ARG_ACTIVITY_RECREATED, false);
+            mPendingOpenHouseTerminalTutorial = savedInstanceState.getBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_PENDING, false);
+            mOpenHouseTerminalTutorialShown = savedInstanceState.getBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_SHOWN, false);
+        } else {
+            mPendingOpenHouseTerminalTutorial = consumeOpenHouseTerminalTutorialRequest(getIntent());
+        }
 
         // Delete ReportInfo serialized object files from cache older than 14 days
         ReportActivity.deleteReportInfoFilesOlderThanXDays(this, 14, false);
@@ -272,11 +288,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setToggleKeyboardView();
 
+        setOpenHouseMenuButtonView();
+
         setOpenCodeQuickLaunchButtonView();
 
         setMaintenanceCenterButtonView();
 
         setQuickButtonsVisibilityHandleView();
+
+        setOpenHouseOnboardingOverlay();
 
         registerForContextMenu(mTerminalView);
 
@@ -342,6 +362,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mTermuxTerminalViewClient != null)
             mTermuxTerminalViewClient.onResume();
 
+        if (mOpenHouseOnboardingOverlay != null)
+            mOpenHouseOnboardingOverlay.onResume();
+
         // Check if a crash happened on last run of the app or if a plugin crashed and show a
         // notification with the crash details if it did
         TermuxCrashUtils.notifyAppCrashFromCrashLogFile(this, LOG_TAG);
@@ -391,6 +414,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             // ignore.
         }
 
+        if (mOpenHouseTerminalTutorial != null) {
+            mOpenHouseTerminalTutorial.dismiss();
+            mOpenHouseTerminalTutorial = null;
+        }
+
+        if (mOpenHouseOnboardingOverlay != null) {
+            mOpenHouseOnboardingOverlay.destroy();
+            mOpenHouseOnboardingOverlay = null;
+        }
+
         mOpenCodeLaunchExecutor.shutdownNow();
     }
 
@@ -401,6 +434,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         super.onSaveInstanceState(savedInstanceState);
         saveTerminalToolbarTextInput(savedInstanceState);
         savedInstanceState.putBoolean(ARG_ACTIVITY_RECREATED, true);
+        savedInstanceState.putBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_PENDING, mPendingOpenHouseTerminalTutorial);
+        savedInstanceState.putBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_SHOWN, mOpenHouseTerminalTutorialShown);
     }
 
 
@@ -426,6 +461,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (shouldRestartEntrySession(intent)) {
             mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
             restartEntryTerminalSession();
+            scheduleOpenHouseTerminalTutorialIfRequested();
             return;
         }
 
@@ -462,17 +498,23 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Update the {@link TerminalSession} and {@link TerminalEmulator} clients.
         mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
+        scheduleOpenHouseTerminalTutorialIfRequested();
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (consumeOpenHouseTerminalTutorialRequest(intent)) {
+            mPendingOpenHouseTerminalTutorial = true;
+            mOpenHouseTerminalTutorialShown = false;
+        }
         if (shouldRestartEntrySession(intent)) {
             setIntent(null);
             restartEntryTerminalSession();
         } else {
             setIntent(intent);
         }
+        scheduleOpenHouseTerminalTutorialIfRequested();
     }
 
     @Override
@@ -485,6 +527,32 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private boolean shouldRestartEntrySession(Intent intent) {
         return intent != null && intent.getBooleanExtra(EXTRA_RESTART_ENTRY_SESSION, false);
+    }
+
+    private boolean consumeOpenHouseTerminalTutorialRequest(@Nullable Intent intent) {
+        if (intent == null) return false;
+
+        boolean requested = intent.getBooleanExtra(EXTRA_OPENHOUSE_TERMINAL_TUTORIAL, false)
+            || intent.getBooleanExtra(EXTRA_OPENHOUSE_TERMINAL_TEACHING, false);
+        if (requested) {
+            intent.removeExtra(EXTRA_OPENHOUSE_TERMINAL_TUTORIAL);
+            intent.removeExtra(EXTRA_OPENHOUSE_TERMINAL_TEACHING);
+        }
+        return requested;
+    }
+
+    private void scheduleOpenHouseTerminalTutorialIfRequested() {
+        if (!mPendingOpenHouseTerminalTutorial || mOpenHouseTerminalTutorialShown || mIsInvalidState) return;
+        if (mTermuxService == null || mTermuxActivityRootView == null) return;
+
+        mPendingOpenHouseTerminalTutorial = false;
+        mOpenHouseTerminalTutorialShown = true;
+        mTermuxActivityRootView.post(() -> {
+            if (isFinishing() || mIsInvalidState) return;
+            if (mOpenHouseTerminalTutorial != null) mOpenHouseTerminalTutorial.dismiss();
+            mOpenHouseTerminalTutorial = new OpenHouseTerminalTutorial(this);
+            mOpenHouseTerminalTutorial.start();
+        });
     }
 
     private void restartEntryTerminalSession() {
@@ -669,6 +737,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
     }
 
+    private void setOpenHouseMenuButtonView() {
+        findViewById(R.id.openhouse_menu_button).setOnClickListener(v ->
+            ActivityUtils.startActivity(this, new Intent(this, OpenHouseHomeActivity.class)));
+    }
+
     private void setMaintenanceCenterButtonView() {
         findViewById(R.id.maintenance_center_button).setOnClickListener(v -> openMaintenanceCenterEntry());
     }
@@ -682,74 +755,52 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
     }
 
+    private void setOpenHouseOnboardingOverlay() {
+        ViewGroup container = findViewById(R.id.openhouse_onboarding_overlay_container);
+        if (container == null) return;
+
+        mOpenHouseOnboardingOverlay = new OpenHouseOnboardingOverlay(this, container, new OpenHouseOnboardingOverlay.Callbacks() {
+            @Override
+            public void onOpenDetail() {
+                openMaintenanceCenterEntry();
+            }
+
+            @Override
+            public void onStartTerminalTutorial() {
+                mPendingOpenHouseTerminalTutorial = true;
+                mOpenHouseTerminalTutorialShown = false;
+                scheduleOpenHouseTerminalTutorialIfRequested();
+            }
+        });
+        mOpenHouseOnboardingOverlay.attach();
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private void setQuickButtonsVisibilityHandleView() {
         View handle = findViewById(R.id.quick_buttons_visibility_handle);
-        View maintenanceButton = findViewById(R.id.maintenance_center_button);
-        View openCodeButton = findViewById(R.id.opencode_quick_launch_button);
-        SharedPreferences preferences = getSharedPreferences(PREF_QUICK_BUTTONS, MODE_PRIVATE);
+        if (handle == null) return;
 
-        applyQuickButtonsVisibility(preferences.getBoolean(PREF_QUICK_BUTTONS_VISIBLE, true));
+        SharedPreferences preferences = getSharedPreferences(PREF_QUICK_BUTTONS, MODE_PRIVATE);
+        boolean visible = preferences.getBoolean(PREF_QUICK_BUTTONS_VISIBLE, false);
+        applyQuickButtonsVisibility(visible);
+        handle.setVisibility(View.VISIBLE);
         restoreQuickButtonsHandlePosition(handle, preferences);
 
         handle.setOnClickListener(v -> {
-            boolean visible = maintenanceButton.getVisibility() != View.VISIBLE || openCodeButton.getVisibility() != View.VISIBLE;
-            preferences.edit().putBoolean(PREF_QUICK_BUTTONS_VISIBLE, visible).apply();
-            applyQuickButtonsVisibility(visible);
-        });
-
-        final float density = getResources().getDisplayMetrics().density;
-        final int touchSlop = Math.max(8, (int) (10 * density));
-        final float[] downRawX = new float[1];
-        final float[] downRawY = new float[1];
-        final int[] startLeft = new int[1];
-        final int[] startTop = new int[1];
-        final boolean[] dragging = new boolean[1];
-
-        handle.setOnTouchListener((view, event) -> {
-            View parent = (View) view.getParent();
-            if (parent == null) return false;
-
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    downRawX[0] = event.getRawX();
-                    downRawY[0] = event.getRawY();
-                    startLeft[0] = view.getLeft();
-                    startTop[0] = view.getTop();
-                    dragging[0] = false;
-                    return true;
-                case MotionEvent.ACTION_MOVE:
-                    int deltaX = Math.round(event.getRawX() - downRawX[0]);
-                    int deltaY = Math.round(event.getRawY() - downRawY[0]);
-                    if (!dragging[0] && Math.abs(deltaX) < touchSlop && Math.abs(deltaY) < touchSlop) {
-                        return false;
-                    }
-                    dragging[0] = true;
-                    moveQuickButtonsHandle(view, parent, startLeft[0] + deltaX, startTop[0] + deltaY);
-                    return true;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (dragging[0]) {
-                        preferences.edit()
-                            .putInt(PREF_QUICK_HANDLE_LEFT, view.getLeft())
-                            .putInt(PREF_QUICK_HANDLE_TOP, view.getTop())
-                            .apply();
-                        return true;
-                    }
-                    view.performClick();
-                    return true;
-                default:
-                    return false;
-            }
+            boolean nextVisible = findViewById(R.id.openhouse_menu_button).getVisibility() != View.VISIBLE;
+            applyQuickButtonsVisibility(nextVisible);
+            preferences.edit().putBoolean(PREF_QUICK_BUTTONS_VISIBLE, nextVisible).apply();
         });
     }
 
     private void applyQuickButtonsVisibility(boolean visible) {
+        View menuButton = findViewById(R.id.openhouse_menu_button);
         View maintenanceButton = findViewById(R.id.maintenance_center_button);
         View openCodeButton = findViewById(R.id.opencode_quick_launch_button);
-        int visibility = visible ? View.VISIBLE : View.INVISIBLE;
-        maintenanceButton.setVisibility(visibility);
-        openCodeButton.setVisibility(visibility);
+        int visibility = visible ? View.VISIBLE : View.GONE;
+        if (menuButton != null) menuButton.setVisibility(visibility);
+        if (maintenanceButton != null) maintenanceButton.setVisibility(visibility);
+        if (openCodeButton != null) openCodeButton.setVisibility(visibility);
     }
 
     private void restoreQuickButtonsHandlePosition(View handle, SharedPreferences preferences) {
@@ -1190,11 +1241,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     public boolean isTerminalViewSelected() {
-        return getTerminalToolbarViewPager().getCurrentItem() == 0;
+        return getTerminalToolbarViewPager().getCurrentItem() < mTermuxTerminalExtraKeys.getExtraKeysPageCount();
     }
 
     public boolean isTerminalToolbarTextInputViewSelected() {
-        return getTerminalToolbarViewPager().getCurrentItem() == 1;
+        return getTerminalToolbarViewPager().getCurrentItem() == mTermuxTerminalExtraKeys.getExtraKeysPageCount();
     }
 
 
@@ -1313,8 +1364,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             reloadProperties();
 
             if (mExtraKeysView != null) {
-                mExtraKeysView.setButtonTextAllCaps(mProperties.shouldExtraKeysTextBeAllCaps());
-                mExtraKeysView.reload(mTermuxTerminalExtraKeys.getExtraKeysInfo(), mTerminalToolbarDefaultHeight);
+                mExtraKeysView.setButtonTextAllCaps(shouldExtraKeysTextBeAllCaps());
+                int currentExtraKeysPage = Math.min(
+                    getTerminalToolbarViewPager().getCurrentItem(),
+                    Math.max(0, mTermuxTerminalExtraKeys.getExtraKeysPageCount() - 1)
+                );
+                mExtraKeysView.reload(mTermuxTerminalExtraKeys.getExtraKeysInfo(currentExtraKeysPage), mTerminalToolbarDefaultHeight);
             }
 
             // Update NightMode.APP_NIGHT_MODE
@@ -1339,6 +1394,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             Logger.logDebug(LOG_TAG, "Recreating activity");
             TermuxActivity.this.recreate();
         }
+    }
+
+    public boolean shouldExtraKeysTextBeAllCaps() {
+        return mTermuxTerminalExtraKeys != null
+            && !mTermuxTerminalExtraKeys.isUsingOpenHouseDefaultExtraKeys()
+            && mProperties.shouldExtraKeysTextBeAllCaps();
     }
 
 

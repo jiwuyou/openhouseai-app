@@ -39,6 +39,8 @@ import com.termux.app.OpenCodeCdpBridge;
 import com.termux.app.OpenCodeDownloadSourceSettings;
 import com.termux.app.OpenCodeSettings;
 import com.termux.app.TermuxActivity;
+import com.termux.app.openhouse.OpenHouseDeepSeekController;
+import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.shell.ShellUtils;
@@ -63,6 +65,10 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -89,6 +95,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final long TERMINAL_COMPLETION_SCAN_MIN_INTERVAL_MS = 500;
     private static final long TERMINAL_COMPLETION_POLL_INTERVAL_MS = 1000;
     private static final long ONE_CLICK_STATUS_REFRESH_INTERVAL_MS = 5000;
+    private static final long SHARED_INSTALL_PROGRESS_REFRESH_INTERVAL_MS = 1200;
+    private static final int SHARED_INSTALL_LOG_CHAR_LIMIT = 16000;
     private static final Pattern DONE_PATTERN = Pattern.compile("__TERMUX_MAINT_DONE__:([a-zA-Z0-9_-]+):(\\d+)");
     private static final String OFFICIAL_DOCS_ASSET_DIR = "openhouse/docs-public";
     private static final String BUNDLED_MAINTENANCE_PLUGIN_ASSET = "openhouse/plugins/original/openhouse-manifest.json";
@@ -133,11 +141,16 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private TextView downloadSourceSummaryView;
     private TextView maintenanceSourceSummaryView;
     private TextView localMaintenanceWebSummaryView;
+    private TextView sharedInstallProgressView;
+    private TextView sharedInstallDetailView;
+    private TextView sharedInstallLogView;
     private LinearLayout dynamicPluginSectionsContainer;
     private NestedScrollView liveLogScrollView;
+    private NestedScrollView sharedInstallLogScrollView;
     private SwitchCompat permissionBatteryButton;
     private SwitchCompat permissionOverlayButton;
     private SwitchCompat permissionStorageButton;
+    private Button returnHomeButton;
     private Button configureDefaultPortButton;
     private Button configureDownloadSourceButton;
     private Button probeDownloadSourceButton;
@@ -191,6 +204,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean openMaintenanceWebAfterStage;
     private boolean terminalTextUpdateScheduled;
     private boolean terminalCompletionPollScheduled;
+    private boolean sharedInstallControllerInitialized;
+    private boolean sharedInstallListening;
+    private boolean sharedInstallRunning;
     private long lastLiveLogRefreshUptimeMs;
     private long lastCompletionScanUptimeMs;
     private long lastOneClickStatusRefreshUptimeMs;
@@ -198,8 +214,21 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private MaintenanceManifest activeManifest;
     private String activeManifestError;
     private SharedPreferences maintenancePreferences;
+    private Object sharedInstallController;
+    private Object sharedInstallListener;
+    private Class<?> sharedInstallListenerClass;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable sharedInstallProgressRefreshRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!sharedInstallListening || !sharedInstallRunning || isFinishing() || isDestroyed()) {
+                return;
+            }
+            refreshSharedInstallState();
+            scheduleSharedInstallProgressRefresh();
+        }
+    };
     private final Object terminalUpdateLock = new Object();
     private final Runnable terminalCompletionPollRunnable = new Runnable() {
         @Override
@@ -254,7 +283,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         downloadSourceSummaryView = findViewById(R.id.downloadSourceSummary);
         maintenanceSourceSummaryView = findViewById(R.id.maintenanceSourceSummary);
         localMaintenanceWebSummaryView = findViewById(R.id.localMaintenanceWebSummary);
+        sharedInstallProgressView = findViewById(R.id.sharedInstallProgress);
+        sharedInstallDetailView = findViewById(R.id.sharedInstallDetail);
+        sharedInstallLogView = findViewById(R.id.sharedInstallLog);
         dynamicPluginSectionsContainer = findViewById(R.id.dynamicPluginSections);
+        sharedInstallLogScrollView = findViewById(R.id.sharedInstallLogScroll);
         permissionBatteryButton = findViewById(R.id.buttonPermissionBattery);
         permissionOverlayButton = findViewById(R.id.buttonPermissionOverlay);
         permissionStorageButton = findViewById(R.id.buttonPermissionStorage);
@@ -290,17 +323,22 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         oneClickStagePanel = findViewById(R.id.oneClickStagePanel);
         stageActionsPanel = findViewById(R.id.stageActionsPanel);
         terminalContainer = findViewById(R.id.maintenanceTerminalContainer);
+        returnHomeButton = findViewById(R.id.buttonReturnHome);
         maintenancePreferences = getSharedPreferences(PREFS_MAINTENANCE, MODE_PRIVATE);
 
         helpBodyView.setText(getString(R.string.help_body));
         currentStageView.setText(R.string.current_stage_placeholder);
         liveLogView.setText(R.string.result_placeholder);
+        if (returnHomeButton != null) {
+            returnHomeButton.setOnClickListener(v -> returnToHome());
+        }
+        initializeSharedInstallController();
 
         bindPermissionButtons();
         bindExecutionModeButtons();
         bindStageButtons();
         initializeStagePresentations();
-        configureDefaultPortButton.setOnClickListener(v -> showDefaultPortDialog());
+        configureDefaultPortButton.setVisibility(View.GONE);
         configureDownloadSourceButton.setOnClickListener(v -> showDownloadSourceModeDialog());
         probeDownloadSourceButton.setOnClickListener(v -> runOpenCodeSourceProbe(false));
         configureMaintenanceSourceButton.setOnClickListener(v -> showMaintenanceSourceDialog());
@@ -320,6 +358,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        startSharedInstallObservation();
         scheduleMaintenanceSessionInit();
         refreshStatus();
         requestStageStatusRefresh();
@@ -327,20 +366,30 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onPause() {
+        stopSharedInstallObservation();
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
-        super.onDestroy();
+        stopSharedInstallObservation();
+        mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
         maintenanceSessionInitPosted = false;
         terminalCompletionPollScheduled = false;
         mainHandler.removeCallbacks(terminalCompletionPollRunnable);
         backgroundExecutor.shutdownNow();
         try {
             if (maintenanceSession != null && maintenanceSession.getTerminalSession() != null) {
-                maintenanceSession.getTerminalSession().finishIfRunning();
-                maintenanceSession = null;
+                if (isPageOwnedTerminalIdle()) {
+                    maintenanceSession.getTerminalSession().finishIfRunning();
+                    maintenanceSession = null;
+                }
             }
         } catch (Throwable throwable) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to finish maintenance terminal session on destroy", throwable);
         }
+        super.onDestroy();
     }
 
     private void bindStageButtons() {
@@ -395,8 +444,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void showMaintenanceSourceDialog() {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -664,7 +713,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
 
         if (refreshMaintenanceSourceButton != null) {
-            refreshMaintenanceSourceButton.setEnabled(!commandInFlight);
+            refreshMaintenanceSourceButton.setEnabled(!isMaintenanceActionBlocked());
             refreshMaintenanceSourceButton.setAlpha(refreshMaintenanceSourceButton.isEnabled() ? 1.0f : 0.78f);
         }
     }
@@ -762,7 +811,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         Button button = new Button(this);
         button.setAllCaps(false);
         button.setText(description == null || description.isEmpty() ? label : label + "\n" + description);
-        button.setEnabled(!commandInFlight);
+        button.setEnabled(!isMaintenanceActionBlocked());
         button.setAlpha(button.isEnabled() ? 1.0f : 0.78f);
         button.setTextColor(ContextCompat.getColor(this, R.color.stageReadyText));
         button.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(this, R.color.stageReady)));
@@ -815,6 +864,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void startOneClickStages() {
+        if (sharedInstallRunning) {
+            Toast.makeText(this, "主界面安装正在运行，本页只显示同一个安装进度。", Toast.LENGTH_SHORT).show();
+            refreshSharedInstallState();
+            return;
+        }
+
         if (commandInFlight) {
             Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
             return;
@@ -916,6 +971,421 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         Toast.makeText(this, R.string.one_click_stage_toast_complete, Toast.LENGTH_SHORT).show();
     }
 
+    private void returnToHome() {
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
+
+        Intent intent = new Intent(this, TermuxActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(intent);
+        finish();
+    }
+
+    private void initializeSharedInstallController() {
+        if (sharedInstallControllerInitialized) {
+            return;
+        }
+
+        sharedInstallControllerInitialized = true;
+        try {
+            Class<?> controllerClass = Class.forName("com.termux.app.openhouse.OpenHouseInstallController");
+            sharedInstallListenerClass = Class.forName("com.termux.app.openhouse.OpenHouseInstallController$Listener");
+            Method getInstanceMethod = findMethod(controllerClass, "getInstance", android.content.Context.class);
+            if (getInstanceMethod == null) {
+                throw new NoSuchMethodException("OpenHouseInstallController.getInstance(Context)");
+            }
+
+            sharedInstallController = getInstanceMethod.invoke(null, getApplicationContext());
+            if (sharedInstallController == null) {
+                throw new IllegalStateException("OpenHouseInstallController.getInstance(Context) returned null");
+            }
+            InvocationHandler handler = (proxy, method, args) -> {
+                String methodName = method.getName();
+                if ("onInstallStateChanged".equals(methodName) && args != null && args.length == 1) {
+                    Object state = args[0];
+                    mainHandler.post(() -> applySharedInstallState(state));
+                    return null;
+                }
+                if ("toString".equals(methodName)) {
+                    return "MaintenanceCenter shared install listener";
+                }
+                if ("hashCode".equals(methodName)) {
+                    return System.identityHashCode(proxy);
+                }
+                if ("equals".equals(methodName)) {
+                    return proxy == (args == null || args.length == 0 ? null : args[0]);
+                }
+                return null;
+            };
+            sharedInstallListener = Proxy.newProxyInstance(
+                sharedInstallListenerClass.getClassLoader(),
+                new Class<?>[] { sharedInstallListenerClass },
+                handler
+            );
+            refreshSharedInstallState();
+        } catch (ClassNotFoundException e) {
+            showSharedInstallControllerUnavailable();
+        } catch (Throwable throwable) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to initialize shared install controller", throwable);
+            showSharedInstallControllerUnavailable();
+        }
+    }
+
+    private void startSharedInstallObservation() {
+        initializeSharedInstallController();
+        if (sharedInstallController == null || sharedInstallListener == null || sharedInstallListenerClass == null) {
+            return;
+        }
+
+        if (!sharedInstallListening) {
+            try {
+                Method addListenerMethod = findMethod(
+                    sharedInstallController.getClass(),
+                    "addListener",
+                    sharedInstallListenerClass
+                );
+                if (addListenerMethod == null) {
+                    throw new NoSuchMethodException("OpenHouseInstallController.addListener(Listener)");
+                }
+                addListenerMethod.invoke(sharedInstallController, sharedInstallListener);
+                sharedInstallListening = true;
+            } catch (Throwable throwable) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to observe shared install controller", throwable);
+            }
+        }
+        refreshSharedInstallState();
+    }
+
+    private void stopSharedInstallObservation() {
+        mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
+        if (!sharedInstallListening || sharedInstallController == null || sharedInstallListener == null
+            || sharedInstallListenerClass == null) {
+            sharedInstallListening = false;
+            return;
+        }
+
+        try {
+            Method removeListenerMethod = findMethod(
+                sharedInstallController.getClass(),
+                "removeListener",
+                sharedInstallListenerClass
+            );
+            if (removeListenerMethod != null) {
+                removeListenerMethod.invoke(sharedInstallController, sharedInstallListener);
+            }
+        } catch (Throwable throwable) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to stop observing shared install controller", throwable);
+        } finally {
+            sharedInstallListening = false;
+        }
+    }
+
+    private void refreshSharedInstallState() {
+        if (sharedInstallController == null) {
+            return;
+        }
+
+        try {
+            Method getStateMethod = findMethod(sharedInstallController.getClass(), "getState");
+            if (getStateMethod == null) {
+                throw new NoSuchMethodException("OpenHouseInstallController.getState()");
+            }
+            Object state = getStateMethod.invoke(sharedInstallController);
+            applySharedInstallState(state);
+        } catch (Throwable throwable) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read shared install state", throwable);
+        }
+    }
+
+    private void applySharedInstallState(Object state) {
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
+
+        if (state == null) {
+            sharedInstallRunning = false;
+            setSharedInstallText(
+                "详细进度：等待主界面安装状态",
+                "从主界面启动安装后，这里会显示同一个安装过程。"
+            );
+            refreshSharedInstallLogTail(false);
+            mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
+            updateExecutionModeViews();
+            return;
+        }
+
+        boolean running = readBooleanInstallState(state, "running", false);
+        boolean completed = readBooleanInstallState(state, "completed", false);
+        boolean failed = readBooleanInstallState(state, "failed", false);
+        int percent = readIntInstallState(state, "percent", -1);
+        String phaseLabel = readStringInstallState(state, "phaseLabel");
+        String detailText = readStringInstallState(state, "detailText");
+        String currentStage = readStringInstallState(state, "currentStageSlug");
+        boolean openCodeInstallPhase = isOpenCodeInstallPhase(currentStage, phaseLabel);
+
+        sharedInstallRunning = running;
+        String stateLabel;
+        if (running) {
+            stateLabel = "执行中";
+        } else if (completed) {
+            stateLabel = "已完成";
+        } else if (failed) {
+            stateLabel = "失败";
+        } else {
+            stateLabel = "待开始";
+        }
+
+        StringBuilder progress = new StringBuilder("详细进度：").append(stateLabel);
+        if (percent >= 0) {
+            progress.append(" · ").append(Math.max(0, Math.min(100, percent))).append('%');
+        }
+        if (!isBlank(phaseLabel)) {
+            progress.append(" · ").append(phaseLabel.trim());
+        }
+        if (openCodeInstallPhase) {
+            progress.append(" · ").append(getString(R.string.openhouse_install_phase_opencode_hint));
+        } else if (running || (!completed && !failed)) {
+            progress.append(" · ").append(getString(R.string.openhouse_install_phase_total_hint));
+        }
+
+        StringBuilder detail = new StringBuilder();
+        if (!isBlank(detailText)) {
+            detail.append(detailText.trim());
+        } else if (running) {
+            detail.append("主界面安装正在运行，本页只观察同一个安装过程。");
+        } else if (completed) {
+            detail.append("安装已完成。可留在本页查看日志，或返回终端主界面。");
+        } else if (failed) {
+            detail.append("安装失败。请查看下方共享日志或维护终端输出。");
+        } else {
+            detail.append("从主界面启动安装后，这里会显示同一个安装过程。");
+        }
+        appendSharedInstallEstimate(detail, openCodeInstallPhase, running, completed, failed);
+        if (!isBlank(currentStage)) {
+            detail.append('\n').append("阶段：").append(currentStage.trim());
+        }
+
+        setSharedInstallText(progress.toString(), detail.toString());
+        refreshSharedInstallLogTail(running || completed || failed);
+        updateExecutionModeViews();
+        if (running) {
+            scheduleSharedInstallProgressRefresh();
+        } else {
+            mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
+        }
+    }
+
+    private void showSharedInstallControllerUnavailable() {
+        sharedInstallRunning = false;
+        setSharedInstallText(
+            "详细进度：等待主界面安装状态",
+            "共享安装控制器尚未接入；接入后这里会显示主界面启动的同一个安装过程。"
+        );
+        if (sharedInstallLogView != null) {
+            sharedInstallLogView.setText("暂无共享安装日志。");
+        }
+        updateExecutionModeViews();
+    }
+
+    private void setSharedInstallText(String progress, String detail) {
+        if (sharedInstallProgressView != null) {
+            sharedInstallProgressView.setText(progress);
+        }
+        if (sharedInstallDetailView != null) {
+            sharedInstallDetailView.setText(detail);
+        }
+    }
+
+    private void refreshSharedInstallLogTail(boolean expectLog) {
+        if (sharedInstallLogView == null || sharedInstallController == null) {
+            return;
+        }
+
+        String logTail = null;
+        try {
+            Method getLogTailMethod = findMethod(sharedInstallController.getClass(), "getLogTail", int.class);
+            if (getLogTailMethod != null) {
+                Object value = getLogTailMethod.invoke(sharedInstallController, SHARED_INSTALL_LOG_CHAR_LIMIT);
+                if (value != null) {
+                    logTail = String.valueOf(value);
+                }
+            }
+        } catch (Throwable throwable) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read shared install log tail", throwable);
+        }
+
+        if (isBlank(logTail)) {
+            sharedInstallLogView.setText(expectLog ? "等待共享安装日志输出…" : "暂无共享安装日志。");
+            return;
+        }
+
+        sharedInstallLogView.setText(logTail);
+        if (sharedInstallLogScrollView != null) {
+            sharedInstallLogScrollView.post(() -> sharedInstallLogScrollView.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
+    private void scheduleSharedInstallProgressRefresh() {
+        mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
+        if (sharedInstallListening && sharedInstallRunning && !isFinishing() && !isDestroyed()) {
+            mainHandler.postDelayed(sharedInstallProgressRefreshRunnable, SHARED_INSTALL_PROGRESS_REFRESH_INTERVAL_MS);
+        }
+    }
+
+    private boolean readBooleanInstallState(Object state, String name, boolean defaultValue) {
+        Object value = readInstallStateProperty(state, name);
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        if (value instanceof String) {
+            return Boolean.parseBoolean((String) value);
+        }
+        return defaultValue;
+    }
+
+    private int readIntInstallState(Object state, String name, int defaultValue) {
+        Object value = readInstallStateProperty(state, name);
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        if (value instanceof String) {
+            try {
+                return Integer.parseInt(((String) value).trim());
+            } catch (NumberFormatException ignored) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
+    }
+
+    private String readStringInstallState(Object state, String name) {
+        Object value = readInstallStateProperty(state, name);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Object readInstallStateProperty(Object state, String name) {
+        if (state == null || isBlank(name)) {
+            return null;
+        }
+
+        String suffix = Character.toUpperCase(name.charAt(0)) + name.substring(1);
+        String[] methodNames = new String[] {
+            "get" + suffix,
+            "is" + suffix,
+            name
+        };
+
+        for (String methodName : methodNames) {
+            try {
+                Method method = findMethod(state.getClass(), methodName);
+                if (method != null) {
+                    return method.invoke(state);
+                }
+            } catch (Throwable ignored) {
+                // Try the next accessor shape.
+            }
+        }
+
+        try {
+            Field field = findField(state.getClass(), name);
+            if (field != null) {
+                return field.get(state);
+            }
+        } catch (Throwable ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private Method findMethod(Class<?> type, String name, Class<?>... parameterTypes) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                Method method = current.getDeclaredMethod(name, parameterTypes);
+                method.setAccessible(true);
+                return method;
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
+    }
+
+    private Field findField(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                Field field = current.getDeclaredField(name);
+                field.setAccessible(true);
+                return field;
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private boolean isOpenCodeInstallPhase(String currentStage, String phaseLabel) {
+        return "install_opencode".equals(currentStage)
+            || (phaseLabel != null && (phaseLabel.contains("OpenCode") || phaseLabel.contains("opencode")));
+    }
+
+    private void appendSharedInstallEstimate(StringBuilder detail, boolean openCodeInstallPhase,
+                                             boolean running, boolean completed, boolean failed) {
+        if (detail == null) {
+            return;
+        }
+        String existingDetail = detail.toString();
+        if (existingDetail.contains("当前是 OpenCode 安装阶段")
+            || (existingDetail.contains("全程预计约30分钟") && !openCodeInstallPhase)) {
+            return;
+        }
+
+        String estimate = null;
+        if (openCodeInstallPhase) {
+            estimate = getString(R.string.openhouse_install_estimate_opencode);
+        } else if (running) {
+            estimate = getString(R.string.openhouse_install_estimate_total)
+                + " "
+                + getString(R.string.openhouse_install_estimate_tail);
+        } else if (!completed && !failed) {
+            estimate = getString(R.string.openhouse_install_estimate_total);
+        }
+
+        if (estimate == null) {
+            return;
+        }
+        if (detail.length() > 0) {
+            detail.append(' ');
+        }
+        detail.append(estimate);
+    }
+
+    private boolean isMaintenanceActionBlocked() {
+        return commandInFlight || sharedInstallRunning;
+    }
+
+    private void showMaintenanceActionBlockedToast() {
+        if (sharedInstallRunning) {
+            Toast.makeText(this, "主界面安装正在运行，本页只显示同一个安装进度。", Toast.LENGTH_SHORT).show();
+            refreshSharedInstallState();
+            return;
+        }
+        Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+    }
+
+    private boolean isPageOwnedTerminalIdle() {
+        return !commandInFlight && !oneClickStagesInFlight && !oneClickRemoteProbeInFlight;
+    }
+
     private void updateExecutionModeViews() {
         if (oneClickStagePanel != null) {
             oneClickStagePanel.setVisibility(oneClickStageMode ? View.VISIBLE : View.GONE);
@@ -928,18 +1398,23 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         applyModeButtonState(stageOneClickModeButton, oneClickStageMode);
 
         if (startOneClickStagesButton != null) {
-            startOneClickStagesButton.setText(oneClickStagesInFlight
-                ? R.string.button_stop_one_click_stages
-                : R.string.button_start_one_click_stages);
-            startOneClickStagesButton.setEnabled(oneClickStagesInFlight || (!commandInFlight && !isBatteryRequirementBlocking()));
+            if (sharedInstallRunning) {
+                startOneClickStagesButton.setText("主界面安装进行中");
+            } else {
+                startOneClickStagesButton.setText(oneClickStagesInFlight
+                    ? R.string.button_stop_one_click_stages
+                    : R.string.button_start_one_click_stages);
+            }
+            startOneClickStagesButton.setEnabled(!sharedInstallRunning
+                && (oneClickStagesInFlight || (!commandInFlight && !isBatteryRequirementBlocking())));
             startOneClickStagesButton.setAlpha(startOneClickStagesButton.isEnabled() ? 1.0f : 0.78f);
             startOneClickStagesButton.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(
                 this,
-                oneClickStagesInFlight ? R.color.stageRunning : R.color.stageComplete
+                sharedInstallRunning || oneClickStagesInFlight ? R.color.stageRunning : R.color.stageComplete
             )));
             startOneClickStagesButton.setTextColor(ContextCompat.getColor(
                 this,
-                oneClickStagesInFlight ? R.color.stageRunningText : R.color.stageOnDark
+                sharedInstallRunning || oneClickStagesInFlight ? R.color.stageRunningText : R.color.stageOnDark
             ));
         }
         updateOneClickStageItems();
@@ -1130,6 +1605,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageUiState state = presentation == null ? StageUiState.CHECKING : presentation.state;
         boolean complete = state == StageUiState.COMPLETE;
         boolean enabled = !commandInFlight
+            && !sharedInstallRunning
             && !oneClickStagesInFlight
             && state != StageUiState.CHECKING
             && state != StageUiState.BLOCKED;
@@ -1439,7 +1915,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private void applyModeButtonState(Button button, boolean active) {
         if (button == null) return;
-        button.setEnabled(!commandInFlight && !oneClickStagesInFlight);
+        button.setEnabled(!isMaintenanceActionBlocked() && !oneClickStagesInFlight);
         button.setAlpha(button.isEnabled() ? 1.0f : 0.78f);
         button.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(
             this,
@@ -1554,6 +2030,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void runStage(StageAction stageAction, boolean skipPreflightRefresh) {
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
+            return;
+        }
+
         if (stageAction == StageAction.REQUEST_DEEPSEEK_KEY) {
             showDeepSeekKeyGuideDialog();
             return;
@@ -1658,8 +2139,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void runRemoteBootstrapAction(String stageSlug, String stageLabel, BootstrapAction action) {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -1757,8 +2238,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void runLocalMaintenanceScript(String stageSlug, String stageLabel, String scriptBody) {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -1799,8 +2280,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void runBootstrapAction(String stageSlug, String stageLabel, BootstrapAction action, String bootstrapUrl) {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -1990,8 +2471,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void showLocalMaintenanceWebPortDialog() {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -2050,7 +2531,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             .replace("__BOOTSTRAP_URL__", getBootstrapUrlForLocalMaintenance())
             .replace("__REQUIRED_COMPONENT_TARGETS__", stageAction.requiredComponentTargets == null ? "" : stageAction.requiredComponentTargets)
             .replace("__LOCAL_MAINTENANCE_WEB_PORT__", Integer.toString(getLocalMaintenanceWebPort()))
-            .replace("__DEEPSEEK_KEY_FILE__", getDeepSeekKeyTempFile().getAbsolutePath())
+            .replace("__DEEPSEEK_KEY_FILE__", OpenHouseStatusRepository.getDeepSeekKeyTempFile().getAbsolutePath())
             .replace("__BUNDLED_OFFICIAL_DOCS__", buildBundledAssetWriteSnippet(OFFICIAL_DOCS_ASSET_DIR, "OFFICIAL_DOC_DIR"))
             .replace("__OPENCODE_INSTALL_PRIMARY_URL__", installSpec.primaryUrl)
             .replace("__OPENCODE_INSTALL_PRIMARY_LABEL__", installSpec.primaryLabel)
@@ -2095,8 +2576,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void showDeepSeekKeyConfigDialog() {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -2124,13 +2605,19 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void runDeepSeekKeyConfig(String apiKey) {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
         try {
-            writeDeepSeekKeyTempFile(apiKey);
+            OpenHouseDeepSeekController.SaveResult saveResult =
+                OpenHouseDeepSeekController.getInstance(this).prepareKeyForTerminalConfiguration(apiKey);
+            if (!saveResult.isSuccess()) {
+                Toast.makeText(this, saveResult.message, Toast.LENGTH_SHORT).show();
+                refreshStatus();
+                return;
+            }
             String command = buildAssetExecutionCommand(
                 StageAction.CONFIGURE_DEEPSEEK,
                 StageAction.CONFIGURE_DEEPSEEK.label(this),
@@ -2171,28 +2658,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
     }
 
-    private void writeDeepSeekKeyTempFile(String apiKey) throws IOException {
-        File keyFile = getDeepSeekKeyTempFile();
-        File parent = keyFile.getParentFile();
-        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
-            throw new IOException("无法创建目录：" + parent.getAbsolutePath());
-        }
-        try (FileOutputStream outputStream = new FileOutputStream(keyFile, false)) {
-            outputStream.write(apiKey.getBytes(StandardCharsets.UTF_8));
-        }
-        keyFile.setReadable(false, false);
-        keyFile.setWritable(false, false);
-        keyFile.setReadable(true, true);
-        keyFile.setWritable(true, true);
-    }
-
-    private File getDeepSeekKeyTempFile() {
-        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".maintainer-logs/deepseek-api-key.tmp");
-    }
-
     private void showCustomPortDialog() {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -2224,42 +2692,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             .show();
     }
 
-    private void showDefaultPortDialog() {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER);
-        input.setHint(getString(R.string.custom_port_dialog_hint));
-        input.setText(Integer.toString(getDefaultOpenCodePort()));
-        input.setSelection(input.getText().length());
-
-        new AlertDialog.Builder(this)
-            .setTitle(R.string.button_configure_default_port)
-            .setView(input)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                String value = input.getText() == null ? "" : input.getText().toString().trim();
-                int port;
-                try {
-                    port = Integer.parseInt(value);
-                } catch (NumberFormatException e) {
-                    Toast.makeText(this, R.string.custom_port_invalid, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                if (!OpenCodeSettings.isValidPort(port)) {
-                    Toast.makeText(this, R.string.custom_port_invalid, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
-                OpenCodeSettings.setDefaultPort(this, port);
-                Toast.makeText(this, getString(R.string.default_port_saved, port), Toast.LENGTH_SHORT).show();
-                refreshStatus();
-                requestStageStatusRefresh();
-            })
-            .show();
-    }
-
     private void showDownloadSourceModeDialog() {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -2285,8 +2720,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void runCustomPortStart(int port) {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -2500,7 +2935,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         if (disableBatteryRequirementSwitch != null) {
             boolean disableRequirement = !isBatteryRequirementEnabled();
             disableBatteryRequirementSwitch.setChecked(disableRequirement);
-            disableBatteryRequirementSwitch.setEnabled(!commandInFlight);
+            disableBatteryRequirementSwitch.setEnabled(!isMaintenanceActionBlocked());
             disableBatteryRequirementSwitch.setAlpha(disableBatteryRequirementSwitch.isEnabled() ? 1.0f : 0.78f);
         }
         if (permissionRequirementHintView != null) {
@@ -2515,7 +2950,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         button.setText(label + " · " + tag + "\n" + (granted ? grantedDetail : missingDetail));
         button.setChecked(granted);
-        button.setEnabled(!commandInFlight);
+        button.setEnabled(!isMaintenanceActionBlocked());
         button.setAlpha(button.isEnabled() ? 1.0f : 0.78f);
     }
 
@@ -2536,12 +2971,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         if (configureDownloadSourceButton != null) {
             configureDownloadSourceButton.setText(getString(R.string.button_configure_download_source_with_value, getDownloadSourceModeLabel(mode)));
-            configureDownloadSourceButton.setEnabled(!commandInFlight);
+            configureDownloadSourceButton.setEnabled(!isMaintenanceActionBlocked());
             configureDownloadSourceButton.setAlpha(configureDownloadSourceButton.isEnabled() ? 1.0f : 0.78f);
         }
 
         if (probeDownloadSourceButton != null) {
-            probeDownloadSourceButton.setEnabled(!commandInFlight);
+            probeDownloadSourceButton.setEnabled(!isMaintenanceActionBlocked());
             probeDownloadSourceButton.setAlpha(probeDownloadSourceButton.isEnabled() ? 1.0f : 0.78f);
         }
     }
@@ -2557,15 +2992,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
         if (configureMaintenanceWebPortButton != null) {
             configureMaintenanceWebPortButton.setText(getString(R.string.button_configure_maintenance_web_port, port));
-            configureMaintenanceWebPortButton.setEnabled(!commandInFlight);
+            configureMaintenanceWebPortButton.setEnabled(!isMaintenanceActionBlocked());
             configureMaintenanceWebPortButton.setAlpha(configureMaintenanceWebPortButton.isEnabled() ? 1.0f : 0.78f);
         }
         if (openMaintenanceWebButton != null) {
-            openMaintenanceWebButton.setEnabled(!commandInFlight);
+            openMaintenanceWebButton.setEnabled(!isMaintenanceActionBlocked());
             openMaintenanceWebButton.setAlpha(openMaintenanceWebButton.isEnabled() ? 1.0f : 0.78f);
         }
         if (stopMaintenanceWebButton != null) {
-            stopMaintenanceWebButton.setEnabled(!commandInFlight);
+            stopMaintenanceWebButton.setEnabled(!isMaintenanceActionBlocked());
             stopMaintenanceWebButton.setAlpha(stopMaintenanceWebButton.isEnabled() ? 1.0f : 0.78f);
         }
     }
@@ -2632,8 +3067,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void runOpenCodeSourceProbe(boolean continueWithInstall) {
-        if (commandInFlight) {
-            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
             return;
         }
 
@@ -2897,9 +3332,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean batteryRequirementBlocking = isBatteryRequirementBlocking();
 
         if (configureDefaultPortButton != null) {
-            configureDefaultPortButton.setText(getString(R.string.button_configure_default_port_with_value, getDefaultOpenCodePort()));
-            configureDefaultPortButton.setEnabled(!commandInFlight);
-            configureDefaultPortButton.setAlpha(configureDefaultPortButton.isEnabled() ? 1.0f : 0.78f);
+            configureDefaultPortButton.setVisibility(View.GONE);
         }
 
         updateDownloadSourceCard();
@@ -2915,7 +3348,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             button.setText(presentation.buttonText(this, stageAction));
             button.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(this, presentation.backgroundColorRes)));
             button.setTextColor(ContextCompat.getColor(this, presentation.textColorRes));
-            button.setEnabled(!commandInFlight
+            button.setEnabled(!isMaintenanceActionBlocked()
                 && (!batteryRequirementBlocking || stageAction.isUiOnly())
                 && presentation.state != StageUiState.CHECKING
                 && presentation.state != StageUiState.BLOCKED);
@@ -2923,7 +3356,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
 
         if (customPortButton != null) {
-            customPortButton.setEnabled(!commandInFlight && !batteryRequirementBlocking);
+            customPortButton.setEnabled(!isMaintenanceActionBlocked() && !batteryRequirementBlocking);
             customPortButton.setAlpha(customPortButton.isEnabled() ? 1.0f : 0.78f);
         }
     }
@@ -3462,6 +3895,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                         oneClickStageSummaryView.setText(R.string.one_click_stage_summary_complete);
                     }
                     Toast.makeText(this, R.string.one_click_stage_toast_complete, Toast.LENGTH_SHORT).show();
+                    return;
                 } else if (foundExitCode != 0) {
                     oneClickStagesInFlight = false;
                     if (oneClickStageSummaryView != null) {

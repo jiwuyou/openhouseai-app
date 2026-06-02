@@ -10,10 +10,15 @@ is_web_ready() {
 require_ubuntu
 
 stop_opencode_port() {
-  run_ubuntu_logged bash -lc "set -euo pipefail; pids=''; while read -r pid comm args; do [ -n \"\$pid\" ] || continue; case \"\$comm\" in opencode*) ;; *) continue ;; esac; case \" \$args \" in *' web '*\"--port $PORT\"*) pids=\"\$pids \$pid\" ;; esac; done < <(ps -eo pid=,comm=,args=); if [ -n \"\$pids\" ]; then kill \$pids 2>/dev/null || true; sleep 1; kill -9 \$pids 2>/dev/null || true; fi"
+  run_ubuntu_logged bash -lc "set -euo pipefail; pids=''; self=\$\$; while read -r pid comm args; do [ -n \"\$pid\" ] || continue; [ \"\$pid\" = \"\$self\" ] && continue; case \"\$comm\" in bash|sh|dash|ps|grep|awk|sed) continue ;; esac; case \" \$args \" in *opencode*' web '*) ;; *) continue ;; esac; case \" \$args \" in *' --port $PORT '*|*' --port=$PORT '*) pids=\"\$pids \$pid\" ;; esac; done < <(ps -eo pid=,comm=,args=); if [ -n \"\$pids\" ]; then kill \$pids 2>/dev/null || true; sleep 1; kill -9 \$pids 2>/dev/null || true; fi"
 }
 
-log "正在重启 OpenCode 网页服务，端口 $PORT"
+ensure_opencode_configuration_path() {
+  run_ubuntu_logged bash -lc "set -euo pipefail; mkdir -p \"\$HOME/.config/openhouseai\" \"\$HOME/.config/opencode\" \"\$HOME/workspace\"; printf '%s\n' '/root' > \"\$HOME/.config/openhouseai/opencode-project-directory\"; printf '%s\n' '$PORT' > \"\$HOME/.config/openhouseai/opencode-port\""
+}
+
+log "正在重启 OpenCode 网页服务，端口 $PORT，启动目录为 Ubuntu /root"
+ensure_opencode_configuration_path
 run_ubuntu_logged bash -lc "set -euo pipefail; export PATH=\"\$HOME/.local/node/bin:\$HOME/.npm-global/bin:\$HOME/.opencode/bin:\$HOME/.local/bin:\$PATH\"; if ! command -v opencode >/dev/null 2>&1 && ! test -x \"\$HOME/.opencode/bin/opencode\"; then echo '尚未安装 OpenCode，请先执行“下载 OpenCode”。' >&2; exit 3; fi"
 stop_opencode_port
 sleep 1

@@ -1,4 +1,7 @@
-KEY_FILE="__DEEPSEEK_KEY_FILE__"
+set +x
+umask 077
+
+KEY_FILE="${OPENHOUSEAI_DEEPSEEK_KEY_FILE:-__DEEPSEEK_KEY_FILE__}"
 
 require_ubuntu
 

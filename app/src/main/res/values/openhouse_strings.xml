@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="openhouse_home_title">OpenHouseAI</string>
+    <string name="openhouse_home_subtitle">兼容入口</string>
+    <string name="openhouse_drawer_title">OpenHouseAI</string>
+    <string name="openhouse_drawer_subtitle">本机 AI 编程环境</string>
+    <string name="openhouse_action_menu">菜单</string>
+    <string name="openhouse_action_close">关闭</string>
+    <string name="openhouse_action_advanced_short">高级</string>
+    <string name="openhouse_nav_home">兼容入口</string>
+    <string name="openhouse_nav_manual">使用手册</string>
+    <string name="openhouse_nav_opencode">OpenCode 入口</string>
+    <string name="openhouse_nav_terminal_guide">终端教学</string>
+    <string name="openhouse_nav_shortcuts">终端快捷键</string>
+    <string name="openhouse_nav_repair">维护与修复</string>
+    <string name="openhouse_nav_logs">日志</string>
+    <string name="openhouse_nav_advanced">高级设置</string>
+    <string name="openhouse_nav_terminal">回到终端</string>
+    <string name="openhouse_return_terminal_main">返回终端主界面</string>
+    <string name="openhouse_shared_install_waiting">详细进度：等待主界面安装状态</string>
+    <string name="openhouse_shared_install_waiting_detail">从主界面启动安装后，这里会显示同一个安装过程。</string>
+    <string name="openhouse_maintenance_terminal_title">底部 Termux 终端</string>
+    <string name="openhouse_status_checking">正在检查本机状态…</string>
+    <string name="openhouse_status_unknown">尚未完成检查</string>
+    <string name="openhouse_clipboard_copied">已复制：%1$s</string>
+    <string name="openhouse_url_opencode_label">OpenCode 地址</string>
+    <string name="openhouse_url_manual">https://jiwuyou.github.io/openhouseai-docs/</string>
+    <string name="openhouse_deepseek_url">https://platform.deepseek.com/api_keys</string>
+    <string name="openhouse_opencode_action_running">OpenCode 操作执行中，请稍候。</string>
+    <string name="openhouse_opencode_action_failed">OpenCode 操作失败，请查看日志。</string>
+    <string name="openhouse_browser_unavailable">没有可用浏览器，地址已复制。</string>
+    <string name="openhouse_install_phase_total_hint">全程约30分钟</string>
+    <string name="openhouse_install_phase_opencode_hint">OpenCode 约12分钟</string>
+    <string name="openhouse_install_estimate_total" formatted="false">全程预计约30分钟；OpenCode 安装约占40%、通常约12分钟，其他阶段按剩余时间均分。</string>
+    <string name="openhouse_install_estimate_tail" formatted="false">阶段末尾约10%会慢速增加，属于收尾等待。</string>
+    <string name="openhouse_install_estimate_opencode" formatted="false">当前是 OpenCode 安装阶段，通常耗时较长，预计约12分钟；阶段末尾约10%会慢速增加，请保持应用运行。</string>
+</resources>

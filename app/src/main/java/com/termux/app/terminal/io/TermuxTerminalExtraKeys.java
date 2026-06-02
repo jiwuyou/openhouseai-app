@@ -23,12 +23,31 @@ import org.json.JSONException;
 public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
 
     private ExtraKeysInfo mExtraKeysInfo;
+    private ExtraKeysInfo[] mExtraKeysInfos = new ExtraKeysInfo[0];
+    private boolean mUsingOpenHouseDefaultExtraKeys;
 
     final TermuxActivity mActivity;
     final TermuxTerminalViewClient mTermuxTerminalViewClient;
     final TermuxTerminalSessionActivityClient mTermuxTerminalSessionActivityClient;
 
     private static final String LOG_TAG = "TermuxTerminalExtraKeys";
+    private static final String OPENHOUSE_EXTRA_KEYS_PAGE_ONE =
+        "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP'], " +
+            "['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN'], " +
+            "[{key: 'claude ', display: 'claude'}, {key: 'reasonix ', display: 'reasonix'}, " +
+            "{key: 'codex ', display: 'codex'}, {key: 'oc ', display: 'oc'}, " +
+            "{key: '--continue', display: '--continue'}]]";
+    private static final String OPENHOUSE_EXTRA_KEYS_PAGE_TWO =
+        "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP'], " +
+            "['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN'], " +
+            "[{key: 'claude --continue', display: 'claude\\n--continue'}, " +
+            "{key: 'codex --continue', display: 'codex\\n--continue'}, " +
+            "{key: 'reasonix --continue', display: 'reasonix\\n--continue'}, " +
+            "{key: 'oc --continue', display: 'oc\\n--continue'}]]";
+    private static final String[] OPENHOUSE_DEFAULT_EXTRA_KEYS = new String[] {
+        OPENHOUSE_EXTRA_KEYS_PAGE_ONE,
+        OPENHOUSE_EXTRA_KEYS_PAGE_TWO
+    };
 
     public TermuxTerminalExtraKeys(TermuxActivity activity, @NonNull TerminalView terminalView,
                                    TermuxTerminalViewClient termuxTerminalViewClient,
@@ -48,6 +67,8 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
      */
     private void setExtraKeys() {
         mExtraKeysInfo = null;
+        mExtraKeysInfos = new ExtraKeysInfo[0];
+        mUsingOpenHouseDefaultExtraKeys = false;
 
         try {
             // The mMap stores the extra key and style string values while loading properties
@@ -55,6 +76,7 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
             // {@link #getExtraKeysStyleInternalPropertyValueFromValue(String)}
             String extrakeys = (String) mActivity.getProperties().getInternalPropertyValue(TermuxPropertyConstants.KEY_EXTRA_KEYS, true);
             String extraKeysStyle = (String) mActivity.getProperties().getInternalPropertyValue(TermuxPropertyConstants.KEY_EXTRA_KEYS_STYLE, true);
+            String userExtraKeys = mActivity.getProperties().getPropertyValue(TermuxPropertyConstants.KEY_EXTRA_KEYS, null, true);
 
             ExtraKeysConstants.ExtraKeyDisplayMap extraKeyDisplayMap = ExtraKeysInfo.getCharDisplayMapForStyle(extraKeysStyle);
             if (ExtraKeysConstants.EXTRA_KEY_DISPLAY_MAPS.DEFAULT_CHAR_DISPLAY.equals(extraKeyDisplayMap) && !TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS_STYLE.equals(extraKeysStyle)) {
@@ -62,23 +84,44 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
                 extraKeysStyle = TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS_STYLE;
             }
 
-            mExtraKeysInfo = new ExtraKeysInfo(extrakeys, extraKeysStyle, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+            mUsingOpenHouseDefaultExtraKeys = userExtraKeys == null;
+            String[] extraKeysPages = mUsingOpenHouseDefaultExtraKeys ? OPENHOUSE_DEFAULT_EXTRA_KEYS : new String[] { extrakeys };
+            mExtraKeysInfos = new ExtraKeysInfo[extraKeysPages.length];
+            for (int i = 0; i < extraKeysPages.length; i++)
+                mExtraKeysInfos[i] = new ExtraKeysInfo(extraKeysPages[i], extraKeysStyle, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+            mExtraKeysInfo = mExtraKeysInfos.length == 0 ? null : mExtraKeysInfos[0];
         } catch (JSONException e) {
             Logger.showToast(mActivity, "Could not load and set the \"" + TermuxPropertyConstants.KEY_EXTRA_KEYS + "\" property from the properties file: " + e.toString(), true);
             Logger.logStackTraceWithMessage(LOG_TAG, "Could not load and set the \"" + TermuxPropertyConstants.KEY_EXTRA_KEYS + "\" property from the properties file: ", e);
 
             try {
                 mExtraKeysInfo = new ExtraKeysInfo(TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS, TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS_STYLE, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+                mExtraKeysInfos = new ExtraKeysInfo[] { mExtraKeysInfo };
+                mUsingOpenHouseDefaultExtraKeys = false;
             } catch (JSONException e2) {
                 Logger.showToast(mActivity, "Can't create default extra keys",true);
                 Logger.logStackTraceWithMessage(LOG_TAG, "Could create default extra keys: ", e);
                 mExtraKeysInfo = null;
+                mExtraKeysInfos = new ExtraKeysInfo[0];
             }
         }
     }
 
     public ExtraKeysInfo getExtraKeysInfo() {
         return mExtraKeysInfo;
+    }
+
+    public ExtraKeysInfo getExtraKeysInfo(int page) {
+        if (page < 0 || page >= mExtraKeysInfos.length) return null;
+        return mExtraKeysInfos[page];
+    }
+
+    public int getExtraKeysPageCount() {
+        return mExtraKeysInfos.length;
+    }
+
+    public boolean isUsingOpenHouseDefaultExtraKeys() {
+        return mUsingOpenHouseDefaultExtraKeys;
     }
 
     @SuppressLint("RtlHardcoded")
