@@ -55,7 +55,6 @@ public final class OpenHouseOnboardingOverlay {
     private final FrameLayout rootView;
     private final LinearLayout progressContainer;
     private final TextView kickerView;
-    private final TextView iconView;
     private final TextView titleView;
     private final TextView bodyView;
     private final LinearLayout contentView;
@@ -108,7 +107,6 @@ public final class OpenHouseOnboardingOverlay {
 
         progressContainer = rootView.findViewById(R.id.openhouse_onboarding_progress_container);
         kickerView = rootView.findViewById(R.id.openhouse_onboarding_kicker);
-        iconView = rootView.findViewById(R.id.openhouse_onboarding_icon);
         titleView = rootView.findViewById(R.id.openhouse_onboarding_title);
         bodyView = rootView.findViewById(R.id.openhouse_onboarding_body);
         contentView = rootView.findViewById(R.id.openhouse_onboarding_content);
@@ -218,7 +216,6 @@ public final class OpenHouseOnboardingOverlay {
 
         renderProgress();
         kickerView.setText((currentStep.ordinal() + 1) + "/7 " + currentStep.label);
-        iconView.setText(currentStep.icon);
         titleView.setText(currentStep.title);
         bodyView.setText(currentStep.body);
 
@@ -311,6 +308,7 @@ public final class OpenHouseOnboardingOverlay {
             R.drawable.ic_openhouse_play,
             v -> startInstall());
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
+        addForceRestartInstallButtonIfNeeded();
     }
 
     private void renderReadingGuideStep() {
@@ -392,6 +390,7 @@ public final class OpenHouseOnboardingOverlay {
         addProgressBar(getDisplayedInstallPercent(), "OpenCode 安装约 12 分钟，占整体进度 40%；其他阶段均分剩余时间。");
         addReadingGuide(true, false);
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
+        addForceRestartInstallButtonIfNeeded();
     }
 
     private void renderConfigureDeepSeekStep() {
@@ -491,6 +490,32 @@ public final class OpenHouseOnboardingOverlay {
         installState = runtime.getInstallState();
         Toast.makeText(activity, started ? "初始化已开始。" : "初始化已经在运行。", Toast.LENGTH_SHORT).show();
         setCurrentStep(Step.READING_GUIDE);
+    }
+
+    private void confirmForceRestartInstall() {
+        if (actionBusy) return;
+
+        new AlertDialog.Builder(activity)
+            .setTitle("强制重启并继续安装")
+            .setMessage("只有确认安装已经长时间没有变化时才使用。\n\n这会终止当前卡住的一键初始化任务，清理运行标记，然后重新触发安装。已完成的阶段会按状态检测跳过，从第一个未完成阶段继续。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("强制重启并继续", (dialog, which) -> forceRestartInstall())
+            .show();
+    }
+
+    private void forceRestartInstall() {
+        if (actionBusy) return;
+
+        deepSeekInputFocused = false;
+        actionBusy = true;
+        render();
+        runtime.forceRestartOneClickInstall(result -> {
+            actionBusy = false;
+            installState = runtime.getInstallState();
+            Toast.makeText(activity, result.message, result.success ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+            setCurrentStep(Step.READING_GUIDE);
+            refreshStatus();
+        });
     }
 
     private void saveDeepSeekKey(String key) {
@@ -937,6 +962,18 @@ public final class OpenHouseOnboardingOverlay {
         actionsView.addView(button, topMarginParams(actionsView.getChildCount() == 0 ? 0 : dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
     }
 
+    private void addForceRestartInstallButtonIfNeeded() {
+        if (isInstallDone() || !isInstallStarted()) {
+            return;
+        }
+
+        MaterialButton button = createButton("安装卡住？强制重启并继续", !actionBusy, false);
+        button.setTextColor(COLOR_WARN);
+        button.setStrokeColor(ColorStateList.valueOf(COLOR_WARN));
+        button.setOnClickListener(v -> confirmForceRestartInstall());
+        actionsView.addView(button, topMarginParams(actionsView.getChildCount() == 0 ? 0 : dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
+    }
+
     private void addPrimaryHeroButton(String text, boolean enabled, int iconRes, View.OnClickListener listener) {
         MaterialButton button = createButton(text, enabled && !actionBusy, true);
         button.setTextSize(16);
@@ -1074,22 +1111,20 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private enum Step {
-        PERMISSION("后台权限", "权", "允许后台完成初始化", "初始化会安装 Ubuntu 和 AI 工具。请先允许忽略电池优化，避免息屏或切换应用后中断。"),
-        INSTALL("初始化安装", "装", "开始一键初始化", "点击后会立刻进入建议阅读屏。安装继续在后台进行，不需要等它完成。"),
-        READING_GUIDE("建议阅读", "读", "先读完这几件事", "安装正在后台继续。建议先了解安装时间、DeepSeek Key、OpenCode Web 和几个 AI Agent，再进入 Key 页面。"),
-        DEEPSEEK_KEY("保存 Key", "Key", "获取并保存 DeepSeek Key", "安装未完成时也可以先填写。只有点击保存后，Key 才会被视为已保存。"),
-        WAITING_INSTALL("等待安装", "等", "Key 已保存，等待安装完成", "现在不需要重复填写 Key。安装完成后会自动进入下一步配置。"),
-        CONFIGURE_DEEPSEEK("配置 DeepSeek", "配", "配置 AI 工具", "Key 已保存，安装也已完成。现在把 DeepSeek Key 写入 OpenCode、Claude Code 和 Reasonix。"),
-        LAUNCH_CONFIG("启动配置", "启", "配置 OpenCode 启动方式", "初始化完成后，OpenCode 不会自动启动。你可以在这里启动 OpenCode，或进入终端教学。");
+        PERMISSION("后台权限", "允许后台完成初始化", "初始化会安装 Ubuntu 和 AI 工具。请先允许忽略电池优化，避免息屏或切换应用后中断。"),
+        INSTALL("初始化安装", "开始一键初始化", "点击后会立刻进入建议阅读屏。安装继续在后台进行，不需要等它完成。"),
+        READING_GUIDE("建议阅读", "先读完这几件事", "安装正在后台继续。建议先了解安装时间、DeepSeek Key、OpenCode Web 和几个 AI Agent，再进入 Key 页面。"),
+        DEEPSEEK_KEY("保存 Key", "获取并保存 DeepSeek Key", "安装未完成时也可以先填写。只有点击保存后，Key 才会被视为已保存。"),
+        WAITING_INSTALL("等待安装", "Key 已保存，等待安装完成", "现在不需要重复填写 Key。安装完成后会自动进入下一步配置。"),
+        CONFIGURE_DEEPSEEK("配置 DeepSeek", "配置 AI 工具", "Key 已保存，安装也已完成。现在把 DeepSeek Key 写入 OpenCode、Claude Code 和 Reasonix。"),
+        LAUNCH_CONFIG("启动配置", "配置 OpenCode 启动方式", "初始化完成后，OpenCode 不会自动启动。你可以在这里启动 OpenCode，或进入终端教学。");
 
         final String label;
-        final String icon;
         final String title;
         final String body;
 
-        Step(String label, String icon, String title, String body) {
+        Step(String label, String title, String body) {
             this.label = label;
-            this.icon = icon;
             this.title = title;
             this.body = body;
         }

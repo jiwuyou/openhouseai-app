@@ -69,6 +69,15 @@ public final class OpenHouseOnboardingRuntime {
         return installController.startOneClickInstall();
     }
 
+    public void forceRestartOneClickInstall(ResultCallback callback) {
+        executor.execute(() -> {
+            boolean started = installController.forceRestartOneClickInstall();
+            post(() -> callback.onResult(started
+                ? RuntimeResult.success("已强制重启安装任务，会从第一个未完成阶段继续。")
+                : RuntimeResult.failure("无法重新启动初始化，请进入详细进度查看日志。")));
+        });
+    }
+
     public void refreshStatus(StatusCallback callback) {
         executor.execute(() -> {
             OpenHouseStatus status = statusRepository.loadStatus();

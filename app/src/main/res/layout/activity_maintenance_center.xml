@@ -152,6 +152,17 @@
                                 android:textColor="#D7E4DA"
                                 android:textSize="12sp" />
                         </androidx.core.widget.NestedScrollView>
+
+                        <Button
+                            android:id="@+id/buttonForceRestartSharedInstall"
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:layout_marginTop="10dp"
+                            android:gravity="center"
+                            android:text="安装卡住？强制重启并继续"
+                            android:textAllCaps="false"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
                     </LinearLayout>
 
                     <LinearLayout

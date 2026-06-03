@@ -51,22 +51,10 @@
                 android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/openhouse_onboarding_icon"
-                android:layout_width="54dp"
-                android:layout_height="54dp"
-                android:layout_marginTop="14dp"
-                android:background="@drawable/openhouse_onboarding_icon"
-                android:gravity="center"
-                android:includeFontPadding="false"
-                android:textColor="#1E6F52"
-                android:textSize="22sp"
-                android:textStyle="bold" />
-
-            <TextView
                 android:id="@+id/openhouse_onboarding_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="14dp"
                 android:includeFontPadding="false"
                 android:textColor="#17211C"
                 android:textSize="20sp"

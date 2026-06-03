@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -241,6 +242,16 @@ public final class OpenHouseInstallController {
         }
     }
 
+    public boolean forceRestartOneClickInstall() {
+        synchronized (processLock) {
+            stopTrackedInstallProcess();
+            terminateExistingInstallProcesses();
+            clearRunningMarker();
+            updateState(OpenHouseInstallState.idle());
+            return startOneClickInstall();
+        }
+    }
+
     public boolean stopOneClickInstall() {
         synchronized (processLock) {
             if (!state.running || currentProcess == null) {
@@ -261,6 +272,85 @@ public final class OpenHouseInstallController {
         }
     }
 
+    private void stopTrackedInstallProcess() {
+        Process process = currentProcess;
+        currentProcess = null;
+        if (process == null) {
+            return;
+        }
+
+        try {
+            process.destroy();
+            if (!process.waitFor(1800L, TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly();
+                process.waitFor(2200L, TimeUnit.MILLISECONDS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            process.destroyForcibly();
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to stop tracked one-click install process", e);
+            process.destroyForcibly();
+        }
+    }
+
+    private void terminateExistingInstallProcesses() {
+        try {
+            File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");
+            if (!bash.isFile()) {
+                return;
+            }
+
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                bash.getAbsolutePath(),
+                "-lc",
+                buildTerminateExistingInstallProcessesCommand()
+            );
+            processBuilder.directory(new File(TermuxConstants.TERMUX_HOME_DIR_PATH));
+            processBuilder.redirectErrorStream(true);
+            Map<String, String> environment = processBuilder.environment();
+            environment.put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
+            environment.put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
+            environment.put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":/system/bin");
+            environment.put("LD_LIBRARY_PATH", TermuxConstants.TERMUX_LIB_PREFIX_DIR_PATH);
+            environment.put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
+            environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
+            environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
+            removeProxyEnvironment(environment);
+
+            Process process = processBuilder.start();
+            if (!process.waitFor(5L, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to terminate existing one-click install processes", e);
+        }
+    }
+
+    private String buildTerminateExistingInstallProcessesCommand() {
+        return ""
+            + "set +e\n"
+            + "self=\"$$\"\n"
+            + "collect_roots(){ ps -ef 2>/dev/null | awk -v self=\"$self\" '\n"
+            + "  /run-manifest_full[.]sh|openhouseai-bootstrap[.]sh/ { if ($2 != self) print $2 }\n"
+            + "'; }\n"
+            + "collect_tree(){ ps -ef 2>/dev/null | awk -v roots=\"$1\" '\n"
+            + "  BEGIN { split(roots, r); for (i in r) if (r[i] != \"\") wanted[r[i]]=1; changed=1 }\n"
+            + "  { pid[NR]=$2; ppid[NR]=$3 }\n"
+            + "  END { while (changed) { changed=0; for (i=1; i<=NR; i++) if (wanted[ppid[i]] && !wanted[pid[i]]) { wanted[pid[i]]=1; changed=1 } } for (p in wanted) print p }\n"
+            + "'; }\n"
+            + "roots=\"$(collect_roots | sort -u)\"\n"
+            + "pids=\"$(collect_tree \"$roots\" | sort -rn)\"\n"
+            + "if [ -n \"$pids\" ]; then for pid in $pids; do kill -TERM \"$pid\" 2>/dev/null; done; fi\n"
+            + "sleep 1\n"
+            + "roots=\"$(collect_roots | sort -u)\"\n"
+            + "pids=\"$(collect_tree \"$roots\" | sort -rn)\"\n"
+            + "if [ -n \"$pids\" ]; then for pid in $pids; do kill -KILL \"$pid\" 2>/dev/null; done; fi\n"
+            + "exit 0\n";
+    }
+
     public String getLogTail(int maxChars) {
         int charLimit = Math.max(0, Math.min(maxChars, 120000));
         if (charLimit == 0) {
@@ -279,11 +369,17 @@ public final class OpenHouseInstallController {
             process.destroy();
             exitCode = 130;
         } finally {
-            currentProcess = null;
-            clearRunningMarker();
             if (outputFile != null) {
                 outputFile.delete();
             }
+        }
+
+        synchronized (processLock) {
+            if (currentProcess != process) {
+                return;
+            }
+            currentProcess = null;
+            clearRunningMarker();
         }
 
         appendCompletionMarkerIfMissing(exitCode);

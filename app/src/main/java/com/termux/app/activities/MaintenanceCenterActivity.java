@@ -145,6 +145,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private TextView sharedInstallProgressView;
     private TextView sharedInstallDetailView;
     private TextView sharedInstallLogView;
+    private Button forceRestartSharedInstallButton;
     private LinearLayout dynamicPluginSectionsContainer;
     private NestedScrollView liveLogScrollView;
     private NestedScrollView sharedInstallLogScrollView;
@@ -208,6 +209,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean sharedInstallControllerInitialized;
     private boolean sharedInstallListening;
     private boolean sharedInstallRunning;
+    private boolean sharedInstallStarted;
+    private boolean sharedInstallCompleted;
     private long lastLiveLogRefreshUptimeMs;
     private long lastCompletionScanUptimeMs;
     private long lastOneClickStatusRefreshUptimeMs;
@@ -287,6 +290,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         sharedInstallProgressView = findViewById(R.id.sharedInstallProgress);
         sharedInstallDetailView = findViewById(R.id.sharedInstallDetail);
         sharedInstallLogView = findViewById(R.id.sharedInstallLog);
+        forceRestartSharedInstallButton = findViewById(R.id.buttonForceRestartSharedInstall);
         dynamicPluginSectionsContainer = findViewById(R.id.dynamicPluginSections);
         sharedInstallLogScrollView = findViewById(R.id.sharedInstallLogScroll);
         permissionBatteryButton = findViewById(R.id.buttonPermissionBattery);
@@ -859,6 +863,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             }
             startOneClickStages();
         });
+        if (forceRestartSharedInstallButton != null) {
+            forceRestartSharedInstallButton.setOnClickListener(v -> confirmForceRestartSharedInstall());
+        }
         setOneClickStageMode(true);
     }
 
@@ -907,6 +914,61 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
         updateExecutionModeViews();
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    private void confirmForceRestartSharedInstall() {
+        if (sharedInstallController == null) {
+            Toast.makeText(this, "共享安装控制器不可用，请返回安装引导页重试。", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+            .setTitle("强制重启并继续安装")
+            .setMessage("只有确认安装已经长时间没有变化时才使用。\n\n这会终止当前卡住的一键初始化任务，清理运行标记，然后重新触发安装。已完成的阶段会按状态检测跳过，从第一个未完成阶段继续。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("强制重启并继续", (dialog, which) -> forceRestartSharedInstall())
+            .show();
+    }
+
+    private void forceRestartSharedInstall() {
+        if (sharedInstallController == null || commandInFlight || oneClickStagesInFlight || oneClickRemoteProbeInFlight) {
+            Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (forceRestartSharedInstallButton != null) {
+            forceRestartSharedInstallButton.setEnabled(false);
+            forceRestartSharedInstallButton.setAlpha(0.7f);
+        }
+        setSharedInstallText(
+            "详细进度：正在重启安装任务",
+            "正在终止卡住的安装任务，随后会从第一个未完成阶段继续。"
+        );
+
+        backgroundExecutor.execute(() -> {
+            boolean restarted = false;
+            try {
+                Method method = findMethod(sharedInstallController.getClass(), "forceRestartOneClickInstall");
+                if (method == null) {
+                    throw new NoSuchMethodException("OpenHouseInstallController.forceRestartOneClickInstall()");
+                }
+                Object value = method.invoke(sharedInstallController);
+                restarted = value instanceof Boolean && (Boolean) value;
+            } catch (Throwable throwable) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to force restart shared install", throwable);
+            }
+
+            boolean finalRestarted = restarted;
+            runOnUiThread(() -> {
+                Toast.makeText(
+                    this,
+                    finalRestarted ? "已强制重启安装任务，会从第一个未完成阶段继续。" : "无法重启安装，请查看日志。",
+                    finalRestarted ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG
+                ).show();
+                refreshSharedInstallState();
+                updateExecutionModeViews();
+            });
+        });
     }
 
     private void startOneClickRemoteProbe() {
@@ -1119,6 +1181,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         if (state == null) {
             sharedInstallRunning = false;
+            sharedInstallStarted = false;
+            sharedInstallCompleted = false;
             setSharedInstallText(
                 "详细进度：等待主界面安装状态",
                 "从主界面启动安装后，这里会显示同一个安装过程。"
@@ -1139,6 +1203,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean openCodeInstallPhase = isOpenCodeInstallPhase(currentStage, phaseLabel);
 
         sharedInstallRunning = running;
+        sharedInstallCompleted = completed;
+        sharedInstallStarted = running || completed || failed || percent > 0;
         String stateLabel;
         if (running) {
             stateLabel = "执行中";
@@ -1429,6 +1495,23 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             startOneClickStagesButton.setTextColor(ContextCompat.getColor(
                 this,
                 sharedInstallRunning || oneClickStagesInFlight ? R.color.stageRunningText : R.color.stageOnDark
+            ));
+        }
+        if (forceRestartSharedInstallButton != null) {
+            boolean canForceRestartSharedInstall = sharedInstallStarted
+                && !sharedInstallCompleted
+                && !commandInFlight
+                && !oneClickStagesInFlight
+                && !oneClickRemoteProbeInFlight;
+            forceRestartSharedInstallButton.setEnabled(canForceRestartSharedInstall);
+            forceRestartSharedInstallButton.setAlpha(canForceRestartSharedInstall ? 1.0f : 0.72f);
+            forceRestartSharedInstallButton.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(
+                this,
+                canForceRestartSharedInstall ? R.color.stageFailed : R.color.stageBlocked
+            )));
+            forceRestartSharedInstallButton.setTextColor(ContextCompat.getColor(
+                this,
+                canForceRestartSharedInstall ? R.color.stageOnDark : R.color.stageBlockedText
             ));
         }
         updateOneClickStageItems();
