@@ -295,6 +295,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setToggleKeyboardView();
 
+        setTerminalListButtonView();
+
         setOpenHouseMenuButtonView();
 
         setOpenCodeQuickLaunchButtonView();
@@ -768,6 +770,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         findViewById(R.id.openhouse_menu_button).setOnClickListener(v -> openOpenHouseMenuEntry());
     }
 
+    private void setTerminalListButtonView() {
+        findViewById(R.id.terminal_list_button).setOnClickListener(v -> getDrawer().openDrawer(Gravity.LEFT));
+    }
+
     private void setMaintenanceCenterButtonView() {
         findViewById(R.id.maintenance_center_button).setOnClickListener(v -> openMaintenanceCenterEntry());
     }
@@ -883,10 +889,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void applyQuickButtonsVisibility(boolean visible) {
+        View terminalListButton = findViewById(R.id.terminal_list_button);
         View menuButton = findViewById(R.id.openhouse_menu_button);
         View maintenanceButton = findViewById(R.id.maintenance_center_button);
         View openCodeButton = findViewById(R.id.opencode_quick_launch_button);
         int visibility = visible ? View.VISIBLE : View.GONE;
+        if (terminalListButton != null) terminalListButton.setVisibility(visibility);
         if (menuButton != null) menuButton.setVisibility(visibility);
         if (maintenanceButton != null) maintenanceButton.setVisibility(visibility);
         if (openCodeButton != null) openCodeButton.setVisibility(visibility);
@@ -990,6 +998,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 mOpenCodeLaunchInFlight = false;
             }
         });
+    }
+
+    public void launchOpenCodeFromTutorial() {
+        launchOpenCodeOnDefaultPort();
     }
 
     private boolean isOpenCodeReachable(int port) {

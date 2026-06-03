@@ -118,6 +118,20 @@
             android:textSize="12sp" />
 
         <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+            android:id="@+id/terminal_list_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_above="@id/openhouse_menu_button"
+            android:layout_marginEnd="18dp"
+            android:layout_marginBottom="14dp"
+            android:contentDescription="@string/action_open_terminal_list"
+            android:text="@string/action_open_terminal_list_short"
+            android:textColor="@color/stageReadyText"
+            android:visibility="gone"
+            app:backgroundTint="@color/stageReady" />
+
+        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
             android:id="@+id/openhouse_menu_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -168,7 +182,7 @@
             android:layout_width="64dp"
             android:layout_height="48dp"
             android:layout_alignParentEnd="true"
-            android:layout_above="@id/openhouse_menu_button"
+            android:layout_above="@id/terminal_list_button"
             android:layout_marginEnd="18dp"
             android:layout_marginBottom="14dp"
             android:alpha="0.62"

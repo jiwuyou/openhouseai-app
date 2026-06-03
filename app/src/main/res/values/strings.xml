@@ -88,6 +88,8 @@
     <string name="action_open_settings">Settings</string>
     <string name="action_open_maintenance_center">打开维护中心</string>
     <string name="action_open_maintenance_center_short">维护</string>
+    <string name="action_open_terminal_list">打开终端列表</string>
+    <string name="action_open_terminal_list_short">终端列表</string>
     <string name="action_launch_opencode_default">启动默认端口 OpenCode</string>
     <string name="action_launch_opencode_short">OC</string>
     <string name="action_toggle_quick_buttons_visibility">显示或隐藏菜单和快捷按钮</string>

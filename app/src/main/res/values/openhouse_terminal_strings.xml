@@ -7,9 +7,9 @@
     <string name="openhouse_terminal_tutorial_intro_title">终端教学</string>
     <string name="openhouse_terminal_tutorial_intro_body">这里是 OpenHouseAI 的终端。你可以直接输入命令，也可以用底部工具栏快速补全常用按键和 AI 命令。</string>
     <string name="openhouse_terminal_tutorial_sessions_title">多终端侧边栏</string>
-    <string name="openhouse_terminal_tutorial_sessions_body">左侧侧边栏用于管理多个终端会话。这里可以新建会话、切换会话，或长按创建命名会话。</string>
+    <string name="openhouse_terminal_tutorial_sessions_body">点击右侧“终端列表”按钮会打开左侧侧边栏。这里可以新建会话、切换会话，或长按创建命名会话。</string>
     <string name="openhouse_terminal_tutorial_base_keys_title">基础按键</string>
-    <string name="openhouse_terminal_tutorial_base_keys_body">底部工具栏前两排保留基础 extra keys：Esc、Tab、Ctrl、Alt、方向键、Home、End、Page Up 和 Page Down。</string>
+    <string name="openhouse_terminal_tutorial_base_keys_body">底部工具栏前两排是常用基础键：ESC、/、-、HOME、方向键、exit、ubuntu、TAB、CTRL、ALT 和键盘按钮。</string>
     <string name="openhouse_terminal_tutorial_ai_keys_title">AI 快捷键</string>
     <string name="openhouse_terminal_tutorial_ai_keys_body" tools:ignore="TypographyDashes">第三排是 OpenHouseAI 默认 AI 快捷键：claude、reasonix、codex、oc 和 --continue。点击命令名会先输入命令和一个空格。</string>
     <string name="openhouse_terminal_tutorial_continue_title">继续对话</string>
@@ -18,4 +18,11 @@
     <string name="openhouse_terminal_tutorial_full_commands_body" tools:ignore="TypographyDashes">滑到下一页工具栏可直接输入完整继续命令：claude --continue、codex --continue、reasonix --continue 和 oc --continue。</string>
     <string name="openhouse_terminal_tutorial_custom_keys_title">自定义快捷键</string>
     <string name="openhouse_terminal_tutorial_custom_keys_body">检测到你已经在 termux.properties 中配置了 extra-keys。OpenHouseAI 没有覆盖这些自定义键，因此这里只显示你的自定义工具栏。</string>
+    <string name="openhouse_terminal_tutorial_claude_title">直接使用 Claude</string>
+    <string name="openhouse_terminal_tutorial_claude_body" tools:ignore="TypographyDashes">在终端里输入 claude，然后按回车就可以使用。记不住也没关系，底部快捷键里的 claude 等同于手打 claude。</string>
+    <string name="openhouse_terminal_tutorial_menu_title">打开菜单</string>
+    <string name="openhouse_terminal_tutorial_menu_body">右侧“菜单”进入 OpenHouseAI 菜单页，里面有使用手册、终端快捷键、维护与修复、日志和高级设置。</string>
+    <string name="openhouse_terminal_tutorial_opencode_title">OpenCode 控制</string>
+    <string name="openhouse_terminal_tutorial_opencode_body">最后演示启动 OpenCode。点击“启动 OpenCode”后，OpenHouseAI 会启动 OpenCode Web，并自动跳转到浏览器。</string>
+    <string name="openhouse_terminal_tutorial_launch_opencode">启动 OpenCode</string>
 </resources>

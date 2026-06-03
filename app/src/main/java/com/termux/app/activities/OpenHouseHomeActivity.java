@@ -132,10 +132,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         panel.addView(button("进入 AI 软件安装引导", v -> openInstallGuide()));
         addButtonRow(panel,
             compactButton("返回终端主界面", v -> openTerminal(false), true),
-            compactButton("查看详细进度", v -> openMaintenanceCenter(), true));
+            compactButton("使用演示", v -> openTerminal(true), true));
+        addButtonRow(panel,
+            compactButton("查看详细进度", v -> openMaintenanceCenter(), true),
+            compactButton("OpenCode 控制", v -> openMaintenanceCenter(), true));
         addButtonRow(panel,
             compactButton("重新配置 DeepSeek", v -> openMaintenanceCenter(), true),
-            compactButton("OpenCode 控制", v -> openMaintenanceCenter(), true));
+            compactButton("复制 OpenCode 地址", v -> copyText(getString(R.string.openhouse_url_opencode_label), getOpenCodeUrl()), true));
         panel.addView(button("打开在线手册", v -> openUrl(getString(R.string.openhouse_url_manual))));
         contentView.addView(panel);
     }
@@ -175,10 +178,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void renderTerminalGuidePage() {
         LinearLayout panel = panel();
-        addTitle(panel, "终端教学", 19);
-        addBody(panel, "教学入口在 TermuxActivity 终端主界面中展示。");
+        addTitle(panel, "使用演示", 19);
+        addBody(panel, "使用演示基于终端教学，会介绍终端快捷键、终端列表、菜单入口，并在最后启动 OpenCode 自动跳转浏览器。");
         addButtonRow(panel,
-            compactButton("打开终端教学", v -> openTerminal(true), true),
+            compactButton("打开使用演示", v -> openTerminal(true), true),
             compactButton("直接回到终端", v -> openTerminal(false), true));
         contentView.addView(panel);
     }

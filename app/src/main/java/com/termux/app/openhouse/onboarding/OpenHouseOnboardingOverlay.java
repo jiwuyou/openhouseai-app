@@ -77,6 +77,9 @@ public final class OpenHouseOnboardingOverlay {
 
     private final OpenHouseInstallController.Listener installListener = state -> {
         installState = state;
+        if (shouldKeepDeepSeekInputStable()) {
+            return;
+        }
         if (state.completed) {
             refreshStatus();
             if (currentStep == Step.WAITING_INSTALL) {
@@ -191,6 +194,10 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private void render() {
+        if (shouldKeepDeepSeekInputStable()) {
+            return;
+        }
+
         normalizeCurrentStep();
 
         if (!initialRevealElapsed) {
@@ -329,7 +336,12 @@ public final class OpenHouseOnboardingOverlay {
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL);
         input.setBackgroundResource(R.drawable.openhouse_onboarding_input);
         input.setPadding(dp(10), 0, dp(10), 0);
-        input.setOnFocusChangeListener((v, hasFocus) -> deepSeekInputFocused = hasFocus);
+        input.setOnFocusChangeListener((v, hasFocus) -> {
+            deepSeekInputFocused = hasFocus;
+            if (!hasFocus) {
+                refreshStatus();
+            }
+        });
         contentView.addView(input, topMarginParams(dp(5), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
 
         LinearLayout row = new LinearLayout(activity);
@@ -365,7 +377,6 @@ public final class OpenHouseOnboardingOverlay {
 
         saveButton.setOnClickListener(v -> saveDeepSeekKey(input.getText() == null ? "" : input.getText().toString()));
         addDeepSeekKeyHelpForKeyStep();
-        addStatusCard(getInstallProgressTitle(), "当前安装进度 " + getDisplayedInstallPercent() + "%，保存 Key 后会继续等待安装完成。");
         addReadingGuide(false, false);
     }
 
@@ -445,7 +456,7 @@ public final class OpenHouseOnboardingOverlay {
         stopButton.setOnClickListener(v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.STOP));
         copyButton.setOnClickListener(v -> runtime.copyOpenCodeAddress());
 
-        addActionButton("开始终端教学", isSetupComplete(), false, v -> {
+        addActionButton("使用演示", isSetupComplete(), false, v -> {
             dismissGuide();
             callbacks.onStartTerminalTutorial(true);
         });
@@ -484,6 +495,7 @@ public final class OpenHouseOnboardingOverlay {
 
     private void saveDeepSeekKey(String key) {
         if (actionBusy) return;
+        deepSeekInputFocused = false;
         actionBusy = true;
         renderSkipPanel();
         runtime.saveDeepSeekKey(key, result -> {
@@ -506,6 +518,7 @@ public final class OpenHouseOnboardingOverlay {
 
     private void configureDeepSeek() {
         if (actionBusy) return;
+        deepSeekInputFocused = false;
         actionBusy = true;
         render();
         runtime.configureDeepSeek(result -> {
@@ -526,6 +539,7 @@ public final class OpenHouseOnboardingOverlay {
 
     private void runOpenCodeAction(OpenHouseMaintainerRunner.Action action) {
         if (actionBusy) return;
+        deepSeekInputFocused = false;
         actionBusy = true;
         render();
         runtime.runOpenCodeAction(action, result -> {
@@ -737,6 +751,7 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private void setCurrentStep(Step step) {
+        deepSeekInputFocused = false;
         currentStep = step;
         persistStep();
         render();
@@ -753,6 +768,10 @@ public final class OpenHouseOnboardingOverlay {
 
     private void persistStep() {
         preferences.edit().putString(KEY_STEP, currentStep.name()).apply();
+    }
+
+    private boolean shouldKeepDeepSeekInputStable() {
+        return currentStep == Step.DEEPSEEK_KEY && deepSeekInputFocused && !actionBusy;
     }
 
     private void addStatusCard(String title, String body) {
