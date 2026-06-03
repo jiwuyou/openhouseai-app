@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="openhouse_home_title">OpenHouseAI</string>
+    <string name="openhouse_onboarding_activity_title">AI 软件安装引导</string>
     <string name="openhouse_home_subtitle">兼容入口</string>
     <string name="openhouse_drawer_title">OpenHouseAI</string>
     <string name="openhouse_drawer_subtitle">本机 AI 编程环境</string>

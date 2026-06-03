@@ -117,13 +117,6 @@
             android:textColor="@color/stageOnDark"
             android:textSize="12sp" />
 
-        <FrameLayout
-            android:id="@+id/openhouse_onboarding_overlay_container"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_alignParentTop="true"
-            android:layout_above="@id/terminal_toolbar_view_pager" />
-
         <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
             android:id="@+id/openhouse_menu_button"
             android:layout_width="wrap_content"

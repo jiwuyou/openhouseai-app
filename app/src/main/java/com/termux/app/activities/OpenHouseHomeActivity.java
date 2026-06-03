@@ -126,9 +126,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void renderHomePage() {
         LinearLayout panel = panel();
-        addTitle(panel, "主界面已迁移到终端浮层", 19);
+        addTitle(panel, "主界面已迁移到终端", 19);
         addBody(panel, "这里保留为旧入口兼容页，不再承载一键初始化、DeepSeek 配置或 OpenCode 控制主线。");
-        addBody(panel, "查看详细进度、重新配置 DeepSeek、启动或重启 OpenCode，请进入维护中心；返回终端主界面会回到 TermuxActivity 的终端浮层。");
+        addBody(panel, "查看详细进度、重新配置 DeepSeek、启动或重启 OpenCode，请进入维护中心；返回终端主界面会回到 TermuxActivity。");
         panel.addView(button("进入 AI 软件安装引导", v -> openInstallGuide()));
         addButtonRow(panel,
             compactButton("返回终端主界面", v -> openTerminal(false), true),
@@ -176,7 +176,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void renderTerminalGuidePage() {
         LinearLayout panel = panel();
         addTitle(panel, "终端教学", 19);
-        addBody(panel, "教学入口在 TermuxActivity 终端浮层中展示。");
+        addBody(panel, "教学入口在 TermuxActivity 终端主界面中展示。");
         addButtonRow(panel,
             compactButton("打开终端教学", v -> openTerminal(true), true),
             compactButton("直接回到终端", v -> openTerminal(false), true));
@@ -213,7 +213,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void renderAdvancedPage() {
         LinearLayout panel = panel();
         addTitle(panel, "旧 Home 兼容入口", 19);
-        addStatusRow(panel, "主线入口", "TermuxActivity 终端浮层");
+        addStatusRow(panel, "主线入口", "TermuxActivity 终端主界面");
         addStatusRow(panel, "详细进度", "维护中心");
         addStatusRow(panel, "OpenCode 端口", Integer.toString(OpenCodeSettings.DEFAULT_OPENCODE_PORT));
         addStatusRow(panel, "OpenCode 目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
@@ -244,11 +244,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return;
         }
 
-        Intent intent = new Intent(this, TermuxActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        intent.putExtra(TermuxActivity.EXTRA_OPENHOUSE_INSTALL_GUIDE, true);
-        startActivity(intent);
-        finish();
+        ActivityUtils.startActivity(this, new Intent(this, OpenHouseOnboardingActivity.class));
     }
 
     private void openMaintenanceLog(String stageSlug, String stageLabel) {

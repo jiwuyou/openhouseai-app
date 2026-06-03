@@ -124,6 +124,12 @@
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
 
         <activity
+            android:name=".app.activities.OpenHouseOnboardingActivity"
+            android:exported="false"
+            android:label="@string/openhouse_onboarding_activity_title"
+            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
+
+        <activity
             android:name=".app.activities.MaintenanceLogActivity"
             android:exported="false"
             android:label="@string/full_log_title"

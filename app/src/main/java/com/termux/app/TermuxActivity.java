@@ -34,7 +34,6 @@ import com.termux.app.OpenCodeCdpBridge;
 import com.termux.app.OpenHouseAgreement;
 import com.termux.app.OpenCodeSettings;
 import com.termux.app.api.file.FileReceiverActivity;
-import com.termux.app.openhouse.onboarding.OpenHouseOnboardingOverlay;
 import com.termux.app.openhouse.OpenHouseOnboardingState;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.app.openhouse.terminal.OpenHouseTerminalTutorial;
@@ -53,6 +52,7 @@ import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.MaintenanceCenterActivity;
 import com.termux.app.activities.OpenHouseAgreementActivity;
 import com.termux.app.activities.OpenHouseHomeActivity;
+import com.termux.app.activities.OpenHouseOnboardingActivity;
 import com.termux.app.activities.SettingsActivity;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
@@ -195,11 +195,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private float mTerminalToolbarDefaultHeight;
     private boolean mPendingOpenHouseTerminalTutorial;
-    private boolean mPendingOpenHouseInstallGuide;
     private boolean mPendingOpenHouseMenuAfterAgreement;
     private boolean mOpenHouseTerminalTutorialShown;
     private OpenHouseTerminalTutorial mOpenHouseTerminalTutorial;
-    private OpenHouseOnboardingOverlay mOpenHouseOnboardingOverlay;
 
 
     private static final int CONTEXT_MENU_SELECT_URL_ID = 0;
@@ -218,14 +216,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
     private static final String ARG_OPENHOUSE_TERMINAL_TUTORIAL_PENDING = "openhouse_terminal_tutorial_pending";
-    private static final String ARG_OPENHOUSE_INSTALL_GUIDE_PENDING = "openhouse_install_guide_pending";
     private static final String ARG_OPENHOUSE_MENU_AFTER_AGREEMENT_PENDING = "openhouse_menu_after_agreement_pending";
     private static final String ARG_OPENHOUSE_TERMINAL_TUTORIAL_SHOWN = "openhouse_terminal_tutorial_shown";
 
     private static final String LOG_TAG = "TermuxActivity";
     public static final String EXTRA_RESTART_ENTRY_SESSION = "com.termux.app.extra.RESTART_ENTRY_SESSION";
     public static final String EXTRA_OPENHOUSE_TERMINAL_TUTORIAL = "com.termux.app.extra.OPENHOUSE_TERMINAL_TUTORIAL";
-    public static final String EXTRA_OPENHOUSE_INSTALL_GUIDE = "com.termux.app.extra.OPENHOUSE_INSTALL_GUIDE";
     public static final String EXTRA_OPENHOUSE_MENU_AFTER_AGREEMENT = "com.termux.app.extra.OPENHOUSE_MENU_AFTER_AGREEMENT";
     private static final String EXTRA_OPENHOUSE_TERMINAL_TEACHING = "com.termux.app.openhouse.extra.TERMINAL_TEACHING";
     private static final String PREF_QUICK_BUTTONS = "openhouse_quick_buttons";
@@ -243,12 +239,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (savedInstanceState != null) {
             mIsActivityRecreated = savedInstanceState.getBoolean(ARG_ACTIVITY_RECREATED, false);
             mPendingOpenHouseTerminalTutorial = savedInstanceState.getBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_PENDING, false);
-            mPendingOpenHouseInstallGuide = savedInstanceState.getBoolean(ARG_OPENHOUSE_INSTALL_GUIDE_PENDING, false);
             mPendingOpenHouseMenuAfterAgreement = savedInstanceState.getBoolean(ARG_OPENHOUSE_MENU_AFTER_AGREEMENT_PENDING, false);
             mOpenHouseTerminalTutorialShown = savedInstanceState.getBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_SHOWN, false);
         } else {
             mPendingOpenHouseTerminalTutorial = consumeOpenHouseTerminalTutorialRequest(getIntent());
-            mPendingOpenHouseInstallGuide = consumeOpenHouseInstallGuideRequest(getIntent());
             mPendingOpenHouseMenuAfterAgreement = consumeOpenHouseMenuAfterAgreementRequest(getIntent());
         }
 
@@ -373,9 +367,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mTermuxTerminalViewClient != null)
             mTermuxTerminalViewClient.onResume();
 
-        if (mOpenHouseOnboardingOverlay != null)
-            mOpenHouseOnboardingOverlay.onResume();
-
         // Check if a crash happened on last run of the app or if a plugin crashed and show a
         // notification with the crash details if it did
         TermuxCrashUtils.notifyAppCrashFromCrashLogFile(this, LOG_TAG);
@@ -430,11 +421,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mOpenHouseTerminalTutorial = null;
         }
 
-        if (mOpenHouseOnboardingOverlay != null) {
-            mOpenHouseOnboardingOverlay.destroy();
-            mOpenHouseOnboardingOverlay = null;
-        }
-
         mOpenCodeLaunchExecutor.shutdownNow();
     }
 
@@ -446,7 +432,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         saveTerminalToolbarTextInput(savedInstanceState);
         savedInstanceState.putBoolean(ARG_ACTIVITY_RECREATED, true);
         savedInstanceState.putBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_PENDING, mPendingOpenHouseTerminalTutorial);
-        savedInstanceState.putBoolean(ARG_OPENHOUSE_INSTALL_GUIDE_PENDING, mPendingOpenHouseInstallGuide);
         savedInstanceState.putBoolean(ARG_OPENHOUSE_MENU_AFTER_AGREEMENT_PENDING, mPendingOpenHouseMenuAfterAgreement);
         savedInstanceState.putBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_SHOWN, mOpenHouseTerminalTutorialShown);
     }
@@ -523,9 +508,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mPendingOpenHouseTerminalTutorial = true;
             mOpenHouseTerminalTutorialShown = false;
         }
-        if (consumeOpenHouseInstallGuideRequest(intent)) {
-            mPendingOpenHouseInstallGuide = true;
-        }
         if (consumeOpenHouseMenuAfterAgreementRequest(intent)) {
             mPendingOpenHouseMenuAfterAgreement = true;
         }
@@ -563,16 +545,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         return requested;
     }
 
-    private boolean consumeOpenHouseInstallGuideRequest(@Nullable Intent intent) {
-        if (intent == null) return false;
-
-        boolean requested = intent.getBooleanExtra(EXTRA_OPENHOUSE_INSTALL_GUIDE, false);
-        if (requested) {
-            intent.removeExtra(EXTRA_OPENHOUSE_INSTALL_GUIDE);
-        }
-        return requested;
-    }
-
     private boolean consumeOpenHouseMenuAfterAgreementRequest(@Nullable Intent intent) {
         if (intent == null) return false;
 
@@ -599,18 +571,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void scheduleOpenHouseEntryRequestsIfNeeded() {
         if (mIsInvalidState || mTermuxActivityRootView == null) return;
-        if (!mPendingOpenHouseMenuAfterAgreement && !mPendingOpenHouseInstallGuide) return;
+        if (!mPendingOpenHouseMenuAfterAgreement) return;
 
         mTermuxActivityRootView.post(() -> {
             if (isFinishing() || mIsInvalidState) return;
             if (mPendingOpenHouseMenuAfterAgreement) {
                 mPendingOpenHouseMenuAfterAgreement = false;
                 openOpenHouseMenuAfterAgreement();
-                return;
-            }
-            if (mPendingOpenHouseInstallGuide) {
-                mPendingOpenHouseInstallGuide = false;
-                openOpenHouseInstallGuide();
             }
         });
     }
@@ -814,28 +781,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
     }
 
-    private void setOpenHouseOnboardingOverlay() {
-        if (mOpenHouseOnboardingOverlay != null) return;
-
-        ViewGroup container = findViewById(R.id.openhouse_onboarding_overlay_container);
-        if (container == null) return;
-
-        mOpenHouseOnboardingOverlay = new OpenHouseOnboardingOverlay(this, container, new OpenHouseOnboardingOverlay.Callbacks() {
-            @Override
-            public void onOpenDetail() {
-                openMaintenanceCenterEntry();
-            }
-
-            @Override
-            public void onStartTerminalTutorial() {
-                mPendingOpenHouseTerminalTutorial = true;
-                mOpenHouseTerminalTutorialShown = false;
-                scheduleOpenHouseTerminalTutorialIfRequested();
-            }
-        });
-        mOpenHouseOnboardingOverlay.attach();
-    }
-
     private void openOpenHouseMenuEntry() {
         if (!OpenHouseAgreement.hasAcceptedCurrentVersion(this)) {
             Intent intent = new Intent(this, OpenHouseAgreementActivity.class);
@@ -867,10 +812,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             return;
         }
 
-        setOpenHouseOnboardingOverlay();
-        if (mOpenHouseOnboardingOverlay != null) {
-            mOpenHouseOnboardingOverlay.revealFromMenu();
-        }
+        ActivityUtils.startActivity(this, new Intent(this, OpenHouseOnboardingActivity.class));
     }
 
     private boolean isOpenHouseFirstInstallGuideComplete() {

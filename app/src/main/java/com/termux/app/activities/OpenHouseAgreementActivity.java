@@ -82,10 +82,7 @@ public class OpenHouseAgreementActivity extends AppCompatActivity {
             intent.putExtra(TermuxActivity.EXTRA_OPENHOUSE_MENU_AFTER_AGREEMENT, true);
             ActivityUtils.startActivity(this, intent);
         } else if (getIntent().getBooleanExtra(EXTRA_OPEN_INSTALL_GUIDE_AFTER_ACCEPT, false)) {
-            Intent intent = new Intent(this, TermuxActivity.class);
-            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            intent.putExtra(TermuxActivity.EXTRA_OPENHOUSE_INSTALL_GUIDE, true);
-            ActivityUtils.startActivity(this, intent);
+            ActivityUtils.startActivity(this, new Intent(this, OpenHouseOnboardingActivity.class));
         } else {
             Intent intent = new Intent(this, TermuxActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);

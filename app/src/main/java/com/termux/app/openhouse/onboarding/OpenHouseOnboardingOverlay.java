@@ -89,6 +89,7 @@ public final class OpenHouseOnboardingOverlay {
     public interface Callbacks {
         void onOpenDetail();
         void onStartTerminalTutorial();
+        void onEnterTerminal();
     }
 
     public OpenHouseOnboardingOverlay(Activity activity, ViewGroup container, Callbacks callbacks) {
@@ -420,7 +421,10 @@ public final class OpenHouseOnboardingOverlay {
             dismissGuide();
             callbacks.onStartTerminalTutorial();
         });
-        addActionButton("进入终端", isSetupComplete(), true, v -> dismissGuide());
+        addActionButton("进入终端", isSetupComplete(), true, v -> {
+            dismissGuide();
+            callbacks.onEnterTerminal();
+        });
     }
 
     private void renderNavigation() {
