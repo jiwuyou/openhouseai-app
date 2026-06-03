@@ -163,16 +163,37 @@ public final class OpenHouseOnboardingRuntime {
         }
     }
 
+    public void copyDeepSeekKeyPageUrl() {
+        copyText("DeepSeek API Keys", DEEPSEEK_API_KEYS_URL, "DeepSeek API Keys 网址已复制。");
+    }
+
     public void copyOpenCodeAddress() {
+        copyText("OpenCode", openCodeController.getRootProjectUrl(), "OpenCode 地址已复制。");
+    }
+
+    public void openOpenCodeInBrowser() {
+        String url = openCodeController.getRootProjectUrl();
+        try {
+            activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to open OpenCode URL", e);
+            copyText("OpenCode", url, "无法打开浏览器，OpenCode 地址已复制。");
+        }
+    }
+
+    public void confirmLaunch() {
+        openCodeController.confirmLaunch();
+    }
+
+    private void copyText(String label, String text, String successMessage) {
         ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
         if (clipboard == null) {
             Toast.makeText(activity, "无法访问剪贴板。", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        String url = openCodeController.getRootProjectUrl();
-        clipboard.setPrimaryClip(ClipData.newPlainText("OpenCode", url));
-        Toast.makeText(activity, "OpenCode 地址已复制。", Toast.LENGTH_SHORT).show();
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, text));
+        Toast.makeText(activity, successMessage, Toast.LENGTH_SHORT).show();
     }
 
     public int getOpenCodePort() {

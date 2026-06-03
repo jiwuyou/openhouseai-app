@@ -114,7 +114,7 @@ public final class OpenHouseOnboardingState {
     }
 
     public boolean isComplete() {
-        return launchConfirmed;
+        return launchConfirmed || step.number >= Step.OPENCODE_LAUNCH.number;
     }
 
     public enum Step {

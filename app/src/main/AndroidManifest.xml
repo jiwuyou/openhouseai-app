@@ -126,7 +126,9 @@
         <activity
             android:name=".app.activities.OpenHouseOnboardingActivity"
             android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|density|screenLayout|keyboard|keyboardHidden|navigation"
             android:label="@string/openhouse_onboarding_activity_title"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
 
         <activity

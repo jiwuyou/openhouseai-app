@@ -19,6 +19,7 @@
     <string name="openhouse_nav_advanced">高级设置</string>
     <string name="openhouse_nav_terminal">回到终端</string>
     <string name="openhouse_return_terminal_main">返回终端主界面</string>
+    <string name="openhouse_return_onboarding">返回安装引导</string>
     <string name="openhouse_shared_install_waiting">详细进度：等待主界面安装状态</string>
     <string name="openhouse_shared_install_waiting_detail">从主界面启动安装后，这里会显示同一个安装过程。</string>
     <string name="openhouse_maintenance_terminal_title">底部 Termux 终端</string>

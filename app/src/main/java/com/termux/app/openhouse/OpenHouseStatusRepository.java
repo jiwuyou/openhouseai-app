@@ -32,6 +32,7 @@ public final class OpenHouseStatusRepository {
     private static final String KEY_OVERLAY_BATTERY_SKIPPED = "battery_skipped";
     private static final String KEY_OVERLAY_DEEPSEEK_KEY_SKIPPED = "deepseek_key_skipped";
     private static final String KEY_OVERLAY_DEEPSEEK_CONFIG_SKIPPED = "deepseek_config_skipped";
+    private static final String KEY_OVERLAY_GUIDE_DISMISSED = "guide_dismissed";
 
     private final Context context;
 
@@ -99,6 +100,7 @@ public final class OpenHouseStatusRepository {
         boolean deepSeekConfigured = preferences.getBoolean(KEY_DEEPSEEK_CONFIGURED, false)
             || (status != null && status.deepSeekConfigured);
         boolean launchConfirmed = preferences.getBoolean(KEY_LAUNCH_CONFIRMED, false)
+            || preferences.getBoolean(KEY_OVERLAY_GUIDE_DISMISSED, false)
             || (status != null && status.launchConfirmed);
         if (deepSeekConfigured) {
             keySaved = true;

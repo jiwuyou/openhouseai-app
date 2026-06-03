@@ -87,6 +87,8 @@ import org.json.JSONObject;
 
 public class MaintenanceCenterActivity extends AppCompatActivity {
 
+    public static final String EXTRA_RETURN_TO_ONBOARDING = "return_to_onboarding";
+
     private static final String LOG_TAG = "MaintenanceCenter";
     private static final int LOG_CHAR_LIMIT = 24000;
     private static final long TERMINAL_UI_UPDATE_DELAY_MS = 250;
@@ -329,6 +331,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         currentStageView.setText(R.string.current_stage_placeholder);
         liveLogView.setText(R.string.result_placeholder);
         if (returnHomeButton != null) {
+            if (shouldReturnToOnboarding()) {
+                returnHomeButton.setText(R.string.openhouse_return_onboarding);
+            }
             returnHomeButton.setOnClickListener(v -> returnToHome());
         }
         initializeSharedInstallController();
@@ -975,10 +980,20 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             return;
         }
 
+        if (shouldReturnToOnboarding()) {
+            finish();
+            return;
+        }
+
         Intent intent = new Intent(this, TermuxActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(intent);
         finish();
+    }
+
+    private boolean shouldReturnToOnboarding() {
+        Intent intent = getIntent();
+        return intent != null && intent.getBooleanExtra(EXTRA_RETURN_TO_ONBOARDING, false);
     }
 
     private void initializeSharedInstallController() {

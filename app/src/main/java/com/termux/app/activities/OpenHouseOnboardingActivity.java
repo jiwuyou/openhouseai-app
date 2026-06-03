@@ -24,18 +24,19 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
         onboarding = new OpenHouseOnboardingOverlay(this, container, new OpenHouseOnboardingOverlay.Callbacks() {
             @Override
             public void onOpenDetail() {
-                ActivityUtils.startActivity(OpenHouseOnboardingActivity.this,
-                    new Intent(OpenHouseOnboardingActivity.this, MaintenanceCenterActivity.class));
+                Intent intent = new Intent(OpenHouseOnboardingActivity.this, MaintenanceCenterActivity.class);
+                intent.putExtra(MaintenanceCenterActivity.EXTRA_RETURN_TO_ONBOARDING, true);
+                ActivityUtils.startActivity(OpenHouseOnboardingActivity.this, intent);
             }
 
             @Override
-            public void onStartTerminalTutorial() {
-                openTerminal(true);
+            public void onStartTerminalTutorial(boolean restartEntrySession) {
+                openTerminal(true, restartEntrySession);
             }
 
             @Override
-            public void onEnterTerminal() {
-                openTerminal(false);
+            public void onEnterTerminal(boolean restartEntrySession) {
+                openTerminal(false, restartEntrySession);
             }
         });
         onboarding.attach();
@@ -61,14 +62,17 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        openTerminal(false);
+        openTerminal(false, false);
     }
 
-    private void openTerminal(boolean teaching) {
+    private void openTerminal(boolean teaching, boolean restartEntrySession) {
         Intent intent = new Intent(this, TermuxActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (teaching) {
             intent.putExtra(TermuxActivity.EXTRA_OPENHOUSE_TERMINAL_TUTORIAL, true);
+        }
+        if (restartEntrySession) {
+            intent.putExtra(TermuxActivity.EXTRA_RESTART_ENTRY_SESSION, true);
         }
         ActivityUtils.startActivity(this, intent);
         finish();

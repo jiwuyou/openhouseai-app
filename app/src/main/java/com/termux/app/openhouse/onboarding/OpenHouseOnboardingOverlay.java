@@ -73,6 +73,7 @@ public final class OpenHouseOnboardingOverlay {
     private boolean initialRevealElapsed;
     private boolean statusLoading;
     private boolean actionBusy;
+    private boolean deepSeekInputFocused;
 
     private final OpenHouseInstallController.Listener installListener = state -> {
         installState = state;
@@ -88,8 +89,8 @@ public final class OpenHouseOnboardingOverlay {
 
     public interface Callbacks {
         void onOpenDetail();
-        void onStartTerminalTutorial();
-        void onEnterTerminal();
+        void onStartTerminalTutorial(boolean restartEntrySession);
+        void onEnterTerminal(boolean restartEntrySession);
     }
 
     public OpenHouseOnboardingOverlay(Activity activity, ViewGroup container, Callbacks callbacks) {
@@ -181,6 +182,9 @@ public final class OpenHouseOnboardingOverlay {
         runtime.refreshStatus(loadedStatus -> {
             statusLoading = false;
             status = loadedStatus;
+            if (currentStep == Step.DEEPSEEK_KEY && deepSeekInputFocused) {
+                return;
+            }
             normalizeCurrentStep();
             render();
         });
@@ -198,6 +202,9 @@ public final class OpenHouseOnboardingOverlay {
             return;
         }
 
+        if (currentStep != Step.DEEPSEEK_KEY) {
+            deepSeekInputFocused = false;
+        }
         rootView.setVisibility(View.VISIBLE);
         contentView.removeAllViews();
         actionsView.removeAllViews();
@@ -276,18 +283,26 @@ public final class OpenHouseOnboardingOverlay {
                 ? "已手动跳过检测；如果系统实际未允许，安装可能被中断。"
                 : "点击打开 Android 授权页，允许 openhouse 忽略电池优化。返回后可重新检查状态。"
         );
-        addActionButton("打开授权页", true, false, v -> runtime.openBatteryOptimizationSettings());
+        addPrimaryHeroButton(
+            ready ? "后台运行权限已开启" : "开启后台运行权限",
+            true,
+            ready ? R.drawable.ic_openhouse_toggle_on : R.drawable.ic_openhouse_toggle_off,
+            v -> runtime.openBatteryOptimizationSettings());
         addActionButton(ready ? "重新检查状态" : "我已允许，重新检查", true, true, v -> refreshStatus());
     }
 
     private void renderInstallStep() {
         String title = getInstallProgressTitle();
         addStatusCard(title, "OpenCode、Codex、Claude Code、Reasonix 会写入 Ubuntu /root 环境。");
+        addStatusCard("网络提醒", "初始化安装预计会下载约 500M 的文件内容，推荐在 Wi-Fi 网络下进行。");
         addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
         addReadingGuide(false, true);
         boolean canStart = isBatteryReady() && !installState.running && !isInstallDone();
-        addActionButton(isInstallDone() ? "安装已完成" : installState.running ? "正在安装" : "一键初始化",
-            canStart, true, v -> startInstall());
+        addPrimaryHeroButton(
+            isInstallDone() ? "安装已完成" : installState.running ? "正在安装中" : "开始一键初始化",
+            canStart,
+            R.drawable.ic_openhouse_play,
+            v -> startInstall());
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
     }
 
@@ -301,7 +316,7 @@ public final class OpenHouseOnboardingOverlay {
         MaterialButton openDeepSeekButton = createButton("打开 DeepSeek 平台申请 Key", true, true);
         openDeepSeekButton.setOnClickListener(v -> runtime.openDeepSeekKeyPage());
         contentView.addView(openDeepSeekButton, topMarginParams(0, LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
-        addUrlCard("如果没有自动跳转，复制这个网址到浏览器打开", "https://platform.deepseek.com/api_keys");
+        addUrlCard("如果没有自动跳转，复制这个网址到浏览器打开", "https://platform.deepseek.com/api_keys", "复制网址", v -> runtime.copyDeepSeekKeyPageUrl());
         addStatusCard("申请 Key 简要步骤", "充值后进入 API keys，创建 API key。名称可以任意填写，比如 op；创建后复制生成的 Key。");
 
         TextView label = addSmallLabel("DeepSeek API Key");
@@ -314,6 +329,7 @@ public final class OpenHouseOnboardingOverlay {
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL);
         input.setBackgroundResource(R.drawable.openhouse_onboarding_input);
         input.setPadding(dp(10), 0, dp(10), 0);
+        input.setOnFocusChangeListener((v, hasFocus) -> deepSeekInputFocused = hasFocus);
         contentView.addView(input, topMarginParams(dp(5), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
 
         LinearLayout row = new LinearLayout(activity);
@@ -396,6 +412,18 @@ public final class OpenHouseOnboardingOverlay {
     private void renderLaunchConfigStep() {
         addPathCard("项目启动目录", status.openCodeProjectDirectory);
         addPathCard("OpenCode Web 端口", Integer.toString(runtime.getOpenCodePort()));
+        addStatusCard(
+            "终端里怎么用 AI",
+            "以 Claude 为例：输入 claude，再按回车就可以使用；如果想接着上次 Claude 的对话，输入 claude --continue。"
+        );
+        addStatusCard(
+            "记不住命令也没关系",
+            "下方终端已经准备了快捷键。点击 claude，就等同于自己手打 claude；--continue 也设置了快捷键，可以直接组合使用。"
+        );
+        addStatusCard(
+            "OpenCode Web 怎么用",
+            "OpenCode 可以复制网址到浏览器中使用。OpenCode 的打开、关闭、重启已经放到菜单中，可以随时控制。"
+        );
         addStatusCard(status.openCodeReachable ? "OpenCode 运行中" : "OpenCode 未启动",
             "访问地址：" + runtime.getOpenCodeLoopbackUrl());
 
@@ -419,11 +447,11 @@ public final class OpenHouseOnboardingOverlay {
 
         addActionButton("开始终端教学", isSetupComplete(), false, v -> {
             dismissGuide();
-            callbacks.onStartTerminalTutorial();
+            callbacks.onStartTerminalTutorial(true);
         });
         addActionButton("进入终端", isSetupComplete(), true, v -> {
             dismissGuide();
-            callbacks.onEnterTerminal();
+            callbacks.onEnterTerminal(true);
         });
     }
 
@@ -504,6 +532,9 @@ public final class OpenHouseOnboardingOverlay {
             actionBusy = false;
             Toast.makeText(activity, result.message, result.success ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
             refreshStatus();
+            if (result.success && action != OpenHouseMaintainerRunner.Action.STOP) {
+                runtime.openOpenCodeInBrowser();
+            }
         });
     }
 
@@ -551,6 +582,7 @@ public final class OpenHouseOnboardingOverlay {
             return;
         }
 
+        runtime.confirmLaunch();
         preferences.edit().putBoolean(KEY_GUIDE_DISMISSED, true).apply();
         render();
     }
@@ -737,11 +769,15 @@ public final class OpenHouseOnboardingOverlay {
         contentView.addView(card, topMarginParams(dp(0)));
     }
 
-    private void addUrlCard(String label, String url) {
+    private void addUrlCard(String label, String url, String copyLabel, View.OnClickListener copyListener) {
         LinearLayout card = panel(R.drawable.openhouse_onboarding_status_panel);
         card.addView(smallBody(label));
         TextView code = codeText(url);
+        code.setTextIsSelectable(true);
         card.addView(code, topMarginParams(dp(8)));
+        MaterialButton copyButton = createButton(copyLabel, true, false);
+        copyButton.setOnClickListener(copyListener);
+        card.addView(copyButton, topMarginParams(dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(40)));
         contentView.addView(card, topMarginParams(dp(10)));
     }
 
@@ -880,6 +916,18 @@ public final class OpenHouseOnboardingOverlay {
         MaterialButton button = createButton(text, enabled && !actionBusy, primary);
         button.setOnClickListener(listener);
         actionsView.addView(button, topMarginParams(actionsView.getChildCount() == 0 ? 0 : dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
+    }
+
+    private void addPrimaryHeroButton(String text, boolean enabled, int iconRes, View.OnClickListener listener) {
+        MaterialButton button = createButton(text, enabled && !actionBusy, true);
+        button.setTextSize(16);
+        button.setCornerRadius(dp(10));
+        button.setIconResource(iconRes);
+        button.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_END);
+        button.setIconPadding(dp(10));
+        button.setIconTint(ColorStateList.valueOf(Color.WHITE));
+        button.setOnClickListener(listener);
+        actionsView.addView(button, topMarginParams(actionsView.getChildCount() == 0 ? 0 : dp(10), LinearLayout.LayoutParams.MATCH_PARENT, dp(56)));
     }
 
     private void addServiceActionRow(MaterialButton first, MaterialButton second) {

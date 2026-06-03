@@ -31,15 +31,17 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
     final TermuxTerminalSessionActivityClient mTermuxTerminalSessionActivityClient;
 
     private static final String LOG_TAG = "TermuxTerminalExtraKeys";
+    private static final String OPENHOUSE_BASE_EXTRA_KEYS_ROWS =
+        "['ESC','/','-','HOME','UP',{macro: 'exit ENTER', display: 'exit'}, " +
+            "{macro: 'proot-distro SPACE login SPACE ubuntu ENTER', display: 'ubuntu'}], " +
+            "['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','KEYBOARD']";
     private static final String OPENHOUSE_EXTRA_KEYS_PAGE_ONE =
-        "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP'], " +
-            "['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN'], " +
+        "[" + OPENHOUSE_BASE_EXTRA_KEYS_ROWS + ", " +
             "[{key: 'claude ', display: 'claude'}, {key: 'reasonix ', display: 'reasonix'}, " +
             "{key: 'codex ', display: 'codex'}, {key: 'oc ', display: 'oc'}, " +
             "{key: '--continue', display: '--continue'}]]";
     private static final String OPENHOUSE_EXTRA_KEYS_PAGE_TWO =
-        "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP'], " +
-            "['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN'], " +
+        "[" + OPENHOUSE_BASE_EXTRA_KEYS_ROWS + ", " +
             "[{key: 'claude --continue', display: 'claude\\n--continue'}, " +
             "{key: 'codex --continue', display: 'codex\\n--continue'}, " +
             "{key: 'reasonix --continue', display: 'reasonix\\n--continue'}, " +
@@ -84,7 +86,7 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
                 extraKeysStyle = TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS_STYLE;
             }
 
-            mUsingOpenHouseDefaultExtraKeys = userExtraKeys == null;
+            mUsingOpenHouseDefaultExtraKeys = userExtraKeys == null || isOpenHouseLegacyTwoRowExtraKeys(userExtraKeys);
             String[] extraKeysPages = mUsingOpenHouseDefaultExtraKeys ? OPENHOUSE_DEFAULT_EXTRA_KEYS : new String[] { extrakeys };
             mExtraKeysInfos = new ExtraKeysInfo[extraKeysPages.length];
             for (int i = 0; i < extraKeysPages.length; i++)
@@ -105,6 +107,24 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
                 mExtraKeysInfos = new ExtraKeysInfo[0];
             }
         }
+    }
+
+    private boolean isOpenHouseLegacyTwoRowExtraKeys(String extraKeys) {
+        if (extraKeys == null) return false;
+        String normalized = extraKeys
+            .replace("\\", "")
+            .replace("\"", "'")
+            .replaceAll("\\s+", "")
+            .toLowerCase();
+        return normalized.contains("'esc','/','-'")
+            && normalized.contains("'home','up'")
+            && normalized.contains("exitenter")
+            && normalized.contains("proot-distrospaceloginspaceubuntuenter")
+            && normalized.contains("'tab','ctrl','alt','left','down','right','keyboard'")
+            && !normalized.contains("claude")
+            && !normalized.contains("reasonix")
+            && !normalized.contains("codex")
+            && !normalized.contains("'oc");
     }
 
     public ExtraKeysInfo getExtraKeysInfo() {
