@@ -246,6 +246,7 @@
     <string name="maintenance_center_instruction">请依次在权限获取中点击。这个屏幕上面部分支持滑动查看，请一点点的往下面滑动，完成初始化。权限完成后，可在下方选择分步执行或阶段一键执行。</string>
     <string name="agreement_screen_title">使用说明与免责声明</string>
     <string name="agreement_screen_subtitle">进入维护中心前，请先阅读并同意以下内容。协议同意状态仅保存在应用私有存储中，不会同步到 Termux 或 Ubuntu 目录。</string>
+    <string name="agreement_read_before_human">我已阅读以下内容。请先阅读“人话版”和“正式版”，可在上方或页面底部勾选“我已阅读以上内容”，并点击“我已阅读并同意”。</string>
     <string name="agreement_human_readable_title">人话版</string>
     <string name="agreement_human_readable_content"><![CDATA[欢迎使用 OpenHouseAI。
 
@@ -299,7 +300,7 @@ OpenHouseAI 是一个开源的本地工具。它运行在你自己的设备上�
 15. 你一旦下载、安装、复制、运行、修改、分发或继续使用 OpenHouseAI，即表示你已完全理解并接受本说明及项目仓库中届时公布的最新版本内容；如你不同意其中任何内容，应立即停止使用。]]></string>
     <string name="agreement_accept_checkbox">我已阅读以上内容，并理解应自行查看仓库中的最新版本</string>
     <string name="agreement_accept_button">我已阅读并同意</string>
-    <string name="agreement_cancel_button">暂不进入维护中心</string>
+    <string name="agreement_cancel_button">暂不进入菜单</string>
     <string name="download_source_title">下载源</string>
     <string name="button_configure_download_source">设置下载策略</string>
     <string name="button_probe_download_source">重新探测 OpenCode 下载源</string>

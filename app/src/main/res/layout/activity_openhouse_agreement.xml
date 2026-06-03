@@ -33,6 +33,42 @@
                 android:textColor="@color/textSecondary"
                 android:textSize="14sp" />
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/panel_bg"
+                android:lineSpacingExtra="2dp"
+                android:padding="14dp"
+                android:text="@string/agreement_read_before_human"
+                android:textColor="@color/textPrimary"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <CheckBox
+                android:id="@+id/agreementAcceptCheckboxTop"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/agreement_accept_checkbox"
+                android:textColor="@color/textPrimary" />
+
+            <Button
+                android:id="@+id/buttonAgreementAcceptTop"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/agreement_accept_button"
+                android:textAllCaps="false" />
+
+            <Button
+                android:id="@+id/buttonAgreementCancelTop"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/agreement_cancel_button"
+                android:textAllCaps="false" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

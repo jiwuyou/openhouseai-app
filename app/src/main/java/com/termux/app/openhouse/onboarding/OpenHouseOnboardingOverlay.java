@@ -11,7 +11,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
-import android.text.method.PasswordTransformationMethod;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -135,6 +134,14 @@ public final class OpenHouseOnboardingOverlay {
     public void onResume() {
         installState = runtime.getInstallState();
         refreshStatus();
+    }
+
+    public void revealFromMenu() {
+        preferences.edit().putBoolean(KEY_GUIDE_DISMISSED, false).apply();
+        initialRevealElapsed = true;
+        installState = runtime.getInstallState();
+        refreshStatus();
+        render();
     }
 
     public void destroy() {
@@ -290,7 +297,9 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private void renderDeepSeekKeyStep() {
-        addActionButton("打开 DeepSeek 平台申请 Key", true, false, v -> runtime.openDeepSeekKeyPage());
+        MaterialButton openDeepSeekButton = createButton("打开 DeepSeek 平台申请 Key", true, true);
+        openDeepSeekButton.setOnClickListener(v -> runtime.openDeepSeekKeyPage());
+        contentView.addView(openDeepSeekButton, topMarginParams(0, LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
         addUrlCard("如果没有自动跳转，复制这个网址到浏览器打开", "https://platform.deepseek.com/api_keys");
         addStatusCard("申请 Key 简要步骤", "充值后进入 API keys，创建 API key。名称可以任意填写，比如 op；创建后复制生成的 Key。");
 
@@ -301,8 +310,7 @@ public final class OpenHouseOnboardingOverlay {
         input.setText(deepSeekDraft);
         input.setHint("sk-...");
         input.setTextSize(14);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        input.setTransformationMethod(PasswordTransformationMethod.getInstance());
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL);
         input.setBackgroundResource(R.drawable.openhouse_onboarding_input);
         input.setPadding(dp(10), 0, dp(10), 0);
         contentView.addView(input, topMarginParams(dp(5), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
@@ -339,6 +347,7 @@ public final class OpenHouseOnboardingOverlay {
         });
 
         saveButton.setOnClickListener(v -> saveDeepSeekKey(input.getText() == null ? "" : input.getText().toString()));
+        addDeepSeekKeyHelpForKeyStep();
         addStatusCard(getInstallProgressTitle(), "当前安装进度 " + getDisplayedInstallPercent() + "%，保存 Key 后会继续等待安装完成。");
         addReadingGuide(false, false);
     }
@@ -353,7 +362,7 @@ public final class OpenHouseOnboardingOverlay {
                 : "现在不需要重复填写 Key。安装完成后会自动进入下一步配置。"
         );
         addProgressBar(getDisplayedInstallPercent(), "OpenCode 安装约 12 分钟，占整体进度 40%；其他阶段均分剩余时间。");
-        addReadingGuide(false, false);
+        addReadingGuide(true, false);
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
     }
 
@@ -784,7 +793,7 @@ public final class OpenHouseOnboardingOverlay {
     private void addReadingGuide(boolean openByDefault, boolean compact) {
         LinearLayout card = panel(compact ? R.drawable.openhouse_onboarding_status_panel : R.drawable.openhouse_onboarding_panel);
         TextView title = new TextView(activity);
-        title.setText(openByDefault ? "安装期间建议阅读" : "安装期间建议阅读（保留）");
+        title.setText("安装期间建议阅读");
         title.setTextColor(COLOR_PRIMARY_DARK);
         title.setTextSize(12);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -803,26 +812,64 @@ public final class OpenHouseOnboardingOverlay {
 
         if (openByDefault) {
             addReadingSection(body, "安装需要多久", "第一次安装通常需要 10 分钟到半小时。时间取决于手机性能、网络和包下载速度。");
-            addReadingSection(body, "这款软件会做什么", "OpenHouseAI 会帮你配置一套 AI 编程环境。它到底能做什么，取决于你想让它帮你做什么。");
-            addReadingSection(body, "为什么需要 DeepSeek Key", "AI Agent 运行时通常需要模型 API。没有可用 API，软件可以启动，但 AI 不能正常调用模型完成任务。");
-            addReadingSection(body, "DeepSeek Key 怎么拿", "打开 DeepSeek 控制台，进入 API Keys，创建 API Key，名称可以随便填，比如 op。创建后复制 Key，回到这里保存。");
-            addReadingSection(body, "为什么是这几个 AI Agent", "Claude Code 适合改代码和持续协作；OpenCode 适合 Web 使用和多模型接入；Reasonix 适配 DeepSeek；Codex 也已安装但当前不默认配置 DeepSeek。");
-            addReadingSection(body, "还能用其他软件或模型吗", "可以。配置好后，可以让 OpenCode、Claude Code 或 Reasonix 帮你安装和配置其他 Agent 或模型 API。");
-            addReadingSection(body, "关于 Key 和官方登录", "不要把 API Key 发到聊天、日志、截图或仓库里。这里会保存 Key 并写入对应工具配置。");
+            addReadingSection(body, "这款软件会做什么", "OpenHouseAI 会帮你配置一套顶级 AI 编程环境。它到底能做什么，取决于你想让它帮你做什么。");
+            addReadingSection(body, "为什么需要 DeepSeek Key",
+                "AI Agent 运行时通常都需要模型 API。没有可用 API，软件可以启动，但 AI 不能正常调用模型完成任务。",
+                "这里推荐 DeepSeek，是因为它相对实惠，适合作为第一次安装和配置的统一引导。",
+                "OpenHouseAI 不限制你长期使用哪一个 API。后续可以让 OpenCode、Claude Code 或 Reasonix 帮你配置自己的模型 API。");
+            addReadingSection(body, "DeepSeek Key 怎么拿",
+                "初始化开始后，可以点击申请 Key 跳转到 DeepSeek 官方网站。你可以先充值 5 元，或者 1 元也可以；然后进入 API Keys，创建 API Key，名称可以随便填，比如 op。",
+                "创建后复制 Key，回到 OpenHouseAI，点击“填写 Key”并粘贴。后台会在后续步骤中把这个 Key 配置到 OpenCode、Claude Code 和 Reasonix。");
+            addReadingSection(body, "为什么是这几个 AI Agent",
+                "Claude Code 是非常顶级的 AI Agent 软件，适合改代码、解释代码、修复问题和持续协作。",
+                "OpenCode 的优势是模型接入范围广，并且原生支持 Web 页面。已经在电脑上用 AI 编程软件的用户，可以把已有 API 接入 OpenCode；浏览器访问也能减少终端压力。",
+                "Reasonix 专门适配 DeepSeek，使用 DeepSeek API 比较省钱。它作为兜底，保证至少有一个 AI Agent 可以直接使用。",
+                "Codex 也已安装，是很强的 AI Agent；但 DeepSeek 官方没有直接给出接入 Codex 的方式，所以当前不默认配置。");
+            addReadingSection(body, "还能用其他软件或模型吗",
+                "可以。配置好之后，你可以让 OpenCode、Claude Code 或 Reasonix 帮你安装和配置 OpenClaw、Hermes 或其他 AI Agent 软件。",
+                "也可以接入其他大模型 API。仍建议先充值少量 DeepSeek API 并完成基础配置，再让 AI 帮你配置自己的 API。");
+            addReadingSection(body, "关于 Key 和官方登录",
+                "不建议把 API Key 直接发到聊天里。这里的预期方式是由 OpenHouseAI 保存 Key，并自动写入对应工具配置。",
+                "Codex 和 Claude Code 的官方登录也支持，但需要你所在地区支持使用。具体登录方式可以继续询问 AI。",
+                "如果使用中转站 API，也可以让 OpenCode、Claude Code 或 Reasonix 帮你把它接入 Codex，或者使用官方 GPT 账号登录。");
         } else {
-            addReadingSection(body, "摘要", "建议阅读已保留在安装、Key 和等待屏。完整说明在第 3 屏默认展开。");
+            addReadingSection(body, "点开了解 AI、Key 和可用工具", "完整说明在第 3 屏“建议阅读”默认展开。");
         }
         contentView.addView(card, topMarginParams(dp(10)));
     }
 
-    private void addReadingSection(LinearLayout parent, String title, String body) {
+    private void addDeepSeekKeyHelpForKeyStep() {
+        LinearLayout card = panel(R.drawable.openhouse_onboarding_panel);
+        TextView title = new TextView(activity);
+        title.setText("保存前建议确认");
+        title.setTextColor(COLOR_PRIMARY_DARK);
+        title.setTextSize(12);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        card.addView(title);
+
+        addReadingSection(card, "为什么需要 DeepSeek Key",
+            "AI Agent 运行时通常都需要模型 API。没有可用 API，软件可以启动，但 AI 不能正常调用模型完成任务。",
+            "这里推荐 DeepSeek，是因为它相对实惠，适合作为第一次安装和配置的统一引导。",
+            "OpenHouseAI 不限制你长期使用哪一个 API。后续可以让 OpenCode、Claude Code 或 Reasonix 帮你配置自己的模型 API。");
+        addReadingSection(card, "DeepSeek Key 怎么拿",
+            "点击上方按钮打开 DeepSeek 官方平台。你可以先充值 5 元，或者 1 元也可以；然后进入 API Keys，创建 API Key，名称可以随便填，比如 op。",
+            "创建后复制 Key，回到 OpenHouseAI，在本页粘贴并点击“保存 Key”。后台会在后续步骤中把这个 Key 配置到 OpenCode、Claude Code 和 Reasonix。");
+
+        contentView.addView(card, topMarginParams(dp(10)));
+    }
+
+    private void addReadingSection(LinearLayout parent, String title, String... paragraphs) {
         TextView heading = new TextView(activity);
         heading.setText(title);
         heading.setTextColor(COLOR_TEXT);
         heading.setTextSize(13);
         heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         parent.addView(heading, topMarginParams(dp(6)));
-        parent.addView(smallBody(body), topMarginParams(dp(4)));
+        for (String paragraph : paragraphs) {
+            if (paragraph == null || paragraph.trim().isEmpty()) continue;
+            parent.addView(smallBody(paragraph), topMarginParams(dp(4)));
+        }
     }
 
     private void addActionButton(String text, boolean enabled, boolean primary, View.OnClickListener listener) {

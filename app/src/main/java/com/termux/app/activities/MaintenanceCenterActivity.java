@@ -16,7 +16,6 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.text.InputType;
-import android.text.method.PasswordTransformationMethod;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -2582,8 +2581,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
 
         EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        input.setTransformationMethod(PasswordTransformationMethod.getInstance());
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL);
         input.setHint(getString(R.string.deepseek_key_config_hint));
 
         new AlertDialog.Builder(this)

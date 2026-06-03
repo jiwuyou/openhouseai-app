@@ -129,6 +129,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addTitle(panel, "主界面已迁移到终端浮层", 19);
         addBody(panel, "这里保留为旧入口兼容页，不再承载一键初始化、DeepSeek 配置或 OpenCode 控制主线。");
         addBody(panel, "查看详细进度、重新配置 DeepSeek、启动或重启 OpenCode，请进入维护中心；返回终端主界面会回到 TermuxActivity 的终端浮层。");
+        panel.addView(button("进入 AI 软件安装引导", v -> openInstallGuide()));
         addButtonRow(panel,
             compactButton("返回终端主界面", v -> openTerminal(false), true),
             compactButton("查看详细进度", v -> openMaintenanceCenter(), true));
@@ -233,6 +234,21 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         Intent intent = new Intent(this, OpenHouseAgreementActivity.class);
         intent.putExtra(OpenHouseAgreementActivity.EXTRA_OPEN_MAINTENANCE_AFTER_ACCEPT, true);
         ActivityUtils.startActivity(this, intent);
+    }
+
+    private void openInstallGuide() {
+        if (!OpenHouseAgreement.hasAcceptedCurrentVersion(this)) {
+            Intent agreementIntent = new Intent(this, OpenHouseAgreementActivity.class);
+            agreementIntent.putExtra(OpenHouseAgreementActivity.EXTRA_OPEN_INSTALL_GUIDE_AFTER_ACCEPT, true);
+            ActivityUtils.startActivity(this, agreementIntent);
+            return;
+        }
+
+        Intent intent = new Intent(this, TermuxActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        intent.putExtra(TermuxActivity.EXTRA_OPENHOUSE_INSTALL_GUIDE, true);
+        startActivity(intent);
+        finish();
     }
 
     private void openMaintenanceLog(String stageSlug, String stageLabel) {
