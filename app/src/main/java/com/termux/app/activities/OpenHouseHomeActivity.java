@@ -25,6 +25,7 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.core.app.ActivityCompat;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
@@ -49,6 +50,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PAGE_OPENCODE = "opencode";
     private static final String PAGE_DEEPSEEK = "deepseek";
     private static final String PAGE_PERMISSIONS = "permissions";
+    private static final String PAGE_ABOUT = "about";
     private static final String PAGE_TERMINAL_GUIDE = "terminal_guide";
     private static final String PAGE_SHORTCUTS = "shortcuts";
     private static final String PAGE_REPAIR = "repair";
@@ -102,6 +104,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavOpenCode).setOnClickListener(v -> selectPage(PAGE_OPENCODE));
         findViewById(R.id.buttonNavDeepSeek).setOnClickListener(v -> selectPage(PAGE_DEEPSEEK));
         findViewById(R.id.buttonNavPermissions).setOnClickListener(v -> selectPage(PAGE_PERMISSIONS));
+        findViewById(R.id.buttonNavAbout).setOnClickListener(v -> selectPage(PAGE_ABOUT));
         findViewById(R.id.buttonNavTerminalGuide).setOnClickListener(v -> selectPage(PAGE_TERMINAL_GUIDE));
         findViewById(R.id.buttonNavShortcuts).setOnClickListener(v -> selectPage(PAGE_SHORTCUTS));
         findViewById(R.id.buttonNavRepair).setOnClickListener(v -> selectPage(PAGE_REPAIR));
@@ -139,6 +142,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 setHeader("权限获取", "后台运行、文件访问和悬浮窗");
                 renderPermissionsPage();
                 break;
+            case PAGE_ABOUT:
+                setHeader("软件说明", "源码地址和交流群");
+                renderAboutPage();
+                break;
             case PAGE_TERMINAL_GUIDE:
                 setHeader("终端教学", "回到终端后的手指教学");
                 renderTerminalGuidePage();
@@ -161,7 +168,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 break;
             case PAGE_HOME:
             default:
-                setHeader("OpenHouseAI", "菜单总览");
+                setHeader("openhouse ai", "菜单总览");
                 renderHomePage();
                 break;
         }
@@ -178,7 +185,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addBody(panel, "这里保留主入口，具体内容请从左侧侧边栏进入：使用手册、OpenCode 控制、DeepSeek Key、权限获取、终端快捷键和高级设置。");
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
-            compactButton("回到终端", v -> openTerminal(false), true));
+            compactButton("退出菜单", v -> openTerminal(false), true));
+        panel.addView(button("退出菜单，回到终端", v -> openTerminal(false)));
         addButtonRow(panel,
             compactButton("OpenCode 控制", v -> selectPage(PAGE_OPENCODE), true),
             compactButton("DeepSeek Key", v -> selectPage(PAGE_DEEPSEEK), true));
@@ -194,13 +202,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void renderManualPage() {
         addManualSection("安装时建议阅读",
-            "第一次安装通常需要 10 分钟到半小时，期间会下载约 500M 文件，建议在 Wi-Fi 下进行。OpenHouseAI 会准备 Ubuntu、OpenCode、Codex、Claude Code 和 Reasonix。AI 能做什么，取决于你想让它做什么。");
+            "第一次安装通常需要 10 分钟到半小时，期间会下载约 500M 文件，建议在 Wi-Fi 下进行。openhouse ai 会准备 Ubuntu、OpenCode、Codex、Claude Code 和 Reasonix。AI 能做什么，取决于你想让它做什么。");
         addManualSection("为什么需要 DeepSeek Key",
-            "AI 运行通常需要模型 API。这里推荐 DeepSeek，是因为它相对实惠，适合作为第一次统一安装和配置引导。OpenHouseAI 不限制长期使用哪一个 API，后续可以让 AI 帮你接入自己的模型。");
+            "AI 运行通常需要模型 API。这里推荐 DeepSeek，是因为它相对实惠，适合作为第一次统一安装和配置引导。openhouse ai 不限制长期使用哪一个 API，后续可以让 AI 帮你接入自己的模型。");
         addManualSection("终端里的 AI 怎么用",
             "以 Claude Code 为例，在 Ubuntu 终端输入 claude 再按回车即可使用；想继续上次对话，可以输入 claude --continue。记不住命令时，底部快捷键会准备 claude、reasonix、codex、oc 和 --continue。");
         addManualSection("Termux 和 Ubuntu",
-            "启动后看到的是 Termux 终端。OpenHouseAI 会在 Termux 里安装 Ubuntu proot，OpenCode、Codex、Claude Code、Reasonix 等 AI 软件安装在 Ubuntu 的 /root 环境。普通入口终端可以默认进入 Ubuntu，维护中心底部终端固定为 Termux。");
+            "启动后看到的是 Termux 终端。openhouse ai 会在 Termux 里安装 Ubuntu proot，OpenCode、Codex、Claude Code、Reasonix 等 AI 软件安装在 Ubuntu 的 /root 环境。普通入口终端可以默认进入 Ubuntu，维护中心底部终端固定为 Termux。");
         addManualSection("OpenCode Web",
             "OpenCode 原生支持网页访问，并且模型接入范围广。新增项目时先使用 /root，不要把 4096 当成项目路径。启动、停止、重启、自定义端口和复制网址，请查看侧边栏里的“OpenCode 控制”。");
         addManualSection("底部快捷键",
@@ -237,9 +245,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addButtonRow(panel,
             compactButton("打开 DeepSeek 平台", v -> openUrl(getString(R.string.openhouse_deepseek_url)), true),
             compactButton("复制平台网址", v -> copyText("DeepSeek API Keys", getString(R.string.openhouse_deepseek_url)), true));
-        panel.addView(button("粘贴新 Key 并选择替换目标", v -> showDeepSeekReplaceDialog()));
+        panel.addView(button("保存并替换配置", v -> showDeepSeekReplaceDialog()));
         contentView.addView(panel);
 
+        addManualSection("替换后怎么生效",
+            "替换 Key 后，需要重启 Claude 或重新进入 Ubuntu 终端，正在运行的 AI 会话不会立即切换 Key。回到终端后，点击底部 exit，直到最低行看不到 root；然后点击 Ubuntu，就会在当前终端重新进入 Ubuntu 并加载新配置。也可以直接关闭软件后重新进入。");
         addManualSection("为什么需要 DeepSeek Key",
             "AI 运行需要模型 API。DeepSeek 比较实惠，适合作为首次安装的统一配置入口。本软件不限制你接入哪一个 API，长期使用的 API 可以后续让 AI 自行配置。");
         addManualSection("DeepSeek Key 怎么拿",
@@ -249,7 +259,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void renderPermissionsPage() {
         LinearLayout panel = panel();
         addTitle(panel, "权限获取", 19);
-        addBody(panel, "忽略电池优化能降低安装过程被系统回收的概率。文件权限用于访问共享存储和文档；悬浮窗权限用于悬浮入口和部分后台拉起辅助。");
+        addBody(panel, "忽略电池优化会直接向系统请求。文件权限在支持的系统上会先弹出授权请求，无法直接弹出时会进入系统设置。悬浮窗和 Android 11 以上的所有文件访问权限只能进入系统授权页。");
         addStatusRow(panel, "忽略电池优化", isBatteryOptimizationExempt() ? "已开启" : "未开启");
         addStatusRow(panel, "文件/存储权限", isStoragePermissionGranted() ? "已开启" : "未开启");
         addStatusRow(panel, "悬浮窗权限", isOverlayPermissionGranted() ? "已开启" : "未开启");
@@ -257,6 +267,18 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             compactButton("忽略电池优化", v -> requestBatteryOptimizationExemption(), true),
             compactButton("文件权限", v -> openStoragePermissionSettings(), true));
         panel.addView(button("悬浮窗权限", v -> openOverlayPermissionSettings()));
+        contentView.addView(panel);
+    }
+
+    private void renderAboutPage() {
+        LinearLayout panel = panel();
+        addTitle(panel, "openhouse ai", 19);
+        addBody(panel, "openhouse ai 是开源项目，源码和预览页面会持续同步。");
+        addStatusRow(panel, "GitHub 源码", "https://github.com/jiwuyou/openhouseai-app");
+        addStatusRow(panel, "QQ 交流群", "538735275");
+        addButtonRow(panel,
+            compactButton("复制源码地址", v -> copyText("GitHub 源码", "https://github.com/jiwuyou/openhouseai-app"), true),
+            compactButton("复制 QQ 群号", v -> copyText("QQ 交流群", "538735275"), true));
         contentView.addView(panel);
     }
 
@@ -331,23 +353,37 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         input.setText(Integer.toString(openCodePort));
         input.setSelection(input.getText().length());
 
-        new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this)
             .setTitle("自定义端口启动 OpenCode")
             .setMessage("端口仅影响本次控制页启动。启动成功后会打开浏览器，并显示可复制网址。")
             .setView(input)
             .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton("启动", (dialog, which) -> {
-                int port = parsePort(input.getText() == null ? "" : input.getText().toString());
-                if (!OpenCodeSettings.isValidPort(port)) {
-                    Toast.makeText(this, "端口无效，请输入 1-65535。", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                openCodePort = port;
-                lastOpenCodeUrl = getOpenCodeUrl(port);
-                renderPage();
-                runOpenCodeAction(OpenHouseMaintainerRunner.Action.START, port);
-            })
-            .show();
+            .setPositiveButton("启动", null)
+            .create();
+
+        dialog.setOnShowListener(dialogInterface -> {
+            Button negativeButton = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            Button positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (negativeButton != null) {
+                negativeButton.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+            }
+            if (positiveButton != null) {
+                positiveButton.setTextColor(ContextCompat.getColor(this, R.color.accent));
+                positiveButton.setOnClickListener(v -> {
+                    int port = parsePort(input.getText() == null ? "" : input.getText().toString());
+                    if (!OpenCodeSettings.isValidPort(port)) {
+                        Toast.makeText(this, "端口无效，请输入 1-65535。", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    openCodePort = port;
+                    lastOpenCodeUrl = getOpenCodeUrl(port);
+                    renderPage();
+                    runOpenCodeAction(OpenHouseMaintainerRunner.Action.START, port);
+                    dialog.dismiss();
+                });
+            }
+        });
+        dialog.show();
     }
 
     private void showDeepSeekReplaceDialog() {
@@ -368,24 +404,38 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         form.addView(claude);
         form.addView(reasonix);
 
-        new AlertDialog.Builder(this)
-            .setTitle("替换 DeepSeek Key")
-            .setMessage("默认全选。取消某项后，不会覆盖该软件当前配置。")
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("保存并替换配置")
+            .setMessage("默认全选。取消某项后，不会覆盖该软件当前配置。\n\n替换 Key 后，需要重启 Claude 或重新进入 Ubuntu 终端，正在运行的 AI 会话不会立即切换 Key。回到终端后，点击底部 exit，直到最低行看不到 root；然后点击 Ubuntu，就会在当前终端生效。也可以关闭软件后重新进入。")
             .setView(form)
             .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton("保存并替换", (dialog, which) -> {
-                String apiKey = input.getText() == null ? "" : input.getText().toString().trim();
-                if (apiKey.isEmpty()) {
-                    Toast.makeText(this, R.string.deepseek_key_config_empty, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                if (!openCode.isChecked() && !claude.isChecked() && !reasonix.isChecked()) {
-                    Toast.makeText(this, "请至少选择一个 AI 软件。", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                replaceDeepSeekKey(apiKey, openCode.isChecked(), claude.isChecked(), reasonix.isChecked());
-            })
-            .show();
+            .setPositiveButton("保存并替换配置", null)
+            .create();
+
+        dialog.setOnShowListener(dialogInterface -> {
+            Button negativeButton = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            Button positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (negativeButton != null) {
+                negativeButton.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+            }
+            if (positiveButton != null) {
+                positiveButton.setTextColor(ContextCompat.getColor(this, R.color.accent));
+                positiveButton.setOnClickListener(v -> {
+                    String apiKey = input.getText() == null ? "" : input.getText().toString().trim();
+                    if (apiKey.isEmpty()) {
+                        Toast.makeText(this, R.string.deepseek_key_config_empty, Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (!openCode.isChecked() && !claude.isChecked() && !reasonix.isChecked()) {
+                        Toast.makeText(this, "请至少选择一个 AI 软件。", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    replaceDeepSeekKey(apiKey, openCode.isChecked(), claude.isChecked(), reasonix.isChecked());
+                    dialog.dismiss();
+                });
+            }
+        });
+        dialog.show();
     }
 
     private CheckBox checkbox(String text, boolean checked) {
@@ -581,6 +631,15 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                     startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
                     return;
                 }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    6104);
+                return;
             }
 
             Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);

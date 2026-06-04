@@ -194,6 +194,10 @@ public final class OpenHouseInstallController {
                 return false;
             }
 
+            if (markCompletedIfAlreadyDeployed()) {
+                return false;
+            }
+
             updateState(new OpenHouseInstallState(
                 true,
                 false,
@@ -274,6 +278,34 @@ public final class OpenHouseInstallController {
             updateState(OpenHouseInstallState.idle());
             return startOneClickInstallInternal(true);
         }
+    }
+
+    private boolean markCompletedIfAlreadyDeployed() {
+        if (state.completed) {
+            statusRepository.markOneClickInstallCompleted();
+            updateState(state);
+            return true;
+        }
+
+        if (statusRepository.loadStatus().isDeploymentComplete()) {
+            autoRetryAttemptCount = 0;
+            autoRetryInProgress = false;
+            OpenHouseInstallState completedState = new OpenHouseInstallState(
+                false,
+                true,
+                false,
+                100,
+                "初始化安装完成",
+                "已检测到 Linux 环境和 AI 工具安装完成，无需再次执行初始化。",
+                MANIFEST_FULL_SLUG
+            );
+            clearRunningMarker();
+            updateState(completedState);
+            statusRepository.markOneClickInstallCompleted();
+            return true;
+        }
+
+        return false;
     }
 
     public boolean stopOneClickInstall() {

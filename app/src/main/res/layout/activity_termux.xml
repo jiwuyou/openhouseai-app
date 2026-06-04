@@ -152,7 +152,7 @@
             android:layout_alignParentEnd="true"
             android:layout_above="@id/terminal_toolbar_view_pager"
             android:layout_marginEnd="18dp"
-            android:layout_marginBottom="18dp"
+            android:layout_marginBottom="72dp"
             android:contentDescription="@string/action_launch_opencode_default"
             android:text="@string/action_launch_opencode_short"
             android:textColor="@color/stageReadyText"

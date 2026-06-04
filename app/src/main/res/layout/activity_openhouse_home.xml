@@ -193,6 +193,14 @@
                     android:textAllCaps="false" />
 
                 <Button
+                    android:id="@+id/buttonNavAbout"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/openhouse_nav_about"
+                    android:textAllCaps="false" />
+
+                <Button
                     android:id="@+id/buttonNavTerminalGuide"
                     android:layout_width="match_parent"
                     android:layout_height="52dp"
