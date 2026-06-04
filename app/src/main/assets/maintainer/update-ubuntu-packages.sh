@@ -59,9 +59,19 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF'
 
 log "正在 Ubuntu 内执行 apt update"
-run_ubuntu_logged bash -lc 'apt update'
+run_ubuntu_logged bash -lc 'set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+echo "正在修复可能被中断的 Ubuntu 软件包状态"
+dpkg --configure -a
+apt -f install -y
+apt update'
 
 log "正在 Ubuntu 内安装 curl、ca-certificates、git、procps、ripgrep 和 unzip"
-run_ubuntu_logged bash -lc 'DEBIAN_FRONTEND=noninteractive apt install -y curl ca-certificates git procps ripgrep unzip'
+run_ubuntu_logged bash -lc 'set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+echo "正在确认 Ubuntu 软件包状态可继续安装"
+dpkg --configure -a
+apt -f install -y
+apt install -y curl ca-certificates git procps ripgrep unzip'
 
 log "Ubuntu 软件包阶段已完成。"

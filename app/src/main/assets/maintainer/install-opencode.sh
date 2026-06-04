@@ -12,6 +12,9 @@ fi
 
 if ! command -v npm >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
+  echo "正在修复可能被中断的 Ubuntu 软件包状态"
+  dpkg --configure -a
+  apt -f install -y
   apt update
   apt install -y nodejs npm
 fi
