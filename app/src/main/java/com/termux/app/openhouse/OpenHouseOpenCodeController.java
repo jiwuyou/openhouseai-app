@@ -30,9 +30,14 @@ public final class OpenHouseOpenCodeController {
     }
 
     public OpenHouseMaintainerRunner.Result start() {
+        return start(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+    }
+
+    public OpenHouseMaintainerRunner.Result start(int port) {
+        int sanitizedPort = requireValidPort(port);
         OpenHouseMaintainerRunner.Result result = maintainerRunner.run(
             OpenHouseMaintainerRunner.Action.START,
-            OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+            sanitizedPort);
         if (result.isSuccess()) {
             statusRepository.setCurrentOnboardingStep(OpenHouseOnboardingState.Step.OPENCODE_LAUNCH);
         }
@@ -40,15 +45,24 @@ public final class OpenHouseOpenCodeController {
     }
 
     public OpenHouseMaintainerRunner.Result stop() {
+        return stop(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+    }
+
+    public OpenHouseMaintainerRunner.Result stop(int port) {
         return maintainerRunner.run(
             OpenHouseMaintainerRunner.Action.STOP,
-            OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+            requireValidPort(port));
     }
 
     public OpenHouseMaintainerRunner.Result restart() {
+        return restart(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+    }
+
+    public OpenHouseMaintainerRunner.Result restart(int port) {
+        int sanitizedPort = requireValidPort(port);
         OpenHouseMaintainerRunner.Result result = maintainerRunner.run(
             OpenHouseMaintainerRunner.Action.RESTART,
-            OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+            sanitizedPort);
         if (result.isSuccess()) {
             statusRepository.setCurrentOnboardingStep(OpenHouseOnboardingState.Step.OPENCODE_LAUNCH);
         }
@@ -76,10 +90,25 @@ public final class OpenHouseOpenCodeController {
     }
 
     public String getLoopbackUrl() {
-        return OpenCodeSettings.getLoopbackUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+        return getLoopbackUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+    }
+
+    public String getLoopbackUrl(int port) {
+        return OpenCodeSettings.getLoopbackUrl(requireValidPort(port));
     }
 
     public String getRootProjectUrl() {
-        return OpenCodeSettings.getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+        return getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+    }
+
+    public String getRootProjectUrl(int port) {
+        return OpenCodeSettings.getRootProjectUrl(requireValidPort(port));
+    }
+
+    private int requireValidPort(int port) {
+        if (!OpenCodeSettings.isValidPort(port)) {
+            throw new IllegalArgumentException("Invalid OpenCode port: " + port);
+        }
+        return port;
     }
 }

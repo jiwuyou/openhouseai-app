@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -29,6 +30,10 @@ public final class OpenHouseMaintainerRunner {
     }
 
     public Result run(Action action, int port) {
+        return run(action, port, Collections.emptyMap());
+    }
+
+    public Result run(Action action, int port, Map<String, String> extraEnvironment) {
         File tempScript = null;
         File outputFile = null;
         Process process = null;
@@ -67,6 +72,13 @@ public final class OpenHouseMaintainerRunner {
             environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
             environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
             environment.put("OPENHOUSEAI_DEEPSEEK_KEY_FILE", OpenHouseStatusRepository.getDeepSeekKeyTempFile().getAbsolutePath());
+            if (extraEnvironment != null) {
+                for (Map.Entry<String, String> entry : extraEnvironment.entrySet()) {
+                    if (entry.getKey() != null && entry.getValue() != null) {
+                        environment.put(entry.getKey(), entry.getValue());
+                    }
+                }
+            }
 
             process = processBuilder.start();
             if (!process.waitFor(action.timeoutSeconds, TimeUnit.SECONDS)) {

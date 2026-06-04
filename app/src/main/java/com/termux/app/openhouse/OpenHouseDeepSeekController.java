@@ -9,6 +9,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 public final class OpenHouseDeepSeekController {
 
@@ -83,6 +85,12 @@ public final class OpenHouseDeepSeekController {
     }
 
     public OpenHouseMaintainerRunner.Result configureSavedKey() {
+        return configureSavedKey(true, true, true);
+    }
+
+    public OpenHouseMaintainerRunner.Result configureSavedKey(boolean configureOpenCode,
+                                                             boolean configureClaudeCode,
+                                                             boolean configureReasonix) {
         File savedKeyFile = OpenHouseStatusRepository.getSavedDeepSeekKeyFile();
         File tempKeyFile = OpenHouseStatusRepository.getDeepSeekKeyTempFile();
         if (!savedKeyFile.isFile() || savedKeyFile.length() <= 0L) {
@@ -102,9 +110,14 @@ public final class OpenHouseDeepSeekController {
             }
 
             writeSecretFile(tempKeyFile, savedKey);
+            Map<String, String> environment = new HashMap<>();
+            environment.put("OPENHOUSEAI_CONFIGURE_OPENCODE", configureOpenCode ? "1" : "0");
+            environment.put("OPENHOUSEAI_CONFIGURE_CLAUDE", configureClaudeCode ? "1" : "0");
+            environment.put("OPENHOUSEAI_CONFIGURE_REASONIX", configureReasonix ? "1" : "0");
             OpenHouseMaintainerRunner.Result result = maintainerRunner.run(
                 OpenHouseMaintainerRunner.Action.CONFIGURE_DEEPSEEK,
-                OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+                OpenCodeSettings.DEFAULT_OPENCODE_PORT,
+                environment);
             if (result.isSuccess()) {
                 statusRepository.markDeepSeekConfigured(true);
             }

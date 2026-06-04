@@ -177,6 +177,22 @@
                     android:textAllCaps="false" />
 
                 <Button
+                    android:id="@+id/buttonNavDeepSeek"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/openhouse_nav_deepseek"
+                    android:textAllCaps="false" />
+
+                <Button
+                    android:id="@+id/buttonNavPermissions"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/openhouse_nav_permissions"
+                    android:textAllCaps="false" />
+
+                <Button
                     android:id="@+id/buttonNavTerminalGuide"
                     android:layout_width="match_parent"
                     android:layout_height="52dp"

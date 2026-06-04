@@ -223,6 +223,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     public static final String EXTRA_RESTART_ENTRY_SESSION = "com.termux.app.extra.RESTART_ENTRY_SESSION";
     public static final String EXTRA_OPENHOUSE_TERMINAL_TUTORIAL = "com.termux.app.extra.OPENHOUSE_TERMINAL_TUTORIAL";
     public static final String EXTRA_OPENHOUSE_MENU_AFTER_AGREEMENT = "com.termux.app.extra.OPENHOUSE_MENU_AFTER_AGREEMENT";
+    public static final String PREF_OPENHOUSE_TERMINAL_UI = "openhouse_terminal_ui";
+    public static final String PREF_OPENHOUSE_TERMINAL_HINT_VISIBLE = "terminal_hint_visible";
     private static final String EXTRA_OPENHOUSE_TERMINAL_TEACHING = "com.termux.app.openhouse.extra.TERMINAL_TEACHING";
     private static final String PREF_QUICK_BUTTONS = "openhouse_quick_buttons";
     private static final String PREF_QUICK_BUTTONS_VISIBLE = "quick_buttons_visible";
@@ -301,9 +303,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setOpenCodeQuickLaunchButtonView();
 
-        setMaintenanceCenterButtonView();
-
         setQuickButtonsVisibilityHandleView();
+
+        setOpenHouseTerminalHintView();
 
         registerForContextMenu(mTerminalView);
 
@@ -368,6 +370,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         if (mTermuxTerminalViewClient != null)
             mTermuxTerminalViewClient.onResume();
+
+        setOpenHouseTerminalHintView();
 
         // Check if a crash happened on last run of the app or if a plugin crashed and show a
         // notification with the crash details if it did
@@ -533,6 +537,23 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private boolean shouldRestartEntrySession(Intent intent) {
         return intent != null && intent.getBooleanExtra(EXTRA_RESTART_ENTRY_SESSION, false);
+    }
+
+    public static boolean isOpenHouseTerminalHintVisible(@NonNull Context context) {
+        return getOpenHouseTerminalUiPreferences(context)
+            .getBoolean(PREF_OPENHOUSE_TERMINAL_HINT_VISIBLE, true);
+    }
+
+    public static void setOpenHouseTerminalHintVisible(@NonNull Context context, boolean visible) {
+        getOpenHouseTerminalUiPreferences(context)
+            .edit()
+            .putBoolean(PREF_OPENHOUSE_TERMINAL_HINT_VISIBLE, visible)
+            .apply();
+    }
+
+    private static SharedPreferences getOpenHouseTerminalUiPreferences(@NonNull Context context) {
+        return context.getApplicationContext()
+            .getSharedPreferences(PREF_OPENHOUSE_TERMINAL_UI, Context.MODE_PRIVATE);
     }
 
     private boolean consumeOpenHouseTerminalTutorialRequest(@Nullable Intent intent) {
@@ -774,10 +795,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         findViewById(R.id.terminal_list_button).setOnClickListener(v -> getDrawer().openDrawer(Gravity.LEFT));
     }
 
-    private void setMaintenanceCenterButtonView() {
-        findViewById(R.id.maintenance_center_button).setOnClickListener(v -> openMaintenanceCenterEntry());
-    }
-
     private void setOpenCodeQuickLaunchButtonView() {
         View button = findViewById(R.id.opencode_quick_launch_button);
         button.setOnClickListener(v -> launchOpenCodeOnDefaultPort());
@@ -819,6 +836,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         }
 
         ActivityUtils.startActivity(this, new Intent(this, OpenHouseOnboardingActivity.class));
+    }
+
+    private void setOpenHouseTerminalHintView() {
+        View hint = findViewById(R.id.openhouse_terminal_menu_hint);
+        if (hint == null) return;
+
+        hint.setVisibility(isOpenHouseTerminalHintVisible(this) ? View.VISIBLE : View.GONE);
     }
 
     private boolean isOpenHouseFirstInstallGuideComplete() {
@@ -891,12 +915,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private void applyQuickButtonsVisibility(boolean visible) {
         View terminalListButton = findViewById(R.id.terminal_list_button);
         View menuButton = findViewById(R.id.openhouse_menu_button);
-        View maintenanceButton = findViewById(R.id.maintenance_center_button);
         View openCodeButton = findViewById(R.id.opencode_quick_launch_button);
         int visibility = visible ? View.VISIBLE : View.GONE;
         if (terminalListButton != null) terminalListButton.setVisibility(visibility);
         if (menuButton != null) menuButton.setVisibility(visibility);
-        if (maintenanceButton != null) maintenanceButton.setVisibility(visibility);
         if (openCodeButton != null) openCodeButton.setVisibility(visibility);
     }
 

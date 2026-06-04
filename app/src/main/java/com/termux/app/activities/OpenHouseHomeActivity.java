@@ -1,14 +1,24 @@
 package com.termux.app.activities;
 
+import android.Manifest;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.PowerManager;
+import android.provider.Settings;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -19,27 +29,41 @@ import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.termux.R;
-import com.termux.app.OpenHouseAgreement;
 import com.termux.app.OpenCodeSettings;
+import com.termux.app.OpenHouseAgreement;
 import com.termux.app.TermuxActivity;
+import com.termux.app.openhouse.OpenHouseDeepSeekController;
+import com.termux.app.openhouse.OpenHouseMaintainerRunner;
+import com.termux.app.openhouse.OpenHouseOpenCodeController;
 import com.termux.shared.activity.ActivityUtils;
+import com.termux.shared.logger.Logger;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class OpenHouseHomeActivity extends AppCompatActivity {
 
+    private static final String LOG_TAG = "OpenHouseHome";
     private static final String PAGE_HOME = "home";
     private static final String PAGE_MANUAL = "manual";
     private static final String PAGE_OPENCODE = "opencode";
+    private static final String PAGE_DEEPSEEK = "deepseek";
+    private static final String PAGE_PERMISSIONS = "permissions";
     private static final String PAGE_TERMINAL_GUIDE = "terminal_guide";
     private static final String PAGE_SHORTCUTS = "shortcuts";
     private static final String PAGE_REPAIR = "repair";
     private static final String PAGE_LOGS = "logs";
     private static final String PAGE_ADVANCED = "advanced";
 
+    private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
+
     private DrawerLayout drawerLayout;
     private LinearLayout contentView;
     private TextView pageTitleView;
     private TextView pageSubtitleView;
     private String currentPage = PAGE_HOME;
+    private int openCodePort = OpenCodeSettings.DEFAULT_OPENCODE_PORT;
+    private String lastOpenCodeUrl = OpenCodeSettings.getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,10 +82,26 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         renderPage();
     }
 
+    @Override
+    protected void onDestroy() {
+        backgroundExecutor.shutdownNow();
+        super.onDestroy();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (PAGE_PERMISSIONS.equals(currentPage)) {
+            renderPage();
+        }
+    }
+
     private void bindNavigation() {
         findViewById(R.id.buttonNavHome).setOnClickListener(v -> selectPage(PAGE_HOME));
         findViewById(R.id.buttonNavManual).setOnClickListener(v -> selectPage(PAGE_MANUAL));
         findViewById(R.id.buttonNavOpenCode).setOnClickListener(v -> selectPage(PAGE_OPENCODE));
+        findViewById(R.id.buttonNavDeepSeek).setOnClickListener(v -> selectPage(PAGE_DEEPSEEK));
+        findViewById(R.id.buttonNavPermissions).setOnClickListener(v -> selectPage(PAGE_PERMISSIONS));
         findViewById(R.id.buttonNavTerminalGuide).setOnClickListener(v -> selectPage(PAGE_TERMINAL_GUIDE));
         findViewById(R.id.buttonNavShortcuts).setOnClickListener(v -> selectPage(PAGE_SHORTCUTS));
         findViewById(R.id.buttonNavRepair).setOnClickListener(v -> selectPage(PAGE_REPAIR));
@@ -84,36 +124,44 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         contentView.removeAllViews();
         switch (currentPage) {
             case PAGE_MANUAL:
-                setHeader("使用手册", "文档与 Key 入口");
+                setHeader("使用手册", "离线基础说明和在线手册入口");
                 renderManualPage();
                 break;
             case PAGE_OPENCODE:
-                setHeader("OpenCode 控制", "进入维护中心执行");
+                setHeader("OpenCode 控制", "启动、停止、重启和自定义端口");
                 renderOpenCodePage();
                 break;
+            case PAGE_DEEPSEEK:
+                setHeader("DeepSeek Key", "一键替换 AI 软件配置");
+                renderDeepSeekPage();
+                break;
+            case PAGE_PERMISSIONS:
+                setHeader("权限获取", "后台运行、文件访问和悬浮窗");
+                renderPermissionsPage();
+                break;
             case PAGE_TERMINAL_GUIDE:
-                setHeader("终端教学", "回到 Termux 浮层");
+                setHeader("终端教学", "回到终端后的手指教学");
                 renderTerminalGuidePage();
                 break;
             case PAGE_SHORTCUTS:
-                setHeader("终端快捷键", "基础控制键和 AI 快捷键");
+                setHeader("终端快捷键", "底部按键说明");
                 renderShortcutsPage();
                 break;
             case PAGE_REPAIR:
-                setHeader("维护与修复", "维护中心承接");
+                setHeader("维护与修复", "详细进度和修复入口");
                 renderRepairPage();
                 break;
             case PAGE_LOGS:
-                setHeader("日志", "维护中心和阶段日志");
+                setHeader("日志", "阶段日志和 OpenCode 日志");
                 renderLogsPage();
                 break;
             case PAGE_ADVANCED:
-                setHeader("兼容入口", "主线已迁移");
+                setHeader("高级设置", "显示和兼容设置");
                 renderAdvancedPage();
                 break;
             case PAGE_HOME:
             default:
-                setHeader("OpenHouseAI", "兼容入口");
+                setHeader("OpenHouseAI", "菜单总览");
                 renderHomePage();
                 break;
         }
@@ -126,35 +174,147 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void renderHomePage() {
         LinearLayout panel = panel();
-        addTitle(panel, "主界面已迁移到终端", 19);
-        addBody(panel, "这里保留为旧入口兼容页，不再承载一键初始化、DeepSeek 配置或 OpenCode 控制主线。");
-        addBody(panel, "查看详细进度、重新配置 DeepSeek、启动或重启 OpenCode，请进入维护中心；返回终端主界面会回到 TermuxActivity。");
-        panel.addView(button("进入 AI 软件安装引导", v -> openInstallGuide()));
+        addTitle(panel, "菜单总览", 19);
+        addBody(panel, "这里保留主入口，具体内容请从左侧侧边栏进入：使用手册、OpenCode 控制、DeepSeek Key、权限获取、终端快捷键和高级设置。");
         addButtonRow(panel,
-            compactButton("返回终端主界面", v -> openTerminal(false), true),
-            compactButton("使用演示", v -> openTerminal(true), true));
+            compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
+            compactButton("回到终端", v -> openTerminal(false), true));
         addButtonRow(panel,
-            compactButton("查看详细进度", v -> openMaintenanceCenter(), true),
-            compactButton("OpenCode 控制", v -> openMaintenanceCenter(), true));
-        addButtonRow(panel,
-            compactButton("重新配置 DeepSeek", v -> openMaintenanceCenter(), true),
-            compactButton("复制 OpenCode 地址", v -> copyText(getString(R.string.openhouse_url_opencode_label), getOpenCodeUrl()), true));
-        panel.addView(button("打开在线手册", v -> openUrl(getString(R.string.openhouse_url_manual))));
+            compactButton("OpenCode 控制", v -> selectPage(PAGE_OPENCODE), true),
+            compactButton("DeepSeek Key", v -> selectPage(PAGE_DEEPSEEK), true));
         contentView.addView(panel);
+
+        LinearLayout quick = panel();
+        addTitle(quick, "快速状态", 17);
+        addStatusRow(quick, "OpenCode 默认地址", getOpenCodeUrl(openCodePort));
+        addStatusRow(quick, "OpenCode 目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
+        addStatusRow(quick, "运行环境", "AI 工具安装在 Ubuntu /root");
+        contentView.addView(quick);
     }
 
     private void renderManualPage() {
+        addManualSection("安装时建议阅读",
+            "第一次安装通常需要 10 分钟到半小时，期间会下载约 500M 文件，建议在 Wi-Fi 下进行。OpenHouseAI 会准备 Ubuntu、OpenCode、Codex、Claude Code 和 Reasonix。AI 能做什么，取决于你想让它做什么。");
+        addManualSection("为什么需要 DeepSeek Key",
+            "AI 运行通常需要模型 API。这里推荐 DeepSeek，是因为它相对实惠，适合作为第一次统一安装和配置引导。OpenHouseAI 不限制长期使用哪一个 API，后续可以让 AI 帮你接入自己的模型。");
+        addManualSection("终端里的 AI 怎么用",
+            "以 Claude Code 为例，在 Ubuntu 终端输入 claude 再按回车即可使用；想继续上次对话，可以输入 claude --continue。记不住命令时，底部快捷键会准备 claude、reasonix、codex、oc 和 --continue。");
+        addManualSection("Termux 和 Ubuntu",
+            "启动后看到的是 Termux 终端。OpenHouseAI 会在 Termux 里安装 Ubuntu proot，OpenCode、Codex、Claude Code、Reasonix 等 AI 软件安装在 Ubuntu 的 /root 环境。普通入口终端可以默认进入 Ubuntu，维护中心底部终端固定为 Termux。");
+        addManualSection("OpenCode Web",
+            "OpenCode 原生支持网页访问，并且模型接入范围广。新增项目时先使用 /root，不要把 4096 当成项目路径。启动、停止、重启、自定义端口和复制网址，请查看侧边栏里的“OpenCode 控制”。");
+        addManualSection("底部快捷键",
+            "底部按键包含 ESC、TAB、CTRL、ALT、方向键、键盘、Termux、Ubuntu、exit、clear，以及第三排 AI 快捷键。exit 用于退出当前 shell；Ubuntu 用于进入 Ubuntu /root。按键支持自定义和多页，可以直接让 AI 帮你修改常用命令。");
+        addManualSection("更多 AI Agent",
+            "OpenClaw、Hermes 或其他 AI Agent 可以后续安装。配置好基础环境后，你可以让 OpenCode、Claude Code 或 Reasonix 帮你下载、安装和配置想用的软件。Codex 也已安装，但 DeepSeek 官方没有直接给出接入 Codex 的方式，因此当前不默认配置。");
+    }
+
+    private void renderOpenCodePage() {
         LinearLayout panel = panel();
-        addTitle(panel, "使用手册", 19);
-        addBody(panel, "离线基础说明仍在安装后的文档目录中；联网时可以打开在线最新版。");
-        panel.addView(button("在线最新版", v -> openUrl(getString(R.string.openhouse_url_manual))));
-        panel.addView(button("申请 DeepSeek API Key", v -> openUrl(getString(R.string.openhouse_deepseek_url))));
-        panel.addView(button("填写 Key 并配置", v -> openMaintenanceCenter()));
+        addTitle(panel, "OpenCode Web 控制", 19);
+        addBody(panel, "OpenCode 会在 Ubuntu 的 /root 目录启动。默认端口是 4096，也可以临时使用自定义端口启动。启动成功后会自动打开浏览器，并在本页显示可复制的网址。");
+        addStatusRow(panel, "当前端口", Integer.toString(openCodePort));
+        addStatusRow(panel, "可复制网址", lastOpenCodeUrl);
+        addButtonRow(panel,
+            compactButton("启动", v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.START, openCodePort), true),
+            compactButton("停止", v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.STOP, openCodePort), true));
+        addButtonRow(panel,
+            compactButton("重启", v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.RESTART, openCodePort), true),
+            compactButton("复制网址", v -> copyText(getString(R.string.openhouse_url_opencode_label), lastOpenCodeUrl), true));
+        addButtonRow(panel,
+            compactButton("自定义端口启动", v -> showCustomPortDialog(), true),
+            compactButton("打开浏览器", v -> openUrl(lastOpenCodeUrl), true));
         contentView.addView(panel);
 
-        addManualSection("OpenCode 新增项目", "OpenCode Web 默认地址是 " + getOpenCodeUrl() + "。新增项目或选择项目时先填写 /root，4096 是端口，不是项目路径。");
-        addManualSection("终端使用", "主界面是 TermuxActivity 的终端浮层。维护中心底部终端固定为 Termux，不会因为默认入口设置而自动进入 Ubuntu。");
-        addManualSection("AI 工具", "DeepSeek Key 和 OpenCode 控制都从维护中心进入，避免绕过向导确认和阶段状态。");
+        addManualSection("OpenCode Web 使用说明",
+            "打开浏览器网址后，如果新增项目或选择项目，先填写 /root。OpenCode 可以接入非常广泛的大模型 API；如果你没有配置 DeepSeek Key，也可以先启动 OpenCode Web，在网页里配置模型，再让 OpenCode 帮你配置其他 AI Agent。");
+    }
+
+    private void renderDeepSeekPage() {
+        LinearLayout panel = panel();
+        addTitle(panel, "一键替换 DeepSeek Key", 19);
+        addBody(panel, "Key 变化时，可以在这里粘贴新 Key，并选择要替换配置的 AI 软件。默认全选 OpenCode、Claude Code 和 Reasonix；不会把真实 Key 打印到日志或页面。");
+        addButtonRow(panel,
+            compactButton("打开 DeepSeek 平台", v -> openUrl(getString(R.string.openhouse_deepseek_url)), true),
+            compactButton("复制平台网址", v -> copyText("DeepSeek API Keys", getString(R.string.openhouse_deepseek_url)), true));
+        panel.addView(button("粘贴新 Key 并选择替换目标", v -> showDeepSeekReplaceDialog()));
+        contentView.addView(panel);
+
+        addManualSection("为什么需要 DeepSeek Key",
+            "AI 运行需要模型 API。DeepSeek 比较实惠，适合作为首次安装的统一配置入口。本软件不限制你接入哪一个 API，长期使用的 API 可以后续让 AI 自行配置。");
+        addManualSection("DeepSeek Key 怎么拿",
+            "打开 DeepSeek 平台后，可以充值 1 元或 5 元；充值完成后点击 API Keys，再点击创建 API Key，名称可以任意填，比如 op。创建后复制 Key，回到这里粘贴并保存。");
+    }
+
+    private void renderPermissionsPage() {
+        LinearLayout panel = panel();
+        addTitle(panel, "权限获取", 19);
+        addBody(panel, "忽略电池优化能降低安装过程被系统回收的概率。文件权限用于访问共享存储和文档；悬浮窗权限用于悬浮入口和部分后台拉起辅助。");
+        addStatusRow(panel, "忽略电池优化", isBatteryOptimizationExempt() ? "已开启" : "未开启");
+        addStatusRow(panel, "文件/存储权限", isStoragePermissionGranted() ? "已开启" : "未开启");
+        addStatusRow(panel, "悬浮窗权限", isOverlayPermissionGranted() ? "已开启" : "未开启");
+        addButtonRow(panel,
+            compactButton("忽略电池优化", v -> requestBatteryOptimizationExemption(), true),
+            compactButton("文件权限", v -> openStoragePermissionSettings(), true));
+        panel.addView(button("悬浮窗权限", v -> openOverlayPermissionSettings()));
+        contentView.addView(panel);
+    }
+
+    private void renderTerminalGuidePage() {
+        LinearLayout panel = panel();
+        addTitle(panel, "使用演示", 19);
+        addBody(panel, "使用演示会在终端上教你打开终端列表、使用底部快捷键、输入 claude、打开菜单，并在最后控制 OpenCode 启动。");
+        addButtonRow(panel,
+            compactButton("打开使用演示", v -> openTerminal(true), true),
+            compactButton("直接回到终端", v -> openTerminal(false), true));
+        contentView.addView(panel);
+    }
+
+    private void renderShortcutsPage() {
+        LinearLayout panel = panel();
+        addTitle(panel, "底部 Termux Toolbar", 19);
+        addBody(panel, "第一排和第二排保留常用终端控制键：ESC、TAB、CTRL、ALT、方向键、键盘、Termux、Ubuntu、exit、clear。");
+        addBody(panel, "第三排是 AI 快捷键：claude、reasonix、codex、oc、--continue。第二页可以放完整命令，例如 claude --continue。");
+        addBody(panel, "按键支持自定义和多页。你可以让 AI 修改配置，例如：把第三排改成我的常用命令，或者新增一页专门放 Claude Code 的完整指令。");
+        panel.addView(button("回到终端", v -> openTerminal(false)));
+        contentView.addView(panel);
+    }
+
+    private void renderRepairPage() {
+        LinearLayout panel = panel();
+        addTitle(panel, "维护与修复", 19);
+        addBody(panel, "这里进入详细进度和维护工具。进入详细进度不会中断正在后台进行的安装过程。");
+        addButtonRow(panel,
+            compactButton("查看详细进度", v -> openMaintenanceCenter(), true),
+            compactButton("进入安装引导", v -> openInstallGuide(), true));
+        contentView.addView(panel);
+    }
+
+    private void renderLogsPage() {
+        LinearLayout panel = panel();
+        addTitle(panel, "日志", 19);
+        addBody(panel, "阶段日志保存在维护日志目录。常用日志可从这里直接查看，完整过程请进入详细进度。");
+        addButtonRow(panel,
+            compactButton("启动日志", v -> openMaintenanceLog("start", "启动 OpenCode"), true),
+            compactButton("重启日志", v -> openMaintenanceLog("restart", "重启 OpenCode"), true));
+        panel.addView(button("查看详细进度", v -> openMaintenanceCenter()));
+        contentView.addView(panel);
+    }
+
+    private void renderAdvancedPage() {
+        LinearLayout panel = panel();
+        addTitle(panel, "高级设置", 19);
+        addStatusRow(panel, "OpenCode 默认端口", Integer.toString(OpenCodeSettings.DEFAULT_OPENCODE_PORT));
+        addStatusRow(panel, "OpenCode 启动目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
+        CheckBox hintToggle = checkbox("在终端显示半透明小字提示", TermuxActivity.isOpenHouseTerminalHintVisible(this));
+        hintToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            TermuxActivity.setOpenHouseTerminalHintVisible(this, isChecked);
+            Toast.makeText(this, isChecked ? "终端小字提示已开启。" : "终端小字提示已关闭。", Toast.LENGTH_SHORT).show();
+        });
+        panel.addView(hintToggle);
+        addBody(panel, "这个提示用于告诉第一次使用的用户点击菜单。关闭后，回到终端或重新打开软件时不再显示。");
+        panel.addView(button("复制在线手册地址", v -> copyText("在线手册地址", getString(R.string.openhouse_url_manual))));
+        contentView.addView(panel);
     }
 
     private void addManualSection(String title, String body) {
@@ -164,68 +324,136 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         contentView.addView(section);
     }
 
-    private void renderOpenCodePage() {
-        LinearLayout panel = panel();
-        addTitle(panel, "OpenCode 控制入口", 19);
-        addStatusRow(panel, "访问地址", getOpenCodeUrl());
-        addBody(panel, "启动、重启、自定义端口和打开浏览器都由维护中心执行。这样可以沿用向导确认、阶段阻塞和共享日志语义。");
-        addButtonRow(panel,
-            compactButton("进入维护中心", v -> openMaintenanceCenter(), true),
-            compactButton("复制地址", v -> copyText(getString(R.string.openhouse_url_opencode_label), getOpenCodeUrl()), true));
-        panel.addView(button("尝试在浏览器打开", v -> openUrl(getOpenCodeUrl())));
-        contentView.addView(panel);
+    private void showCustomPortDialog() {
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        input.setHint("例如 4096 或 8766");
+        input.setText(Integer.toString(openCodePort));
+        input.setSelection(input.getText().length());
+
+        new AlertDialog.Builder(this)
+            .setTitle("自定义端口启动 OpenCode")
+            .setMessage("端口仅影响本次控制页启动。启动成功后会打开浏览器，并显示可复制网址。")
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton("启动", (dialog, which) -> {
+                int port = parsePort(input.getText() == null ? "" : input.getText().toString());
+                if (!OpenCodeSettings.isValidPort(port)) {
+                    Toast.makeText(this, "端口无效，请输入 1-65535。", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                openCodePort = port;
+                lastOpenCodeUrl = getOpenCodeUrl(port);
+                renderPage();
+                runOpenCodeAction(OpenHouseMaintainerRunner.Action.START, port);
+            })
+            .show();
     }
 
-    private void renderTerminalGuidePage() {
-        LinearLayout panel = panel();
-        addTitle(panel, "使用演示", 19);
-        addBody(panel, "使用演示基于终端教学，会介绍终端快捷键、终端列表、菜单入口，并在最后启动 OpenCode 自动跳转浏览器。");
-        addButtonRow(panel,
-            compactButton("打开使用演示", v -> openTerminal(true), true),
-            compactButton("直接回到终端", v -> openTerminal(false), true));
-        contentView.addView(panel);
+    private void showDeepSeekReplaceDialog() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        int padding = dp(4);
+        form.setPadding(padding, padding, padding, 0);
+
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL);
+        input.setHint(getString(R.string.deepseek_key_config_hint));
+        form.addView(input);
+
+        CheckBox openCode = checkbox("OpenCode", true);
+        CheckBox claude = checkbox("Claude Code", true);
+        CheckBox reasonix = checkbox("Reasonix", true);
+        form.addView(openCode);
+        form.addView(claude);
+        form.addView(reasonix);
+
+        new AlertDialog.Builder(this)
+            .setTitle("替换 DeepSeek Key")
+            .setMessage("默认全选。取消某项后，不会覆盖该软件当前配置。")
+            .setView(form)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton("保存并替换", (dialog, which) -> {
+                String apiKey = input.getText() == null ? "" : input.getText().toString().trim();
+                if (apiKey.isEmpty()) {
+                    Toast.makeText(this, R.string.deepseek_key_config_empty, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (!openCode.isChecked() && !claude.isChecked() && !reasonix.isChecked()) {
+                    Toast.makeText(this, "请至少选择一个 AI 软件。", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                replaceDeepSeekKey(apiKey, openCode.isChecked(), claude.isChecked(), reasonix.isChecked());
+            })
+            .show();
     }
 
-    private void renderShortcutsPage() {
-        LinearLayout panel = panel();
-        addTitle(panel, "终端快捷键", 19);
-        addBody(panel, "基础键：ESC、TAB、CTRL、ALT、方向键、键盘、exit、clear。");
-        addBody(panel, "AI 快捷键：claude、claude --continue、codex、reasonix、OpenCode Web。");
-        panel.addView(button("回到终端", v -> openTerminal(false)));
-        contentView.addView(panel);
+    private CheckBox checkbox(String text, boolean checked) {
+        CheckBox box = new CheckBox(this);
+        box.setText(text);
+        box.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        box.setTextSize(14);
+        box.setChecked(checked);
+        return box;
     }
 
-    private void renderRepairPage() {
-        LinearLayout panel = panel();
-        addTitle(panel, "维护与修复", 19);
-        addBody(panel, "维护中心包含权限、分步执行、一键阶段、DeepSeek Key、日志和 OpenCode 控制入口。");
-        panel.addView(button("打开维护中心", v -> openMaintenanceCenter()));
-        contentView.addView(panel);
+    private void replaceDeepSeekKey(String apiKey, boolean openCode, boolean claude, boolean reasonix) {
+        Toast.makeText(this, "正在保存并替换 DeepSeek Key。", Toast.LENGTH_SHORT).show();
+        backgroundExecutor.execute(() -> {
+            OpenHouseDeepSeekController controller = OpenHouseDeepSeekController.getInstance(this);
+            OpenHouseDeepSeekController.SaveResult saveResult = controller.saveKey(apiKey);
+            if (!saveResult.isSuccess()) {
+                runOnUiThread(() -> Toast.makeText(this, saveResult.message, Toast.LENGTH_LONG).show());
+                return;
+            }
+
+            OpenHouseMaintainerRunner.Result result = controller.configureSavedKey(openCode, claude, reasonix);
+            runOnUiThread(() -> {
+                Toast.makeText(this,
+                    result.isSuccess() ? "DeepSeek Key 已按选择替换。" : "替换失败，请查看日志。",
+                    Toast.LENGTH_LONG).show();
+                renderPage();
+            });
+        });
     }
 
-    private void renderLogsPage() {
-        LinearLayout panel = panel();
-        addTitle(panel, "日志", 19);
-        addBody(panel, "阶段日志保存在维护日志目录。完整进度与共享安装日志请从维护中心查看。");
-        panel.addView(button("查看启动日志", v -> openMaintenanceLog("start", "启动 OpenCode")));
-        panel.addView(button("查看重启日志", v -> openMaintenanceLog("restart", "重启 OpenCode")));
-        panel.addView(button("打开维护中心", v -> openMaintenanceCenter()));
-        contentView.addView(panel);
+    private void runOpenCodeAction(OpenHouseMaintainerRunner.Action action, int port) {
+        Toast.makeText(this, getString(R.string.openhouse_opencode_action_running), Toast.LENGTH_SHORT).show();
+        backgroundExecutor.execute(() -> {
+            OpenHouseOpenCodeController controller = OpenHouseOpenCodeController.getInstance(this);
+            OpenHouseMaintainerRunner.Result result;
+            if (action == OpenHouseMaintainerRunner.Action.STOP) {
+                result = controller.stop(port);
+            } else if (action == OpenHouseMaintainerRunner.Action.RESTART) {
+                result = controller.restart(port);
+            } else {
+                result = controller.start(port);
+            }
+            runOnUiThread(() -> {
+                lastOpenCodeUrl = getOpenCodeUrl(port);
+                renderPage();
+                if (result.isSuccess()) {
+                    if (action == OpenHouseMaintainerRunner.Action.START || action == OpenHouseMaintainerRunner.Action.RESTART) {
+                        openUrl(lastOpenCodeUrl);
+                    }
+                    Toast.makeText(this, result.action.label + "完成", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, getString(R.string.openhouse_opencode_action_failed), Toast.LENGTH_LONG).show();
+                }
+            });
+        });
     }
 
-    private void renderAdvancedPage() {
-        LinearLayout panel = panel();
-        addTitle(panel, "旧 Home 兼容入口", 19);
-        addStatusRow(panel, "主线入口", "TermuxActivity 终端主界面");
-        addStatusRow(panel, "详细进度", "维护中心");
-        addStatusRow(panel, "OpenCode 端口", Integer.toString(OpenCodeSettings.DEFAULT_OPENCODE_PORT));
-        addStatusRow(panel, "OpenCode 目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
-        panel.addView(button("复制在线手册地址", v -> copyText("在线手册地址", getString(R.string.openhouse_url_manual))));
-        contentView.addView(panel);
+    private int parsePort(String value) {
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
-    private String getOpenCodeUrl() {
-        return OpenCodeSettings.getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+    private String getOpenCodeUrl(int port) {
+        return OpenCodeSettings.getRootProjectUrl(port);
     }
 
     private void openMaintenanceCenter() {
@@ -284,6 +512,84 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         clipboard.setPrimaryClip(ClipData.newPlainText(label, text));
         Toast.makeText(this, getString(R.string.openhouse_clipboard_copied, label), Toast.LENGTH_SHORT).show();
+    }
+
+    private boolean isBatteryOptimizationExempt() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
+        PowerManager powerManager = getSystemService(PowerManager.class);
+        return powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName());
+    }
+
+    private boolean isOverlayPermissionGranted() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
+        return Settings.canDrawOverlays(this);
+    }
+
+    private boolean isStoragePermissionGranted() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        }
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            Toast.makeText(this, "当前系统不需要单独设置电池优化。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        try {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception primaryError) {
+            try {
+                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+                Toast.makeText(this, R.string.permission_open_battery_fallback_hint, Toast.LENGTH_LONG).show();
+            } catch (Exception fallbackError) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to open battery optimization settings", fallbackError);
+                Toast.makeText(this, R.string.permission_open_battery_failed, Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void openOverlayPermissionSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            Toast.makeText(this, "当前系统不需要单独设置悬浮窗权限。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        try {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to open overlay settings", e);
+            Toast.makeText(this, R.string.permission_open_overlay_failed, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openStoragePermissionSettings() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                    return;
+                } catch (Exception ignored) {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                    return;
+                }
+            }
+
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to open storage settings", e);
+            Toast.makeText(this, R.string.permission_open_storage_failed, Toast.LENGTH_SHORT).show();
+        }
     }
 
     private LinearLayout panel() {
@@ -379,16 +685,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             LinearLayout.LayoutParams.WRAP_CONTENT);
         rowParams.setMargins(0, dp(8), 0, 0);
 
-        LinearLayout.LayoutParams firstParams = new LinearLayout.LayoutParams(
-            0,
-            dp(44),
-            1);
+        LinearLayout.LayoutParams firstParams = new LinearLayout.LayoutParams(0, dp(44), 1);
         row.addView(first, firstParams);
 
-        LinearLayout.LayoutParams secondParams = new LinearLayout.LayoutParams(
-            0,
-            dp(44),
-            1);
+        LinearLayout.LayoutParams secondParams = new LinearLayout.LayoutParams(0, dp(44), 1);
         secondParams.setMargins(dp(8), 0, 0, 0);
         row.addView(second, secondParams);
         parent.addView(row, rowParams);

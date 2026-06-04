@@ -150,9 +150,9 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
-            android:layout_above="@id/maintenance_center_button"
+            android:layout_above="@id/terminal_toolbar_view_pager"
             android:layout_marginEnd="18dp"
-            android:layout_marginBottom="14dp"
+            android:layout_marginBottom="18dp"
             android:contentDescription="@string/action_launch_opencode_default"
             android:text="@string/action_launch_opencode_short"
             android:textColor="@color/stageReadyText"
@@ -160,22 +160,6 @@
             app:backgroundTint="@color/stageReady"
             app:icon="@drawable/ic_opencode_launch"
             app:iconTint="@color/stageReadyText" />
-
-        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
-            android:id="@+id/maintenance_center_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
-            android:layout_above="@id/terminal_toolbar_view_pager"
-            android:layout_marginEnd="18dp"
-            android:layout_marginBottom="18dp"
-            android:contentDescription="@string/action_open_maintenance_center"
-            android:text="@string/action_open_maintenance_center_short"
-            android:textColor="@color/stageOnDark"
-            android:visibility="gone"
-            app:backgroundTint="@color/accent"
-            app:icon="@drawable/ic_maintainer"
-            app:iconTint="@color/stageOnDark" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/quick_buttons_visibility_handle"

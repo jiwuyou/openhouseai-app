@@ -12,15 +12,30 @@ fi
 
 DEEPSEEK_API_KEY="$(tr -d '\r\n' < "$KEY_FILE")"
 rm -f "$KEY_FILE"
+CONFIGURE_OPENCODE="${OPENHOUSEAI_CONFIGURE_OPENCODE:-1}"
+CONFIGURE_CLAUDE="${OPENHOUSEAI_CONFIGURE_CLAUDE:-1}"
+CONFIGURE_REASONIX="${OPENHOUSEAI_CONFIGURE_REASONIX:-1}"
 
 if [ -z "$DEEPSEEK_API_KEY" ]; then
   log "DeepSeek API Key 为空。"
   exit 2
 fi
 
-log "正在配置 OpenCode、Claude Code 和 Reasonix 的 DeepSeek API Key。"
+if [ "$CONFIGURE_OPENCODE" != "1" ] && [ "$CONFIGURE_CLAUDE" != "1" ] && [ "$CONFIGURE_REASONIX" != "1" ]; then
+  log "未选择需要配置的 AI 软件。"
+  exit 2
+fi
 
-run_ubuntu_logged env DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" bash -lc 'set -euo pipefail
+log "正在按选择配置 DeepSeek API Key。"
+
+run_ubuntu_logged env \
+  DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
+  OPENHOUSEAI_CONFIGURE_OPENCODE="$CONFIGURE_OPENCODE" \
+  OPENHOUSEAI_CONFIGURE_CLAUDE="$CONFIGURE_CLAUDE" \
+  OPENHOUSEAI_CONFIGURE_REASONIX="$CONFIGURE_REASONIX" \
+  bash -lc 'set -euo pipefail
+
+if [ "${OPENHOUSEAI_CONFIGURE_OPENCODE:-1}" = "1" ]; then
 mkdir -p "$HOME/.config/openhouseai" "$HOME/.config/opencode"
 printf "%s" "$DEEPSEEK_API_KEY" > "$HOME/.config/openhouseai/deepseek-api-key"
 chmod 600 "$HOME/.config/openhouseai/deepseek-api-key"
@@ -48,7 +63,10 @@ cat > "$HOME/.config/opencode/opencode.json" <<'"'"'JSON'"'"'
 }
 JSON
 chmod 600 "$HOME/.config/opencode/opencode.json"
+echo "OpenCode 配置：$HOME/.config/opencode/opencode.json"
+fi
 
+if [ "${OPENHOUSEAI_CONFIGURE_REASONIX:-1}" = "1" ]; then
 mkdir -p "$HOME/.reasonix"
 cat > "$HOME/.reasonix/config.json" <<JSON
 {
@@ -72,7 +90,10 @@ cat > "$HOME/.reasonix/config.json" <<JSON
 }
 JSON
 chmod 600 "$HOME/.reasonix/config.json"
+echo "Reasonix 配置：$HOME/.reasonix/config.json"
+fi
 
+if [ "${OPENHOUSEAI_CONFIGURE_CLAUDE:-1}" = "1" ]; then
 config_file="$HOME/.bashrc"
 start_marker="# >>> OpenHouseAI Claude Code DeepSeek >>>"
 end_marker="# <<< OpenHouseAI Claude Code DeepSeek <<<"
@@ -100,10 +121,9 @@ CONFIG
 mv "$tmp_file" "$config_file"
 chmod 600 "$config_file"
 
-echo "OpenCode 配置：$HOME/.config/opencode/opencode.json"
-echo "Reasonix 配置：$HOME/.reasonix/config.json"
 echo "Claude Code 环境变量已写入：$config_file"
+fi
 '
 
 unset DEEPSEEK_API_KEY
-log "DeepSeek API Key 配置完成。重新进入 Ubuntu 后 Claude Code 会自动加载；OpenCode 和 Reasonix 会读取各自配置。"
+log "DeepSeek API Key 配置完成。重新进入 Ubuntu 后对应配置会生效。"
