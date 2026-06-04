@@ -40,6 +40,9 @@ public final class OpenHouseInstallController {
     private static final int DEFAULT_LOCAL_MAINTENANCE_WEB_PORT = 38423;
     private static final long POLL_INTERVAL_MS = 2000L;
     private static final long STALE_RUNNING_MARKER_MS = 6 * 60 * 60 * 1000L;
+    private static final int MAX_AUTO_RETRY_ATTEMPTS = 3;
+    private static final long GENERAL_STUCK_NO_LOG_MS = 30L * 60L * 1000L;
+    private static final long OPENCODE_STUCK_NO_LOG_MS = 45L * 60L * 1000L;
     private static final long TOTAL_INSTALL_DURATION_MS = 30L * 60L * 1000L;
     private static final long OPENCODE_STAGE_DURATION_MS = 12L * 60L * 1000L;
     private static final double OPENCODE_STAGE_WEIGHT_PERCENT = 40.0d;
@@ -83,6 +86,10 @@ public final class OpenHouseInstallController {
             }
 
             updateState(readRunningStateFromLog());
+            if (state.running && shouldAutoRetryStuckRun()) {
+                executor.execute(() -> autoRetryOneClickInstall("安装长时间没有新进展，系统正在确认后自动重试。"));
+                return;
+            }
             if (state.running) {
                 mainHandler.postDelayed(this, POLL_INTERVAL_MS);
             }
@@ -93,6 +100,8 @@ public final class OpenHouseInstallController {
     private volatile Process currentProcess;
     private volatile Stage observedProgressStage;
     private volatile long observedProgressStageStartedAtMs;
+    private volatile int autoRetryAttemptCount;
+    private volatile boolean autoRetryInProgress;
 
     public interface Listener {
         void onInstallStateChanged(OpenHouseInstallState state);
@@ -134,6 +143,9 @@ public final class OpenHouseInstallController {
     }
 
     public OpenHouseInstallState getState() {
+        if (autoRetryInProgress) {
+            return state;
+        }
         if (state.running && currentProcess == null) {
             if (hasFreshRunningMarker()) {
                 updateState(readRunningStateFromLog());
@@ -161,7 +173,15 @@ public final class OpenHouseInstallController {
     }
 
     public boolean startOneClickInstall() {
+        return startOneClickInstallInternal(true);
+    }
+
+    private boolean startOneClickInstallInternal(boolean resetAutoRetryCount) {
         synchronized (processLock) {
+            if (resetAutoRetryCount) {
+                autoRetryAttemptCount = 0;
+                autoRetryInProgress = false;
+            }
             if (hasFreshRunningMarker()) {
                 OpenHouseInstallState runningState = readRunningStateFromLog();
                 updateState(runningState);
@@ -170,7 +190,7 @@ public final class OpenHouseInstallController {
                     return false;
                 }
             }
-            if (state.running || currentProcess != null) {
+            if (currentProcess != null || (state.running && !autoRetryInProgress)) {
                 return false;
             }
 
@@ -179,8 +199,10 @@ public final class OpenHouseInstallController {
                 false,
                 false,
                 1,
-                "准备初始化",
-                "正在生成一键初始化任务。",
+                autoRetryInProgress ? "正在自动重试安装" : "准备初始化",
+                autoRetryInProgress
+                    ? "系统正在第 " + autoRetryAttemptCount + "/" + MAX_AUTO_RETRY_ATTEMPTS + " 次自动重试，会从第一个未完成阶段继续。"
+                    : "正在生成一键初始化任务。",
                 MANIFEST_FULL_SLUG
             ));
 
@@ -219,6 +241,7 @@ public final class OpenHouseInstallController {
 
                 Process process = processBuilder.start();
                 currentProcess = process;
+                autoRetryInProgress = false;
                 statusRepository.markOneClickInstallStarted();
                 mainHandler.removeCallbacks(pollRunnable);
                 mainHandler.postDelayed(pollRunnable, 500L);
@@ -226,6 +249,7 @@ public final class OpenHouseInstallController {
                 return true;
             } catch (Exception e) {
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to start OpenHouseAI one-click install", e);
+                autoRetryInProgress = false;
                 appendCompletionMarkerIfMissing(1);
                 clearRunningMarker();
                 updateState(new OpenHouseInstallState(
@@ -248,7 +272,7 @@ public final class OpenHouseInstallController {
             terminateExistingInstallProcesses();
             clearRunningMarker();
             updateState(OpenHouseInstallState.idle());
-            return startOneClickInstall();
+            return startOneClickInstallInternal(true);
         }
     }
 
@@ -382,11 +406,54 @@ public final class OpenHouseInstallController {
             clearRunningMarker();
         }
 
+        if (exitCode != 0 && autoRetryOneClickInstall("安装遇到网络或软件包问题，系统正在自动重试。")) {
+            return;
+        }
+
         appendCompletionMarkerIfMissing(exitCode);
         OpenHouseInstallState finishedState = readFinishedStateFromLog(exitCode);
         updateState(finishedState);
         if (finishedState.completed) {
+            autoRetryAttemptCount = 0;
+            autoRetryInProgress = false;
             statusRepository.markOneClickInstallCompleted();
+        }
+    }
+
+    private boolean autoRetryOneClickInstall(String reason) {
+        synchronized (processLock) {
+            if (autoRetryInProgress || autoRetryAttemptCount >= MAX_AUTO_RETRY_ATTEMPTS) {
+                return false;
+            }
+
+            autoRetryAttemptCount++;
+            autoRetryInProgress = true;
+            updateState(new OpenHouseInstallState(
+                true,
+                false,
+                false,
+                Math.max(1, state.percent),
+                "系统正在确认安装状态",
+                reason + "正在进行第 " + autoRetryAttemptCount + "/" + MAX_AUTO_RETRY_ATTEMPTS + " 次自动重试。",
+                state.currentStageSlug
+            ));
+            stopTrackedInstallProcess();
+            terminateExistingInstallProcesses();
+            clearRunningMarker();
+            boolean started = startOneClickInstallInternal(false);
+            if (!started) {
+                autoRetryInProgress = false;
+                updateState(new OpenHouseInstallState(
+                    false,
+                    false,
+                    true,
+                    Math.max(1, state.percent),
+                    "自动重试未能启动",
+                    "系统已尝试自动恢复安装，但未能重新启动任务。请查看详细进度，或确认后使用“强制重启并继续”。",
+                    state.currentStageSlug
+                ));
+            }
+            return started;
         }
     }
 
@@ -459,6 +526,11 @@ public final class OpenHouseInstallController {
         String detail = latestReadableLogLine(logTail);
         if (detail.isEmpty()) {
             detail = "请点击“查看详细进度”查看完整日志。";
+        }
+        if (autoRetryAttemptCount >= MAX_AUTO_RETRY_ATTEMPTS) {
+            detail = "系统已自动重试 " + MAX_AUTO_RETRY_ATTEMPTS + " 次，仍未完成安装。"
+                + detail
+                + " 如确认长时间没有变化，可使用“强制重启并继续”。";
         }
         return new OpenHouseInstallState(
             false,
@@ -663,6 +735,32 @@ public final class OpenHouseInstallController {
         return Math.min(99, clampPercent(current.percent));
     }
 
+    private boolean shouldAutoRetryStuckRun() {
+        if (autoRetryInProgress || autoRetryAttemptCount >= MAX_AUTO_RETRY_ATTEMPTS) {
+            return false;
+        }
+
+        RunningMarker runningMarker = readRunningMarker();
+        if (!runningMarker.exists) {
+            return false;
+        }
+
+        File logFile = getManifestLogFile();
+        if (!logFile.isFile()) {
+            return false;
+        }
+
+        long nowMs = System.currentTimeMillis();
+        Stage stage = runningMarker.stage == null ? Stage.PREPARE : runningMarker.stage;
+        long thresholdMs = stage == Stage.INSTALL_OPENCODE ? OPENCODE_STUCK_NO_LOG_MS : GENERAL_STUCK_NO_LOG_MS;
+        long noLogMs = Math.max(0L, nowMs - logFile.lastModified());
+        long stageStartedAtMs = runningMarker.stageStartedAtMs > 0L
+            ? runningMarker.stageStartedAtMs
+            : runningMarker.startedAtMs;
+        long stageElapsedMs = stageStartedAtMs > 0L ? Math.max(0L, nowMs - stageStartedAtMs) : 0L;
+        return noLogMs >= thresholdMs && stageElapsedMs >= thresholdMs;
+    }
+
     private int clampPercent(int percent) {
         return Math.max(0, Math.min(100, percent));
     }
@@ -839,6 +937,11 @@ public final class OpenHouseInstallController {
         }
         try (FileOutputStream outputStream = new FileOutputStream(logFile, false)) {
             outputStream.write("开始执行 OpenHouseAI 一键初始化。\n".getBytes(StandardCharsets.UTF_8));
+            if (autoRetryAttemptCount > 0) {
+                String retryLine = "系统正在第 " + autoRetryAttemptCount + "/" + MAX_AUTO_RETRY_ATTEMPTS
+                    + " 次自动重试，会从第一个未完成阶段继续。\n";
+                outputStream.write(retryLine.getBytes(StandardCharsets.UTF_8));
+            }
         }
     }
 
