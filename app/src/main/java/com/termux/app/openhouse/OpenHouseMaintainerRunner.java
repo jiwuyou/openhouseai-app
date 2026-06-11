@@ -6,11 +6,13 @@ import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.BufferedReader;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Collections;
@@ -22,6 +24,8 @@ public final class OpenHouseMaintainerRunner {
     private static final String LOG_TAG = "OpenHouseMaintainer";
     private static final Pattern SECRET_PATTERN = Pattern.compile("(?i)\\b(api[_-]?key|authorization|bearer|token|password)([=:\"' ]+)([^\\s\"']{8,})");
     private static final Pattern OPENAI_STYLE_KEY_PATTERN = Pattern.compile("\\bsk-[A-Za-z0-9_-]{12,}\\b");
+    private static final String BOOTSTRAP_ASSET_DIR = "smallphoneai/bootstrap";
+    private static final String PAYLOAD_ASSET_DIR = "openhouse/product-payloads";
 
     private final Context context;
 
@@ -47,6 +51,8 @@ public final class OpenHouseMaintainerRunner {
             if (!logDir.exists()) {
                 logDir.mkdirs();
             }
+            File bootstrapFile = prepareBundledBootstrap();
+            File offlinePayloadDir = prepareOfflinePayloads();
 
             String assetBody = loadAsset("maintainer/" + action.assetName)
                 .replace("__PORT__", Integer.toString(port))
@@ -70,8 +76,19 @@ public final class OpenHouseMaintainerRunner {
             environment.put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
             environment.put("LANG", "C.UTF-8");
             environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
+            environment.put("SMALLPHONEAI_NO_AUTO_UBUNTU", "1");
             environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
             environment.put("OPENHOUSEAI_DEEPSEEK_KEY_FILE", OpenHouseStatusRepository.getDeepSeekKeyTempFile().getAbsolutePath());
+            if (bootstrapFile != null && bootstrapFile.isFile()) {
+                environment.put("SMALLPHONEAI_BOOTSTRAP", bootstrapFile.getAbsolutePath());
+            }
+            if (offlinePayloadDir != null && offlinePayloadDir.isDirectory()) {
+                environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_DIR", offlinePayloadDir.getAbsolutePath());
+                File manifest = new File(offlinePayloadDir, "manifest.json");
+                if (manifest.isFile()) {
+                    environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST", manifest.getAbsolutePath());
+                }
+            }
             if (extraEnvironment != null) {
                 for (Map.Entry<String, String> entry : extraEnvironment.entrySet()) {
                     if (entry.getKey() != null && entry.getValue() != null) {
@@ -99,6 +116,79 @@ public final class OpenHouseMaintainerRunner {
             }
             if (outputFile != null) {
                 outputFile.delete();
+            }
+        }
+    }
+
+    private File prepareBundledBootstrap() {
+        File bootstrapDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".smallphoneai-bootstrap");
+        File bootstrapFile = new File(bootstrapDir, "bootstrap.sh");
+        try {
+            String[] children = context.getAssets().list(BOOTSTRAP_ASSET_DIR);
+            if (children == null || children.length == 0) {
+                return bootstrapFile;
+            }
+            copyAssetDirectory(BOOTSTRAP_ASSET_DIR, bootstrapDir);
+            if (bootstrapFile.isFile()) {
+                bootstrapFile.setExecutable(true, true);
+            }
+            File scriptsDir = new File(bootstrapDir, "scripts");
+            File[] scripts = scriptsDir.listFiles();
+            if (scripts != null) {
+                for (File script : scripts) {
+                    if (script.isFile() && script.getName().endsWith(".sh")) {
+                        script.setExecutable(true, true);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to extract SmallPhoneAI bootstrap", e);
+        }
+        return bootstrapFile;
+    }
+
+    private File prepareOfflinePayloads() {
+        File payloadDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH,
+            ".smallphoneai-bootstrap/apk-assets/openhouse/product-payloads");
+        try {
+            String[] children = context.getAssets().list(PAYLOAD_ASSET_DIR);
+            if (children == null || children.length == 0) {
+                return payloadDir;
+            }
+            copyAssetDirectory(PAYLOAD_ASSET_DIR, payloadDir);
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to extract SmallPhoneAI offline payloads", e);
+        }
+        return payloadDir;
+    }
+
+    private void copyAssetDirectory(String assetPath, File outputDir) throws Exception {
+        String[] children = context.getAssets().list(assetPath);
+        if (children == null || children.length == 0) {
+            copyAssetFile(assetPath, outputDir);
+            return;
+        }
+
+        if (!outputDir.exists() && !outputDir.mkdirs()) {
+            throw new IllegalStateException("Failed to create " + outputDir.getAbsolutePath());
+        }
+        for (String child : children) {
+            copyAssetDirectory(assetPath + "/" + child, new File(outputDir, child));
+        }
+    }
+
+    private void copyAssetFile(String assetPath, File outputFile) throws Exception {
+        File parent = outputFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IllegalStateException("Failed to create " + parent.getAbsolutePath());
+        }
+
+        try (InputStream inputStream = context.getAssets().open(assetPath);
+             OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile, false))) {
+            byte[] buffer = new byte[8192];
+            int readBytes;
+            while ((readBytes = inputStream.read(buffer)) >= 0) {
+                outputStream.write(buffer, 0, readBytes);
             }
         }
     }
@@ -167,8 +257,8 @@ public final class OpenHouseMaintainerRunner {
         builder.append("run_logged(){ local status=0; set +e; \"$@\" 2>&1 | tee -a \"$LOG_FILE\"; status=${PIPESTATUS[0]}; set -e; return \"$status\"; }\n");
         builder.append("is_termux(){ [ -n \"${PREFIX:-}\" ] && [ -d \"${PREFIX:-}/bin\" ] && [ -d \"/data/data/com.termux/files\" ]; }\n");
         builder.append("is_current_ubuntu(){ [ -r /etc/os-release ] && grep -qi 'ubuntu' /etc/os-release; }\n");
-        builder.append("detect_openhouseai_runtime(){ if is_current_ubuntu; then printf 'ubuntu'; return 0; fi; if [ -x \"${PREFIX:-/data/data/com.termux/files/usr}/bin/openhouseai-env-probe\" ]; then \"${PREFIX:-/data/data/com.termux/files/usr}/bin/openhouseai-env-probe\" 2>/dev/null | awk -F= '$1==\"OPENHOUSEAI_RUNTIME\"{print $2; found=1} END{if(!found) exit 1}' && return 0; fi; if is_termux; then printf 'termux'; return 0; fi; printf 'unknown'; }\n");
-        builder.append("run_environment_probe(){ local probe=\"${PREFIX:-/data/data/com.termux/files/usr}/bin/openhouseai-env-probe\"; if [ -x \"$probe\" ]; then log \"正在执行环境探测命令：$probe\"; run_logged \"$probe\" || true; else log \"环境探测命令不存在，使用内置探测逻辑。\"; fi; CURRENT_RUNTIME=\"$(detect_openhouseai_runtime)\"; log \"当前运行环境：$CURRENT_RUNTIME\"; }\n");
+        builder.append("detect_openhouseai_runtime(){ if is_current_ubuntu; then printf 'ubuntu'; return 0; fi; local probe prefix; prefix=\"${PREFIX:-/data/data/com.termux/files/usr}\"; for probe in \"$prefix/bin/smallphoneai-env-probe\" \"$prefix/bin/openhouseai-env-probe\"; do if [ -x \"$probe\" ]; then \"$probe\" 2>/dev/null | awk -F= '$1==\"SMALLPHONEAI_RUNTIME\" || $1==\"OPENHOUSEAI_RUNTIME\"{print $2; found=1} END{if(!found) exit 1}' && return 0; fi; done; if is_termux; then printf 'termux'; return 0; fi; printf 'unknown'; }\n");
+        builder.append("run_environment_probe(){ local probe prefix; prefix=\"${PREFIX:-/data/data/com.termux/files/usr}\"; for probe in \"$prefix/bin/smallphoneai-env-probe\" \"$prefix/bin/openhouseai-env-probe\"; do if [ -x \"$probe\" ]; then log \"正在执行环境探测命令：$probe\"; run_logged \"$probe\" || true; CURRENT_RUNTIME=\"$(detect_openhouseai_runtime)\"; log \"当前运行环境：$CURRENT_RUNTIME\"; return 0; fi; done; log \"环境探测命令不存在，使用内置探测逻辑。\"; CURRENT_RUNTIME=\"$(detect_openhouseai_runtime)\"; log \"当前运行环境：$CURRENT_RUNTIME\"; }\n");
         builder.append("run_ubuntu_logged(){ if is_current_ubuntu; then run_logged \"$@\"; else run_logged proot-distro login ubuntu -- \"$@\"; fi; }\n");
         builder.append("require_ubuntu(){ if is_current_ubuntu; then return 0; fi; if ! command -v proot-distro >/dev/null 2>&1; then log '缺少 proot-distro，请先执行“更新 Termux 软件包”。'; exit 2; fi; if ! proot-distro login ubuntu -- true >/dev/null 2>&1; then log 'Ubuntu 尚未安装，请先执行“下载 Ubuntu”。'; exit 3; fi; }\n");
         builder.append("__maint_finish(){ local exit_code=$?; printf '__TERMUX_MAINT_DONE__:%s:%s\\n' \"$STAGE_SLUG\" \"$exit_code\" | tee -a \"$LOG_FILE\"; }\n");
@@ -193,6 +283,8 @@ public final class OpenHouseMaintainerRunner {
         START("start", "启动 OpenCode", "start-opencode.sh", 75),
         STOP("stop", "停止 OpenCode", "stop-opencode.sh", 30),
         RESTART("restart", "重启 OpenCode", "restart-opencode.sh", 75),
+        START_SMALLPHONE("start_smallphone", "启动 SmallPhoneAI 运行栈", "start-smallphone.sh", 150),
+        REPAIR_SMALLPHONE("repair_smallphone", "修复 SmallPhoneAI 运行栈", "repair-smallphone.sh", 600),
         CONFIGURE_DEEPSEEK("configure_deepseek", "配置 DeepSeek Key", "configure-deepseek-key.sh", 75);
 
         public final String slug;

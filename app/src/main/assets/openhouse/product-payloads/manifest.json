@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-06-11",
+  "description": "SmallPhoneAI first-run offline payloads bundled inside the APK. Network and GitHub are optional update paths after boot.",
+  "components": [
+    {
+      "id": "service-manager",
+      "archive": "service-manager.tar.gz",
+      "targetDir": "service-manager",
+      "sha256": "1c4979899bc48206adbc34f24f477045b9b716629610e863c9426a0bdc130091",
+      "size": 75214
+    },
+    {
+      "id": "openhouse-connect",
+      "aliases": ["cc-connect"],
+      "archive": "openhouse-connect.tar.gz",
+      "targetDir": "openhouse-connect",
+      "sha256": "254f74c659a57324bf4019be7cbd53a96ed41e336a89e745aab08abbfec099ea",
+      "size": 7705866
+    },
+    {
+      "id": "smallphone",
+      "archive": "smallphone.tar.gz",
+      "targetDir": "smallphone-active",
+      "sha256": "41c2c149d3c34f4cc86518c87d8677afce21cea9eaea513cab1af09810533563",
+      "size": 336865
+    }
+  ]
+}

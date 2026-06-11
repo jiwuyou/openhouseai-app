@@ -10,7 +10,7 @@ is_web_ready() {
 require_ubuntu
 
 stop_opencode_port() {
-  run_ubuntu_logged bash -lc "set -euo pipefail; pids=''; self=\$\$; while read -r pid comm args; do [ -n \"\$pid\" ] || continue; [ \"\$pid\" = \"\$self\" ] && continue; case \"\$comm\" in bash|sh|dash|ps|grep|awk|sed) continue ;; esac; case \" \$args \" in *opencode*' web '*) ;; *) continue ;; esac; case \" \$args \" in *' --port $PORT '*|*' --port=$PORT '*) pids=\"\$pids \$pid\" ;; esac; done < <(ps -eo pid=,comm=,args=); if [ -n \"\$pids\" ]; then kill \$pids 2>/dev/null || true; sleep 1; kill -9 \$pids 2>/dev/null || true; fi"
+  run_ubuntu_logged bash -lc "set -euo pipefail; pids=''; self=\$\$; while read -r pid comm args; do [ -n \"\$pid\" ] || continue; [ \"\$pid\" = \"\$self\" ] && continue; case \"\$comm\" in opencode|opencode-*|opencode.exe|node) ;; *) continue ;; esac; case \"\$comm\" in node) case \" \$args \" in *opencode*) ;; *) continue ;; esac ;; esac; case \" \$args \" in *' web '*) ;; *) continue ;; esac; case \" \$args \" in *' --port $PORT '*|*' --port=$PORT '*) pids=\"\$pids \$pid\" ;; esac; done < <(ps -eo pid=,comm=,args=); if [ -n \"\$pids\" ]; then kill \$pids 2>/dev/null || true; sleep 1; kill -9 \$pids 2>/dev/null || true; fi"
 }
 
 ensure_opencode_configuration_path() {

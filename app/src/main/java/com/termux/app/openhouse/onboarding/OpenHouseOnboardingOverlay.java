@@ -423,8 +423,12 @@ public final class OpenHouseOnboardingOverlay {
         addPathCard("项目启动目录", status.openCodeProjectDirectory);
         addPathCard("OpenCode Web 端口", Integer.toString(runtime.getOpenCodePort()));
         addStatusCard(
+            "OpenCode 启动方式已配置",
+            "OpenCode 不随一键初始化自动启动。安装完成后，默认从 Ubuntu 的 /root 目录启动，端口为 4096；启动、停止、重启和复制网址放在菜单里的 OpenCode 控制中。"
+        );
+        addStatusCard(
             "终端里怎么用 AI",
-            "以 Claude 为例：输入 claude，再按回车就可以使用；如果想接着上次 Claude 的对话，输入 claude --continue。"
+            "以 Claude 为例：输入 claude，再按回车就可以使用。这里的回车，就是输入法或键盘里的“换行”。如果想接着上次 Claude 的对话，输入 claude --continue。"
         );
         addStatusCard(
             "记不住命令也没关系",
@@ -432,36 +436,14 @@ public final class OpenHouseOnboardingOverlay {
         );
         addStatusCard(
             "OpenCode Web 怎么用",
-            "OpenCode 可以复制网址到浏览器中使用。OpenCode 的打开、关闭、重启已经放到菜单中，可以随时控制。"
+            "OpenCode 可以复制网址到浏览器中使用。新增项目时一开始使用 /root。也可以先进入使用演示，最后会演示从菜单控制 OpenCode 并自动跳转浏览器。"
         );
         addStatusCard(status.openCodeReachable ? "OpenCode 运行中" : "OpenCode 未启动",
             "访问地址：" + runtime.getOpenCodeLoopbackUrl());
 
-        addServiceActionRow(
-            createButton(status.openCodeReachable ? "已启动" : "启动 OpenCode", isSetupComplete(), false),
-            createButton("重启", status.openCodeReachable, false)
-        );
-        MaterialButton startButton = (MaterialButton) ((ViewGroup) actionsView.getChildAt(actionsView.getChildCount() - 1)).getChildAt(0);
-        MaterialButton restartButton = (MaterialButton) ((ViewGroup) actionsView.getChildAt(actionsView.getChildCount() - 1)).getChildAt(1);
-        startButton.setOnClickListener(v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.START));
-        restartButton.setOnClickListener(v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.RESTART));
-
-        addServiceActionRow(
-            createButton("停止", status.openCodeReachable, false),
-            createButton("复制地址", true, false)
-        );
-        MaterialButton stopButton = (MaterialButton) ((ViewGroup) actionsView.getChildAt(actionsView.getChildCount() - 1)).getChildAt(0);
-        MaterialButton copyButton = (MaterialButton) ((ViewGroup) actionsView.getChildAt(actionsView.getChildCount() - 1)).getChildAt(1);
-        stopButton.setOnClickListener(v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.STOP));
-        copyButton.setOnClickListener(v -> runtime.copyOpenCodeAddress());
-
-        addActionButton("使用演示", isSetupComplete(), false, v -> {
+        addActionButton("进入使用演示", isSetupComplete(), true, v -> {
             dismissGuide();
             callbacks.onStartTerminalTutorial(true);
-        });
-        addActionButton("进入终端", isSetupComplete(), true, v -> {
-            dismissGuide();
-            callbacks.onEnterTerminal(true);
         });
     }
 
@@ -1117,7 +1099,7 @@ public final class OpenHouseOnboardingOverlay {
         DEEPSEEK_KEY("保存 Key", "获取并保存 DeepSeek Key", "安装未完成时也可以先填写。只有点击保存后，Key 才会被视为已保存。"),
         WAITING_INSTALL("等待安装", "Key 已保存，等待安装完成", "现在不需要重复填写 Key。安装完成后会自动进入下一步配置。"),
         CONFIGURE_DEEPSEEK("配置 DeepSeek", "配置 AI 工具", "Key 已保存，安装也已完成。现在把 DeepSeek Key 写入 OpenCode、Claude Code 和 Reasonix。"),
-        LAUNCH_CONFIG("启动配置", "配置 OpenCode 启动方式", "初始化完成后，OpenCode 不会自动启动。你可以在这里启动 OpenCode，或进入终端教学。");
+        LAUNCH_CONFIG("使用说明", "开始使用 openhouse ai", "先看一页最简单的使用说明。下一步会进入使用演示，教你使用终端快捷键、终端列表、菜单和 OpenCode Web。");
 
         final String label;
         final String title;

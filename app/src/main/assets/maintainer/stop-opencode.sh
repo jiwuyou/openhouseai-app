@@ -10,7 +10,7 @@ is_web_ready() {
 require_ubuntu
 
 log "正在停止 OpenCode 网页服务，端口 $PORT"
-run_ubuntu_logged bash -lc "set -euo pipefail; pids=''; self=\$\$; while read -r pid comm args; do [ -n \"\$pid\" ] || continue; [ \"\$pid\" = \"\$self\" ] && continue; case \"\$comm\" in bash|sh|dash|ps|grep|awk|sed) continue ;; esac; case \" \$args \" in *opencode*' web '*) ;; *) continue ;; esac; case \" \$args \" in *' --port $PORT '*|*' --port=$PORT '*) pids=\"\$pids \$pid\" ;; esac; done < <(ps -eo pid=,comm=,args=); if [ -n \"\$pids\" ]; then kill \$pids 2>/dev/null || true; sleep 1; kill -9 \$pids 2>/dev/null || true; echo \"已停止 OpenCode Web 进程：\$pids\"; else echo '未找到 $PORT 端口的 OpenCode Web 进程。'; fi"
+run_ubuntu_logged bash -lc "set -euo pipefail; pids=''; self=\$\$; while read -r pid comm args; do [ -n \"\$pid\" ] || continue; [ \"\$pid\" = \"\$self\" ] && continue; case \"\$comm\" in opencode|opencode-*|opencode.exe|node) ;; *) continue ;; esac; case \"\$comm\" in node) case \" \$args \" in *opencode*) ;; *) continue ;; esac ;; esac; case \" \$args \" in *' web '*) ;; *) continue ;; esac; case \" \$args \" in *' --port $PORT '*|*' --port=$PORT '*) pids=\"\$pids \$pid\" ;; esac; done < <(ps -eo pid=,comm=,args=); if [ -n \"\$pids\" ]; then kill \$pids 2>/dev/null || true; sleep 1; kill -9 \$pids 2>/dev/null || true; echo \"已停止 OpenCode Web 进程：\$pids\"; else echo '未找到 $PORT 端口的 OpenCode Web 进程。'; fi"
 
 if is_web_ready; then
   log "OpenCode 仍可通过端口 $PORT 访问，请查看进程状态。"

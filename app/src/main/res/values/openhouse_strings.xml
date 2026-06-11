@@ -6,7 +6,7 @@
     <string name="openhouse_drawer_title">openhouse ai</string>
     <string name="openhouse_drawer_subtitle">本机 AI 编程环境</string>
     <string name="openhouse_action_menu">菜单</string>
-    <string name="openhouse_terminal_menu_hint">第一次使用，请点击菜单按钮。不知道干嘛，请点击菜单按钮。\n点击显隐按钮，可以显示菜单按钮，并且显隐按钮可以拖动。\n这行小字可以在菜单的高级设置中关闭。</string>
+    <string name="openhouse_terminal_menu_hint">点击显隐按钮，可以显示菜单按钮，并且显隐按钮可以拖动。\n这行小字可以在菜单的高级设置中关闭。\n第一次使用，请点击菜单按钮。不知道干嘛，请点击菜单按钮。</string>
     <string name="openhouse_action_close">关闭</string>
     <string name="openhouse_action_advanced_short">高级</string>
     <string name="openhouse_nav_home">菜单总览</string>

@@ -2,13 +2,13 @@
 
 <!DOCTYPE resources [
     <!ENTITY TERMUX_PACKAGE_NAME "com.termux">
-    <!ENTITY TERMUX_APP_NAME "openhouse ai">
-    <!ENTITY TERMUX_API_APP_NAME "openhouse:API">
-    <!ENTITY TERMUX_BOOT_APP_NAME "openhouse:Boot">
-    <!ENTITY TERMUX_FLOAT_APP_NAME "openhouse:Float">
-    <!ENTITY TERMUX_STYLING_APP_NAME "openhouse:Styling">
-    <!ENTITY TERMUX_TASKER_APP_NAME "openhouse:Tasker">
-    <!ENTITY TERMUX_WIDGET_APP_NAME "openhouse:Widget">
+    <!ENTITY TERMUX_APP_NAME "SmallPhoneAI">
+    <!ENTITY TERMUX_API_APP_NAME "SmallPhoneAI:API">
+    <!ENTITY TERMUX_BOOT_APP_NAME "SmallPhoneAI:Boot">
+    <!ENTITY TERMUX_FLOAT_APP_NAME "SmallPhoneAI:Float">
+    <!ENTITY TERMUX_STYLING_APP_NAME "SmallPhoneAI:Styling">
+    <!ENTITY TERMUX_TASKER_APP_NAME "SmallPhoneAI:Tasker">
+    <!ENTITY TERMUX_WIDGET_APP_NAME "SmallPhoneAI:Widget">
     ]>
 
 <resources>
@@ -483,6 +483,38 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="quick_launch_missing">OpenCode 尚未安装，请先到维护中心完成安装</string>
     <string name="quick_launch_browser_tab">已通过 9222 调试端口打开浏览器标签</string>
     <string name="quick_launch_browser_fallback">9222 未就绪，已回退到系统打开方式</string>
+    <string name="smallphone_host_title">SmallPhoneAI</string>
+    <string name="smallphone_host_status_checking">正在检查 SmallPhone 运行栈</string>
+    <string name="smallphone_host_status_ready">SmallPhone 已就绪</string>
+    <string name="smallphone_host_status_recovery">需要维护或修复</string>
+    <string name="smallphone_host_status_loading">正在加载页面</string>
+    <string name="smallphone_host_status_open">浏览器已打开</string>
+    <string name="smallphone_host_checking_title">正在检查本机服务</string>
+    <string name="smallphone_host_checking_detail">启动前会确认 service-manager、SmallPhone、SmallPhone Core API 和 cc-connect 状态。</string>
+    <string name="smallphone_host_refresh">重新检查</string>
+    <string name="smallphone_host_refresh_short">检查</string>
+    <string name="smallphone_host_open_smallphone">打开 SmallPhone</string>
+    <string name="smallphone_host_start">启动 SmallPhone</string>
+    <string name="smallphone_host_repair">修复运行栈</string>
+    <string name="smallphone_host_maintenance">维护中心</string>
+    <string name="smallphone_host_maintenance_short">维护</string>
+    <string name="smallphone_host_terminal">终端</string>
+    <string name="smallphone_host_terminal_short">终端</string>
+    <string name="smallphone_host_open_external">用系统浏览器打开</string>
+    <string name="smallphone_host_health_title">运行栈健康状态</string>
+    <string name="smallphone_host_starting">正在启动 SmallPhone 运行栈</string>
+    <string name="smallphone_host_repairing">正在修复 SmallPhone 运行栈</string>
+    <string name="smallphone_host_action_busy">已有 SmallPhone 维护动作正在执行</string>
+    <string name="smallphone_host_action_done">SmallPhone 运行栈已就绪</string>
+    <string name="smallphone_host_action_failed">SmallPhone 运行栈仍未就绪，请查看维护中心日志</string>
+    <string name="smallphone_host_action_failed_detail">维护动作没有返回可显示的错误信息，请查看维护中心日志。</string>
+    <string name="smallphone_host_browser_error">浏览器加载失败：%1$s</string>
+    <string name="smallphone_browser_back">‹</string>
+    <string name="smallphone_browser_forward">›</string>
+    <string name="smallphone_browser_home">主页</string>
+    <string name="smallphone_browser_refresh">刷新</string>
+    <string name="smallphone_browser_go">前往</string>
+    <string name="smallphone_browser_address_hint">输入网址或搜索</string>
     <string name="status_ready_title">维护环境就绪</string>
     <string name="status_running_title">阶段执行中</string>
     <string name="status_terminal_starting">正在启动维护终端</string>
