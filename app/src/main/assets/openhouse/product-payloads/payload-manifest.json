@@ -1,29 +1,9 @@
 {
   "schema": 1,
-  "generatedAt": "2026-06-11",
-  "description": "SmallPhoneAI first-run offline payloads bundled inside the APK. Network and GitHub are optional update paths after boot.",
-  "components": [
-    {
-      "id": "service-manager",
-      "archive": "service-manager.tar.gz",
-      "targetDir": "service-manager",
-      "sha256": "1c4979899bc48206adbc34f24f477045b9b716629610e863c9426a0bdc130091",
-      "size": 75214
-    },
-    {
-      "id": "openhouse-connect",
-      "aliases": ["cc-connect"],
-      "archive": "openhouse-connect.tar.gz",
-      "targetDir": "openhouse-connect",
-      "sha256": "254f74c659a57324bf4019be7cbd53a96ed41e336a89e745aab08abbfec099ea",
-      "size": 7705866
-    },
-    {
-      "id": "smallphone",
-      "archive": "smallphone.tar.gz",
-      "targetDir": "smallphone-active",
-      "sha256": "41c2c149d3c34f4cc86518c87d8677afce21cea9eaea513cab1af09810533563",
-      "size": 336865
-    }
+  "assetRoot": "openhouse/product-payloads",
+  "payloads": [
+    { "id": "service-manager", "archive": "service-manager.tar", "sha256": "cea6491691a6e1f92ed7f3213ff20ea17cd06e385249a1314b511e269c5962cc", "size": 5457920 },
+    { "id": "openhouse-connect", "archive": "openhouse-connect.tar", "sha256": "1a0f57801b7b80552537264960bd53157ecbb41e5c6700d6d1aeaa519b48bc7a", "size": 38707200 },
+    { "id": "smallphone", "archive": "smallphone.tar", "sha256": "93a06dfa6ca73324799c0df64e6df035750f04a74c687e56273825b33a65cda1", "size": 1792000 }
   ]
 }

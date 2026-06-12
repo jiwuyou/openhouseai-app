@@ -23,19 +23,19 @@
       {
         "id": "service-manager",
         "title": "service-manager",
-        "apkAssetPath": "openhouse/product-payloads/service-manager.tar.gz",
+        "apkAssetPath": "openhouse/product-payloads/service-manager.tar",
         "targetDir": "$HOME/smallphoneai-repos/service-manager"
       },
       {
         "id": "openhouse-connect",
         "title": "cc-connect/openhouse-connect",
-        "apkAssetPath": "openhouse/product-payloads/openhouse-connect.tar.gz",
+        "apkAssetPath": "openhouse/product-payloads/openhouse-connect.tar",
         "targetDir": "$HOME/smallphoneai-repos/openhouse-connect"
       },
       {
         "id": "smallphone",
         "title": "SmallPhone",
-        "apkAssetPath": "openhouse/product-payloads/smallphone.tar.gz",
+        "apkAssetPath": "openhouse/product-payloads/smallphone.tar",
         "targetDir": "$HOME/smallphoneai-repos/smallphone-active"
       }
     ]

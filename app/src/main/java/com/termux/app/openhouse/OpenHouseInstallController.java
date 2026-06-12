@@ -11,11 +11,13 @@ import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.BufferedReader;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -35,6 +37,8 @@ public final class OpenHouseInstallController {
     private static final String LOG_TAG = "OpenHouseInstall";
     private static final String MANIFEST_FULL_SLUG = "manifest_full";
     private static final String OFFICIAL_DOCS_ASSET_DIR = "openhouse/docs-public";
+    private static final String BOOTSTRAP_ASSET_DIR = "smallphoneai/bootstrap";
+    private static final String PAYLOAD_ASSET_DIR = "openhouse/product-payloads";
     private static final String DEFAULT_BOOTSTRAP_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh";
     private static final String REMOTE_SCHEDULE_HINT = "远程一键初始化会按全程约30分钟模拟进度";
     private static final int DEFAULT_LOCAL_MAINTENANCE_WEB_PORT = 38423;
@@ -59,6 +63,8 @@ public final class OpenHouseInstallController {
         Stage.SYNC_OFFICIAL_DOCS,
         Stage.UBUNTU_PACKAGES,
         Stage.CONFIGURE_ENTRY_UBUNTU,
+        Stage.RUNTIME_COMPONENTS,
+        Stage.START_SMALLPHONE,
         Stage.INSTALL_OPENCODE,
         Stage.INSTALL_CODEX,
         Stage.INSTALL_CLAUDE_CODE,
@@ -227,6 +233,7 @@ public final class OpenHouseInstallController {
 
                 File logDir = ensureLogDir();
                 File tempScript = new File(logDir, "run-" + MANIFEST_FULL_SLUG + ".sh");
+                prepareBundledRuntimeAssets();
                 writeScript(tempScript, buildFullInstallScript());
                 resetManifestLogForNewRun();
                 long startedAtMs = System.currentTimeMillis();
@@ -1072,6 +1079,65 @@ public final class OpenHouseInstallController {
             .replace("__OPENCODE_INSTALL_ALLOW_FALLBACK__", installSpec.allowFallback ? "1" : "0");
     }
 
+    private void prepareBundledRuntimeAssets() throws IOException {
+        File bootstrapDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".smallphoneai-bootstrap");
+        String[] bootstrapChildren = context.getAssets().list(BOOTSTRAP_ASSET_DIR);
+        if (bootstrapChildren != null && bootstrapChildren.length > 0) {
+            copyAssetDirectory(BOOTSTRAP_ASSET_DIR, bootstrapDir);
+            File bootstrapFile = new File(bootstrapDir, "bootstrap.sh");
+            if (bootstrapFile.isFile()) {
+                bootstrapFile.setExecutable(true, true);
+            }
+            File scriptsDir = new File(bootstrapDir, "scripts");
+            File[] scripts = scriptsDir.listFiles();
+            if (scripts != null) {
+                for (File script : scripts) {
+                    if (script.isFile() && script.getName().endsWith(".sh")) {
+                        script.setExecutable(true, true);
+                    }
+                }
+            }
+        }
+
+        File payloadDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH,
+            ".smallphoneai-bootstrap/apk-assets/openhouse/product-payloads");
+        String[] payloadChildren = context.getAssets().list(PAYLOAD_ASSET_DIR);
+        if (payloadChildren != null && payloadChildren.length > 0) {
+            copyAssetDirectory(PAYLOAD_ASSET_DIR, payloadDir);
+        }
+    }
+
+    private void copyAssetDirectory(String assetPath, File outputDir) throws IOException {
+        String[] children = context.getAssets().list(assetPath);
+        if (children == null || children.length == 0) {
+            copyAssetFile(assetPath, outputDir);
+            return;
+        }
+
+        if (!outputDir.exists() && !outputDir.mkdirs()) {
+            throw new IOException("Failed to create " + outputDir.getAbsolutePath());
+        }
+        for (String child : children) {
+            copyAssetDirectory(assetPath + "/" + child, new File(outputDir, child));
+        }
+    }
+
+    private void copyAssetFile(String assetPath, File outputFile) throws IOException {
+        File parent = outputFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("Failed to create " + parent.getAbsolutePath());
+        }
+
+        try (InputStream inputStream = context.getAssets().open(assetPath);
+             OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile, false))) {
+            byte[] buffer = new byte[8192];
+            int readBytes;
+            while ((readBytes = inputStream.read(buffer)) >= 0) {
+                outputStream.write(buffer, 0, readBytes);
+            }
+        }
+    }
+
     private String buildWrapperScript(String stageLabel, String stageSlug, String scriptBody) {
         StringBuilder builder = new StringBuilder();
         builder.append("#!/data/data/com.termux/files/usr/bin/bash\n");
@@ -1319,6 +1385,8 @@ public final class OpenHouseInstallController {
         SYNC_OFFICIAL_DOCS("sync_official_docs", "sync-official-docs.sh", "同步使用文档", "正在同步 OpenHouseAI 使用文档。"),
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh", "安装 Linux 基础工具", "正在安装 curl、git 等基础工具。"),
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh", "设置启动方式", "正在配置默认进入 Ubuntu。"),
+        RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装 SmallPhone 运行栈", "正在从 APK 内置 payload 安装 service-manager、cc-connect 和 SmallPhone。"),
+        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动 SmallPhone", "正在启动 SmallPhone 入口和运行组件。"),
         INSTALL_OPENCODE("install_opencode", "install-opencode.sh", "安装 AI 工具：OpenCode", "正在安装 OpenCode，预计耗时较长，请保持网络连接。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),

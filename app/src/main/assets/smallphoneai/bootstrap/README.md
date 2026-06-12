@@ -61,9 +61,9 @@ The required APK asset archives are:
 
 | Component | APK asset path | Runtime target |
 | --- | --- | --- |
-| service-manager | `openhouse/product-payloads/service-manager.tar.gz` | `$HOME/smallphoneai-repos/service-manager` |
-| cc-connect/openhouse-connect | `openhouse/product-payloads/openhouse-connect.tar.gz` | `$HOME/smallphoneai-repos/openhouse-connect` |
-| SmallPhone | `openhouse/product-payloads/smallphone.tar.gz` | `$HOME/smallphoneai-repos/smallphone-active` |
+| service-manager | `openhouse/product-payloads/service-manager.tar` | `$HOME/smallphoneai-repos/service-manager` |
+| cc-connect/openhouse-connect | `openhouse/product-payloads/openhouse-connect.tar` | `$HOME/smallphoneai-repos/openhouse-connect` |
+| SmallPhone | `openhouse/product-payloads/smallphone.tar` | `$HOME/smallphoneai-repos/smallphone-active` |
 
 The Android host or Gradle asset-copy step must extract/copy those payloads to
 `$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads` before

@@ -167,9 +167,117 @@ payload_archive_contains() {
   return "$status"
 }
 
+payload_archive_contains_executable() {
+  local archive="$1"
+  local pattern="$2"
+  local tar_list_flags="tzvf"
+
+  case "$archive" in
+    *.tar)
+      tar_list_flags="tvf"
+      ;;
+  esac
+
+  tar -"$tar_list_flags" "$archive" | awk -v pattern="$pattern" '
+    {
+      mode = $1
+      name = $0
+      sub(/^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+/, "", name)
+      sub(/^\.\//, "", name)
+      if (substr(mode, 1, 1) == "-" && mode ~ /x/ && name ~ pattern) {
+        found = 1
+      }
+    }
+    END { exit(found ? 0 : 1) }
+  '
+}
+
+payload_dir_contains_executable() {
+  local source="$1"
+  local payload_name="$2"
+
+  case "$payload_name" in
+    service-manager)
+      [ -x "$source/service-manager" ] || [ -x "$source/target/release/service-manager" ]
+      ;;
+    openhouse-connect)
+      [ -x "$source/cc-connect" ]
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+required_payload_executable() {
+  case "$1" in
+    service-manager)
+      printf 'service-manager'
+      ;;
+    openhouse-connect)
+      printf 'cc-connect'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+required_payload_executable_pattern() {
+  case "$1" in
+    service-manager)
+      printf '^(service-manager|target/release/service-manager)$'
+      ;;
+    openhouse-connect)
+      printf '^cc-connect$'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+required_payload_executable_description() {
+  case "$1" in
+    service-manager)
+      printf 'service-manager at service-manager or target/release/service-manager'
+      ;;
+    openhouse-connect)
+      printf 'cc-connect at cc-connect'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+payload_dir_needs_refresh() {
+  local source="$1"
+  local payload_name="$2"
+
+  case "$payload_name" in
+    openhouse-connect)
+      [ -f "$source/scripts/register-service.sh" ] \
+        && grep -Fq '21040' "$source/scripts/register-service.sh" \
+        && grep -Fq 'type = "claudecode"' "$source/scripts/register-service.sh" \
+        && grep -Fq '[[projects]]' "$source/scripts/register-service.sh" \
+        || return 0
+      ;;
+    smallphone)
+      [ -f "$source/scripts/install.sh" ] && grep -Fq 'Dependency installation is disabled' "$source/scripts/install.sh" \
+        || return 0
+      ;;
+  esac
+
+  return 1
+}
+
 validate_payload_source() {
   local name="$1"
   local source="$2"
+  local payload_name="${3:-}"
+  local required_pattern
+  local required_description
   local tar_list_flags="tzf"
 
   case "$source" in
@@ -183,6 +291,13 @@ validate_payload_source() {
       warn "$name: APK payload directory is missing scripts/install.sh or scripts/check.sh: $source"
       return 1
     fi
+    if required_payload_executable "$payload_name" >/dev/null; then
+      required_description="$(required_payload_executable_description "$payload_name")"
+      if ! payload_dir_contains_executable "$source" "$payload_name"; then
+        warn "$name: APK payload directory must contain executable $required_description: $source"
+        return 1
+      fi
+    fi
     return 0
   fi
 
@@ -195,6 +310,14 @@ validate_payload_source() {
       || ! payload_archive_contains "$source" '(^|/)scripts/check\.sh$'; then
       warn "$name: APK payload archive must contain scripts/install.sh and scripts/check.sh: $source"
       return 1
+    fi
+    if required_payload_executable "$payload_name" >/dev/null; then
+      required_pattern="$(required_payload_executable_pattern "$payload_name")"
+      required_description="$(required_payload_executable_description "$payload_name")"
+      if ! payload_archive_contains_executable "$source" "$required_pattern"; then
+        warn "$name: APK payload archive must contain executable $required_description: $source"
+        return 1
+      fi
     fi
     return 0
   fi
@@ -270,13 +393,20 @@ install_payload_if_needed() {
   local source
 
   source="$(find_payload_source "$payload_name" || true)"
-  if ! validate_payload_source "$name" "$source"; then
+  if ! validate_payload_source "$name" "$source" "$payload_name"; then
     return 1
   fi
 
   if [ -f "$dir/scripts/install.sh" ] && [ -f "$dir/scripts/check.sh" ]; then
-    log "$name: 已存在安装目录，已验证 APK payload 可用：$dir"
-    return 0
+    if required_payload_executable "$payload_name" >/dev/null \
+      && ! payload_dir_contains_executable "$dir" "$payload_name"; then
+      log "$name: 已存在安装目录但缺少 APK bundle 必需二进制，将从 payload 刷新：$dir"
+    elif payload_dir_needs_refresh "$dir" "$payload_name"; then
+      log "$name: 已存在安装目录但组件脚本不是当前 APK bundle 合同，将从 payload 刷新：$dir"
+    else
+      log "$name: 已存在安装目录，已验证 APK payload 可用：$dir"
+      return 0
+    fi
   fi
 
   log "$name: 从 APK-bundled payload 安装到 $dir"
@@ -344,11 +474,101 @@ prepare_component() {
   esac
 }
 
+local_component_binary_path() {
+  local payload_name="$1"
+  local dir="$2"
+  local candidate
+
+  case "$payload_name" in
+    service-manager)
+      for candidate in "$dir/service-manager" "$dir/target/release/service-manager"; do
+        if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+          printf '%s\n' "$candidate"
+          return 0
+        fi
+      done
+      ;;
+    openhouse-connect)
+      candidate="$dir/cc-connect"
+      if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+        if "$candidate" --version >/dev/null 2>&1 || "$candidate" --help >/dev/null 2>&1; then
+          printf '%s\n' "$candidate"
+          return 0
+        fi
+      fi
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  return 1
+}
+
+validate_bundle_local_install_source() {
+  local name="$1"
+  local payload_name="$2"
+  local dir="$3"
+  local required_binary
+  local local_binary
+
+  [ "$component_source_mode" = "bundle" ] || return 0
+
+  if ! required_binary="$(required_payload_executable "$payload_name")"; then
+    return 0
+  fi
+
+  if ! local_binary="$(local_component_binary_path "$payload_name" "$dir")"; then
+    warn "$name: bundle 模式要求安装目录包含可执行 $required_binary；拒绝运行 scripts/install.sh 以避免 GitHub/npm/go fallback：$dir"
+    return 1
+  fi
+
+  log "$name: bundle/local 安装将使用 payload 内可执行文件：$local_binary"
+}
+
+run_repo_script_command() {
+  local payload_name="$1"
+  local dir="$2"
+  local script="$3"
+  local local_binary
+
+  case "$component_source_mode:$payload_name:$script" in
+    bundle:service-manager:scripts/install.sh)
+      local_binary="$(local_component_binary_path "$payload_name" "$dir")"
+      run_logged env \
+        SMALLPHONEAI_OFFLINE_INSTALL=1 \
+        SMALLPHONEAI_LOCAL_INSTALL=1 \
+        SERVICE_MANAGER_INSTALL_MODE=local \
+        "./$script" "$local_binary"
+      ;;
+    bundle:openhouse-connect:scripts/install.sh)
+      run_logged env \
+        SMALLPHONEAI_OFFLINE_INSTALL=1 \
+        SMALLPHONEAI_LOCAL_INSTALL=1 \
+        CC_CONNECT_INSTALL_MODE=local \
+        CC_CONNECT_LOCAL_INSTALL=1 \
+        CC_CONNECT_OFFLINE_INSTALL=1 \
+        "./$script"
+      ;;
+    bundle:smallphone:scripts/install.sh)
+      run_logged env \
+        SMALLPHONEAI_OFFLINE_INSTALL=1 \
+        SMALLPHONEAI_LOCAL_INSTALL=1 \
+        SMALLPHONE_SKIP_DEP_INSTALL=1 \
+        "./$script"
+      ;;
+    *)
+      run_logged "./$script"
+      ;;
+  esac
+}
+
 run_repo_script() {
   local name="$1"
   local dir="$2"
   local script="$3"
   local required="$4"
+  local payload_name="${5:-}"
   local path="$dir/$script"
 
   if [ ! -f "$path" ]; then
@@ -363,7 +583,7 @@ run_repo_script() {
 
   chmod +x "$path"
   log "$name: 执行 $script"
-  if ! (cd "$dir" && run_logged "./$script"); then
+  if ! (cd "$dir" && run_repo_script_command "$payload_name" "$dir" "$script"); then
     if [ "$required" = "1" ]; then
       warn "$name: $script 执行失败"
       failures=$((failures + 1))
@@ -387,9 +607,16 @@ run_component() {
     return 0
   fi
 
-  run_repo_script "$name" "$dir" "scripts/install.sh" "$required"
-  run_repo_script "$name" "$dir" "scripts/check.sh" "$required"
-  run_repo_script "$name" "$dir" "scripts/register-service.sh" "0"
+  if ! validate_bundle_local_install_source "$name" "$payload_name" "$dir"; then
+    if [ "$required" = "1" ]; then
+      failures=$((failures + 1))
+    fi
+    return 0
+  fi
+
+  run_repo_script "$name" "$dir" "scripts/install.sh" "$required" "$payload_name"
+  run_repo_script "$name" "$dir" "scripts/check.sh" "$required" "$payload_name"
+  run_repo_script "$name" "$dir" "scripts/register-service.sh" "0" "$payload_name"
 }
 
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
