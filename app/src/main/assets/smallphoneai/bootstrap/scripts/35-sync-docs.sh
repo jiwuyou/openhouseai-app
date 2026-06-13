@@ -211,11 +211,13 @@ bash bootstrap.sh status
 
 状态和启动健康检查使用当前 SmallPhoneAI 运行端口：
 
-| 组件 | URL |
+| 组件 | Endpoint |
 | --- | --- |
 | SmallPhone frontend | `http://127.0.0.1:22082/` |
 | SmallPhone core API | `http://127.0.0.1:22000/` |
-| cc-connect webclient | `http://127.0.0.1:21040/` |
+| cc-connect bridge | `tcp://127.0.0.1:21010` |
+| cc-connect management | `tcp://127.0.0.1:21020` |
+| cc-connect webhook/callback | `tcp://127.0.0.1:21040` |
 | service-manager | `http://127.0.0.1:20087/` |
 
 控制测试应用端口：
@@ -233,7 +235,7 @@ bash bootstrap.sh status
 
 ```text
 /root/projects/service-manager
-/root/cc-connect-fresh
+/root/openhouse-connect-fresh
 /root/projects/smallphone/smallphone-active
 ```
 

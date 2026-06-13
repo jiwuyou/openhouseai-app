@@ -28,6 +28,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
+import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.app.smallphone.SmallPhoneRuntime;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
@@ -65,6 +66,7 @@ public final class SmallPhoneHostActivity extends AppCompatActivity {
     private Button externalButton;
     private volatile boolean actionInFlight;
     private SmallPhoneRuntime.Status lastStatus;
+    private boolean firstLaunchGateForwarded;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,15 +95,27 @@ public final class SmallPhoneHostActivity extends AppCompatActivity {
 
         configureWebView();
         bindActions();
+        if (routeFirstLaunchGateIfNeeded()) {
+            return;
+        }
         refreshStatus(shouldOpenWhenHealthy(getIntent()));
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        if (routeFirstLaunchGateIfNeeded()) {
+            return;
+        }
         if (!actionInFlight && (lastStatus == null || !lastStatus.isHealthy())) {
             refreshStatus(shouldOpenWhenHealthy(getIntent()));
         }
+    }
+
+    @Override
+    protected void onPause() {
+        firstLaunchGateForwarded = false;
+        super.onPause();
     }
 
     @Override
@@ -109,6 +123,9 @@ public final class SmallPhoneHostActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         showRecovery(null);
+        if (routeFirstLaunchGateIfNeeded()) {
+            return;
+        }
         refreshStatus(shouldOpenWhenHealthy(intent));
     }
 
@@ -223,6 +240,7 @@ public final class SmallPhoneHostActivity extends AppCompatActivity {
                 refreshStatus(true);
             }
         });
+        findViewById(R.id.buttonSmallphoneTopMenu).setOnClickListener(v -> openSmallPhoneMenu());
         findViewById(R.id.buttonSmallphoneTopMaintenance).setOnClickListener(v -> openMaintenanceCenter());
         findViewById(R.id.buttonSmallphoneTopTerminal).setOnClickListener(v -> openTerminal());
         primaryButton.setOnClickListener(v -> {
@@ -239,6 +257,10 @@ public final class SmallPhoneHostActivity extends AppCompatActivity {
         findViewById(R.id.buttonSmallphoneTerminal).setOnClickListener(v -> openTerminal());
     }
 
+    private void openSmallPhoneMenu() {
+        ActivityUtils.startActivity(this, new Intent(this, OpenHouseHomeActivity.class));
+    }
+
     private void refreshStatus(boolean openWhenHealthy) {
         if (actionInFlight) {
             return;
@@ -248,6 +270,17 @@ public final class SmallPhoneHostActivity extends AppCompatActivity {
             SmallPhoneRuntime.Status status = runtime.loadStatus();
             runOnUiThread(() -> renderStatus(status, openWhenHealthy));
         });
+    }
+
+    private boolean routeFirstLaunchGateIfNeeded() {
+        if (firstLaunchGateForwarded) {
+            return true;
+        }
+        if (SmallPhoneFirstLaunchGate.launchIfNeeded(this)) {
+            firstLaunchGateForwarded = true;
+            return true;
+        }
+        return false;
     }
 
     private void setChecking() {

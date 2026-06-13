@@ -51,6 +51,20 @@
             </LinearLayout>
 
             <Button
+                android:id="@+id/buttonSmallphoneTopMenu"
+                android:layout_width="52dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/one_click_item_bg"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                android:text="@string/smallphone_host_menu_short"
+                android:textAllCaps="false"
+                android:contentDescription="@string/smallphone_host_menu"
+                android:textColor="@color/textPrimary"
+                android:textSize="13sp" />
+
+            <Button
                 android:id="@+id/buttonSmallphoneTopMaintenance"
                 android:layout_width="52dp"
                 android:layout_height="38dp"

@@ -258,9 +258,12 @@ payload_dir_needs_refresh() {
   case "$payload_name" in
     openhouse-connect)
       [ -f "$source/scripts/register-service.sh" ] \
-        && grep -Fq '21040' "$source/scripts/register-service.sh" \
-        && grep -Fq 'type = "claudecode"' "$source/scripts/register-service.sh" \
-        && grep -Fq '[[projects]]' "$source/scripts/register-service.sh" \
+        && grep -Fq 'CC_CONNECT_BRIDGE_PORT' "$source/scripts/register-service.sh" \
+        && grep -Fq 'CC_CONNECT_MANAGEMENT_PORT' "$source/scripts/register-service.sh" \
+        && grep -Fq 'CC_CONNECT_WEBHOOK_PORT' "$source/scripts/register-service.sh" \
+        && grep -Fq 'detect_claude_cli' "$source/scripts/register-service.sh" \
+        && grep -Fq 'claudecode' "$source/scripts/register-service.sh" \
+        && grep -Fq -- '--config' "$source/scripts/register-service.sh" \
         || return 0
       ;;
     smallphone)
@@ -642,7 +645,7 @@ if should_run_component "service-manager"; then
   run_component "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"
 fi
 if should_run_component "cc-connect"; then
-  run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "${SMALLPHONEAI_CC_CONNECT_GIT_URL:-https://github.com/jiwuyou/openhouse-connect.git}" "1" "openhouse-connect"
+  run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "${SMALLPHONEAI_CC_CONNECT_GIT_URL:-https://github.com/jiwuyou/openhouse-connect-fresh.git}" "1" "openhouse-connect"
 fi
 if should_run_component "smallphone"; then
   run_component "SmallPhone" "$smallphone_dir" "${SMALLPHONEAI_SMALLPHONE_GIT_URL:-https://github.com/jiwuyou/wuxian-smallphone.git}" "1" "smallphone"

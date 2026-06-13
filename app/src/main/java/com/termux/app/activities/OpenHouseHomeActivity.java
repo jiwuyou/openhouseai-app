@@ -100,6 +100,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void bindNavigation() {
         findViewById(R.id.buttonNavHome).setOnClickListener(v -> selectPage(PAGE_HOME));
+        findViewById(R.id.buttonNavSmallPhone).setOnClickListener(v -> openSmallPhone());
         findViewById(R.id.buttonNavManual).setOnClickListener(v -> selectPage(PAGE_MANUAL));
         findViewById(R.id.buttonNavOpenCode).setOnClickListener(v -> selectPage(PAGE_OPENCODE));
         findViewById(R.id.buttonNavDeepSeek).setOnClickListener(v -> selectPage(PAGE_DEEPSEEK));
@@ -185,7 +186,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addBody(panel, "这里保留主入口，具体内容请从左侧侧边栏进入：使用手册、OpenCode 控制、DeepSeek Key、权限获取、终端快捷键和高级设置。");
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
-            compactButton("退出菜单", v -> openTerminal(false), true));
+            compactButton("打开 SmallPhone", v -> openSmallPhone(), true));
         panel.addView(button("退出菜单，回到终端", v -> openTerminal(false)));
         addButtonRow(panel,
             compactButton("OpenCode 控制", v -> selectPage(PAGE_OPENCODE), true),
@@ -526,6 +527,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
 
         ActivityUtils.startActivity(this, new Intent(this, OpenHouseOnboardingActivity.class));
+    }
+
+    private void openSmallPhone() {
+        drawerLayout.closeDrawer(GravityCompat.START);
+        ActivityUtils.startActivity(this, new Intent(this, SmallPhoneHostActivity.class));
     }
 
     private void openMaintenanceLog(String stageSlug, String stageLabel) {

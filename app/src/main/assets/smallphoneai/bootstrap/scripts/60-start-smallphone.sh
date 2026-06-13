@@ -14,6 +14,25 @@ run_logged() {
   "$@"
 }
 
+probe_tcp() {
+  local host="${1:-}"
+  local port="${2:-}"
+  case "$host" in
+    ""|*[!A-Za-z0-9_.-]*)
+      return 1
+      ;;
+  esac
+  case "$port" in
+    ""|*[!0-9]*)
+      return 1
+      ;;
+  esac
+  if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ] || ! command -v timeout >/dev/null 2>&1; then
+    return 1
+  fi
+  timeout 2 bash -c ': >/dev/tcp/$1/$2' _ "$host" "$port" >/dev/null 2>&1
+}
+
 is_termux() {
   [ -n "${PREFIX:-}" ] && [ -d "${PREFIX:-}/bin" ] && [ -d "/data/data/com.termux/files" ]
 }
@@ -45,13 +64,16 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
       SMALLPHONEAI_UBUNTU_RUNTIME_KEEPALIVE=1 \
       proot-distro login ubuntu -- env \
         SMALLPHONEAI_COMPONENT_REPO_ROOT="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-/root/smallphoneai-repos}" \
+        SMALLPHONEAI_ALLOW_DEV_COMPONENT_PATHS="${SMALLPHONEAI_ALLOW_DEV_COMPONENT_PATHS:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
         SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
         SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
         SMALLPHONEAI_CC_CONNECT_DISABLED="${SMALLPHONEAI_CC_CONNECT_DISABLED:-}" \
         SMALLPHONEAI_DISABLE_CC_CONNECT="${SMALLPHONEAI_DISABLE_CC_CONNECT:-}" \
-        SMALLPHONEAI_CC_CONNECT_URL="${SMALLPHONEAI_CC_CONNECT_URL:-}" \
+        SMALLPHONEAI_CC_CONNECT_HOST="${SMALLPHONEAI_CC_CONNECT_HOST:-}" \
+        SMALLPHONEAI_CC_CONNECT_BRIDGE_PORT="${SMALLPHONEAI_CC_CONNECT_BRIDGE_PORT:-}" \
+        SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-}" \
         SMALLPHONEAI_SMALLPHONE_CORE_URL="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-}" \
         SMALLPHONEAI_SMALLPHONE_URL="${SMALLPHONEAI_SMALLPHONE_URL:-}" \
         SMALLPHONEAI_START_READY_TIMEOUT="${SMALLPHONEAI_START_READY_TIMEOUT:-}" \
@@ -72,7 +94,10 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
     esac
 
     sm_probe_url="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}"
-    cc_probe_url="${SMALLPHONEAI_CC_CONNECT_URL:-http://127.0.0.1:21040/}"
+    cc_bridge_host="${SMALLPHONEAI_CC_CONNECT_HOST:-127.0.0.1}"
+    cc_bridge_port="${SMALLPHONEAI_CC_CONNECT_BRIDGE_PORT:-21010}"
+    cc_management_port="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-21020}"
+    cc_probe_label="bridge=${cc_bridge_host}:${cc_bridge_port}, management=${cc_bridge_host}:${cc_management_port}"
     core_probe_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
     phone_probe_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
     cc_disabled=0
@@ -95,12 +120,12 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
       if ! command -v curl >/dev/null 2>&1 || ! curl -fsS --max-time 2 "$core_probe_url" >/dev/null 2>&1; then
         missing="${missing:+$missing, }SmallPhone core($core_probe_url)"
       fi
-      if [ "$cc_disabled" != "1" ] && { ! command -v curl >/dev/null 2>&1 || ! curl -fsS --max-time 2 "$cc_probe_url" >/dev/null 2>&1; }; then
-        missing="${missing:+$missing, }cc-connect($cc_probe_url)"
+      if [ "$cc_disabled" != "1" ] && { ! probe_tcp "$cc_bridge_host" "$cc_bridge_port" || ! probe_tcp "$cc_bridge_host" "$cc_management_port"; }; then
+        missing="${missing:+$missing, }cc-connect($cc_probe_label)"
       fi
       if [ -z "$missing" ]; then
         log "Ubuntu runtime supervisor 已就绪。"
-        log "入口：service-manager=$sm_probe_url, SmallPhone=$phone_probe_url, SmallPhone core=$core_probe_url, cc-connect=$cc_probe_url"
+        log "入口：service-manager=$sm_probe_url, SmallPhone=$phone_probe_url, SmallPhone core=$core_probe_url, cc-connect=$cc_probe_label"
         exit 0
       fi
       if [ "$waited" -eq 0 ] || [ $((waited % 10)) -eq 0 ]; then
@@ -119,23 +144,80 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
   warn "Ubuntu 尚不可用，将在当前 Termux 环境尝试启动。"
 fi
 
-repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
-default_path() {
-  local dev_path="$1"
-  local repo_name="$2"
-  if [ -d "$dev_path" ]; then
-    printf '%s\n' "$dev_path"
-  else
-    printf '%s/%s\n' "$repo_root" "$repo_name"
-  fi
+repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-/root/smallphoneai-repos}"
+allow_dev_component_paths() {
+  case "${SMALLPHONEAI_ALLOW_DEV_COMPONENT_PATHS:-0}" in
+    1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
-service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path /root/projects/service-manager service-manager)}"
-cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path /root/cc-connect-fresh openhouse-connect)}"
-smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path /root/projects/smallphone/smallphone-active smallphone-active)}"
+normalize_component_path() {
+  local path="${1:-}"
+  while [ "${path%/}" != "$path" ] && [ "$path" != "/" ]; do
+    path="${path%/}"
+  done
+  printf '%s\n' "$path"
+}
+
+is_known_dev_component_path() {
+  local path
+  path="$(normalize_component_path "$1")"
+  case "$path" in
+    /root/projects/service-manager|/root/openhouse-connect-fresh|/root/cc-connect-fresh|/root/projects/smallphone/smallphone-active)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+default_path() {
+  local repo_name="$1"
+  shift
+  local product_path="$repo_root/$repo_name"
+  if allow_dev_component_paths; then
+    local dev_path
+    for dev_path in "$@"; do
+      if [ -d "$dev_path" ]; then
+        printf '%s\n' "$dev_path"
+        return
+      fi
+    done
+  fi
+  printf '%s\n' "$product_path"
+}
+
+component_dir_from_env() {
+  local env_value="$1"
+  local repo_name="$2"
+  shift 2
+  local product_path="$repo_root/$repo_name"
+  if [ -n "$env_value" ]; then
+    if is_known_dev_component_path "$env_value" && ! allow_dev_component_paths; then
+      printf '%s\n' "$product_path"
+    else
+      printf '%s\n' "$env_value"
+    fi
+    return
+  fi
+  default_path "$repo_name" "$@"
+}
+
+service_manager_dir="$(component_dir_from_env "${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" service-manager /root/projects/service-manager)"
+cc_connect_dir="$(component_dir_from_env "${SMALLPHONEAI_CC_CONNECT_DIR:-}" openhouse-connect /root/openhouse-connect-fresh /root/cc-connect-fresh)"
+smallphone_dir="$(component_dir_from_env "${SMALLPHONEAI_SMALLPHONE_DIR:-}" smallphone-active /root/projects/smallphone/smallphone-active)"
 bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
 sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
-cc_url="${SMALLPHONEAI_CC_CONNECT_URL:-http://127.0.0.1:21040/}"
+cc_host="${SMALLPHONEAI_CC_CONNECT_HOST:-127.0.0.1}"
+cc_bridge_port="${SMALLPHONEAI_CC_CONNECT_BRIDGE_PORT:-21010}"
+cc_management_port="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-21020}"
+cc_url="bridge=${cc_host}:${cc_bridge_port}, management=${cc_host}:${cc_management_port}"
 smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
 log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
@@ -206,7 +288,7 @@ is_final_readiness_ready() {
   if ! probe_url "$smallphone_core_url"; then
     append_readiness_missing "SmallPhone core($smallphone_core_url)"
   fi
-  if [ "$cc_connect_disabled" != "1" ] && ! probe_url "$cc_url"; then
+  if [ "$cc_connect_disabled" != "1" ] && { ! probe_tcp "$cc_host" "$cc_bridge_port" || ! probe_tcp "$cc_host" "$cc_management_port"; }; then
     append_readiness_missing "cc-connect($cc_url)"
   fi
 

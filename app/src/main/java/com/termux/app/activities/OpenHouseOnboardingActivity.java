@@ -9,16 +9,19 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.app.openhouse.onboarding.OpenHouseOnboardingOverlay;
+import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.shared.activity.ActivityUtils;
 
 public class OpenHouseOnboardingActivity extends AppCompatActivity {
 
     private OpenHouseOnboardingOverlay onboarding;
+    private boolean returnToSmallPhoneHost;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_openhouse_onboarding);
+        returnToSmallPhoneHost = SmallPhoneFirstLaunchGate.isFirstLaunchSource(getIntent());
 
         ViewGroup container = findViewById(R.id.openhouse_onboarding_activity_container);
         onboarding = new OpenHouseOnboardingOverlay(this, container, new OpenHouseOnboardingOverlay.Callbacks() {
@@ -31,11 +34,19 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
 
             @Override
             public void onStartTerminalTutorial(boolean restartEntrySession) {
+                if (returnToSmallPhoneHost) {
+                    openSmallPhoneHost();
+                    return;
+                }
                 openTerminal(true, restartEntrySession);
             }
 
             @Override
             public void onEnterTerminal(boolean restartEntrySession) {
+                if (returnToSmallPhoneHost) {
+                    openSmallPhoneHost();
+                    return;
+                }
                 openTerminal(false, restartEntrySession);
             }
         });
@@ -62,7 +73,17 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
+        if (returnToSmallPhoneHost) {
+            openSmallPhoneHost();
+            return;
+        }
         openTerminal(false, false);
+    }
+
+    private void openSmallPhoneHost() {
+        ActivityUtils.startActivity(this,
+            SmallPhoneFirstLaunchGate.newSmallPhoneHostIntent(this));
+        finish();
     }
 
     private void openTerminal(boolean teaching, boolean restartEntrySession) {

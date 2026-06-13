@@ -88,11 +88,13 @@ after any progress logs.
 
 Default readiness ports:
 
-| Component | URL |
+| Component | Endpoint |
 | --- | --- |
 | SmallPhone frontend | `http://127.0.0.1:22082/` |
 | SmallPhone core API | `http://127.0.0.1:22000/` |
-| cc-connect webclient | `http://127.0.0.1:21040/` |
+| cc-connect bridge | `tcp://127.0.0.1:21010` |
+| cc-connect management | `tcp://127.0.0.1:21020` |
+| cc-connect webhook/callback | `tcp://127.0.0.1:21040` |
 | service-manager | `http://127.0.0.1:20087/` |
 
 Control-test app ports:

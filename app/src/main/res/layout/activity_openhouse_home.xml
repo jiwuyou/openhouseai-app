@@ -161,6 +161,14 @@
                     android:textAllCaps="false" />
 
                 <Button
+                    android:id="@+id/buttonNavSmallPhone"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/openhouse_nav_smallphone"
+                    android:textAllCaps="false" />
+
+                <Button
                     android:id="@+id/buttonNavManual"
                     android:layout_width="match_parent"
                     android:layout_height="52dp"

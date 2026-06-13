@@ -496,6 +496,8 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="smallphone_host_open_smallphone">打开 SmallPhone</string>
     <string name="smallphone_host_start">启动 SmallPhone</string>
     <string name="smallphone_host_repair">修复运行栈</string>
+    <string name="smallphone_host_menu">SmallPhoneAI 菜单</string>
+    <string name="smallphone_host_menu_short">菜单</string>
     <string name="smallphone_host_maintenance">维护中心</string>
     <string name="smallphone_host_maintenance_short">维护</string>
     <string name="smallphone_host_terminal">终端</string>

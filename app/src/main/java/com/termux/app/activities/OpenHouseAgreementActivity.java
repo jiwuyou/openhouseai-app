@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.termux.R;
 import com.termux.app.OpenHouseAgreement;
 import com.termux.app.TermuxActivity;
+import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.shared.activity.ActivityUtils;
 
 public class OpenHouseAgreementActivity extends AppCompatActivity {
@@ -69,6 +70,10 @@ public class OpenHouseAgreementActivity extends AppCompatActivity {
     }
 
     private void returnToTerminal() {
+        if (SmallPhoneFirstLaunchGate.isFirstLaunchSource(getIntent())) {
+            ActivityUtils.startActivity(this,
+                SmallPhoneFirstLaunchGate.newSmallPhoneHostIntent(this));
+        }
         finish();
     }
 
@@ -82,7 +87,11 @@ public class OpenHouseAgreementActivity extends AppCompatActivity {
             intent.putExtra(TermuxActivity.EXTRA_OPENHOUSE_MENU_AFTER_AGREEMENT, true);
             ActivityUtils.startActivity(this, intent);
         } else if (getIntent().getBooleanExtra(EXTRA_OPEN_INSTALL_GUIDE_AFTER_ACCEPT, false)) {
-            ActivityUtils.startActivity(this, new Intent(this, OpenHouseOnboardingActivity.class));
+            Intent intent = new Intent(this, OpenHouseOnboardingActivity.class);
+            if (SmallPhoneFirstLaunchGate.isFirstLaunchSource(getIntent())) {
+                SmallPhoneFirstLaunchGate.markFirstLaunchSource(intent);
+            }
+            ActivityUtils.startActivity(this, intent);
         } else {
             Intent intent = new Intent(this, TermuxActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);

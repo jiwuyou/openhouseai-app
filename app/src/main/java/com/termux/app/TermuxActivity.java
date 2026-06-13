@@ -37,6 +37,7 @@ import com.termux.app.api.file.FileReceiverActivity;
 import com.termux.app.openhouse.OpenHouseOnboardingState;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.app.openhouse.terminal.OpenHouseTerminalTutorial;
+import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.app.terminal.TermuxActivityRootView;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
 import com.termux.app.terminal.io.TermuxTerminalExtraKeys;
@@ -196,7 +197,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private float mTerminalToolbarDefaultHeight;
     private boolean mPendingOpenHouseTerminalTutorial;
     private boolean mPendingOpenHouseMenuAfterAgreement;
+    private boolean mPendingOpenHouseInstallGuideAfterBootstrap;
+    private boolean mPendingOpenHouseInstallGuideFirstLaunchSource;
+    private boolean mPendingRestartEntrySession;
     private boolean mOpenHouseTerminalTutorialShown;
+    private boolean mBootstrapSessionSetupInProgress;
     private OpenHouseTerminalTutorial mOpenHouseTerminalTutorial;
 
 
@@ -217,10 +222,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
     private static final String ARG_OPENHOUSE_TERMINAL_TUTORIAL_PENDING = "openhouse_terminal_tutorial_pending";
     private static final String ARG_OPENHOUSE_MENU_AFTER_AGREEMENT_PENDING = "openhouse_menu_after_agreement_pending";
+    private static final String ARG_OPENHOUSE_INSTALL_GUIDE_AFTER_BOOTSTRAP_PENDING = "openhouse_install_guide_after_bootstrap_pending";
+    private static final String ARG_OPENHOUSE_INSTALL_GUIDE_FIRST_LAUNCH_SOURCE_PENDING = "openhouse_install_guide_first_launch_source_pending";
+    private static final String ARG_RESTART_ENTRY_SESSION_PENDING = "restart_entry_session_pending";
     private static final String ARG_OPENHOUSE_TERMINAL_TUTORIAL_SHOWN = "openhouse_terminal_tutorial_shown";
 
     private static final String LOG_TAG = "TermuxActivity";
     public static final String EXTRA_RESTART_ENTRY_SESSION = "com.termux.app.extra.RESTART_ENTRY_SESSION";
+    public static final String EXTRA_OPEN_INSTALL_GUIDE_AFTER_BOOTSTRAP = "com.termux.app.extra.OPEN_INSTALL_GUIDE_AFTER_BOOTSTRAP";
     public static final String EXTRA_OPENHOUSE_TERMINAL_TUTORIAL = "com.termux.app.extra.OPENHOUSE_TERMINAL_TUTORIAL";
     public static final String EXTRA_OPENHOUSE_MENU_AFTER_AGREEMENT = "com.termux.app.extra.OPENHOUSE_MENU_AFTER_AGREEMENT";
     public static final String PREF_OPENHOUSE_TERMINAL_UI = "openhouse_terminal_ui";
@@ -242,10 +251,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mIsActivityRecreated = savedInstanceState.getBoolean(ARG_ACTIVITY_RECREATED, false);
             mPendingOpenHouseTerminalTutorial = savedInstanceState.getBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_PENDING, false);
             mPendingOpenHouseMenuAfterAgreement = savedInstanceState.getBoolean(ARG_OPENHOUSE_MENU_AFTER_AGREEMENT_PENDING, false);
+            mPendingOpenHouseInstallGuideAfterBootstrap = savedInstanceState.getBoolean(ARG_OPENHOUSE_INSTALL_GUIDE_AFTER_BOOTSTRAP_PENDING, false);
+            mPendingOpenHouseInstallGuideFirstLaunchSource = savedInstanceState.getBoolean(ARG_OPENHOUSE_INSTALL_GUIDE_FIRST_LAUNCH_SOURCE_PENDING, false);
+            mPendingRestartEntrySession = savedInstanceState.getBoolean(ARG_RESTART_ENTRY_SESSION_PENDING, false);
             mOpenHouseTerminalTutorialShown = savedInstanceState.getBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_SHOWN, false);
         } else {
-            mPendingOpenHouseTerminalTutorial = consumeOpenHouseTerminalTutorialRequest(getIntent());
-            mPendingOpenHouseMenuAfterAgreement = consumeOpenHouseMenuAfterAgreementRequest(getIntent());
+            capturePendingIntentRequests(getIntent());
         }
 
         // Delete ReportInfo serialized object files from cache older than 14 days
@@ -439,6 +450,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         savedInstanceState.putBoolean(ARG_ACTIVITY_RECREATED, true);
         savedInstanceState.putBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_PENDING, mPendingOpenHouseTerminalTutorial);
         savedInstanceState.putBoolean(ARG_OPENHOUSE_MENU_AFTER_AGREEMENT_PENDING, mPendingOpenHouseMenuAfterAgreement);
+        savedInstanceState.putBoolean(ARG_OPENHOUSE_INSTALL_GUIDE_AFTER_BOOTSTRAP_PENDING, mPendingOpenHouseInstallGuideAfterBootstrap);
+        savedInstanceState.putBoolean(ARG_OPENHOUSE_INSTALL_GUIDE_FIRST_LAUNCH_SOURCE_PENDING, mPendingOpenHouseInstallGuideFirstLaunchSource);
+        savedInstanceState.putBoolean(ARG_RESTART_ENTRY_SESSION_PENDING, mPendingRestartEntrySession);
         savedInstanceState.putBoolean(ARG_OPENHOUSE_TERMINAL_TUTORIAL_SHOWN, mOpenHouseTerminalTutorialShown);
     }
 
@@ -462,32 +476,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         final Intent intent = getIntent();
         setIntent(null);
 
-        if (shouldRestartEntrySession(intent)) {
-            mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
-            restartEntryTerminalSession();
-            scheduleOpenHouseTerminalTutorialIfRequested();
-            scheduleOpenHouseEntryRequestsIfNeeded();
-            return;
-        }
+        mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
 
         if (mTermuxService.isTermuxSessionsEmpty()) {
-            if (mIsVisible) {
-                TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
-                    if (mTermuxService == null) return; // Activity might have been destroyed.
-                    try {
-                        boolean launchFailsafe = false;
-                        if (intent != null && intent.getExtras() != null) {
-                            launchFailsafe = intent.getExtras().getBoolean(TERMUX_ACTIVITY.EXTRA_FAILSAFE_SESSION, false);
-                        }
-                        mTermuxTerminalSessionActivityClient.addNewSession(launchFailsafe, null);
-                    } catch (WindowManager.BadTokenException e) {
-                        // Activity finished - ignore.
-                    }
-                });
-            } else {
-                // The service connected while not in foreground - just bail out.
-                finishActivityIfNotFinishing();
-            }
+            setupInitialSessionAfterBootstrap(intent);
+            return;
         } else {
             // If termux was started from launcher "New session" shortcut and activity is recreated,
             // then the original intent will be re-delivered, resulting in a new session being re-added
@@ -501,30 +494,26 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             }
         }
 
-        // Update the {@link TerminalSession} and {@link TerminalEmulator} clients.
-        mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
-        scheduleOpenHouseTerminalTutorialIfRequested();
-        scheduleOpenHouseEntryRequestsIfNeeded();
+        handlePendingRequestsAfterSessionReady();
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (consumeOpenHouseTerminalTutorialRequest(intent)) {
-            mPendingOpenHouseTerminalTutorial = true;
-            mOpenHouseTerminalTutorialShown = false;
-        }
-        if (consumeOpenHouseMenuAfterAgreementRequest(intent)) {
-            mPendingOpenHouseMenuAfterAgreement = true;
-        }
-        if (shouldRestartEntrySession(intent)) {
+        boolean restartRequested = capturePendingIntentRequests(intent);
+        if (restartRequested) {
             setIntent(null);
-            restartEntryTerminalSession();
         } else {
             setIntent(intent);
         }
-        scheduleOpenHouseTerminalTutorialIfRequested();
-        scheduleOpenHouseEntryRequestsIfNeeded();
+
+        if (mTermuxService == null || mTermuxTerminalSessionActivityClient == null) return;
+
+        if (mTermuxService.isTermuxSessionsEmpty()) {
+            setupInitialSessionAfterBootstrap(intent);
+        } else {
+            handlePendingRequestsAfterSessionReady();
+        }
     }
 
     @Override
@@ -533,6 +522,66 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Respect being stopped from the {@link TermuxService} notification action.
         finishActivityIfNotFinishing();
+    }
+
+    private void setupInitialSessionAfterBootstrap(@Nullable Intent intent) {
+        if (mBootstrapSessionSetupInProgress) return;
+
+        if (!mIsVisible) {
+            // The service connected while not in foreground - just bail out.
+            finishActivityIfNotFinishing();
+            return;
+        }
+
+        mBootstrapSessionSetupInProgress = true;
+        TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
+            mBootstrapSessionSetupInProgress = false;
+            if (mTermuxService == null) return; // Activity might have been destroyed.
+            try {
+                boolean launchFailsafe = false;
+                if (intent != null && intent.getExtras() != null) {
+                    launchFailsafe = intent.getExtras().getBoolean(TERMUX_ACTIVITY.EXTRA_FAILSAFE_SESSION, false);
+                }
+                mTermuxTerminalSessionActivityClient.addNewSession(launchFailsafe, null);
+                handlePendingRequestsAfterSessionReady();
+            } catch (WindowManager.BadTokenException e) {
+                // Activity finished - ignore.
+            }
+        });
+    }
+
+    private void handlePendingRequestsAfterSessionReady() {
+        if (mIsInvalidState || mTermuxService == null || mTermuxTerminalSessionActivityClient == null) return;
+        if (mTermuxService.isTermuxSessionsEmpty()) return;
+
+        if (mPendingRestartEntrySession) {
+            mPendingRestartEntrySession = false;
+            restartEntryTerminalSession();
+        }
+
+        scheduleOpenHouseTerminalTutorialIfRequested();
+        scheduleOpenHouseEntryRequestsIfNeeded();
+    }
+
+    private boolean capturePendingIntentRequests(@Nullable Intent intent) {
+        if (consumeOpenHouseTerminalTutorialRequest(intent)) {
+            mPendingOpenHouseTerminalTutorial = true;
+            mOpenHouseTerminalTutorialShown = false;
+        }
+        if (consumeOpenHouseMenuAfterAgreementRequest(intent)) {
+            mPendingOpenHouseMenuAfterAgreement = true;
+        }
+        if (consumeOpenHouseInstallGuideAfterBootstrapRequest(intent)) {
+            mPendingOpenHouseInstallGuideAfterBootstrap = true;
+            if (SmallPhoneFirstLaunchGate.isFirstLaunchSource(intent)) {
+                mPendingOpenHouseInstallGuideFirstLaunchSource = true;
+            }
+        }
+        boolean restartRequested = consumeRestartEntrySessionRequest(intent);
+        if (restartRequested) {
+            mPendingRestartEntrySession = true;
+        }
+        return restartRequested;
     }
 
     private boolean shouldRestartEntrySession(Intent intent) {
@@ -578,6 +627,26 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         return requested;
     }
 
+    private boolean consumeOpenHouseInstallGuideAfterBootstrapRequest(@Nullable Intent intent) {
+        if (intent == null) return false;
+
+        boolean requested = intent.getBooleanExtra(EXTRA_OPEN_INSTALL_GUIDE_AFTER_BOOTSTRAP, false);
+        if (requested) {
+            intent.removeExtra(EXTRA_OPEN_INSTALL_GUIDE_AFTER_BOOTSTRAP);
+        }
+        return requested;
+    }
+
+    private boolean consumeRestartEntrySessionRequest(@Nullable Intent intent) {
+        if (intent == null) return false;
+
+        boolean requested = shouldRestartEntrySession(intent);
+        if (requested) {
+            intent.removeExtra(EXTRA_RESTART_ENTRY_SESSION);
+        }
+        return requested;
+    }
+
     private void scheduleOpenHouseTerminalTutorialIfRequested() {
         if (!mPendingOpenHouseTerminalTutorial || mOpenHouseTerminalTutorialShown || mIsInvalidState) return;
         if (mTermuxService == null || mTermuxActivityRootView == null) return;
@@ -594,10 +663,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void scheduleOpenHouseEntryRequestsIfNeeded() {
         if (mIsInvalidState || mTermuxActivityRootView == null) return;
-        if (!mPendingOpenHouseMenuAfterAgreement) return;
+        if (!mPendingOpenHouseInstallGuideAfterBootstrap && !mPendingOpenHouseMenuAfterAgreement) return;
 
         mTermuxActivityRootView.post(() -> {
             if (isFinishing() || mIsInvalidState) return;
+            if (mPendingOpenHouseInstallGuideAfterBootstrap) {
+                boolean firstLaunchSource = mPendingOpenHouseInstallGuideFirstLaunchSource;
+                mPendingOpenHouseInstallGuideAfterBootstrap = false;
+                mPendingOpenHouseInstallGuideFirstLaunchSource = false;
+                mPendingOpenHouseMenuAfterAgreement = false;
+                openOpenHouseInstallGuide(firstLaunchSource);
+                return;
+            }
             if (mPendingOpenHouseMenuAfterAgreement) {
                 mPendingOpenHouseMenuAfterAgreement = false;
                 openOpenHouseMenuAfterAgreement();
@@ -607,7 +684,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void restartEntryTerminalSession() {
         if (mTermuxService == null || mTermuxTerminalSessionActivityClient == null) {
-            setIntent(new Intent(this, TermuxActivity.class).putExtra(EXTRA_RESTART_ENTRY_SESSION, true));
+            mPendingRestartEntrySession = true;
             return;
         }
 
@@ -828,14 +905,25 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void openOpenHouseInstallGuide() {
+        openOpenHouseInstallGuide(false);
+    }
+
+    private void openOpenHouseInstallGuide(boolean firstLaunchSource) {
         if (!OpenHouseAgreement.hasAcceptedCurrentVersion(this)) {
             Intent intent = new Intent(this, OpenHouseAgreementActivity.class);
             intent.putExtra(OpenHouseAgreementActivity.EXTRA_OPEN_INSTALL_GUIDE_AFTER_ACCEPT, true);
+            if (firstLaunchSource) {
+                SmallPhoneFirstLaunchGate.markFirstLaunchSource(intent);
+            }
             ActivityUtils.startActivity(this, intent);
             return;
         }
 
-        ActivityUtils.startActivity(this, new Intent(this, OpenHouseOnboardingActivity.class));
+        Intent intent = new Intent(this, OpenHouseOnboardingActivity.class);
+        if (firstLaunchSource) {
+            SmallPhoneFirstLaunchGate.markFirstLaunchSource(intent);
+        }
+        ActivityUtils.startActivity(this, intent);
     }
 
     private void setOpenHouseTerminalHintView() {

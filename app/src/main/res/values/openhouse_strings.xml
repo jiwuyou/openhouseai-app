@@ -10,6 +10,7 @@
     <string name="openhouse_action_close">关闭</string>
     <string name="openhouse_action_advanced_short">高级</string>
     <string name="openhouse_nav_home">菜单总览</string>
+    <string name="openhouse_nav_smallphone">SmallPhone</string>
     <string name="openhouse_nav_manual">使用手册</string>
     <string name="openhouse_nav_opencode">OpenCode 控制</string>
     <string name="openhouse_nav_deepseek">DeepSeek Key</string>
