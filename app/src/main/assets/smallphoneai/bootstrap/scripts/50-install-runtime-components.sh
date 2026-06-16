@@ -267,7 +267,9 @@ payload_dir_needs_refresh() {
         || return 0
       ;;
     smallphone)
-      [ -f "$source/scripts/install.sh" ] && grep -Fq 'Dependency installation is disabled' "$source/scripts/install.sh" \
+      [ -f "$source/scripts/install.sh" ] \
+        && grep -Fq 'SMALLPHONE_SKIP_DEP_INSTALL' "$source/scripts/install.sh" \
+        && ! grep -Fq 'Offline/local dependency installation is disabled' "$source/scripts/install.sh" \
         || return 0
       ;;
   esac
@@ -554,10 +556,11 @@ run_repo_script_command() {
         "./$script"
       ;;
     bundle:smallphone:scripts/install.sh)
+      ensure_smallphone_node_runtime
       run_logged env \
         SMALLPHONEAI_OFFLINE_INSTALL=1 \
         SMALLPHONEAI_LOCAL_INSTALL=1 \
-        SMALLPHONE_SKIP_DEP_INSTALL=1 \
+        NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org/}" \
         "./$script"
       ;;
     *)
@@ -596,6 +599,199 @@ run_repo_script() {
   fi
 }
 
+node_major_version() {
+  node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf 0
+}
+
+ensure_smallphone_node_runtime() {
+  local major
+  export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    major="$(node_major_version)"
+    case "$major" in
+      ''|*[!0-9]*)
+        major=0
+        ;;
+    esac
+    if [ "$major" -ge 22 ]; then
+      log "SmallPhone Node runtime 已可用：$(node -v)"
+      return 0
+    fi
+    warn "SmallPhone 需要 Node >=22，当前为 $(node -v 2>/dev/null || printf unknown)，将安装本地 Node 22。"
+  fi
+
+  install_node22_runtime
+}
+
+node_arch() {
+  case "$(uname -m)" in
+    aarch64|arm64)
+      printf 'arm64'
+      ;;
+    x86_64|amd64)
+      printf 'x64'
+      ;;
+    armv7l|armv7*)
+      printf 'armv7l'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+install_node22_runtime() {
+  local arch
+  local node_root="$HOME/.local/node"
+  local node_tmp="$HOME/.local/node-download"
+  local node_dist_base="${SMALLPHONEAI_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v22.x}"
+  local node_tarball
+
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "缺少 curl，无法安装 Node 22 runtime。"
+    return 1
+  fi
+  if ! arch="$(node_arch)"; then
+    warn "不支持的 Node runtime 架构：$(uname -m)"
+    return 1
+  fi
+
+  if command -v apt >/dev/null 2>&1; then
+    apt install -y ca-certificates xz-utils >/dev/null 2>&1 || true
+  fi
+
+  mkdir -p "$node_root" "$node_tmp"
+  log "正在从 Node 官方源安装 Node 22 runtime（不访问 GitHub）：$node_dist_base"
+  node_tarball="$(curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors "$node_dist_base/SHASUMS256.txt" \
+    | awk -v arch="linux-$arch.tar.xz" '$2 ~ arch "$" { print $2; exit }')"
+  if [ -z "$node_tarball" ]; then
+    warn "无法解析 Node 22 linux-$arch tarball。"
+    return 1
+  fi
+
+  curl -fL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors \
+    "$node_dist_base/$node_tarball" -o "$node_tmp/$node_tarball"
+  rm -rf "$node_root"
+  mkdir -p "$node_root"
+  tar -xJf "$node_tmp/$node_tarball" -C "$node_root" --strip-components=1
+  export PATH="$node_root/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
+  mkdir -p "$HOME/.npm-global/bin"
+  npm config set prefix "$HOME/.npm-global"
+  npm config set registry "${NPM_REGISTRY:-https://registry.npmjs.org/}"
+  node -v
+  npm -v
+}
+
+find_service_manager_binary_for_registration() {
+  if command -v service-manager >/dev/null 2>&1; then
+    command -v service-manager
+    return 0
+  fi
+  if [ -x "$service_manager_dir/service-manager" ]; then
+    printf '%s\n' "$service_manager_dir/service-manager"
+    return 0
+  fi
+  if [ -x "$service_manager_dir/target/release/service-manager" ]; then
+    printf '%s\n' "$service_manager_dir/target/release/service-manager"
+    return 0
+  fi
+  return 1
+}
+
+service_manager_health_ready() {
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsS --max-time 2 "$service_manager_url/api/v1/health" >/dev/null 2>&1
+}
+
+resolve_service_manager_token() {
+  local sm_bin="$1"
+  local token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+  if [ -z "$token" ]; then
+    token="$("$sm_bin" token show 2>/dev/null | tr -d '\r\n' || true)"
+  fi
+  printf '%s' "$token"
+}
+
+service_manager_auth_ready() {
+  local token="$1"
+  local work_dir
+  local curl_cfg
+
+  [ -n "$token" ] || return 1
+  command -v curl >/dev/null 2>&1 || return 1
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-sm-auth.XXXXXX")" || return 1
+  curl_cfg="$work_dir/curl.cfg"
+  printf 'header = "Authorization: Bearer %s"\n' "$token" > "$curl_cfg"
+  curl -q -fsS --max-time 3 -K "$curl_cfg" "$service_manager_url/api/v1/services" >/dev/null 2>&1
+  status=$?
+  rm -rf "$work_dir" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+stop_service_manager_for_registration() {
+  local self="$$"
+  ps -eo pid=,comm=,args= 2>/dev/null | while read -r pid comm args; do
+    [ -n "$pid" ] || continue
+    [ "$pid" = "$self" ] && continue
+    case "$comm $args" in
+      *service-manager*" serve "*|*service-manager*" serve")
+        kill "$pid" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done
+  sleep 1
+}
+
+start_service_manager_for_registration() {
+  local sm_bin="$1"
+  mkdir -p "$HOME/.smallphoneai/logs"
+  log "正在启动 service-manager 以注册 SmallPhoneAI 组件：$service_manager_bind"
+  nohup "$sm_bin" serve --bind "$service_manager_bind" > "$HOME/.smallphoneai/logs/service-manager.log" 2>&1 < /dev/null &
+  for _ in $(seq 1 30); do
+    if service_manager_health_ready; then
+      log "service-manager 已启动：$service_manager_url"
+      return 0
+    fi
+    sleep 1
+  done
+  warn "service-manager 未能在注册前启动。"
+  return 1
+}
+
+ensure_service_manager_registration_context() {
+  local sm_bin
+  local token
+
+  sm_bin="$(find_service_manager_binary_for_registration || true)"
+  if [ -z "$sm_bin" ]; then
+    warn "未找到 service-manager，可执行文件缺失，跳过注册上下文准备。"
+    return 1
+  fi
+  export PATH="$(dirname "$sm_bin"):$PATH"
+
+  if ! service_manager_health_ready; then
+    start_service_manager_for_registration "$sm_bin" || return 1
+  fi
+
+  token="$(resolve_service_manager_token "$sm_bin")"
+  if ! service_manager_auth_ready "$token"; then
+    warn "service-manager token 与当前运行实例不匹配，重启本地 service-manager。"
+    stop_service_manager_for_registration
+    start_service_manager_for_registration "$sm_bin" || return 1
+    token="$(resolve_service_manager_token "$sm_bin")"
+  fi
+
+  if [ -z "$token" ] || ! service_manager_auth_ready "$token"; then
+    warn "无法获得可用的 service-manager token，后续注册可能失败。"
+    return 1
+  fi
+
+  export SERVICE_MANAGER_URL="$service_manager_url"
+  export SERVICE_MANAGER_TOKEN="$token"
+  export SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-$token}"
+  log "service-manager 注册上下文已就绪。"
+}
+
 run_component() {
   local name="$1"
   local dir="$2"
@@ -625,6 +821,8 @@ run_component() {
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path openhouse-connect)}"
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path smallphone-active)}"
+service_manager_bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
+service_manager_url="${SERVICE_MANAGER_URL:-http://$service_manager_bind}"
 
 log "SmallPhoneAI 运行组件入口由各子仓库维护。"
 log "当前运行环境：$(detect_smallphoneai_runtime)"
@@ -643,6 +841,7 @@ validate_component_targets
 
 if should_run_component "service-manager"; then
   run_component "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"
+  ensure_service_manager_registration_context || true
 fi
 if should_run_component "cc-connect"; then
   run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "${SMALLPHONEAI_CC_CONNECT_GIT_URL:-https://github.com/jiwuyou/openhouse-connect-fresh.git}" "1" "openhouse-connect"

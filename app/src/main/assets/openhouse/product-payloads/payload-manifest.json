@@ -4,6 +4,6 @@
   "payloads": [
     { "id": "service-manager", "archive": "service-manager.tar", "sha256": "cea6491691a6e1f92ed7f3213ff20ea17cd06e385249a1314b511e269c5962cc", "size": 5457920 },
     { "id": "openhouse-connect", "archive": "openhouse-connect.tar", "sha256": "5cdeeece41bfd6f7c692ae22415f9b4e452b8759b7b70850e9351501e813c59e", "size": 46684160 },
-    { "id": "smallphone", "archive": "smallphone.tar", "sha256": "d154b155cca96968c7373759314225b355a3492db9f31cdb7ecdb974a62e58c8", "size": 1792000 }
+    { "id": "smallphone", "archive": "smallphone.tar", "sha256": "08b1738a4198ae80a33e488c1e93ac6a087cd015db1fd00a6e2053fb90c626f7", "size": 1792000 }
   ]
 }

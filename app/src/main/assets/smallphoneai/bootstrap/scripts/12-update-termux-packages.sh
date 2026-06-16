@@ -119,20 +119,20 @@ fi
 
 configure_termux_main_repo
 
-log "正在执行 pkg update -y"
-run_logged pkg update -y
+log "正在执行 apt update"
+run_logged apt update
 
-log "正在执行 pkg install -y proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates"
-run_logged pkg install -y proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates
+log "正在执行 apt install -y proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates"
+run_logged apt install -y proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates
 
 if ! curl --version >/dev/null 2>&1; then
   log "curl 仍不可用，尝试完整升级 Termux 依赖。"
-  run_logged pkg upgrade -y
-  run_logged pkg install -y curl libcurl libngtcp2 libnghttp2 openssl ca-certificates
+  run_logged apt upgrade -y
+  run_logged apt install -y curl libcurl libngtcp2 libnghttp2 openssl ca-certificates
 fi
 
 if ! curl --version >/dev/null 2>&1; then
-  log "curl 修复失败，请手动执行：pkg upgrade -y && pkg install -y curl libcurl libngtcp2 libnghttp2 openssl ca-certificates"
+  log "curl 修复失败，请手动执行：apt upgrade -y && apt install -y curl libcurl libngtcp2 libnghttp2 openssl ca-certificates"
   exit 1
 fi
 

@@ -63,12 +63,12 @@ public final class OpenHouseInstallController {
         Stage.SYNC_OFFICIAL_DOCS,
         Stage.UBUNTU_PACKAGES,
         Stage.CONFIGURE_ENTRY_UBUNTU,
-        Stage.RUNTIME_COMPONENTS,
-        Stage.START_SMALLPHONE,
         Stage.INSTALL_OPENCODE,
         Stage.INSTALL_CODEX,
         Stage.INSTALL_CLAUDE_CODE,
-        Stage.INSTALL_REASONIX
+        Stage.INSTALL_REASONIX,
+        Stage.RUNTIME_COMPONENTS,
+        Stage.START_SMALLPHONE
     };
     private static final long OTHER_STAGE_DURATION_MS =
         (TOTAL_INSTALL_DURATION_MS - OPENCODE_STAGE_DURATION_MS) / (ONE_CLICK_STAGE_SEQUENCE.length - 1);
@@ -975,7 +975,7 @@ public final class OpenHouseInstallController {
             parent.mkdirs();
         }
         try (FileOutputStream outputStream = new FileOutputStream(logFile, false)) {
-            outputStream.write("开始执行 OpenHouseAI 一键初始化。\n".getBytes(StandardCharsets.UTF_8));
+            outputStream.write("开始执行 SmallPhoneAI 一键初始化。\n".getBytes(StandardCharsets.UTF_8));
             if (autoRetryAttemptCount > 0) {
                 String retryLine = "系统正在第 " + autoRetryAttemptCount + "/" + MAX_AUTO_RETRY_ATTEMPTS
                     + " 次自动重试，会从第一个未完成阶段继续。\n";
@@ -1011,25 +1011,26 @@ public final class OpenHouseInstallController {
     }
 
     private String buildFullInstallScript() throws IOException {
-        StringBuilder fallbackBody = new StringBuilder();
-        fallbackBody.append("log '远程一键维护不可用，开始执行 APK 内置一键安装流程。'\n");
+        StringBuilder bundledBody = new StringBuilder();
+        bundledBody.append("log '开始执行 APK 内置 SmallPhoneAI 一键安装流程。'\n");
         for (Stage stage : ONE_CLICK_STAGE_SEQUENCE) {
-            fallbackBody.append("log ").append(shellQuote("__OPENHOUSE_INSTALL_STAGE__:" + stage.slug + ":" + stage.phaseLabel)).append('\n');
-            fallbackBody.append("log ").append(shellQuote("当前步骤：" + stage.phaseLabel)).append('\n');
-            fallbackBody.append("run_environment_probe\n");
-            fallbackBody.append(buildAssetScriptBody(stage));
-            if (fallbackBody.length() > 0 && fallbackBody.charAt(fallbackBody.length() - 1) != '\n') {
-                fallbackBody.append('\n');
+            bundledBody.append("log ").append(shellQuote("__OPENHOUSE_INSTALL_STAGE__:" + stage.slug + ":" + stage.phaseLabel)).append('\n');
+            bundledBody.append("log ").append(shellQuote("当前步骤：" + stage.phaseLabel)).append('\n');
+            bundledBody.append("run_environment_probe\n");
+            bundledBody.append("(\n");
+            bundledBody.append(buildAssetScriptBody(stage));
+            if (bundledBody.length() > 0 && bundledBody.charAt(bundledBody.length() - 1) != '\n') {
+                bundledBody.append('\n');
             }
-            fallbackBody.append("log ").append(shellQuote("步骤完成：" + stage.phaseLabel)).append('\n');
+            bundledBody.append(")\n");
+            bundledBody.append("log ").append(shellQuote("步骤完成：" + stage.phaseLabel)).append('\n');
         }
-        fallbackBody.append("log 'APK 内置一键初始化已完成。'\n");
+        bundledBody.append("log 'APK 内置 SmallPhoneAI 一键初始化已完成。'\n");
 
         OpenCodeInstallSpec installSpec = resolveOpenCodeInstallSpec();
         StringBuilder scriptBody = new StringBuilder();
-        scriptBody.append("log '开始执行 OpenHouseAI 一键初始化。'\n");
-        scriptBody.append("log '安装过程中会准备 Linux 环境，并安装 OpenCode、Codex、Claude Code 和 Reasonix。'\n");
-        scriptBody.append("log '__OPENHOUSE_INSTALL_STAGE__:prepare:准备本机目录'\n");
+        scriptBody.append("log '开始执行 SmallPhoneAI 一键初始化。'\n");
+        scriptBody.append("log '安装过程中会准备 Linux 环境，安装 service-manager、openhouse-connect、SmallPhone 和 AI CLI。'\n");
         scriptBody.append("run_remote_bootstrap(){\n");
         scriptBody.append("  log '正在探测远程一键维护脚本。'\n");
         scriptBody.append("  if ! command -v curl >/dev/null 2>&1; then log '缺少 curl，切换到 APK 内置阶段脚本。'; return 127; fi\n");
@@ -1046,18 +1047,24 @@ public final class OpenHouseInstallController {
             .append(shellQuote(installSpec.primaryUrl))
             .append(" bash \"$HOME/openhouseai-bootstrap.sh\" full\n");
         scriptBody.append("}\n");
-        scriptBody.append("if run_remote_bootstrap; then\n");
+        scriptBody.append("use_remote_bootstrap=0\n");
+        scriptBody.append("case \"${SMALLPHONEAI_USE_REMOTE_BOOTSTRAP:-${OPENHOUSEAI_USE_REMOTE_BOOTSTRAP:-0}}\" in 1|true|TRUE|True|yes|YES|Yes|on|ON|On) use_remote_bootstrap=1 ;; esac\n");
+        scriptBody.append("if [ \"$use_remote_bootstrap\" = \"1\" ] && run_remote_bootstrap; then\n");
         scriptBody.append("  log '远程一键初始化已完成。OpenCode 需要点击启动按钮后再启动。'\n");
         scriptBody.append("else\n");
         scriptBody.append("  remote_status=\"$?\"\n");
-        scriptBody.append("  log \"远程一键维护不可用或执行失败（退出码：$remote_status），切换到 APK 内置阶段脚本。\"\n");
+        scriptBody.append("  if [ \"$use_remote_bootstrap\" = \"1\" ]; then\n");
+        scriptBody.append("    log \"远程一键维护不可用或执行失败（退出码：$remote_status），切换到 APK 内置阶段脚本。\"\n");
+        scriptBody.append("  else\n");
+        scriptBody.append("    log 'SmallPhoneAI 默认使用 APK 内置阶段脚本；如需旧远程脚本，请显式设置 SMALLPHONEAI_USE_REMOTE_BOOTSTRAP=1。'\n");
+        scriptBody.append("  fi\n");
         scriptBody.append("  REMOTE_SCHEDULE_ACTIVE=0\n");
-        scriptBody.append(fallbackBody);
-        if (!fallbackBody.toString().endsWith("\n")) {
+        scriptBody.append(bundledBody);
+        if (!bundledBody.toString().endsWith("\n")) {
             scriptBody.append('\n');
         }
         scriptBody.append("fi\n");
-        scriptBody.append("log 'OpenHouseAI 一键初始化已完成。'\n");
+        scriptBody.append("log 'SmallPhoneAI 一键初始化已完成。'\n");
         return buildWrapperScript("一键初始化", MANIFEST_FULL_SLUG, scriptBody.toString());
     }
 
@@ -1160,7 +1167,7 @@ public final class OpenHouseInstallController {
         builder.append(": > \"$LOG_FILE\"\n");
         builder.append("current_epoch_ms(){ local seconds; seconds=\"$(date +%s 2>/dev/null || true)\"; if [ -n \"$seconds\" ]; then printf '%s000' \"$seconds\"; else printf '0'; fi; }\n");
         builder.append("RUN_STARTED_AT_MS=\"${OPENHOUSE_RUN_STARTED_AT_MS:-$(current_epoch_ms)}\"\n");
-        builder.append("REMOTE_SCHEDULE_ACTIVE=1\n");
+        builder.append("REMOTE_SCHEDULE_ACTIVE=0\n");
         builder.append("mark_stage_marker(){ case \"$1\" in __OPENHOUSE_INSTALL_STAGE__:*) local payload=\"${1#__OPENHOUSE_INSTALL_STAGE__:}\"; local stage_slug=\"${payload%%:*}\"; local now_ms=\"$(current_epoch_ms)\"; { printf 'started_at_ms=%s\\n' \"$RUN_STARTED_AT_MS\"; printf 'stage_slug=%s\\n' \"$stage_slug\"; printf 'stage_started_at_ms=%s\\n' \"$now_ms\"; printf 'remote_schedule=%s\\n' \"${REMOTE_SCHEDULE_ACTIVE:-1}\"; } > \"$RUNNING_FILE\" || true;; esac; }\n");
         builder.append("log(){ printf '%s\\n' \"$1\" | tee -a \"$LOG_FILE\"; mark_stage_marker \"$1\"; }\n");
         builder.append("run_logged(){ local status=0; set +e; \"$@\" 2>&1 | tee -a \"$LOG_FILE\"; status=${PIPESTATUS[0]}; set -e; return \"$status\"; }\n");

@@ -251,6 +251,57 @@ is_service_manager_ready() {
     || curl -fsS --max-time 2 "$sm_url/" >/dev/null 2>&1
 }
 
+resolve_service_manager_token() {
+  local token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+  if [ -z "$token" ]; then
+    token="$("$service_manager_bin" token show 2>/dev/null | tr -d '\r\n' || true)"
+  fi
+  printf '%s' "$token"
+}
+
+is_service_manager_auth_ready() {
+  local token="$1"
+  local work_dir
+  local curl_cfg
+
+  [ -n "$token" ] || return 1
+  command -v curl >/dev/null 2>&1 || return 1
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-sm-auth.XXXXXX")" || return 1
+  curl_cfg="$work_dir/curl.cfg"
+  printf 'header = "Authorization: Bearer %s"\n' "$token" > "$curl_cfg"
+  curl -q -fsS --max-time 3 -K "$curl_cfg" "$sm_url/api/v1/services" >/dev/null 2>&1
+  status=$?
+  rm -rf "$work_dir" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+stop_service_manager_processes() {
+  local self="$$"
+  ps -eo pid=,comm=,args= 2>/dev/null | while read -r pid comm args; do
+    [ -n "$pid" ] || continue
+    [ "$pid" = "$self" ] && continue
+    case "$comm $args" in
+      *service-manager*" serve "*|*service-manager*" serve")
+        kill "$pid" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done
+  sleep 1
+}
+
+start_service_manager() {
+  log "正在启动 service-manager：$bind"
+  nohup "$service_manager_bin" serve --bind "$bind" > "$log_dir/service-manager.log" 2>&1 < /dev/null &
+  for _ in $(seq 1 30); do
+    if is_service_manager_ready; then
+      log "service-manager 已启动：$sm_url"
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 is_truthy() {
   case "${1:-}" in
     1|true|TRUE|True|yes|YES|Yes|on|ON|On)
@@ -341,15 +392,7 @@ mkdir -p "$log_dir"
 if is_service_manager_ready; then
   log "service-manager 已可访问：$sm_url"
 else
-  log "正在启动 service-manager：$bind"
-  nohup "$service_manager_bin" serve --bind "$bind" > "$log_dir/service-manager.log" 2>&1 < /dev/null &
-  for _ in $(seq 1 30); do
-    if is_service_manager_ready; then
-      log "service-manager 已启动：$sm_url"
-      break
-    fi
-    sleep 1
-  done
+  start_service_manager || true
 fi
 
 if ! is_service_manager_ready; then
@@ -359,6 +402,22 @@ if ! is_service_manager_ready; then
   fi
   exit 1
 fi
+
+sm_token="$(resolve_service_manager_token)"
+if ! is_service_manager_auth_ready "$sm_token"; then
+  warn "service-manager token 与当前运行实例不匹配，重启本地 service-manager。"
+  stop_service_manager_processes
+  start_service_manager || true
+  sm_token="$(resolve_service_manager_token)"
+fi
+
+if [ -z "$sm_token" ] || ! is_service_manager_auth_ready "$sm_token"; then
+  warn "无法获取可用的 service-manager token，无法注册或启动 group:local-stack。"
+  exit 1
+fi
+
+export SERVICE_MANAGER_TOKEN="$sm_token"
+export SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-$sm_token}"
 
 run_register_if_present() {
   local name="$1"
@@ -384,16 +443,6 @@ fi
 cc_connect_disabled=0
 if is_truthy "${SMALLPHONEAI_CC_CONNECT_DISABLED:-}" || is_truthy "${SMALLPHONEAI_DISABLE_CC_CONNECT:-}"; then
   cc_connect_disabled=1
-fi
-
-sm_token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
-if [ -z "$sm_token" ]; then
-  sm_token="$("$service_manager_bin" token show 2>/dev/null | tr -d '\r\n' || true)"
-fi
-
-if [ -z "$sm_token" ]; then
-  warn "无法获取 service-manager token，无法启动 group:local-stack。"
-  exit 1
 fi
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-start.XXXXXX")"
