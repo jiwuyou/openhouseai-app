@@ -16,10 +16,13 @@ import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -33,12 +36,20 @@ import com.termux.R;
 import com.termux.app.OpenCodeSettings;
 import com.termux.app.OpenHouseAgreement;
 import com.termux.app.TermuxActivity;
+import com.termux.app.browser.ControlledBrowserCommandResult;
+import com.termux.app.browser.ControlledBrowserContract;
+import com.termux.app.browser.ControlledBrowserView;
 import com.termux.app.openhouse.OpenHouseDeepSeekController;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
 import com.termux.app.openhouse.OpenHouseOpenCodeController;
+import com.termux.app.smallphone.SmallPhoneHostController;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -46,6 +57,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private static final String LOG_TAG = "OpenHouseHome";
     private static final String PAGE_HOME = "home";
+    private static final String PAGE_SMALLPHONE = "smallphone";
+    private static final String PAGE_CONTROLLED_BROWSER = ControlledBrowserContract.PAGE_CONTROLLED_BROWSER;
     private static final String PAGE_MANUAL = "manual";
     private static final String PAGE_OPENCODE = "opencode";
     private static final String PAGE_DEEPSEEK = "deepseek";
@@ -56,16 +69,27 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PAGE_REPAIR = "repair";
     private static final String PAGE_LOGS = "logs";
     private static final String PAGE_ADVANCED = "advanced";
+    private static final String LEGACY_BROWSER_REQUEST_ID = "com.termux.openhouse.browser.REQUEST_ID";
+    private static final String LEGACY_BROWSER_REQUEST_FILE = "com.termux.openhouse.browser.REQUEST_FILE";
+    private static final String LEGACY_BROWSER_RESULT_FILE = "com.termux.openhouse.browser.RESULT_FILE";
+    private static final String LEGACY_BROWSER_TIMEOUT_MS = "com.termux.openhouse.browser.TIMEOUT_MS";
+    private static final String LEGACY_BROWSER_TOKEN = "com.termux.openhouse.browser.TOKEN";
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
     private DrawerLayout drawerLayout;
+    private ScrollView scrollContentView;
+    private FrameLayout embeddedContentView;
     private LinearLayout contentView;
     private TextView pageTitleView;
     private TextView pageSubtitleView;
     private String currentPage = PAGE_HOME;
     private int openCodePort = OpenCodeSettings.DEFAULT_OPENCODE_PORT;
     private String lastOpenCodeUrl = OpenCodeSettings.getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+    private SmallPhoneHostController smallPhoneController;
+    private View smallPhoneView;
+    private ControlledBrowserView controlledBrowserView;
+    private Bundle pendingBrowserCommand;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,6 +97,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         setContentView(R.layout.activity_openhouse_home);
 
         drawerLayout = findViewById(R.id.openhouseDrawer);
+        scrollContentView = findViewById(R.id.openhouseScrollContent);
+        embeddedContentView = findViewById(R.id.openhouseEmbeddedContent);
         contentView = findViewById(R.id.openhouseContent);
         pageTitleView = findViewById(R.id.openhousePageTitle);
         pageSubtitleView = findViewById(R.id.openhousePageSubtitle);
@@ -81,11 +107,21 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonCloseDrawer).setOnClickListener(v -> drawerLayout.closeDrawer(GravityCompat.START));
         findViewById(R.id.buttonOpenAdvanced).setOnClickListener(v -> selectPage(PAGE_ADVANCED));
         bindNavigation();
-        renderPage();
+        if (!handleOpenHouseIntent(getIntent())) {
+            renderPage();
+        }
     }
 
     @Override
     protected void onDestroy() {
+        if (smallPhoneController != null) {
+            smallPhoneController.onDestroy();
+            smallPhoneController = null;
+        }
+        if (controlledBrowserView != null) {
+            controlledBrowserView.destroy();
+            controlledBrowserView = null;
+        }
         backgroundExecutor.shutdownNow();
         super.onDestroy();
     }
@@ -96,11 +132,53 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_PERMISSIONS.equals(currentPage)) {
             renderPage();
         }
+        if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
+            smallPhoneController.onResume(false);
+        } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage) && controlledBrowserView != null) {
+            controlledBrowserView.onHostResume();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        pauseCurrentEmbeddedPage();
+        super.onPause();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleOpenHouseIntent(intent);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            drawerLayout.closeDrawer(GravityCompat.START);
+            return;
+        }
+        if (PAGE_SMALLPHONE.equals(currentPage)
+            && smallPhoneController != null
+            && smallPhoneController.handleBackPressed()) {
+            return;
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
+            && controlledBrowserView != null
+            && controlledBrowserView.goBack()) {
+            return;
+        }
+        if (!PAGE_HOME.equals(currentPage)) {
+            selectPage(PAGE_HOME);
+            return;
+        }
+        super.onBackPressed();
     }
 
     private void bindNavigation() {
         findViewById(R.id.buttonNavHome).setOnClickListener(v -> selectPage(PAGE_HOME));
-        findViewById(R.id.buttonNavSmallPhone).setOnClickListener(v -> openSmallPhone());
+        findViewById(R.id.buttonNavSmallPhone).setOnClickListener(v -> selectPage(PAGE_SMALLPHONE));
+        findViewById(R.id.buttonNavControlledBrowser).setOnClickListener(v -> selectPage(PAGE_CONTROLLED_BROWSER));
         findViewById(R.id.buttonNavManual).setOnClickListener(v -> selectPage(PAGE_MANUAL));
         findViewById(R.id.buttonNavOpenCode).setOnClickListener(v -> selectPage(PAGE_OPENCODE));
         findViewById(R.id.buttonNavDeepSeek).setOnClickListener(v -> selectPage(PAGE_DEEPSEEK));
@@ -115,6 +193,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void selectPage(String page) {
+        if (!page.equals(currentPage)) {
+            pauseCurrentEmbeddedPage();
+        }
         currentPage = page;
         drawerLayout.closeDrawer(GravityCompat.START);
         renderPage();
@@ -125,50 +206,68 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return;
         }
 
-        contentView.removeAllViews();
         switch (currentPage) {
+            case PAGE_SMALLPHONE:
+                setHeader("SmallPhone", "小手机页面和运行栈修复");
+                renderSmallPhonePage();
+                break;
+            case PAGE_CONTROLLED_BROWSER:
+                setHeader("受控浏览器", "多标签，可由 Termux 命令控制");
+                renderControlledBrowserPage();
+                break;
             case PAGE_MANUAL:
+                showScrollContent();
                 setHeader("使用手册", "离线基础说明和在线手册入口");
                 renderManualPage();
                 break;
             case PAGE_OPENCODE:
+                showScrollContent();
                 setHeader("OpenCode 控制", "启动、停止、重启和自定义端口");
                 renderOpenCodePage();
                 break;
             case PAGE_DEEPSEEK:
+                showScrollContent();
                 setHeader("DeepSeek Key", "一键替换 AI 软件配置");
                 renderDeepSeekPage();
                 break;
             case PAGE_PERMISSIONS:
+                showScrollContent();
                 setHeader("权限获取", "后台运行、文件访问和悬浮窗");
                 renderPermissionsPage();
                 break;
             case PAGE_ABOUT:
+                showScrollContent();
                 setHeader("软件说明", "源码地址和交流群");
                 renderAboutPage();
                 break;
             case PAGE_TERMINAL_GUIDE:
+                showScrollContent();
                 setHeader("终端教学", "回到终端后的手指教学");
                 renderTerminalGuidePage();
                 break;
             case PAGE_SHORTCUTS:
+                showScrollContent();
                 setHeader("终端快捷键", "底部按键说明");
                 renderShortcutsPage();
                 break;
             case PAGE_REPAIR:
+                showScrollContent();
                 setHeader("维护与修复", "详细进度和修复入口");
                 renderRepairPage();
                 break;
             case PAGE_LOGS:
+                showScrollContent();
                 setHeader("日志", "阶段日志和 OpenCode 日志");
                 renderLogsPage();
                 break;
             case PAGE_ADVANCED:
+                showScrollContent();
                 setHeader("高级设置", "显示和兼容设置");
                 renderAdvancedPage();
                 break;
             case PAGE_HOME:
             default:
+                showScrollContent();
                 setHeader("openhouse ai", "菜单总览");
                 renderHomePage();
                 break;
@@ -178,6 +277,410 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void setHeader(String title, String subtitle) {
         pageTitleView.setText(title);
         pageSubtitleView.setText(subtitle);
+    }
+
+    private void showScrollContent() {
+        if (scrollContentView != null) {
+            scrollContentView.setVisibility(View.VISIBLE);
+        }
+        if (embeddedContentView != null) {
+            embeddedContentView.removeAllViews();
+            embeddedContentView.setVisibility(View.GONE);
+        }
+        if (contentView != null) {
+            contentView.removeAllViews();
+        }
+    }
+
+    private void showEmbeddedContent() {
+        if (contentView != null) {
+            contentView.removeAllViews();
+        }
+        if (scrollContentView != null) {
+            scrollContentView.setVisibility(View.GONE);
+        }
+        if (embeddedContentView != null) {
+            embeddedContentView.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void renderSmallPhonePage() {
+        showEmbeddedContent();
+        if (embeddedContentView == null) {
+            return;
+        }
+        if (smallPhoneController == null || smallPhoneView == null) {
+            smallPhoneView = getLayoutInflater().inflate(R.layout.view_smallphone_host, embeddedContentView, false);
+            smallPhoneController = new SmallPhoneHostController(this, smallPhoneView);
+            smallPhoneController.setNavigationDelegate(new SmallPhoneHostController.NavigationDelegate() {
+                @Override
+                public boolean openSmallPhoneMenu() {
+                    drawerLayout.openDrawer(GravityCompat.START);
+                    return true;
+                }
+
+                @Override
+                public boolean openMaintenanceCenter() {
+                    OpenHouseHomeActivity.this.openMaintenanceCenter();
+                    return true;
+                }
+
+                @Override
+                public boolean openTerminal() {
+                    OpenHouseHomeActivity.this.openTerminal(false);
+                    return true;
+                }
+
+                @Override
+                public boolean openExternal(String url) {
+                    OpenHouseHomeActivity.this.openUrl(url);
+                    return true;
+                }
+            });
+        }
+        attachEmbeddedView(smallPhoneView);
+        smallPhoneController.onResume(true);
+    }
+
+    private void renderControlledBrowserPage() {
+        showEmbeddedContent();
+        if (embeddedContentView == null) {
+            return;
+        }
+        if (controlledBrowserView == null) {
+            controlledBrowserView = new ControlledBrowserView(this);
+            controlledBrowserView.setExternalNavigationHandler((browserView, uri) -> {
+                openUrl(uri.toString());
+                return true;
+            });
+        }
+        attachEmbeddedView(controlledBrowserView);
+        controlledBrowserView.onHostResume();
+        dispatchPendingBrowserCommand();
+    }
+
+    private void attachEmbeddedView(View view) {
+        if (view == null || embeddedContentView == null) {
+            return;
+        }
+        if (view.getParent() == embeddedContentView) {
+            return;
+        }
+        if (view.getParent() instanceof ViewGroup) {
+            ((ViewGroup) view.getParent()).removeView(view);
+        }
+        embeddedContentView.removeAllViews();
+        embeddedContentView.addView(view, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+    }
+
+    private void pauseCurrentEmbeddedPage() {
+        if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
+            smallPhoneController.onPause();
+        } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage) && controlledBrowserView != null) {
+            controlledBrowserView.onHostPause();
+        }
+    }
+
+    private boolean handleOpenHouseIntent(Intent intent) {
+        if (intent == null) {
+            return false;
+        }
+
+        Bundle browserCommand = normalizeBrowserCommand(intent);
+        String requestedPage = intent.getStringExtra(ControlledBrowserContract.EXTRA_OPENHOUSE_PAGE);
+        if (isBlank(requestedPage)) {
+            requestedPage = intent.getStringExtra("openhouse_page");
+        }
+
+        if (browserCommand != null || PAGE_CONTROLLED_BROWSER.equals(requestedPage)) {
+            pendingBrowserCommand = browserCommand;
+            selectPage(PAGE_CONTROLLED_BROWSER);
+            return true;
+        }
+        if (PAGE_SMALLPHONE.equals(requestedPage)) {
+            selectPage(PAGE_SMALLPHONE);
+            return true;
+        }
+        return false;
+    }
+
+    private Bundle normalizeBrowserCommand(Intent intent) {
+        Bundle extras = intent.getExtras();
+        if (extras == null) {
+            return null;
+        }
+        String command = firstNonBlank(
+            extras.getString(ControlledBrowserContract.EXTRA_COMMAND),
+            extras.getString(ControlledBrowserContract.LEGACY_EXTRA_COMMAND),
+            extras.getString("browser_command"));
+        String requestFile = firstNonBlank(
+            extras.getString(ControlledBrowserContract.EXTRA_REQUEST_FILE),
+            extras.getString(LEGACY_BROWSER_REQUEST_FILE));
+        if (isBlank(command) && isBlank(requestFile)) {
+            return null;
+        }
+
+        Bundle normalized = new Bundle();
+        if (!isBlank(command)) {
+            normalized.putString(ControlledBrowserContract.EXTRA_COMMAND, command);
+        }
+
+        String requestId = firstNonBlank(
+            extras.getString(ControlledBrowserContract.EXTRA_REQUEST_ID),
+            extras.getString(LEGACY_BROWSER_REQUEST_ID));
+        if (!isBlank(requestId)) {
+            normalized.putString(ControlledBrowserContract.EXTRA_REQUEST_ID, requestId);
+        }
+        if (!isBlank(requestFile)) {
+            normalized.putString(ControlledBrowserContract.EXTRA_REQUEST_FILE, requestFile);
+        }
+        String resultFile = firstNonBlank(
+            extras.getString(ControlledBrowserContract.EXTRA_RESULT_FILE),
+            extras.getString(LEGACY_BROWSER_RESULT_FILE));
+        if (!isBlank(resultFile)) {
+            normalized.putString(ControlledBrowserContract.EXTRA_RESULT_FILE, resultFile);
+        }
+        String token = firstNonBlank(
+            extras.getString(ControlledBrowserContract.EXTRA_TOKEN),
+            extras.getString(LEGACY_BROWSER_TOKEN));
+        if (isBrowserCommandTokenRequired(command, requestFile, resultFile)) {
+            try {
+                if (!isBlank(requestFile)) {
+                    validateBrowserRpcPath(requestFile, "requests");
+                }
+                if (!isBlank(resultFile)) {
+                    validateBrowserRpcPath(resultFile, "results");
+                }
+                if (!isBrowserRpcTokenValid(token)) {
+                    writeBrowserErrorResult(resultFile, requestId, "unauthorized", "Invalid browser RPC token");
+                    return null;
+                }
+            } catch (Exception e) {
+                writeBrowserErrorResult(resultFile, requestId, "invalid_rpc_path", e.getMessage());
+                return null;
+            }
+        }
+        if (!isBlank(token)) {
+            normalized.putString(ControlledBrowserContract.EXTRA_TOKEN, token);
+        }
+        Integer timeoutMs = getIntegerExtra(extras, ControlledBrowserContract.EXTRA_TIMEOUT_MS);
+        if (timeoutMs == null) {
+            timeoutMs = getIntegerExtra(extras, LEGACY_BROWSER_TIMEOUT_MS);
+        }
+        if (timeoutMs != null) {
+            normalized.putInt(ControlledBrowserContract.EXTRA_TIMEOUT_MS, timeoutMs);
+        }
+
+        String url = firstNonBlank(
+            extras.getString(ControlledBrowserContract.EXTRA_URL),
+            extras.getString(ControlledBrowserContract.LEGACY_EXTRA_URL),
+            extras.getString("browser_url"));
+        if (!isBlank(url)) {
+            normalized.putString(ControlledBrowserContract.EXTRA_URL, url);
+        }
+
+        String tabId = extras.getString(ControlledBrowserContract.EXTRA_TAB_ID);
+        if (!isBlank(tabId)) {
+            normalized.putString(ControlledBrowserContract.EXTRA_TAB_ID, tabId);
+        }
+        Integer officialTabIndex = getIntegerExtra(extras, ControlledBrowserContract.EXTRA_TAB_INDEX);
+        if (officialTabIndex != null) {
+            normalized.putInt(ControlledBrowserContract.EXTRA_TAB_INDEX, officialTabIndex);
+        }
+
+        String legacyTab = firstNonBlank(
+            extras.getString(ControlledBrowserContract.LEGACY_EXTRA_TAB),
+            extras.getString("browser_tab"),
+            extras.getString("browser_tab_id"));
+        if (!isBlank(legacyTab)) {
+            Integer index = parseInteger(legacyTab);
+            if (index == null) {
+                normalized.putString(ControlledBrowserContract.EXTRA_TAB_ID, legacyTab);
+            } else {
+                normalized.putInt(ControlledBrowserContract.EXTRA_TAB_INDEX, index);
+            }
+        }
+        Integer shortTabIndex = getIntegerExtra(extras, "browser_tab_index");
+        if (shortTabIndex != null) {
+            normalized.putInt(ControlledBrowserContract.EXTRA_TAB_INDEX, shortTabIndex);
+        }
+
+        String title = extras.getString(ControlledBrowserContract.EXTRA_TITLE);
+        if (!isBlank(title)) {
+            normalized.putString(ControlledBrowserContract.EXTRA_TITLE, title);
+        }
+        if (extras.containsKey(ControlledBrowserContract.EXTRA_ACTIVATE)) {
+            normalized.putBoolean(ControlledBrowserContract.EXTRA_ACTIVATE,
+                extras.getBoolean(ControlledBrowserContract.EXTRA_ACTIVATE, true));
+        }
+        copyStringExtra(extras, normalized, ControlledBrowserContract.EXTRA_PAYLOAD);
+        copyStringExtra(extras, normalized, ControlledBrowserContract.EXTRA_OUTPUT);
+        copyStringExtra(extras, normalized, ControlledBrowserContract.EXTRA_METHOD);
+        copyStringExtra(extras, normalized, ControlledBrowserContract.EXTRA_PARAMS);
+        return normalized;
+    }
+
+    private void dispatchPendingBrowserCommand() {
+        if (pendingBrowserCommand == null || controlledBrowserView == null) {
+            return;
+        }
+        Bundle command = pendingBrowserCommand;
+        pendingBrowserCommand = null;
+        controlledBrowserView.handleCommandAsync(command, result -> {
+            writeBrowserResultIfRequested(command, result);
+            if (!result.isSuccessful()) {
+                Toast.makeText(this, result.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void writeBrowserResultIfRequested(Bundle command, ControlledBrowserCommandResult result) {
+        String resultFile = command == null ? null : command.getString(ControlledBrowserContract.EXTRA_RESULT_FILE);
+        if (isBlank(resultFile)) {
+            return;
+        }
+        try {
+            writeBrowserResultFile(resultFile, result.toJsonString());
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to write browser command result", e);
+        }
+    }
+
+    private void writeBrowserErrorResult(String resultFile, String requestId, String code, String message) {
+        if (isBlank(resultFile)) {
+            return;
+        }
+        String safeMessage = message == null ? "" : message.replace("\\", "\\\\").replace("\"", "\\\"");
+        String safeCode = code == null ? "browser_rpc_error" : code.replace("\\", "\\\\").replace("\"", "\\\"");
+        String safeRequestId = requestId == null ? "" : requestId.replace("\\", "\\\\").replace("\"", "\\\"");
+        String json = "{\"ok\":false,\"successful\":false,\"requestId\":\"" + safeRequestId
+            + "\",\"message\":\"" + safeMessage + "\",\"error\":{\"code\":\"" + safeCode
+            + "\",\"message\":\"" + safeMessage + "\"}}";
+        try {
+            writeBrowserResultFile(resultFile, json);
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to write browser RPC error result", e);
+        }
+    }
+
+    private void writeBrowserResultFile(String resultFile, String json) throws IOException {
+        File outputFile = validateBrowserRpcPath(resultFile, "results");
+        File parent = outputFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("Unable to create result directory: " + parent);
+        }
+        File tmpFile = new File(outputFile.getParentFile(), outputFile.getName() + ".tmp." + android.os.Process.myPid());
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+        try (FileOutputStream outputStream = new FileOutputStream(tmpFile)) {
+            outputStream.write(bytes);
+            outputStream.write('\n');
+        }
+        if (!tmpFile.renameTo(outputFile)) {
+            throw new IOException("Unable to move result file into place: " + outputFile);
+        }
+    }
+
+    private File validateBrowserRpcPath(String path, String expectedLeaf) throws IOException {
+        if (isBlank(path)) {
+            throw new IOException("Missing browser RPC path");
+        }
+        File target = new File(path).getCanonicalFile();
+        File termuxFilesDir = new File(getApplicationInfo().dataDir, "files").getCanonicalFile();
+        String targetPath = target.getPath();
+        String allowedPrefix = termuxFilesDir.getPath() + File.separator;
+        if (!targetPath.startsWith(allowedPrefix)) {
+            throw new IOException("Browser RPC path outside app files directory: " + targetPath);
+        }
+        if (expectedLeaf != null && !targetPath.contains(File.separator + ".openhouse-browser" + File.separator + expectedLeaf + File.separator)) {
+            throw new IOException("Browser RPC path outside ." + "openhouse-browser/" + expectedLeaf + ": " + targetPath);
+        }
+        return target;
+    }
+
+    private boolean isBrowserCommandTokenRequired(String command, String requestFile, String resultFile) {
+        if (!isBlank(requestFile) || !isBlank(resultFile)) {
+            return true;
+        }
+        if (isBlank(command)) {
+            return false;
+        }
+        String normalized = command.trim().toLowerCase(java.util.Locale.US);
+        return !ControlledBrowserContract.COMMAND_OPEN.equals(normalized)
+            && !ControlledBrowserContract.COMMAND_NEW_TAB.equals(normalized)
+            && !ControlledBrowserContract.COMMAND_SWITCH.equals(normalized)
+            && !ControlledBrowserContract.COMMAND_CLOSE.equals(normalized)
+            && !ControlledBrowserContract.COMMAND_RELOAD.equals(normalized)
+            && !ControlledBrowserContract.COMMAND_BACK.equals(normalized)
+            && !ControlledBrowserContract.COMMAND_FORWARD.equals(normalized);
+    }
+
+    private boolean isBrowserRpcTokenValid(String token) throws IOException {
+        if (isBlank(token)) {
+            return false;
+        }
+        File tokenFile = validateBrowserRpcPath(
+            new File(new File(getApplicationInfo().dataDir, "files"), "home/.openhouse-browser/token").getPath(),
+            null);
+        if (!tokenFile.isFile()) {
+            return false;
+        }
+        byte[] buffer = new byte[(int) Math.min(tokenFile.length(), 8192)];
+        int read;
+        try (java.io.FileInputStream inputStream = new java.io.FileInputStream(tokenFile)) {
+            read = inputStream.read(buffer);
+        }
+        String expected = read <= 0 ? "" : new String(buffer, 0, read, StandardCharsets.UTF_8).trim();
+        return !isBlank(expected) && expected.equals(token);
+    }
+
+    private void copyStringExtra(Bundle source, Bundle target, String key) {
+        if (source == null || target == null || isBlank(key)) {
+            return;
+        }
+        String value = source.getString(key);
+        if (!isBlank(value)) {
+            target.putString(key, value);
+        }
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (!isBlank(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private Integer parseInteger(String value) {
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Integer getIntegerExtra(Bundle extras, String key) {
+        if (extras == null || !extras.containsKey(key)) {
+            return null;
+        }
+        Object value = extras.get(key);
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        return value == null ? null : parseInteger(value.toString());
     }
 
     private void renderHomePage() {
@@ -530,8 +1033,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void openSmallPhone() {
-        drawerLayout.closeDrawer(GravityCompat.START);
-        ActivityUtils.startActivity(this, new Intent(this, SmallPhoneHostActivity.class));
+        selectPage(PAGE_SMALLPHONE);
     }
 
     private void openMaintenanceLog(String stageSlug, String stageLabel) {

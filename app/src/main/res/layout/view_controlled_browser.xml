@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/panel"
+        android:elevation="2dp"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/controlledBrowserBack"
+                android:layout_width="44dp"
+                android:layout_height="40dp"
+                android:background="@drawable/one_click_item_bg"
+                android:contentDescription="@string/controlled_browser_back"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                android:text="@string/controlled_browser_back_text"
+                android:textAllCaps="false"
+                android:textColor="@color/textPrimary"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/controlledBrowserForward"
+                android:layout_width="44dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/one_click_item_bg"
+                android:contentDescription="@string/controlled_browser_forward"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                android:text="@string/controlled_browser_forward_text"
+                android:textAllCaps="false"
+                android:textColor="@color/textPrimary"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/controlledBrowserReload"
+                android:layout_width="44dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/one_click_item_bg"
+                android:contentDescription="@string/controlled_browser_reload"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                android:text="@string/controlled_browser_reload_text"
+                android:textAllCaps="false"
+                android:textColor="@color/textPrimary"
+                android:textSize="13sp" />
+
+            <EditText
+                android:id="@+id/controlledBrowserAddress"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/openhouse_onboarding_input"
+                android:hint="@string/controlled_browser_address_hint"
+                android:imeOptions="actionGo"
+                android:inputType="textUri"
+                android:maxLines="1"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:selectAllOnFocus="true"
+                android:singleLine="true"
+                android:textColor="@color/textPrimary"
+                android:textColorHint="@color/textSecondary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/controlledBrowserNewTab"
+                android:layout_width="44dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/one_click_item_bg"
+                android:contentDescription="@string/controlled_browser_new_tab"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                android:text="@string/controlled_browser_new_tab_text"
+                android:textAllCaps="false"
+                android:textColor="@color/textPrimary"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:id="@+id/controlledBrowserTabScroll"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:fillViewport="false"
+            android:overScrollMode="never"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/controlledBrowserTabs"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
+        <ProgressBar
+            android:id="@+id/controlledBrowserProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginTop="2dp"
+            android:max="100"
+            android:progress="0"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/controlledBrowserWebContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@color/panel" />
+</merge>

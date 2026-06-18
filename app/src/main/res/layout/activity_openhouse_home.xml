@@ -76,19 +76,32 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <ScrollView
+        <FrameLayout
+            android:id="@+id/openhousePageHost"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:fillViewport="true">
+            android:layout_weight="1">
 
-            <LinearLayout
-                android:id="@+id/openhouseContent"
+            <ScrollView
+                android:id="@+id/openhouseScrollContent"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp" />
-        </ScrollView>
+                android:layout_height="match_parent"
+                android:fillViewport="true">
+
+                <LinearLayout
+                    android:id="@+id/openhouseContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp" />
+            </ScrollView>
+
+            <FrameLayout
+                android:id="@+id/openhouseEmbeddedContent"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+        </FrameLayout>
     </LinearLayout>
 
     <LinearLayout
@@ -166,6 +179,14 @@
                     android:layout_height="52dp"
                     android:layout_marginTop="8dp"
                     android:text="@string/openhouse_nav_smallphone"
+                    android:textAllCaps="false" />
+
+                <Button
+                    android:id="@+id/buttonNavControlledBrowser"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/openhouse_nav_controlled_browser"
                     android:textAllCaps="false" />
 
                 <Button
