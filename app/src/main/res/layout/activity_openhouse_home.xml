@@ -197,6 +197,13 @@
                     android:text="@string/openhouse_nav_controlled_browser"
                     android:textAllCaps="false" />
 
+                <LinearLayout
+                    android:id="@+id/openhouseDynamicNav"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone" />
+
                 <Button
                     android:id="@+id/buttonNavManual"
                     android:layout_width="match_parent"

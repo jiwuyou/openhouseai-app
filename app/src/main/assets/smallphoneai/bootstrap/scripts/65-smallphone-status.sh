@@ -107,6 +107,7 @@ if is_termux && [ "${SMALLPHONEAI_STATUS_IN_UBUNTU:-1}" = "1" ]; then
         SMALLPHONEAI_ALLOW_DEV_COMPONENT_PATHS="${SMALLPHONEAI_ALLOW_DEV_COMPONENT_PATHS:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
         SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
+        SMALLPHONEAI_HERMES_DIR="${SMALLPHONEAI_HERMES_DIR:-}" \
         SMALLPHONEAI_CC_CONNECT_DISABLED="${SMALLPHONEAI_CC_CONNECT_DISABLED:-}" \
         SMALLPHONEAI_DISABLE_CC_CONNECT="${SMALLPHONEAI_DISABLE_CC_CONNECT:-}" \
         SMALLPHONEAI_CC_CONNECT_HOST="${SMALLPHONEAI_CC_CONNECT_HOST:-}" \
@@ -260,6 +261,7 @@ readiness_object() {
 service_manager_dir="$(component_dir_from_env "${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" service-manager /root/projects/service-manager)"
 cc_connect_dir="$(component_dir_from_env "${SMALLPHONEAI_CC_CONNECT_DIR:-}" openhouse-connect /root/openhouse-connect-fresh /root/cc-connect-fresh)"
 smallphone_dir="$(component_dir_from_env "${SMALLPHONEAI_SMALLPHONE_DIR:-}" smallphone-active /root/projects/smallphone/smallphone-active)"
+hermes_dir="${SMALLPHONEAI_HERMES_DIR:-$repo_root/hermes}"
 
 sm_url="${SERVICE_MANAGER_URL:-http://127.0.0.1:20087}"
 cc_host="${SMALLPHONEAI_CC_CONNECT_HOST:-127.0.0.1}"
@@ -268,6 +270,7 @@ cc_management_port="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-21020}"
 cc_url="bridge=${cc_host}:${cc_bridge_port}, management=${cc_host}:${cc_management_port}"
 smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
+hermes_url="${HERMES_WEBUI_URL:-http://127.0.0.1:23084/}"
 likegirl_url="${SMALLPHONEAI_LIKEGIRL_URL:-http://127.0.0.1:23003/}"
 likegirl_clone_url="${SMALLPHONEAI_LIKEGIRL_CLONE_URL:-http://127.0.0.1:23008/}"
 cc_connect_disabled=0
@@ -293,6 +296,7 @@ if [ "$cc_bridge_reachable" = "1" ] && [ "$cc_management_reachable" = "1" ]; the
 fi
 smallphone_core_reachable="$(probe_url "$smallphone_core_url")"
 smallphone_reachable="$(probe_url "$smallphone_url")"
+hermes_reachable="$(probe_url "$hermes_url")"
 likegirl_reachable="$(probe_url "$likegirl_url")"
 likegirl_clone_reachable="$(probe_url "$likegirl_clone_url")"
 cc_connect_satisfied="$cc_reachable"
@@ -334,6 +338,8 @@ printf ','
 component_object "cc-connect" "cc-connect/openhouse-connect" "$cc_connect_dir" "$cc_connect_enabled"
 printf ','
 component_object "smallphone" "SmallPhone" "$smallphone_dir"
+printf ','
+component_object "hermes-webui" "Hermes WebUI" "$hermes_dir"
 printf '],"ports":['
 port_object "service-manager" "$sm_url" "$sm_reachable"
 printf ','
@@ -344,6 +350,8 @@ printf ','
 port_object "smallphone-core" "$smallphone_core_url" "$smallphone_core_reachable"
 printf ','
 port_object "smallphone" "$smallphone_url" "$smallphone_reachable"
+printf ','
+port_object "hermes-webui" "$hermes_url" "$hermes_reachable"
 printf ','
 port_object "smallphone-likegirl" "$likegirl_url" "$likegirl_reachable"
 printf ','

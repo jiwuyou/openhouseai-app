@@ -1,10 +1,11 @@
 {
   "schema": 1,
-  "generatedAt": "2026-06-16",
-  "description": "SmallPhoneAI first-run offline payloads bundled inside the APK. Network and GitHub are optional update paths after boot.",
+  "generatedAt": "2026-06-22",
+  "description": "SmallPhoneAI first-run payloads bundled inside the APK. First-run source installation does not require GitHub; apt, npm, pip, health checks, and provider network access may still be used by stages.",
   "components": [
-    { "id": "service-manager", "archive": "service-manager.tar", "targetDir": "service-manager", "sha256": "cea6491691a6e1f92ed7f3213ff20ea17cd06e385249a1314b511e269c5962cc", "size": 5457920 },
+    { "id": "service-manager", "archive": "service-manager.tar", "targetDir": "service-manager", "sha256": "7aaa6adde21d3fb566a5336d2ef519525da6dda8a4a847e3c9e3339496cf3001", "size": 5642240 },
     { "id": "openhouse-connect", "aliases": ["cc-connect"], "archive": "openhouse-connect.tar", "targetDir": "openhouse-connect", "sha256": "19e096b83f7cb2cc690146d3a669d278d0b98cbffc6e45610f2ab125f27411fb", "size": 38707200 },
-    { "id": "smallphone", "archive": "smallphone.tar", "targetDir": "smallphone-active", "sha256": "ed2ec03f9c928188d14e6ba02d56c8de0818df292817563e33fde5a792ab0004", "size": 1761280 }
+    { "id": "smallphone", "archive": "smallphone.tar", "targetDir": "smallphone-active", "sha256": "ed2ec03f9c928188d14e6ba02d56c8de0818df292817563e33fde5a792ab0004", "size": 1761280 },
+    { "id": "hermes", "archive": "hermes.tar.gz", "targetDir": "hermes", "sha256": "f8661bcb8dcc24be4eb4a77b227de5b996216685334699beab1263b95ba9abb5", "size": 18951847 }
   ]
 }

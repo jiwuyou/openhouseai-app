@@ -166,6 +166,12 @@ required_stage_scripts() {
     claude-code-ui|cloudcli)
       printf '%s\n' 45-install-claude-code-ui.sh
       ;;
+    hermes|hermes-webui)
+      printf '%s\n' 47-install-hermes.sh
+      ;;
+    registry-sync|sync-registry)
+      printf '%s\n' 48-sync-openhouse-registry.sh
+      ;;
     reasonix)
       printf '%s\n' 46-install-reasonix.sh
       ;;
@@ -183,6 +189,8 @@ required_stage_scripts() {
     repair)
       printf '%s\n' \
         50-install-runtime-components.sh \
+        47-install-hermes.sh \
+        48-sync-openhouse-registry.sh \
         60-start-smallphone.sh \
         65-smallphone-status.sh
       ;;
@@ -202,6 +210,8 @@ required_stage_scripts() {
         45-install-claude-code-ui.sh \
         46-install-reasonix.sh \
         50-install-runtime-components.sh \
+        47-install-hermes.sh \
+        48-sync-openhouse-registry.sh \
         60-start-smallphone.sh \
         65-smallphone-status.sh
       ;;
@@ -288,6 +298,8 @@ run_full_install() {
   run_stage 45-install-claude-code-ui.sh
   run_stage 46-install-reasonix.sh
   run_stage 50-install-runtime-components.sh
+  run_stage 47-install-hermes.sh
+  run_stage 48-sync-openhouse-registry.sh
   run_stage 60-start-smallphone.sh
   run_machine_stage 65-smallphone-status.sh status
 }
@@ -311,11 +323,13 @@ SmallPhoneAI Installer
 13. 只安装 ClaudeCodeUI / CloudCLI
 14. 只安装 Reasonix
 15. 安装/注册 SmallPhone 运行组件
-16. 启动 SmallPhone 运行栈
-17. 修复 SmallPhone 运行栈
-18. 查看 App Shell hooks
-19. 只检查 Termux 环境
-20. 退出
+16. 只安装/注册 Hermes
+17. 同步 OpenHouseAI registry
+18. 启动 SmallPhone 运行栈
+19. 修复 SmallPhone 运行栈
+20. 查看 App Shell hooks
+21. 只检查 Termux 环境
+22. 退出
 EOF
 }
 
@@ -384,6 +398,14 @@ main() {
       run_stage 45-install-claude-code-ui.sh
       return
       ;;
+    hermes|hermes-webui)
+      run_stage 47-install-hermes.sh
+      return
+      ;;
+    registry-sync|sync-registry)
+      run_stage 48-sync-openhouse-registry.sh
+      return
+      ;;
     reasonix)
       run_stage 46-install-reasonix.sh
       return
@@ -399,6 +421,8 @@ main() {
       ;;
     repair)
       run_stage 50-install-runtime-components.sh
+      run_stage 47-install-hermes.sh
+      run_stage 48-sync-openhouse-registry.sh
       run_stage 60-start-smallphone.sh
       run_machine_stage 65-smallphone-status.sh status
       return
@@ -412,7 +436,7 @@ main() {
 
   while true; do
     show_menu
-    printf '请选择 [1-20]: '
+    printf '请选择 [1-22]: '
     read -r choice
     case "$choice" in
       1) run_full_install ;;
@@ -430,12 +454,14 @@ main() {
       13) run_stage 45-install-claude-code-ui.sh ;;
       14) run_stage 46-install-reasonix.sh ;;
       15) run_stage 50-install-runtime-components.sh ;;
-      16) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      17) run_stage 50-install-runtime-components.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      18) run_machine_stage 65-smallphone-status.sh hooks ;;
-      19) run_stage 00-check-termux.sh ;;
-      20) exit 0 ;;
-      *) log "请输入 1 到 20。" ;;
+      16) run_stage 47-install-hermes.sh ;;
+      17) run_stage 48-sync-openhouse-registry.sh ;;
+      18) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      19) run_stage 50-install-runtime-components.sh; run_stage 47-install-hermes.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      20) run_machine_stage 65-smallphone-status.sh hooks ;;
+      21) run_stage 00-check-termux.sh ;;
+      22) exit 0 ;;
+      *) log "请输入 1 到 22。" ;;
     esac
   done
 }

@@ -34,18 +34,23 @@ bash bootstrap.sh ubuntu
 bash bootstrap.sh sync-docs
 bash bootstrap.sh ubuntu-packages
 bash bootstrap.sh entry-ubuntu
+bash bootstrap.sh node
 bash bootstrap.sh opencode
 bash bootstrap.sh codex
 bash bootstrap.sh claude-code
+bash bootstrap.sh claude-code-ui
 bash bootstrap.sh reasonix
+bash bootstrap.sh hermes
+bash bootstrap.sh registry-sync
 ```
 
 `install`/`full` is idempotent and runs:
 
 ```text
 env-check -> prepare -> termux-packages -> ubuntu -> sync-docs ->
-ubuntu-packages -> entry-ubuntu -> opencode -> codex -> claude-code ->
-reasonix -> components -> start -> status
+ubuntu-packages -> entry-ubuntu -> node -> opencode -> codex ->
+claude-code -> claude-code-ui -> reasonix -> components -> hermes ->
+registry-sync -> start -> status
 ```
 
 `components` enters Ubuntu/proot by default, installs child repos from
@@ -54,6 +59,7 @@ APK-bundled payloads, and then delegates to child repo contracts:
 - `service-manager`
 - `cc-connect` / `openhouse-connect`
 - `SmallPhone`
+- `Hermes Agent` / `Hermes WebUI`
 - `smallphone-likegirl` control test, through the SmallPhone standalone app
   service registration
 
@@ -64,6 +70,7 @@ The required APK asset archives are:
 | service-manager | `openhouse/product-payloads/service-manager.tar` | `$HOME/smallphoneai-repos/service-manager` |
 | cc-connect/openhouse-connect | `openhouse/product-payloads/openhouse-connect.tar` | `$HOME/smallphoneai-repos/openhouse-connect` |
 | SmallPhone | `openhouse/product-payloads/smallphone.tar` | `$HOME/smallphoneai-repos/smallphone-active` |
+| Hermes Agent + WebUI | `openhouse/product-payloads/hermes.tar.gz` | `$HOME/smallphoneai-repos/hermes` |
 
 The Android host or Gradle asset-copy step must extract/copy those payloads to
 `$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads` before
@@ -71,6 +78,11 @@ first run. `50-install-runtime-components.sh` defaults to
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle`; GitHub/network access is an
 optional update path only through `SMALLPHONEAI_COMPONENT_SOURCE_MODE=git-update`
 and `SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE=1`.
+
+In this bootstrap, "offline payload" means "do not clone or download source
+from GitHub during first run." It does not mean air-gapped installation: apt,
+npm, pip, model providers, and ordinary network checks may still be used when a
+stage needs operating-system or package dependencies.
 
 Each child repo owns its own `scripts/install.sh`, `scripts/check.sh`, and
 `scripts/register-service.sh`. This bootstrap only orchestrates those entry
@@ -96,6 +108,14 @@ Default readiness ports:
 | cc-connect management | `tcp://127.0.0.1:21020` |
 | cc-connect webhook/callback | `tcp://127.0.0.1:21040` |
 | service-manager | `http://127.0.0.1:20087/` |
+| Hermes WebUI | `http://127.0.0.1:23084/` |
+
+OpenHouseAI component manifests live under `components.d/*.json` and use the
+four-layer schema: `shellMenu`, `smallphoneApp`, `serviceManager`, and `ai`.
+Only component manifests forbid embedded executable fields named `command`,
+`shell`, `script`, or `args`. Bootstrap manifests and service-manager
+ServiceSpec files are different contracts and may use `args` or `command`
+where those fields are part of their own schema.
 
 Control-test app ports:
 

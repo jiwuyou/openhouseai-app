@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "version": "2026.06.18.1",
+  "version": "2026.06.22.1",
   "title": "SmallPhoneAI 维护器",
   "sourceName": "SmallPhoneAI APK 维护源",
-  "updatedAt": "2026-06-18",
+  "updatedAt": "2026-06-22",
   "bootstrapUrl": "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh",
   "bootstrapUrlRole": "optional_update_only",
   "defaultOneClickAction": "install",
@@ -12,9 +12,16 @@
     "check": { "type": "bootstrap", "args": ["check"], "output": "json" },
     "hooks": { "type": "bootstrap", "args": ["hooks"], "output": "json" }
   },
+  "componentManifestPolicy": {
+    "scope": "components.d/*.json only",
+    "requiredLayers": ["shellMenu", "smallphoneApp", "serviceManager", "ai"],
+    "forbiddenKeys": ["command", "shell", "script", "args"],
+    "notAppliedTo": ["bootstrap manifest actions", "service-manager ServiceSpec"]
+  },
   "runtimePayloads": {
     "firstRunSource": "apk_bundled",
-    "networkRole": "optional_update_only",
+    "networkRole": "github_disabled_for_first_run_sources",
+    "offlineMeaning": "APK-bundled payloads avoid GitHub source downloads during first run; apt, npm, pip, health checks, and provider network access may still be used by stages.",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
     "installRoot": "$HOME/smallphoneai-repos",
@@ -37,6 +44,12 @@
         "title": "SmallPhone",
         "apkAssetPath": "openhouse/product-payloads/smallphone.tar",
         "targetDir": "$HOME/smallphoneai-repos/smallphone-active"
+      },
+      {
+        "id": "hermes",
+        "title": "Hermes Agent + Hermes WebUI",
+        "apkAssetPath": "openhouse/product-payloads/hermes.tar.gz",
+        "targetDir": "$HOME/smallphoneai-repos/hermes"
       }
     ]
   },
@@ -53,8 +66,8 @@
     },
     {
       "title": "安装 SmallPhone 运行组件",
-      "description": "从 APK-bundled payloads 安装 service-manager、cc-connect/openhouse-connect、SmallPhone，并调用各自 install/check/register-service 入口。",
-      "stages": ["runtime_components"]
+      "description": "从 APK-bundled payloads 安装 service-manager、cc-connect/openhouse-connect、SmallPhone、Hermes，并调用各自 install/check/register-service 入口，然后同步 registry。",
+      "stages": ["runtime_components", "install_hermes", "sync_openhouse_registry"]
     },
     {
       "title": "启动 SmallPhone",
@@ -161,6 +174,20 @@
           "label": "安装 Reasonix",
           "description": "在 Ubuntu 内安装 DeepSeek-native Reasonix。",
           "action": { "type": "bootstrap", "args": ["reasonix"] }
+        },
+        {
+          "id": "install_hermes",
+          "type": "button",
+          "label": "安装 Hermes",
+          "description": "从 APK-bundled payload 安装 Hermes Agent / Hermes WebUI，固定端口 23084，并注册到 service-manager 与 components.d。",
+          "action": { "type": "bootstrap", "args": ["hermes"] }
+        },
+        {
+          "id": "sync_openhouse_registry",
+          "type": "button",
+          "label": "同步 OpenHouseAI registry",
+          "description": "把 Ubuntu mirror 下的 components.d、service-manager/services.d 和 AI docs 同步到 Termux canonical。",
+          "action": { "type": "bootstrap", "args": ["registry-sync"] }
         }
       ]
     }
@@ -249,6 +276,18 @@
       "title": "安装运行组件",
       "description": "从 APK-bundled payloads 安装、检查并注册 service-manager、cc-connect/openhouse-connect、SmallPhone。",
       "action": { "type": "bootstrap", "args": ["components"] }
+    },
+    {
+      "id": "install_hermes",
+      "title": "安装 Hermes",
+      "description": "从 APK-bundled payload 安装 Hermes Agent / Hermes WebUI，写入 components.d/hermes-webui.json，并注册 hermes-webui 服务。",
+      "action": { "type": "bootstrap", "args": ["hermes"] }
+    },
+    {
+      "id": "sync_openhouse_registry",
+      "title": "同步 OpenHouseAI registry",
+      "description": "把 Ubuntu mirror 同步到 Termux canonical，确保 App Shell、SmallPhone 和 AI 能读取同一套注册。",
+      "action": { "type": "bootstrap", "args": ["registry-sync"] }
     },
     {
       "id": "start",

@@ -68,6 +68,7 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
         SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
         SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
+        SMALLPHONEAI_HERMES_DIR="${SMALLPHONEAI_HERMES_DIR:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
         SMALLPHONEAI_CC_CONNECT_DISABLED="${SMALLPHONEAI_CC_CONNECT_DISABLED:-}" \
         SMALLPHONEAI_DISABLE_CC_CONNECT="${SMALLPHONEAI_DISABLE_CC_CONNECT:-}" \
@@ -212,6 +213,7 @@ component_dir_from_env() {
 service_manager_dir="$(component_dir_from_env "${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" service-manager /root/projects/service-manager)"
 cc_connect_dir="$(component_dir_from_env "${SMALLPHONEAI_CC_CONNECT_DIR:-}" openhouse-connect /root/openhouse-connect-fresh /root/cc-connect-fresh)"
 smallphone_dir="$(component_dir_from_env "${SMALLPHONEAI_SMALLPHONE_DIR:-}" smallphone-active /root/projects/smallphone/smallphone-active)"
+hermes_dir="${SMALLPHONEAI_HERMES_DIR:-$repo_root/hermes}"
 bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
 sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
 cc_host="${SMALLPHONEAI_CC_CONNECT_HOST:-127.0.0.1}"
@@ -434,6 +436,7 @@ run_register_if_present() {
 
 run_register_if_present "cc-connect/openhouse-connect" "$cc_connect_dir"
 run_register_if_present "SmallPhone" "$smallphone_dir"
+run_register_if_present "Hermes" "$hermes_dir"
 
 if ! command -v curl >/dev/null 2>&1; then
   warn "缺少 curl，无法调用 service-manager 启动 local-stack。"

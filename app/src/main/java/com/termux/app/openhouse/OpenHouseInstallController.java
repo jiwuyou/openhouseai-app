@@ -70,6 +70,8 @@ public final class OpenHouseInstallController {
         Stage.INSTALL_CLAUDE_CODE_UI,
         Stage.INSTALL_REASONIX,
         Stage.RUNTIME_COMPONENTS,
+        Stage.INSTALL_HERMES,
+        Stage.SYNC_OPENHOUSE_REGISTRY,
         Stage.START_SMALLPHONE
     };
     private static final long OTHER_STAGE_DURATION_MS =
@@ -1397,6 +1399,8 @@ public final class OpenHouseInstallController {
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh", "设置启动方式", "正在配置默认进入 Ubuntu。"),
         INSTALL_NODE("install_node", "install-node.sh", "安装 Node.js 24 LTS", "正在安装或检查 Node.js 24 LTS，后续 AI 工具会复用这一套 Node 运行时。"),
         RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装 SmallPhone 运行栈", "正在从 APK 内置 payload 安装 service-manager、cc-connect 和 SmallPhone。"),
+        INSTALL_HERMES("install_hermes", "install-hermes.sh", "安装 AI 伙伴：Hermes", "正在从 APK 内置 payload 安装 Hermes Agent / Hermes WebUI，并注册到 service-manager。"),
+        SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh", "同步 OpenHouseAI 注册表", "正在把 Ubuntu mirror 同步到 Termux canonical，供 App、SmallPhone 和 AI 读取。"),
         START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动 SmallPhone", "正在启动 SmallPhone 入口和运行组件。"),
         INSTALL_OPENCODE("install_opencode", "install-opencode.sh", "安装 AI 工具：OpenCode", "正在安装 OpenCode，预计耗时较长，请保持网络连接。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),

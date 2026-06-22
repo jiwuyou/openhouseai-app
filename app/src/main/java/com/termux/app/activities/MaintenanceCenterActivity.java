@@ -19,6 +19,7 @@ import android.text.InputType;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -90,6 +91,10 @@ import org.json.JSONObject;
 public class MaintenanceCenterActivity extends AppCompatActivity {
 
     public static final String EXTRA_RETURN_TO_ONBOARDING = "return_to_onboarding";
+    public static final String EXTRA_SERVICE_CONTROL_COMPONENT_ID = "openhouse_component_id";
+    public static final String EXTRA_SERVICE_CONTROL_TITLE = "openhouse_component_title";
+    public static final String EXTRA_SERVICE_CONTROL_SERVICE_NAMES = "openhouse_service_names";
+    public static final String EXTRA_SERVICE_CONTROL_SERVICE_REFS = "openhouse_service_refs";
 
     private static final String LOG_TAG = "MaintenanceCenter";
     private static final int LOG_CHAR_LIMIT = 24000;
@@ -112,6 +117,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final String DEFAULT_MAINTENANCE_MANIFEST_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/openhouseai-manifest.json";
     private static final String DEFAULT_BOOTSTRAP_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh";
     private static final String DEEPSEEK_API_KEYS_URL = "https://platform.deepseek.com/api_keys";
+    private static final String SERVICE_MANAGER_BASE_URL = "http://127.0.0.1:20087";
     private static final String DEFAULT_USER_PLUGIN_PATH = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openhouseai/plugins/user/openhouseai-manifest.json";
     private static final int DEFAULT_LOCAL_MAINTENANCE_WEB_PORT = 38423;
     private static final int MIN_LOCAL_MAINTENANCE_WEB_PORT = 10000;
@@ -133,7 +139,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageAction.INSTALL_CODEX,
         StageAction.INSTALL_CLAUDE_CODE,
         StageAction.INSTALL_CLAUDE_CODE_UI,
-        StageAction.INSTALL_REASONIX
+        StageAction.INSTALL_REASONIX,
+        StageAction.RUNTIME_COMPONENTS,
+        StageAction.INSTALL_HERMES,
+        StageAction.SYNC_OPENHOUSE_REGISTRY
     };
 
     private TextView statusHeadlineView;
@@ -188,6 +197,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private LinearLayout oneClickStageItemsContainer;
     private View oneClickStagePanel;
     private View stageActionsPanel;
+    private View serviceControlPanelView;
+    private TextView serviceControlStatusView;
     private FrameLayout terminalContainer;
     private TerminalView terminalView;
     private SwitchCompat disableBatteryRequirementSwitch;
@@ -216,6 +227,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean sharedInstallRunning;
     private boolean sharedInstallStarted;
     private boolean sharedInstallCompleted;
+    private boolean serviceControlFocusPending;
+    private String serviceControlComponentId;
+    private String serviceControlTitle;
+    private List<String> serviceControlServiceNames = new ArrayList<>();
+    private List<String> serviceControlServiceRefs = new ArrayList<>();
     private long lastLiveLogRefreshUptimeMs;
     private long lastCompletionScanUptimeMs;
     private long lastOneClickStatusRefreshUptimeMs;
@@ -336,6 +352,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         terminalContainer = findViewById(R.id.maintenanceTerminalContainer);
         returnHomeButton = findViewById(R.id.buttonReturnHome);
         maintenancePreferences = getSharedPreferences(PREFS_MAINTENANCE, MODE_PRIVATE);
+        parseServiceControlIntent(getIntent());
 
         helpBodyView.setText(getString(R.string.help_body));
         currentStageView.setText(R.string.current_stage_placeholder);
@@ -740,18 +757,479 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private void renderDynamicPluginSections() {
         if (dynamicPluginSectionsContainer == null) return;
         dynamicPluginSectionsContainer.removeAllViews();
-        if (activeManifest == null || activeManifest.dynamicSections.isEmpty()) {
+        boolean hasServiceControl = hasServiceControlTargets();
+        if (!hasServiceControl && (activeManifest == null || activeManifest.dynamicSections.isEmpty())) {
             dynamicPluginSectionsContainer.setVisibility(View.GONE);
             return;
         }
 
         dynamicPluginSectionsContainer.setVisibility(View.VISIBLE);
-        for (DynamicSection section : activeManifest.dynamicSections) {
-            View sectionView = createDynamicSectionView(section);
-            if (sectionView != null) {
-                dynamicPluginSectionsContainer.addView(sectionView);
+        if (hasServiceControl) {
+            serviceControlPanelView = createServiceControlPanel();
+            dynamicPluginSectionsContainer.addView(serviceControlPanelView);
+            focusServiceControlPanelIfNeeded();
+        }
+        if (activeManifest != null) {
+            for (DynamicSection section : activeManifest.dynamicSections) {
+                View sectionView = createDynamicSectionView(section);
+                if (sectionView != null) {
+                    dynamicPluginSectionsContainer.addView(sectionView);
+                }
             }
         }
+    }
+
+    private boolean hasServiceControlTargets() {
+        return !serviceControlServiceNames.isEmpty() || !serviceControlServiceRefs.isEmpty();
+    }
+
+    private void parseServiceControlIntent(Intent intent) {
+        serviceControlComponentId = "";
+        serviceControlTitle = "";
+        serviceControlServiceNames = new ArrayList<>();
+        serviceControlServiceRefs = new ArrayList<>();
+        serviceControlFocusPending = false;
+        if (intent == null) {
+            return;
+        }
+
+        serviceControlComponentId = sanitizeServiceTarget(intent.getStringExtra(EXTRA_SERVICE_CONTROL_COMPONENT_ID));
+        serviceControlTitle = safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_TITLE));
+        for (String value : readIntentStringList(intent, EXTRA_SERVICE_CONTROL_SERVICE_NAMES)) {
+            String serviceId = sanitizeServiceTarget(value);
+            if (!serviceId.isEmpty() && !serviceControlServiceNames.contains(serviceId)) {
+                serviceControlServiceNames.add(serviceId);
+            }
+        }
+        for (String value : readIntentStringList(intent, EXTRA_SERVICE_CONTROL_SERVICE_REFS)) {
+            String ref = sanitizeServiceManagerRef(value);
+            if (ref.isEmpty() || serviceControlServiceRefs.contains(ref)) {
+                continue;
+            }
+            serviceControlServiceRefs.add(ref);
+            String serviceId = serviceIdFromServiceManagerRef(ref);
+            if (!serviceId.isEmpty() && !serviceControlServiceNames.contains(serviceId)) {
+                serviceControlServiceNames.add(serviceId);
+            }
+        }
+        serviceControlFocusPending = hasServiceControlTargets();
+    }
+
+    private List<String> readIntentStringList(Intent intent, String key) {
+        if (intent == null || key == null || key.isEmpty() || intent.getExtras() == null) {
+            return new ArrayList<>();
+        }
+        List<String> out = new ArrayList<>();
+        Object raw = intent.getExtras().get(key);
+        if (raw instanceof String[]) {
+            for (String value : (String[]) raw) {
+                collectSplitValues(value, out);
+            }
+        } else if (raw instanceof ArrayList) {
+            ArrayList<?> values = (ArrayList<?>) raw;
+            for (Object value : values) {
+                if (value instanceof String) {
+                    collectSplitValues((String) value, out);
+                }
+            }
+        } else {
+            collectSplitValues(intent.getStringExtra(key), out);
+        }
+        return out;
+    }
+
+    private void collectSplitValues(String raw, List<String> out) {
+        if (raw == null || out == null) {
+            return;
+        }
+        for (String part : raw.split(",")) {
+            String value = safeTrim(part);
+            if (!value.isEmpty() && !out.contains(value)) {
+                out.add(value);
+            }
+        }
+    }
+
+    private View createServiceControlPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setFocusable(true);
+        panel.setFocusableInTouchMode(true);
+        panel.setBackgroundResource(R.drawable.panel_bg);
+        panel.setPadding(dp(16), dp(16), dp(16), dp(16));
+        LinearLayout.LayoutParams panelParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        panelParams.topMargin = dp(16);
+        panel.setLayoutParams(panelParams);
+
+        TextView titleView = new TextView(this);
+        titleView.setText("服务控制：" + safeServiceControlTitle());
+        titleView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        titleView.setTextSize(18);
+        titleView.setTypeface(titleView.getTypeface(), android.graphics.Typeface.BOLD);
+        panel.addView(titleView);
+
+        TextView descriptionView = createDynamicBodyText(
+            "来自组件注册的 service-manager target。这里不会执行 maintainer shell，只调用本机 service-manager REST API。"
+                + "\n服务端：" + SERVICE_MANAGER_BASE_URL);
+        LinearLayout.LayoutParams descriptionParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        descriptionParams.topMargin = dp(8);
+        panel.addView(descriptionView, descriptionParams);
+
+        serviceControlStatusView = createDynamicBodyText("等待操作。");
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        statusParams.topMargin = dp(10);
+        panel.addView(serviceControlStatusView, statusParams);
+
+        for (String serviceId : serviceControlServiceNames) {
+            addServiceControlTarget(panel, serviceId);
+        }
+        return panel;
+    }
+
+    private void addServiceControlTarget(LinearLayout panel, String serviceId) {
+        if (panel == null || serviceId == null || serviceId.isEmpty()) {
+            return;
+        }
+        TextView serviceTitleView = createDynamicBodyText("服务：" + serviceId);
+        serviceTitleView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        titleParams.topMargin = dp(14);
+        panel.addView(serviceTitleView, titleParams);
+
+        addServiceButtonRow(panel,
+            serviceControlButton("状态", v -> refreshServiceManagerStatus(serviceId)),
+            serviceControlButton("启动", v -> runServiceManagerAction(serviceId, "start")));
+        addServiceButtonRow(panel,
+            serviceControlButton("停止", v -> runServiceManagerAction(serviceId, "stop")),
+            serviceControlButton("重启", v -> runServiceManagerAction(serviceId, "restart")));
+        addServiceButtonRow(panel,
+            serviceControlButton("修复", v -> runServiceManagerAction(serviceId, "repair")),
+            serviceControlButton("日志", v -> fetchServiceManagerLogs(serviceId)));
+    }
+
+    private Button serviceControlButton(String text, View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setAllCaps(false);
+        button.setText(text);
+        button.setTextSize(13);
+        button.setEnabled(!isMaintenanceActionBlocked());
+        button.setAlpha(button.isEnabled() ? 1.0f : 0.78f);
+        button.setOnClickListener(listener);
+        return button;
+    }
+
+    private void addServiceButtonRow(LinearLayout parent, Button first, Button second) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        rowParams.topMargin = dp(8);
+
+        row.addView(first, new LinearLayout.LayoutParams(0, dp(44), 1));
+        LinearLayout.LayoutParams secondParams = new LinearLayout.LayoutParams(0, dp(44), 1);
+        secondParams.leftMargin = dp(8);
+        row.addView(second, secondParams);
+        parent.addView(row, rowParams);
+    }
+
+    private void focusServiceControlPanelIfNeeded() {
+        if (!serviceControlFocusPending || serviceControlPanelView == null) {
+            return;
+        }
+        serviceControlFocusPending = false;
+        serviceControlPanelView.post(() -> {
+            serviceControlPanelView.requestFocus();
+            if (serviceControlPanelView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) serviceControlPanelView.getParent()).requestChildFocus(
+                    serviceControlPanelView,
+                    serviceControlPanelView);
+            }
+        });
+    }
+
+    private String safeServiceControlTitle() {
+        if (!serviceControlTitle.isEmpty()) {
+            return serviceControlTitle;
+        }
+        if (serviceControlComponentId != null && !serviceControlComponentId.isEmpty()) {
+            return serviceControlComponentId;
+        }
+        return "注册组件";
+    }
+
+    private void refreshServiceManagerStatus(String serviceId) {
+        String cleanServiceId = sanitizeServiceTarget(serviceId);
+        if (cleanServiceId.isEmpty()) {
+            setServiceControlStatus("服务 ID 无效。");
+            return;
+        }
+        setServiceControlStatus("正在读取 " + cleanServiceId + " 状态...");
+        backgroundExecutor.execute(() -> {
+            String message;
+            try {
+                ServiceManagerResponse response = serviceManagerRequest(
+                    "GET",
+                    "/api/v1/services/" + cleanServiceId + "/status");
+                if (!response.isSuccess()) {
+                    message = "状态读取失败：" + cleanServiceId + "，HTTP " + response.code + "\n" + response.body;
+                } else {
+                    JSONObject json = new JSONObject(response.body);
+                    String state = json.optString("state", "unknown");
+                    String provider = json.optString("provider", "");
+                    String detail = json.optString("message", "");
+                    String pid = json.has("pid") && !json.isNull("pid") ? String.valueOf(json.optInt("pid")) : "";
+                    message = cleanServiceId + " 状态：" + state
+                        + (provider.isEmpty() ? "" : "；provider=" + provider)
+                        + (pid.isEmpty() ? "" : "；pid=" + pid)
+                        + (detail.isEmpty() ? "" : "\n" + detail);
+                }
+            } catch (Exception e) {
+                message = "状态读取失败：" + cleanServiceId + "\n" + e.getMessage();
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to query service-manager status", e);
+            }
+            String finalMessage = message;
+            runOnUiThread(() -> setServiceControlStatus(finalMessage));
+        });
+    }
+
+    private void runServiceManagerAction(String serviceId, String action) {
+        String cleanServiceId = sanitizeServiceTarget(serviceId);
+        String cleanAction = sanitizeServiceAction(action);
+        if (cleanServiceId.isEmpty() || cleanAction.isEmpty()) {
+            setServiceControlStatus("服务 ID 或动作无效。");
+            return;
+        }
+        setServiceControlStatus("正在请求 " + cleanServiceId + " " + serviceActionLabel(cleanAction) + "...");
+        backgroundExecutor.execute(() -> {
+            String message;
+            try {
+                ServiceManagerResponse response = serviceManagerRequest(
+                    "POST",
+                    "/api/v1/services/" + cleanServiceId + "/" + cleanAction);
+                if (response.isSuccess()) {
+                    message = cleanServiceId + " 已提交 " + serviceActionLabel(cleanAction) + " 请求。";
+                } else {
+                    message = cleanServiceId + " " + serviceActionLabel(cleanAction)
+                        + " 失败：HTTP " + response.code + "\n" + response.body;
+                }
+            } catch (Exception e) {
+                message = cleanServiceId + " " + serviceActionLabel(cleanAction) + " 失败。\n" + e.getMessage();
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to run service-manager action", e);
+            }
+            String finalMessage = message;
+            runOnUiThread(() -> setServiceControlStatus(finalMessage));
+        });
+    }
+
+    private void fetchServiceManagerLogs(String serviceId) {
+        String cleanServiceId = sanitizeServiceTarget(serviceId);
+        if (cleanServiceId.isEmpty()) {
+            setServiceControlStatus("服务 ID 无效。");
+            return;
+        }
+        setServiceControlStatus("正在读取 " + cleanServiceId + " 日志...");
+        backgroundExecutor.execute(() -> {
+            String message;
+            try {
+                ServiceManagerResponse response = serviceManagerRequest(
+                    "GET",
+                    "/api/v1/services/" + cleanServiceId + "/logs?limit=80");
+                if (!response.isSuccess()) {
+                    message = "日志读取失败：" + cleanServiceId + "，HTTP " + response.code + "\n" + response.body;
+                } else {
+                    JSONArray entries = new JSONArray(response.body);
+                    StringBuilder builder = new StringBuilder();
+                    builder.append(cleanServiceId).append(" 最近日志：");
+                    int start = Math.max(0, entries.length() - 20);
+                    for (int i = start; i < entries.length(); i++) {
+                        JSONObject item = entries.optJSONObject(i);
+                        if (item == null) {
+                            continue;
+                        }
+                        builder.append('\n')
+                            .append(item.optString("time", ""))
+                            .append(' ')
+                            .append(item.optString("stream", ""))
+                            .append(" | ")
+                            .append(item.optString("message", ""));
+                    }
+                    if (entries.length() == 0) {
+                        builder.append("\n暂无日志。");
+                    }
+                    message = trimForStatus(builder.toString());
+                }
+            } catch (Exception e) {
+                message = "日志读取失败：" + cleanServiceId + "\n" + e.getMessage();
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to query service-manager logs", e);
+            }
+            String finalMessage = message;
+            runOnUiThread(() -> setServiceControlStatus(finalMessage));
+        });
+    }
+
+    private ServiceManagerResponse serviceManagerRequest(String method, String path) throws IOException, JSONException {
+        String token = resolveServiceManagerToken();
+        if (token.isEmpty()) {
+            throw new IOException("找不到 service-manager token。请先完成运行栈安装或启动 service-manager。");
+        }
+        HttpURLConnection connection = (HttpURLConnection) new URL(SERVICE_MANAGER_BASE_URL + path).openConnection();
+        connection.setConnectTimeout(2500);
+        connection.setReadTimeout(7000);
+        connection.setRequestMethod(method);
+        connection.setRequestProperty("Authorization", "Bearer " + token);
+        connection.setRequestProperty("Accept", "application/json");
+        int code = connection.getResponseCode();
+        String body = readConnectionBody(connection, code >= 400);
+        connection.disconnect();
+        return new ServiceManagerResponse(code, body);
+    }
+
+    private String resolveServiceManagerToken() throws IOException, JSONException {
+        File[] candidates = new File[] {
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/service-manager/config.json"),
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/openhouseai/service-manager/config.json"),
+            new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH,
+                "var/lib/proot-distro/installed-rootfs/ubuntu/root/.config/service-manager/config.json")
+        };
+        for (File candidate : candidates) {
+            if (!candidate.isFile()) {
+                continue;
+            }
+            JSONObject json = new JSONObject(readTextFile(candidate));
+            String token = safeTrim(json.optString("auth_token", ""));
+            if (!token.isEmpty()) {
+                return token;
+            }
+        }
+        return "";
+    }
+
+    private String readConnectionBody(HttpURLConnection connection, boolean errorBody) throws IOException {
+        InputStream inputStream = errorBody ? connection.getErrorStream() : connection.getInputStream();
+        if (inputStream == null) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                builder.append(line).append('\n');
+                if (builder.length() > LOG_CHAR_LIMIT) {
+                    builder.append("\n...输出过长，已截断。");
+                    break;
+                }
+            }
+        }
+        return builder.toString().trim();
+    }
+
+    private void setServiceControlStatus(String text) {
+        if (serviceControlStatusView != null) {
+            serviceControlStatusView.setText(text == null ? "" : text);
+        }
+    }
+
+    private String serviceActionLabel(String action) {
+        switch (action) {
+            case "start":
+                return "启动";
+            case "stop":
+                return "停止";
+            case "restart":
+                return "重启";
+            case "repair":
+                return "修复";
+            default:
+                return action;
+        }
+    }
+
+    private String sanitizeServiceAction(String action) {
+        String value = safeTrim(action).toLowerCase(Locale.US);
+        if ("start".equals(value) || "stop".equals(value) || "restart".equals(value) || "repair".equals(value)) {
+            return value;
+        }
+        return "";
+    }
+
+    private String sanitizeServiceTarget(String value) {
+        String trimmed = safeTrim(value);
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < trimmed.length(); i++) {
+            char current = trimmed.charAt(i);
+            if ((current >= 'a' && current <= 'z')
+                || (current >= 'A' && current <= 'Z')
+                || (current >= '0' && current <= '9')
+                || current == '_'
+                || current == '-'
+                || current == '.') {
+                builder.append(current);
+            }
+        }
+        return builder.toString();
+    }
+
+    private String sanitizeServiceManagerRef(String ref) {
+        String trimmed = safeTrim(ref);
+        if (!trimmed.startsWith("service-manager://")) {
+            return "";
+        }
+        for (int i = 0; i < trimmed.length(); i++) {
+            char current = trimmed.charAt(i);
+            if (current <= 0x20 || current == '"' || current == '\'' || current == '\\') {
+                return "";
+            }
+        }
+        return trimmed;
+    }
+
+    private String serviceIdFromServiceManagerRef(String ref) {
+        String trimmed = sanitizeServiceManagerRef(ref);
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        String prefix = "service-manager://services/";
+        if (trimmed.startsWith(prefix)) {
+            return sanitizeServiceTarget(trimmed.substring(prefix.length()));
+        }
+        String actionPrefix = "service-manager://actions/";
+        if (trimmed.startsWith(actionPrefix)) {
+            String target = trimmed.substring(actionPrefix.length());
+            int dotIndex = target.lastIndexOf('.');
+            return sanitizeServiceTarget(dotIndex > 0 ? target.substring(0, dotIndex) : target);
+        }
+        return "";
+    }
+
+    private String safeTrim(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private String trimForStatus(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.length() <= 8000) {
+            return value;
+        }
+        return value.substring(0, 8000) + "\n...输出过长，已截断。";
     }
 
     private View createDynamicSectionView(DynamicSection section) {
@@ -1769,6 +2247,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
         ensureStageAfter(sequence, StageAction.INSTALL_NODE, StageAction.CONFIGURE_ENTRY_UBUNTU);
         ensureStageAfter(sequence, StageAction.INSTALL_CLAUDE_CODE_UI, StageAction.INSTALL_CLAUDE_CODE);
+        ensureStageAfter(sequence, StageAction.RUNTIME_COMPONENTS, StageAction.INSTALL_REASONIX);
+        ensureStageAfter(sequence, StageAction.INSTALL_HERMES, StageAction.RUNTIME_COMPONENTS);
+        ensureStageAfter(sequence, StageAction.SYNC_OPENHOUSE_REGISTRY, StageAction.INSTALL_HERMES);
         return sequence;
     }
 
@@ -1824,6 +2305,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 StageAction.INSTALL_CLAUDE_CODE,
                 StageAction.INSTALL_CLAUDE_CODE_UI,
                 StageAction.INSTALL_REASONIX
+            }
+        ));
+        groups.add(new StageFlowGroup(
+            "安装 SmallPhone 运行组件",
+            "安装运行栈、Hermes，并同步 OpenHouseAI registry。",
+            new StageAction[] {
+                StageAction.RUNTIME_COMPONENTS,
+                StageAction.INSTALL_HERMES,
+                StageAction.SYNC_OPENHOUSE_REGISTRY
             }
         ));
         return groups;
@@ -2031,6 +2521,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 return getString(R.string.button_install_claude_code_ui);
             case INSTALL_REASONIX:
                 return getString(R.string.button_install_reasonix);
+            case RUNTIME_COMPONENTS:
+                return "安装运行组件";
+            case INSTALL_HERMES:
+                return "安装 Hermes";
+            case SYNC_OPENHOUSE_REGISTRY:
+                return "同步 OpenHouseAI registry";
             case REQUEST_DEEPSEEK_KEY:
                 return getString(R.string.button_deepseek_key_guide);
             case CONFIGURE_DEEPSEEK:
@@ -3528,6 +4024,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         Integer installClaudeCodeExitCode = readLastExitCode(StageAction.INSTALL_CLAUDE_CODE);
         Integer installClaudeCodeUiExitCode = readLastExitCode(StageAction.INSTALL_CLAUDE_CODE_UI);
         Integer installReasonixExitCode = readLastExitCode(StageAction.INSTALL_REASONIX);
+        Integer runtimeComponentsExitCode = readLastExitCode(StageAction.RUNTIME_COMPONENTS);
+        Integer installHermesExitCode = readLastExitCode(StageAction.INSTALL_HERMES);
+        Integer syncOpenHouseRegistryExitCode = readLastExitCode(StageAction.SYNC_OPENHOUSE_REGISTRY);
         Integer configureDeepSeekExitCode = readLastExitCode(StageAction.CONFIGURE_DEEPSEEK);
         Integer startExitCode = readLastExitCode(StageAction.START);
         Integer restartExitCode = readLastExitCode(StageAction.RESTART);
@@ -3544,6 +4043,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean claudeCodeInstalled = openCodeInstalled && (isClaudeCodeInstalled() || isLastExitSuccess(installClaudeCodeExitCode));
         boolean claudeCodeUiInstalled = claudeCodeInstalled && (isClaudeCodeUiInstalled() || isLastExitSuccess(installClaudeCodeUiExitCode));
         boolean reasonixInstalled = claudeCodeUiInstalled && (isReasonixInstalled() || isLastExitSuccess(installReasonixExitCode));
+        boolean runtimeComponentsInstalled = reasonixInstalled && (isRuntimeComponentsInstalled() || isLastExitSuccess(runtimeComponentsExitCode));
+        boolean hermesInstalled = runtimeComponentsInstalled && (isHermesInstalled() || isLastExitSuccess(installHermesExitCode));
+        boolean openHouseRegistrySynced = hermesInstalled && (isOpenHouseRegistrySynced() || isLastExitSuccess(syncOpenHouseRegistryExitCode));
         boolean deepSeekConfigured = ubuntuInstalled && reasonixInstalled && (isDeepSeekConfigured() || isLastExitSuccess(configureDeepSeekExitCode));
         boolean openCodeReachableNow = openCodeInstalled && isOpenCodeWebReachable();
         boolean startStageComplete = openCodeReachableNow || isLastExitSuccess(startExitCode);
@@ -3676,6 +4178,39 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                     : failedOrReady(installReasonixExitCode,
                         getString(R.string.stage_detail_install_reasonix_failed),
                         getString(R.string.stage_detail_install_reasonix_ready)))
+        );
+
+        snapshot.presentations.put(
+            StageAction.RUNTIME_COMPONENTS,
+            runtimeComponentsInstalled
+                ? StagePresentation.complete(this, "service-manager、openhouse-connect 与 SmallPhone 已安装或已完成。")
+                : (!reasonixInstalled
+                    ? StagePresentation.blocked(this, "请先完成 AI 工具安装阶段。")
+                    : failedOrReady(runtimeComponentsExitCode,
+                        "运行组件安装失败，请查看该阶段日志。",
+                        "准备安装 service-manager、openhouse-connect 与 SmallPhone。"))
+        );
+
+        snapshot.presentations.put(
+            StageAction.INSTALL_HERMES,
+            hermesInstalled
+                ? StagePresentation.complete(this, "Hermes WebUI 注册文件和 AI 能力文档已就绪。")
+                : (!runtimeComponentsInstalled
+                    ? StagePresentation.blocked(this, "请先安装 SmallPhone 运行组件。")
+                    : failedOrReady(installHermesExitCode,
+                        "Hermes 安装失败，请查看该阶段日志。",
+                        "准备从 APK 内置 payload 安装 Hermes Agent 和 Hermes WebUI。"))
+        );
+
+        snapshot.presentations.put(
+            StageAction.SYNC_OPENHOUSE_REGISTRY,
+            openHouseRegistrySynced
+                ? StagePresentation.complete(this, "OpenHouseAI registry 已同步到 Termux canonical。")
+                : (!hermesInstalled
+                    ? StagePresentation.blocked(this, "请先完成 Hermes 安装注册。")
+                    : failedOrReady(syncOpenHouseRegistryExitCode,
+                        "OpenHouseAI registry 同步失败，请查看该阶段日志。",
+                        "准备同步 components.d、service-manager/services.d 和 AI docs。"))
         );
 
         snapshot.presentations.put(
@@ -3832,6 +4367,25 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         return runTermuxCommand(
             "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; command -v reasonix >/dev/null 2>&1'"
         ).isSuccess();
+    }
+
+    private boolean isRuntimeComponentsInstalled() {
+        return runTermuxCommand(
+            "proot-distro login ubuntu -- bash -lc 'test -x \"$HOME/smallphoneai-repos/service-manager/service-manager\" -o -x \"$HOME/smallphoneai-repos/service-manager/target/release/service-manager\"; test -d \"$HOME/smallphoneai-repos/openhouse-connect\"; test -d \"$HOME/smallphoneai-repos/smallphone-active\"'"
+        ).isSuccess();
+    }
+
+    private boolean isHermesInstalled() {
+        return runTermuxCommand(
+            "proot-distro login ubuntu -- bash -lc 'test -x \"$HOME/smallphoneai-repos/hermes/hermes-agent/venv/bin/python\" && test -f \"$HOME/smallphoneai-repos/hermes/hermes-webui/bootstrap.py\" && test -f \"$HOME/.config/openhouseai/components.d/hermes-webui.json\" && test -f \"$HOME/.config/openhouseai/service-manager/services.d/hermes-webui.json\" && test -f \"$HOME/.config/openhouseai/ai-docs/hermes-webui/capabilities.json\"'"
+        ).isSuccess();
+    }
+
+    private boolean isOpenHouseRegistrySynced() {
+        File termuxConfigDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/openhouseai");
+        return new File(termuxConfigDir, "components.d/hermes-webui.json").isFile()
+            && new File(termuxConfigDir, "service-manager/services.d/hermes-webui.json").isFile()
+            && new File(termuxConfigDir, "ai-docs/hermes-webui/capabilities.json").isFile();
     }
 
     private boolean isEntryUbuntuConfigured() {
@@ -4527,6 +5081,20 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
     }
 
+    private static final class ServiceManagerResponse {
+        final int code;
+        final String body;
+
+        ServiceManagerResponse(int code, String body) {
+            this.code = code;
+            this.body = body == null ? "" : body;
+        }
+
+        boolean isSuccess() {
+            return code >= 200 && code < 300;
+        }
+    }
+
     private static final class MaintenanceManifest {
         final String sourceUrl;
         final String sourceName;
@@ -4922,6 +5490,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh"),
         INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh"),
         INSTALL_REASONIX("install_reasonix", "install-reasonix.sh"),
+        RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh"),
+        INSTALL_HERMES("install_hermes", "install-hermes.sh"),
+        SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh"),
         REQUEST_DEEPSEEK_KEY("request_deepseek_key", null),
         CONFIGURE_DEEPSEEK("configure_deepseek", "configure-deepseek-key.sh"),
         RESTART_ENTRY_TERMINAL("restart_entry_terminal", null),
@@ -4955,6 +5526,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 || this == INSTALL_CLAUDE_CODE
                 || this == INSTALL_CLAUDE_CODE_UI
                 || this == INSTALL_REASONIX
+                || this == RUNTIME_COMPONENTS
+                || this == INSTALL_HERMES
+                || this == SYNC_OPENHOUSE_REGISTRY
                 || this == START
                 || this == RESTART;
         }
