@@ -3,7 +3,7 @@
   "assetRoot": "openhouse/product-payloads",
   "payloads": [
     { "id": "service-manager", "archive": "service-manager.tar", "sha256": "cea6491691a6e1f92ed7f3213ff20ea17cd06e385249a1314b511e269c5962cc", "size": 5457920 },
-    { "id": "openhouse-connect", "archive": "openhouse-connect.tar", "sha256": "5cdeeece41bfd6f7c692ae22415f9b4e452b8759b7b70850e9351501e813c59e", "size": 46684160 },
-    { "id": "smallphone", "archive": "smallphone.tar", "sha256": "2fcff4e04de0176e20e154740342da1caeb9da86a8701c5367f0ac16dfd415b2", "size": 1761280 }
+    { "id": "openhouse-connect", "archive": "openhouse-connect.tar", "sha256": "19e096b83f7cb2cc690146d3a669d278d0b98cbffc6e45610f2ab125f27411fb", "size": 38707200 },
+    { "id": "smallphone", "archive": "smallphone.tar", "sha256": "ed2ec03f9c928188d14e6ba02d56c8de0818df292817563e33fde5a792ab0004", "size": 1761280 }
   ]
 }

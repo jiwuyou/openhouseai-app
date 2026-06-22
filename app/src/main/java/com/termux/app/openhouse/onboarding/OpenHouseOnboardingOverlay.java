@@ -285,13 +285,18 @@ public final class OpenHouseOnboardingOverlay {
             ready ? "后台权限已确认" : "等待系统授权",
             isBatterySkipped()
                 ? "已手动跳过检测；如果系统实际未允许，安装可能被中断。"
-                : "点击打开 Android 授权页，允许 openhouse 忽略电池优化。返回后可重新检查状态。"
+                : "先允许 openhouse 忽略电池优化，再进入启动管理/后台保活设置。启动管理无法由 Android 统一检测，返回后可继续。"
         );
         addPrimaryHeroButton(
             ready ? "后台运行权限已开启" : "开启后台运行权限",
             true,
             ready ? R.drawable.ic_openhouse_toggle_on : R.drawable.ic_openhouse_toggle_off,
             v -> runtime.openBatteryOptimizationSettings());
+        addStatusCard(
+            "启动管理/后台保活",
+            "请在厂商设置中允许自启动、后台运行或锁定后台。这个权限没有统一检测 API，因此这里只提供入口，不会阻塞初始化。"
+        );
+        addActionButton("打开启动管理/后台保活设置", true, true, v -> runtime.openStartupPermissionSettings());
         addActionButton(ready ? "重新检查状态" : "我已允许，重新检查", true, true, v -> refreshStatus());
     }
 
@@ -1093,7 +1098,7 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private enum Step {
-        PERMISSION("后台权限", "允许后台完成初始化", "初始化会安装 Ubuntu 和 AI 工具。请先允许忽略电池优化，避免息屏或切换应用后中断。"),
+        PERMISSION("后台权限", "允许后台完成初始化", "初始化会安装 Ubuntu 和 AI 工具。请先允许忽略电池优化，并进入启动管理/后台保活设置，避免息屏或切换应用后中断。"),
         INSTALL("初始化安装", "开始一键初始化", "点击后会立刻进入建议阅读屏。安装继续在后台进行，不需要等它完成。"),
         READING_GUIDE("建议阅读", "先读完这几件事", "安装正在后台继续。建议先了解安装时间、DeepSeek Key、OpenCode Web 和几个 AI Agent，再进入 Key 页面。"),
         DEEPSEEK_KEY("保存 Key", "获取并保存 DeepSeek Key", "安装未完成时也可以先填写。只有点击保存后，Key 才会被视为已保存。"),

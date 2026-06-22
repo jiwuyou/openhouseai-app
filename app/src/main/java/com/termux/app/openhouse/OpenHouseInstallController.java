@@ -63,9 +63,11 @@ public final class OpenHouseInstallController {
         Stage.SYNC_OFFICIAL_DOCS,
         Stage.UBUNTU_PACKAGES,
         Stage.CONFIGURE_ENTRY_UBUNTU,
+        Stage.INSTALL_NODE,
         Stage.INSTALL_OPENCODE,
         Stage.INSTALL_CODEX,
         Stage.INSTALL_CLAUDE_CODE,
+        Stage.INSTALL_CLAUDE_CODE_UI,
         Stage.INSTALL_REASONIX,
         Stage.RUNTIME_COMPONENTS,
         Stage.START_SMALLPHONE
@@ -1074,6 +1076,7 @@ public final class OpenHouseInstallController {
             : OpenCodeInstallSpec.defaultSpec(context);
         return loadAsset("maintainer/" + stage.assetName)
             .replace("__PORT__", Integer.toString(OpenCodeSettings.DEFAULT_OPENCODE_PORT))
+            .replace("__CLAUDE_CODE_UI_PORT__", "23083")
             .replace("__BOOTSTRAP_URL__", DEFAULT_BOOTSTRAP_URL)
             .replace("__REQUIRED_COMPONENT_TARGETS__", "")
             .replace("__LOCAL_MAINTENANCE_WEB_PORT__", Integer.toString(DEFAULT_LOCAL_MAINTENANCE_WEB_PORT))
@@ -1392,11 +1395,13 @@ public final class OpenHouseInstallController {
         SYNC_OFFICIAL_DOCS("sync_official_docs", "sync-official-docs.sh", "同步使用文档", "正在同步 OpenHouseAI 使用文档。"),
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh", "安装 Linux 基础工具", "正在安装 curl、git 等基础工具。"),
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh", "设置启动方式", "正在配置默认进入 Ubuntu。"),
+        INSTALL_NODE("install_node", "install-node.sh", "安装 Node.js 24 LTS", "正在安装或检查 Node.js 24 LTS，后续 AI 工具会复用这一套 Node 运行时。"),
         RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装 SmallPhone 运行栈", "正在从 APK 内置 payload 安装 service-manager、cc-connect 和 SmallPhone。"),
         START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动 SmallPhone", "正在启动 SmallPhone 入口和运行组件。"),
         INSTALL_OPENCODE("install_opencode", "install-opencode.sh", "安装 AI 工具：OpenCode", "正在安装 OpenCode，预计耗时较长，请保持网络连接。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),
+        INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh", "安装 AI 工具：ClaudeCodeUI", "正在安装 ClaudeCodeUI / CloudCLI，并固定端口 23083。"),
         INSTALL_REASONIX("install_reasonix", "install-reasonix.sh", "安装 AI 工具：Reasonix", "正在安装 Reasonix。");
 
         final String slug;

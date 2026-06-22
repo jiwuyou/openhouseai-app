@@ -10,6 +10,7 @@
     <string name="openhouse_action_close">关闭</string>
     <string name="openhouse_action_advanced_short">高级</string>
     <string name="openhouse_nav_home">菜单总览</string>
+    <string name="openhouse_nav_ai">AI</string>
     <string name="openhouse_nav_smallphone">SmallPhone</string>
     <string name="openhouse_nav_controlled_browser">受控浏览器</string>
     <string name="openhouse_nav_manual">使用手册</string>
@@ -36,6 +37,8 @@
     <string name="openhouse_deepseek_url">https://platform.deepseek.com/api_keys</string>
     <string name="openhouse_opencode_action_running">OpenCode 操作执行中，请稍候。</string>
     <string name="openhouse_opencode_action_failed">OpenCode 操作失败，请查看日志。</string>
+    <string name="openhouse_cloudcli_action_running">CloudCLI 操作执行中，请稍候。</string>
+    <string name="openhouse_cloudcli_action_failed">CloudCLI 操作失败，请查看日志。</string>
     <string name="openhouse_browser_unavailable">没有可用浏览器，地址已复制。</string>
     <string name="openhouse_install_phase_total_hint">全程约30分钟</string>
     <string name="openhouse_install_phase_opencode_hint">OpenCode 约12分钟</string>

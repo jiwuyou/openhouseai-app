@@ -47,6 +47,74 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:text="@string/permissions_title"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="@string/permissions_legend"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="13sp" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/buttonPermissionBattery"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" />
+
+                <Button
+                    android:id="@+id/buttonPermissionStartup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
+                    android:textAllCaps="false" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/buttonPermissionOverlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/buttonPermissionStorage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp" />
+
+                <TextView
+                    android:id="@+id/permissionRequirementHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:lineSpacingExtra="2dp"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="12sp" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchDisableBatteryRequirement"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/switch_disable_battery_requirement" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/panel_bg"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:text="@string/execution_mode_title"
                     android:textColor="@color/textPrimary"
                     android:textSize="18sp"
@@ -181,31 +249,6 @@
                 android:orientation="vertical"
                 android:visibility="gone">
 
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/buttonPermissionBattery"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/buttonPermissionOverlay"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/buttonPermissionStorage"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <TextView
-                    android:id="@+id/permissionRequirementHint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchDisableBatteryRequirement"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
                 <LinearLayout
                     android:id="@+id/stageActionsPanel"
                     android:layout_width="match_parent"
@@ -243,6 +286,11 @@
                         android:layout_height="wrap_content" />
 
                     <Button
+                        android:id="@+id/buttonInstallNode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
                         android:id="@+id/buttonInstallOpenCode"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content" />
@@ -254,6 +302,11 @@
 
                     <Button
                         android:id="@+id/buttonInstallClaudeCode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <Button
+                        android:id="@+id/buttonInstallClaudeCodeUi"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content" />
 

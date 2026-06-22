@@ -25,6 +25,11 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -33,15 +38,18 @@ import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.termux.R;
+import com.termux.app.ClaudeCodeUiSettings;
 import com.termux.app.OpenCodeSettings;
 import com.termux.app.OpenHouseAgreement;
 import com.termux.app.TermuxActivity;
 import com.termux.app.browser.ControlledBrowserCommandResult;
 import com.termux.app.browser.ControlledBrowserContract;
 import com.termux.app.browser.ControlledBrowserView;
+import com.termux.app.openhouse.OpenHouseClaudeCodeUiController;
 import com.termux.app.openhouse.OpenHouseDeepSeekController;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
 import com.termux.app.openhouse.OpenHouseOpenCodeController;
+import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.app.smallphone.SmallPhoneHostController;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
@@ -57,6 +65,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private static final String LOG_TAG = "OpenHouseHome";
     private static final String PAGE_HOME = "home";
+    private static final String PAGE_AI = "ai";
     private static final String PAGE_SMALLPHONE = "smallphone";
     private static final String PAGE_CONTROLLED_BROWSER = ControlledBrowserContract.PAGE_CONTROLLED_BROWSER;
     private static final String PAGE_MANUAL = "manual";
@@ -86,10 +95,19 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private String currentPage = PAGE_HOME;
     private int openCodePort = OpenCodeSettings.DEFAULT_OPENCODE_PORT;
     private String lastOpenCodeUrl = OpenCodeSettings.getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
+    private final String cloudCliUrl = ClaudeCodeUiSettings.getLoopbackUrl();
     private SmallPhoneHostController smallPhoneController;
     private View smallPhoneView;
+    private LinearLayout cloudCliPageView;
+    private WebView cloudCliWebView;
+    private LinearLayout cloudCliControlPanel;
+    private LinearLayout cloudCliFallbackView;
+    private TextView cloudCliStatusView;
+    private boolean cloudCliControlsVisible = false;
+    private boolean cloudCliLoadFailed = false;
     private ControlledBrowserView controlledBrowserView;
     private Bundle pendingBrowserCommand;
+    private boolean firstLaunchGateForwarded;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -108,7 +126,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonOpenAdvanced).setOnClickListener(v -> selectPage(PAGE_ADVANCED));
         bindNavigation();
         if (!handleOpenHouseIntent(getIntent())) {
-            renderPage();
+            if (routeFirstLaunchGateIfNeeded()) {
+                return;
+            }
+            selectPage(PAGE_SMALLPHONE);
         }
     }
 
@@ -117,6 +138,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (smallPhoneController != null) {
             smallPhoneController.onDestroy();
             smallPhoneController = null;
+        }
+        if (cloudCliWebView != null) {
+            cloudCliWebView.destroy();
+            cloudCliWebView = null;
         }
         if (controlledBrowserView != null) {
             controlledBrowserView.destroy();
@@ -129,11 +154,16 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (!hasExplicitOpenHouseTarget(getIntent()) && routeFirstLaunchGateIfNeeded()) {
+            return;
+        }
         if (PAGE_PERMISSIONS.equals(currentPage)) {
             renderPage();
         }
         if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
             smallPhoneController.onResume(false);
+        } else if (PAGE_AI.equals(currentPage) && cloudCliWebView != null) {
+            cloudCliWebView.onResume();
         } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage) && controlledBrowserView != null) {
             controlledBrowserView.onHostResume();
         }
@@ -141,6 +171,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
+        firstLaunchGateForwarded = false;
         pauseCurrentEmbeddedPage();
         super.onPause();
     }
@@ -149,7 +180,15 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        handleOpenHouseIntent(intent);
+        if (handleOpenHouseIntent(intent)) {
+            return;
+        }
+        if (routeFirstLaunchGateIfNeeded()) {
+            return;
+        }
+        if (isLauncherOpenIntent(intent)) {
+            selectPage(PAGE_SMALLPHONE);
+        }
     }
 
     @Override
@@ -161,6 +200,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_SMALLPHONE.equals(currentPage)
             && smallPhoneController != null
             && smallPhoneController.handleBackPressed()) {
+            return;
+        }
+        if (PAGE_AI.equals(currentPage)
+            && cloudCliWebView != null
+            && cloudCliWebView.canGoBack()) {
+            cloudCliWebView.goBack();
             return;
         }
         if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
@@ -177,6 +222,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void bindNavigation() {
         findViewById(R.id.buttonNavHome).setOnClickListener(v -> selectPage(PAGE_HOME));
+        findViewById(R.id.buttonNavAi).setOnClickListener(v -> selectPage(PAGE_AI));
         findViewById(R.id.buttonNavSmallPhone).setOnClickListener(v -> selectPage(PAGE_SMALLPHONE));
         findViewById(R.id.buttonNavControlledBrowser).setOnClickListener(v -> selectPage(PAGE_CONTROLLED_BROWSER));
         findViewById(R.id.buttonNavManual).setOnClickListener(v -> selectPage(PAGE_MANUAL));
@@ -207,6 +253,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
 
         switch (currentPage) {
+            case PAGE_AI:
+                setHeader("AI", "ClaudeCodeUI / CloudCLI");
+                renderAiPage();
+                break;
             case PAGE_SMALLPHONE:
                 setHeader("SmallPhone", "小手机页面和运行栈修复");
                 renderSmallPhonePage();
@@ -342,6 +392,221 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         smallPhoneController.onResume(true);
     }
 
+    private void renderAiPage() {
+        showEmbeddedContent();
+        if (embeddedContentView == null) {
+            return;
+        }
+        if (cloudCliPageView == null) {
+            cloudCliPageView = createCloudCliPageView();
+        }
+        attachEmbeddedView(cloudCliPageView);
+        if (cloudCliWebView != null) {
+            cloudCliWebView.onResume();
+            if (cloudCliWebView.getUrl() == null) {
+                reloadCloudCliWebView();
+            }
+        }
+    }
+
+    private LinearLayout createCloudCliPageView() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setPadding(dp(8), dp(6), dp(8), dp(6));
+        toolbar.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
+
+        Button menuButton = compactButton("菜单", v -> drawerLayout.openDrawer(GravityCompat.START), true);
+        toolbar.addView(menuButton, new LinearLayout.LayoutParams(dp(60), dp(42)));
+
+        TextView addressView = new TextView(this);
+        addressView.setText(cloudCliUrl);
+        addressView.setSingleLine(true);
+        addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        addressView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        addressView.setTextSize(12);
+        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        addressParams.setMargins(dp(8), 0, dp(8), 0);
+        toolbar.addView(addressView, addressParams);
+
+        Button controlButton = compactButton("控制", v -> toggleCloudCliControls(), true);
+        toolbar.addView(controlButton, new LinearLayout.LayoutParams(dp(64), dp(42)));
+
+        Button refreshButton = compactButton("刷新", v -> reloadCloudCliWebView(), true);
+        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(dp(64), dp(42));
+        refreshParams.setMargins(dp(8), 0, 0, 0);
+        toolbar.addView(refreshButton, refreshParams);
+        page.addView(toolbar, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        cloudCliControlPanel = createCloudCliControlPanel();
+        cloudCliControlPanel.setVisibility(cloudCliControlsVisible ? View.VISIBLE : View.GONE);
+        page.addView(cloudCliControlPanel, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        FrameLayout browserHost = new FrameLayout(this);
+        cloudCliWebView = new WebView(this);
+        configureCloudCliWebView(cloudCliWebView);
+        browserHost.addView(cloudCliWebView, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+
+        cloudCliFallbackView = createCloudCliFallbackView();
+        cloudCliFallbackView.setVisibility(View.GONE);
+        browserHost.addView(cloudCliFallbackView, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+        page.addView(browserHost, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1));
+        return page;
+    }
+
+    private LinearLayout createCloudCliControlPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(10), dp(12), dp(12));
+        panel.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
+
+        cloudCliStatusView = new TextView(this);
+        cloudCliStatusView.setText("CloudCLI 地址：" + cloudCliUrl);
+        cloudCliStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        cloudCliStatusView.setTextSize(13);
+        panel.addView(cloudCliStatusView);
+
+        addButtonRow(panel,
+            compactButton("安装", v -> runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action.INSTALL_CLAUDE_CODE_UI), true),
+            compactButton("启动", v -> runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action.START_CLAUDE_CODE_UI), true));
+        addButtonRow(panel,
+            compactButton("停止", v -> runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action.STOP_CLAUDE_CODE_UI), true),
+            compactButton("重启", v -> runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action.RESTART_CLAUDE_CODE_UI), true));
+        addButtonRow(panel,
+            compactButton("复制地址", v -> copyText("CloudCLI 地址", cloudCliUrl), true),
+            compactButton("刷新", v -> reloadCloudCliWebView(), true));
+        return panel;
+    }
+
+    private LinearLayout createCloudCliFallbackView() {
+        LinearLayout fallback = new LinearLayout(this);
+        fallback.setOrientation(LinearLayout.VERTICAL);
+        fallback.setGravity(Gravity.CENTER);
+        fallback.setPadding(dp(22), dp(22), dp(22), dp(22));
+        fallback.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
+        TextView title = new TextView(this);
+        title.setText("CloudCLI 未连接");
+        title.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        title.setTextSize(20);
+        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
+        fallback.addView(title);
+
+        TextView body = new TextView(this);
+        body.setText("没有连接到 " + cloudCliUrl + "。可以先启动 CloudCLI，启动后本页会继续使用内置浏览器打开。");
+        body.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        body.setTextSize(14);
+        body.setGravity(Gravity.CENTER);
+        body.setLineSpacing(dp(2), 1.0f);
+        LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        bodyParams.setMargins(0, dp(10), 0, dp(6));
+        fallback.addView(body, bodyParams);
+
+        addButtonRow(fallback,
+            compactButton("启动", v -> runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action.START_CLAUDE_CODE_UI), true),
+            compactButton("刷新", v -> reloadCloudCliWebView(), true));
+        Button showControls = button("展开控制", v -> {
+            cloudCliControlsVisible = true;
+            if (cloudCliControlPanel != null) {
+                cloudCliControlPanel.setVisibility(View.VISIBLE);
+            }
+        });
+        fallback.addView(showControls);
+        return fallback;
+    }
+
+    private void configureCloudCliWebView(WebView webView) {
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                cloudCliLoadFailed = false;
+                setCloudCliFallbackVisible(false);
+                setCloudCliStatus("正在连接 CloudCLI：" + cloudCliUrl);
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (!cloudCliLoadFailed) {
+                    setCloudCliFallbackVisible(false);
+                    setCloudCliStatus("CloudCLI 已连接：" + cloudCliUrl);
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request != null && request.isForMainFrame()) {
+                    showCloudCliUnavailable();
+                }
+            }
+
+            @SuppressWarnings("deprecation")
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                showCloudCliUnavailable();
+            }
+        });
+    }
+
+    private void toggleCloudCliControls() {
+        cloudCliControlsVisible = !cloudCliControlsVisible;
+        if (cloudCliControlPanel != null) {
+            cloudCliControlPanel.setVisibility(cloudCliControlsVisible ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void reloadCloudCliWebView() {
+        cloudCliLoadFailed = false;
+        setCloudCliFallbackVisible(false);
+        setCloudCliStatus("正在刷新 CloudCLI：" + cloudCliUrl);
+        if (cloudCliWebView != null) {
+            cloudCliWebView.loadUrl(cloudCliUrl);
+        }
+    }
+
+    private void showCloudCliUnavailable() {
+        cloudCliLoadFailed = true;
+        setCloudCliStatus("CloudCLI 未连接：" + cloudCliUrl);
+        setCloudCliFallbackVisible(true);
+    }
+
+    private void setCloudCliFallbackVisible(boolean visible) {
+        if (cloudCliFallbackView != null) {
+            cloudCliFallbackView.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void setCloudCliStatus(String text) {
+        if (cloudCliStatusView != null) {
+            cloudCliStatusView.setText(text);
+        }
+    }
+
     private void renderControlledBrowserPage() {
         showEmbeddedContent();
         if (embeddedContentView == null) {
@@ -378,6 +643,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void pauseCurrentEmbeddedPage() {
         if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
             smallPhoneController.onPause();
+        } else if (PAGE_AI.equals(currentPage) && cloudCliWebView != null) {
+            cloudCliWebView.onPause();
         } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage) && controlledBrowserView != null) {
             controlledBrowserView.onHostPause();
         }
@@ -401,6 +668,42 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         if (PAGE_SMALLPHONE.equals(requestedPage)) {
             selectPage(PAGE_SMALLPHONE);
+            return true;
+        }
+        if (PAGE_AI.equals(requestedPage)) {
+            selectPage(PAGE_AI);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean hasExplicitOpenHouseTarget(Intent intent) {
+        if (intent == null) {
+            return false;
+        }
+        Bundle browserCommand = normalizeBrowserCommand(intent);
+        if (browserCommand != null) {
+            return true;
+        }
+        String requestedPage = intent.getStringExtra(ControlledBrowserContract.EXTRA_OPENHOUSE_PAGE);
+        if (isBlank(requestedPage)) {
+            requestedPage = intent.getStringExtra("openhouse_page");
+        }
+        return !isBlank(requestedPage);
+    }
+
+    private boolean isLauncherOpenIntent(Intent intent) {
+        return intent != null
+            && Intent.ACTION_MAIN.equals(intent.getAction())
+            && !hasExplicitOpenHouseTarget(intent);
+    }
+
+    private boolean routeFirstLaunchGateIfNeeded() {
+        if (firstLaunchGateForwarded) {
+            return true;
+        }
+        if (SmallPhoneFirstLaunchGate.launchIfNeeded(this)) {
+            firstLaunchGateForwarded = true;
             return true;
         }
         return false;
@@ -689,7 +992,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addBody(panel, "这里保留主入口，具体内容请从左侧侧边栏进入：使用手册、OpenCode 控制、DeepSeek Key、权限获取、终端快捷键和高级设置。");
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
-            compactButton("打开 SmallPhone", v -> openSmallPhone(), true));
+            compactButton("打开 AI", v -> selectPage(PAGE_AI), true));
+        panel.addView(button("打开 SmallPhone", v -> openSmallPhone()));
         panel.addView(button("退出菜单，回到终端", v -> openTerminal(false)));
         addButtonRow(panel,
             compactButton("OpenCode 控制", v -> selectPage(PAGE_OPENCODE), true),
@@ -699,6 +1003,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         LinearLayout quick = panel();
         addTitle(quick, "快速状态", 17);
         addStatusRow(quick, "OpenCode 默认地址", getOpenCodeUrl(openCodePort));
+        addStatusRow(quick, "CloudCLI 默认地址", cloudCliUrl);
         addStatusRow(quick, "OpenCode 目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
         addStatusRow(quick, "运行环境", "AI 工具安装在 Ubuntu /root");
         contentView.addView(quick);
@@ -994,6 +1299,39 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 } else {
                     Toast.makeText(this, getString(R.string.openhouse_opencode_action_failed), Toast.LENGTH_LONG).show();
                 }
+            });
+        });
+    }
+
+    private void runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action action) {
+        Toast.makeText(this, getString(R.string.openhouse_cloudcli_action_running), Toast.LENGTH_SHORT).show();
+        backgroundExecutor.execute(() -> {
+            OpenHouseClaudeCodeUiController controller = OpenHouseClaudeCodeUiController.getInstance(this);
+            OpenHouseMaintainerRunner.Result result;
+            if (action == OpenHouseMaintainerRunner.Action.INSTALL_CLAUDE_CODE_UI) {
+                result = controller.install();
+            } else if (action == OpenHouseMaintainerRunner.Action.STOP_CLAUDE_CODE_UI) {
+                result = controller.stop();
+            } else if (action == OpenHouseMaintainerRunner.Action.RESTART_CLAUDE_CODE_UI) {
+                result = controller.restart();
+            } else {
+                result = controller.start();
+            }
+            runOnUiThread(() -> {
+                setCloudCliStatus(result.isSuccess()
+                    ? result.action.label + "完成：" + cloudCliUrl
+                    : result.action.label + "失败，请查看维护日志。");
+                if (result.isSuccess()
+                    && (action == OpenHouseMaintainerRunner.Action.START_CLAUDE_CODE_UI
+                    || action == OpenHouseMaintainerRunner.Action.RESTART_CLAUDE_CODE_UI)) {
+                    reloadCloudCliWebView();
+                } else if (result.isSuccess()
+                    && action == OpenHouseMaintainerRunner.Action.STOP_CLAUDE_CODE_UI) {
+                    showCloudCliUnavailable();
+                }
+                Toast.makeText(this,
+                    result.isSuccess() ? result.action.label + "完成" : getString(R.string.openhouse_cloudcli_action_failed),
+                    Toast.LENGTH_LONG).show();
             });
         });
     }

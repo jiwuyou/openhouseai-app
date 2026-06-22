@@ -55,53 +55,19 @@ set -euo pipefail
 
 export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
 
-download_with_retry() {
-  local url="$1"
-  local output="$2"
-  local attempt
-  for attempt in 1 2 3 4 5; do
-    echo "下载：$url（第 $attempt 次）"
-    if curl -fL \
-      --connect-timeout 20 \
-      --retry 3 \
-      --retry-delay 2 \
-      --retry-all-errors \
-      --speed-limit 1024 \
-      --speed-time 300 \
-      "$url" -o "$output"; then
+require_node_24() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    local major
+    major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf 0)"
+    if [ "${major:-0}" -ge 24 ]; then
       return 0
     fi
-    sleep 2
-  done
-  return 1
-}
-
-ensure_node_npm() {
-  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-    return 0
+    echo "Node.js 版本过旧：$(node -v)，请先执行 Node.js 24 LTS 安装阶段。" >&2
+    exit 4
   fi
 
-  NODE_DIST_BASE="${SMALLPHONEAI_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v22.x}"
-  NODE_ROOT="$HOME/.local/node"
-  NODE_TMP="$HOME/.local/node-download"
-  mkdir -p "$NODE_TMP" "$HOME/.local"
-
-  echo "正在安装 Node.js 到 $NODE_ROOT"
-  NODE_TARBALL="$(curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors "$NODE_DIST_BASE/SHASUMS256.txt" | awk '/linux-arm64.tar.gz$/ { print $2; exit }')"
-  if [ -z "$NODE_TARBALL" ]; then
-    echo "未能从 $NODE_DIST_BASE 找到 linux-arm64 Node.js 包。" >&2
-    exit 5
-  fi
-
-  download_with_retry "$NODE_DIST_BASE/$NODE_TARBALL" "$NODE_TMP/$NODE_TARBALL"
-  rm -rf "$NODE_ROOT"
-  mkdir -p "$NODE_ROOT"
-  tar -xzf "$NODE_TMP/$NODE_TARBALL" -C "$NODE_ROOT" --strip-components=1
-  rm -f "$NODE_TMP/$NODE_TARBALL"
-
-  export PATH="$NODE_ROOT/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
-  node -v
-  npm -v
+  echo "Node.js 尚未安装，请先执行 Node.js 24 LTS 安装阶段。" >&2
+  exit 3
 }
 
 configure_npm_network() {
@@ -136,7 +102,7 @@ install_npm_global() {
   return 1
 }
 
-ensure_node_npm
+require_node_24
 
 if command -v codex >/dev/null 2>&1; then
   echo "Codex CLI 已安装：$(command -v codex)"

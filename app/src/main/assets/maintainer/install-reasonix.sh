@@ -24,35 +24,18 @@ download_with_retry() {
   return 1
 }
 
-ensure_node_npm() {
+require_node_24() {
   if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
     major="$(node -p "process.versions.node.split(\".\")[0]" 2>/dev/null || printf 0)"
-    if [ "${major:-0}" -ge 22 ]; then
+    if [ "${major:-0}" -ge 24 ]; then
       return 0
     fi
+    echo "Node.js 版本过旧：$(node -v)，请先执行 Node.js 24 LTS 安装阶段。" >&2
+    exit 4
   fi
 
-  NODE_DIST_BASE="${OPENHOUSEAI_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v22.x}"
-  NODE_ROOT="$HOME/.local/node"
-  NODE_TMP="$HOME/.local/node-download"
-  mkdir -p "$NODE_TMP" "$HOME/.local"
-
-  echo "正在安装 Node.js 22 到 $NODE_ROOT"
-  NODE_TARBALL="$(curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors "$NODE_DIST_BASE/SHASUMS256.txt" | awk "/linux-arm64.tar.gz\$/ { print \$2; exit }")"
-  if [ -z "$NODE_TARBALL" ]; then
-    echo "未能从 $NODE_DIST_BASE 找到 linux-arm64 Node.js 包。" >&2
-    exit 5
-  fi
-
-  download_with_retry "$NODE_DIST_BASE/$NODE_TARBALL" "$NODE_TMP/$NODE_TARBALL"
-  rm -rf "$NODE_ROOT"
-  mkdir -p "$NODE_ROOT"
-  tar -xzf "$NODE_TMP/$NODE_TARBALL" -C "$NODE_ROOT" --strip-components=1
-  rm -f "$NODE_TMP/$NODE_TARBALL"
-
-  export PATH="$NODE_ROOT/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
-  node -v
-  npm -v
+  echo "Node.js 尚未安装，请先执行 Node.js 24 LTS 安装阶段。" >&2
+  exit 3
 }
 
 configure_npm_network() {
@@ -83,7 +66,7 @@ install_npm_global() {
   return 1
 }
 
-ensure_node_npm
+require_node_24
 
 if command -v reasonix >/dev/null 2>&1; then
   echo "Reasonix 已安装：$(command -v reasonix)"

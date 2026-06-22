@@ -34,11 +34,13 @@ import androidx.core.content.ContextCompat;
 import androidx.core.widget.NestedScrollView;
 
 import com.termux.R;
+import com.termux.app.ClaudeCodeUiSettings;
 import com.termux.app.OpenCodeCdpBridge;
 import com.termux.app.OpenCodeDownloadSourceSettings;
 import com.termux.app.OpenCodeSettings;
 import com.termux.app.TermuxActivity;
 import com.termux.app.openhouse.OpenHouseDeepSeekController;
+import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
@@ -126,9 +128,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageAction.SYNC_OFFICIAL_DOCS,
         StageAction.UBUNTU_PACKAGES,
         StageAction.CONFIGURE_ENTRY_UBUNTU,
+        StageAction.INSTALL_NODE,
         StageAction.INSTALL_OPENCODE,
         StageAction.INSTALL_CODEX,
         StageAction.INSTALL_CLAUDE_CODE,
+        StageAction.INSTALL_CLAUDE_CODE_UI,
         StageAction.INSTALL_REASONIX
     };
 
@@ -152,6 +156,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private SwitchCompat permissionBatteryButton;
     private SwitchCompat permissionOverlayButton;
     private SwitchCompat permissionStorageButton;
+    private Button permissionStartupButton;
     private Button returnHomeButton;
     private Button configureDefaultPortButton;
     private Button configureDownloadSourceButton;
@@ -296,6 +301,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         permissionBatteryButton = findViewById(R.id.buttonPermissionBattery);
         permissionOverlayButton = findViewById(R.id.buttonPermissionOverlay);
         permissionStorageButton = findViewById(R.id.buttonPermissionStorage);
+        permissionStartupButton = findViewById(R.id.buttonPermissionStartup);
         disableBatteryRequirementSwitch = findViewById(R.id.switchDisableBatteryRequirement);
         configureDefaultPortButton = findViewById(R.id.buttonConfigureDefaultPort);
         configureDownloadSourceButton = findViewById(R.id.buttonConfigureDownloadSource);
@@ -407,9 +413,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         bindStageButton(StageAction.SYNC_OFFICIAL_DOCS, R.id.buttonSyncOfficialDocs);
         bindStageButton(StageAction.UBUNTU_PACKAGES, R.id.buttonUbuntuPackages);
         bindStageButton(StageAction.CONFIGURE_ENTRY_UBUNTU, R.id.buttonConfigureEntryUbuntu);
+        bindStageButton(StageAction.INSTALL_NODE, R.id.buttonInstallNode);
         bindStageButton(StageAction.INSTALL_OPENCODE, R.id.buttonInstallOpenCode);
         bindStageButton(StageAction.INSTALL_CODEX, R.id.buttonInstallCodex);
         bindStageButton(StageAction.INSTALL_CLAUDE_CODE, R.id.buttonInstallClaudeCode);
+        bindStageButton(StageAction.INSTALL_CLAUDE_CODE_UI, R.id.buttonInstallClaudeCodeUi);
         bindStageButton(StageAction.INSTALL_REASONIX, R.id.buttonInstallReasonix);
         bindStageButton(StageAction.START, R.id.buttonStart);
         bindStageButton(StageAction.RESTART, R.id.buttonRestart);
@@ -428,6 +436,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         permissionBatteryButton.setOnClickListener(v -> requestBatteryOptimizationExemption());
         permissionOverlayButton.setOnClickListener(v -> openOverlayPermissionSettings());
         permissionStorageButton.setOnClickListener(v -> openStoragePermissionSettings());
+        if (permissionStartupButton != null) {
+            permissionStartupButton.setOnClickListener(v -> openStartupPermissionSettings());
+        }
         disableBatteryRequirementSwitch.setChecked(!isBatteryRequirementEnabled());
         disableBatteryRequirementSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             maintenancePreferences.edit().putBoolean(PREF_DISABLE_BATTERY_REQUIREMENT, isChecked).apply();
@@ -1756,7 +1767,21 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         if (sequence.isEmpty()) {
             sequence.addAll(Arrays.asList(ONE_CLICK_STAGE_SEQUENCE));
         }
+        ensureStageAfter(sequence, StageAction.INSTALL_NODE, StageAction.CONFIGURE_ENTRY_UBUNTU);
+        ensureStageAfter(sequence, StageAction.INSTALL_CLAUDE_CODE_UI, StageAction.INSTALL_CLAUDE_CODE);
         return sequence;
+    }
+
+    private void ensureStageAfter(List<StageAction> sequence, StageAction stageAction, StageAction dependency) {
+        if (sequence.contains(stageAction)) {
+            return;
+        }
+        int dependencyIndex = sequence.indexOf(dependency);
+        if (dependencyIndex >= 0) {
+            sequence.add(dependencyIndex + 1, stageAction);
+            return;
+        }
+        sequence.add(stageAction);
     }
 
     private List<StageFlowGroup> getStageFlowGroups() {
@@ -1786,12 +1811,18 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             new StageAction[] { StageAction.CONFIGURE_ENTRY_UBUNTU }
         ));
         groups.add(new StageFlowGroup(
+            getString(R.string.one_click_auto_node_title),
+            getString(R.string.one_click_auto_node_detail),
+            new StageAction[] { StageAction.INSTALL_NODE }
+        ));
+        groups.add(new StageFlowGroup(
             getString(R.string.one_click_auto_agents_title),
             getString(R.string.one_click_auto_agents_detail),
             new StageAction[] {
                 StageAction.INSTALL_OPENCODE,
                 StageAction.INSTALL_CODEX,
                 StageAction.INSTALL_CLAUDE_CODE,
+                StageAction.INSTALL_CLAUDE_CODE_UI,
                 StageAction.INSTALL_REASONIX
             }
         ));
@@ -1988,12 +2019,16 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 return getString(R.string.button_ubuntu_packages);
             case CONFIGURE_ENTRY_UBUNTU:
                 return getString(R.string.button_configure_entry_ubuntu);
+            case INSTALL_NODE:
+                return getString(R.string.button_install_node);
             case INSTALL_OPENCODE:
                 return getString(R.string.button_install_opencode);
             case INSTALL_CODEX:
                 return getString(R.string.button_install_codex);
             case INSTALL_CLAUDE_CODE:
                 return getString(R.string.button_install_claude_code);
+            case INSTALL_CLAUDE_CODE_UI:
+                return getString(R.string.button_install_claude_code_ui);
             case INSTALL_REASONIX:
                 return getString(R.string.button_install_reasonix);
             case REQUEST_DEEPSEEK_KEY:
@@ -2625,6 +2660,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private String buildAssetScriptBody(StageAction stageAction, String assetName, int port, OpenCodeInstallSpec installSpec) throws IOException {
         return loadAsset(assetName)
             .replace("__PORT__", Integer.toString(port))
+            .replace("__CLAUDE_CODE_UI_PORT__", Integer.toString(ClaudeCodeUiSettings.DEFAULT_PORT))
             .replace("__BOOTSTRAP_URL__", getBootstrapUrlForLocalMaintenance())
             .replace("__REQUIRED_COMPONENT_TARGETS__", stageAction.requiredComponentTargets == null ? "" : stageAction.requiredComponentTargets)
             .replace("__LOCAL_MAINTENANCE_WEB_PORT__", Integer.toString(getLocalMaintenanceWebPort()))
@@ -2997,6 +3033,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         if (isStoragePermissionGranted()) enabledCount++;
         return getString(R.string.permission_overview_label, enabledCount)
             + "；"
+            + getString(R.string.permission_startup_manual_overview)
+            + "；"
             + getString(isBatteryRequirementEnabled()
                 ? R.string.permission_requirement_state_required
                 : R.string.permission_requirement_state_disabled);
@@ -3027,6 +3065,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             getString(R.string.permission_detail_storage_complete),
             getString(R.string.permission_detail_storage_ready)
         );
+        applyStartupPermissionButtonState();
 
         if (disableBatteryRequirementSwitch != null) {
             boolean disableRequirement = !isBatteryRequirementEnabled();
@@ -3048,6 +3087,19 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         button.setChecked(granted);
         button.setEnabled(!isMaintenanceActionBlocked());
         button.setAlpha(button.isEnabled() ? 1.0f : 0.78f);
+    }
+
+    private void applyStartupPermissionButtonState() {
+        if (permissionStartupButton == null) return;
+
+        permissionStartupButton.setText(getString(R.string.button_permission_startup)
+            + " · "
+            + getString(R.string.permission_badge_manual)
+            + "\n"
+            + getString(R.string.permission_detail_startup_manual));
+        permissionStartupButton.setAllCaps(false);
+        permissionStartupButton.setEnabled(!isMaintenanceActionBlocked());
+        permissionStartupButton.setAlpha(permissionStartupButton.isEnabled() ? 1.0f : 0.78f);
     }
 
     private void updateDownloadSourceCard() {
@@ -3282,6 +3334,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
     }
 
+    private void openStartupPermissionSettings() {
+        OpenHouseStartupPermissionHelper.openStartupPermissionSettings(this);
+    }
+
     private String getStageOverviewText() {
         if (stagePresentations.isEmpty()) {
             return "检测中";
@@ -3466,9 +3522,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         Integer syncOfficialDocsExitCode = readLastExitCode(StageAction.SYNC_OFFICIAL_DOCS);
         Integer ubuntuPackagesExitCode = readLastExitCode(StageAction.UBUNTU_PACKAGES);
         Integer configureEntryUbuntuExitCode = readLastExitCode(StageAction.CONFIGURE_ENTRY_UBUNTU);
+        Integer installNodeExitCode = readLastExitCode(StageAction.INSTALL_NODE);
         Integer installOpenCodeExitCode = readLastExitCode(StageAction.INSTALL_OPENCODE);
         Integer installCodexExitCode = readLastExitCode(StageAction.INSTALL_CODEX);
         Integer installClaudeCodeExitCode = readLastExitCode(StageAction.INSTALL_CLAUDE_CODE);
+        Integer installClaudeCodeUiExitCode = readLastExitCode(StageAction.INSTALL_CLAUDE_CODE_UI);
         Integer installReasonixExitCode = readLastExitCode(StageAction.INSTALL_REASONIX);
         Integer configureDeepSeekExitCode = readLastExitCode(StageAction.CONFIGURE_DEEPSEEK);
         Integer startExitCode = readLastExitCode(StageAction.START);
@@ -3480,10 +3538,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean officialDocsSynced = ubuntuInstalled && (isOfficialDocsSynced() || isLastExitSuccess(syncOfficialDocsExitCode));
         boolean ubuntuPackagesComplete = officialDocsSynced && (isUbuntuPackagesStageComplete() || isLastExitSuccess(ubuntuPackagesExitCode));
         boolean entryUbuntuConfigured = ubuntuPackagesComplete && (isEntryUbuntuConfigured() || isLastExitSuccess(configureEntryUbuntuExitCode));
-        boolean openCodeInstalled = entryUbuntuConfigured && (isOpenCodeInstalled() || isLastExitSuccess(installOpenCodeExitCode));
+        boolean nodeInstalled = entryUbuntuConfigured && (isNodeInstalled() || isLastExitSuccess(installNodeExitCode));
+        boolean openCodeInstalled = nodeInstalled && (isOpenCodeInstalled() || isLastExitSuccess(installOpenCodeExitCode));
         boolean codexInstalled = openCodeInstalled && (isCodexInstalled() || isLastExitSuccess(installCodexExitCode));
         boolean claudeCodeInstalled = openCodeInstalled && (isClaudeCodeInstalled() || isLastExitSuccess(installClaudeCodeExitCode));
-        boolean reasonixInstalled = claudeCodeInstalled && (isReasonixInstalled() || isLastExitSuccess(installReasonixExitCode));
+        boolean claudeCodeUiInstalled = claudeCodeInstalled && (isClaudeCodeUiInstalled() || isLastExitSuccess(installClaudeCodeUiExitCode));
+        boolean reasonixInstalled = claudeCodeUiInstalled && (isReasonixInstalled() || isLastExitSuccess(installReasonixExitCode));
         boolean deepSeekConfigured = ubuntuInstalled && reasonixInstalled && (isDeepSeekConfigured() || isLastExitSuccess(configureDeepSeekExitCode));
         boolean openCodeReachableNow = openCodeInstalled && isOpenCodeWebReachable();
         boolean startStageComplete = openCodeReachableNow || isLastExitSuccess(startExitCode);
@@ -3553,10 +3613,21 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         );
 
         snapshot.presentations.put(
+            StageAction.INSTALL_NODE,
+            nodeInstalled
+                ? StagePresentation.complete(this, getString(R.string.stage_detail_install_node_complete))
+                : (!entryUbuntuConfigured
+                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_node_blocked))
+                    : failedOrReady(installNodeExitCode,
+                        getString(R.string.stage_detail_install_node_failed),
+                        getString(R.string.stage_detail_install_node_ready)))
+        );
+
+        snapshot.presentations.put(
             StageAction.INSTALL_OPENCODE,
             openCodeInstalled
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_install_opencode_complete))
-                : (!entryUbuntuConfigured
+                : (!nodeInstalled
                     ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_opencode_blocked))
                     : failedOrReady(installOpenCodeExitCode,
                         getString(R.string.stage_detail_install_opencode_failed),
@@ -3586,10 +3657,21 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         );
 
         snapshot.presentations.put(
+            StageAction.INSTALL_CLAUDE_CODE_UI,
+            claudeCodeUiInstalled
+                ? StagePresentation.complete(this, getString(R.string.stage_detail_install_claude_code_ui_complete))
+                : (!claudeCodeInstalled
+                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_claude_code_ui_blocked))
+                    : failedOrReady(installClaudeCodeUiExitCode,
+                        getString(R.string.stage_detail_install_claude_code_ui_failed),
+                        getString(R.string.stage_detail_install_claude_code_ui_ready)))
+        );
+
+        snapshot.presentations.put(
             StageAction.INSTALL_REASONIX,
             reasonixInstalled
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_install_reasonix_complete))
-                : (!claudeCodeInstalled
+                : (!claudeCodeUiInstalled
                     ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_reasonix_blocked))
                     : failedOrReady(installReasonixExitCode,
                         getString(R.string.stage_detail_install_reasonix_failed),
@@ -3722,6 +3804,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         ).isSuccess();
     }
 
+    private boolean isNodeInstalled() {
+        return runTermuxCommand(
+            "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && test \"$(node -p \"process.versions.node.split(\\\".\\\")[0]\" 2>/dev/null || printf 0)\" -ge 24'"
+        ).isSuccess();
+    }
+
     private boolean isCodexInstalled() {
         return runTermuxCommand(
             "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH\"; command -v codex >/dev/null 2>&1'"
@@ -3731,6 +3819,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean isClaudeCodeInstalled() {
         return runTermuxCommand(
             "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH\"; command -v claude >/dev/null 2>&1'"
+        ).isSuccess();
+    }
+
+    private boolean isClaudeCodeUiInstalled() {
+        return runTermuxCommand(
+            "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; command -v cloudcli >/dev/null 2>&1 && test \"$(cat \"$HOME/.config/openhouseai/claude-code-ui-port\" 2>/dev/null || true)\" = \"" + ClaudeCodeUiSettings.DEFAULT_PORT + "\"'"
         ).isSuccess();
     }
 
@@ -3748,7 +3842,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private boolean isDeepSeekConfigured() {
         return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'test -s \"$HOME/.config/openhouseai/deepseek-api-key\" && test -f \"$HOME/.config/opencode/opencode.json\" && test -f \"$HOME/.reasonix/config.json\" && grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.bashrc\"'"
+            "proot-distro login ubuntu -- bash -lc 'test -s \"$HOME/.config/openhouseai/deepseek-api-key\" && test -f \"$HOME/.config/opencode/opencode.json\" && test -f \"$HOME/.reasonix/config.json\" && { grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.config/openhouseai/claude-code-env\" 2>/dev/null || grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.bashrc\"; }'"
         ).isSuccess();
     }
 
@@ -4822,9 +4916,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         SYNC_OFFICIAL_DOCS("sync_official_docs", "sync-official-docs.sh"),
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh"),
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh"),
+        INSTALL_NODE("install_node", "install-node.sh"),
         INSTALL_OPENCODE("install_opencode", "install-opencode.sh"),
         INSTALL_CODEX("install_codex", "install-codex.sh"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh"),
+        INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh"),
         INSTALL_REASONIX("install_reasonix", "install-reasonix.sh"),
         REQUEST_DEEPSEEK_KEY("request_deepseek_key", null),
         CONFIGURE_DEEPSEEK("configure_deepseek", "configure-deepseek-key.sh"),
@@ -4853,9 +4949,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean shouldRefreshBeforeRun() {
             return this == SYNC_OFFICIAL_DOCS
                 || this == INSTALL_OPENCODE
+                || this == INSTALL_NODE
                 || this == CONFIGURE_ENTRY_UBUNTU
                 || this == INSTALL_CODEX
                 || this == INSTALL_CLAUDE_CODE
+                || this == INSTALL_CLAUDE_CODE_UI
                 || this == INSTALL_REASONIX
                 || this == START
                 || this == RESTART;

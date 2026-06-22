@@ -151,6 +151,9 @@ required_stage_scripts() {
     entry-ubuntu)
       printf '%s\n' 70-configure-entry-ubuntu.sh
       ;;
+    node|install-node)
+      printf '%s\n' 38-install-node.sh
+      ;;
     opencode)
       printf '%s\n' 40-install-opencode.sh
       ;;
@@ -159,6 +162,9 @@ required_stage_scripts() {
       ;;
     claude-code)
       printf '%s\n' 44-install-claude-code.sh
+      ;;
+    claude-code-ui|cloudcli)
+      printf '%s\n' 45-install-claude-code-ui.sh
       ;;
     reasonix)
       printf '%s\n' 46-install-reasonix.sh
@@ -189,9 +195,11 @@ required_stage_scripts() {
         35-sync-docs.sh \
         30-update-ubuntu-packages.sh \
         70-configure-entry-ubuntu.sh \
+        38-install-node.sh \
         40-install-opencode.sh \
         42-install-codex.sh \
         44-install-claude-code.sh \
+        45-install-claude-code-ui.sh \
         46-install-reasonix.sh \
         50-install-runtime-components.sh \
         60-start-smallphone.sh \
@@ -273,9 +281,11 @@ run_full_install() {
   run_stage 35-sync-docs.sh
   run_stage 30-update-ubuntu-packages.sh
   run_stage 70-configure-entry-ubuntu.sh
+  run_stage 38-install-node.sh
   run_stage 40-install-opencode.sh
   run_stage 42-install-codex.sh
   run_stage 44-install-claude-code.sh
+  run_stage 45-install-claude-code-ui.sh
   run_stage 46-install-reasonix.sh
   run_stage 50-install-runtime-components.sh
   run_stage 60-start-smallphone.sh
@@ -294,16 +304,18 @@ SmallPhoneAI Installer
 6. 只同步 SmallPhoneAI 文档
 7. 只更新 Ubuntu 软件包
 8. 设置默认进入 Ubuntu
-9. 只安装 OpenCode
-10. 只安装 Codex
-11. 只安装 Claude Code
-12. 只安装 Reasonix
-13. 安装/注册 SmallPhone 运行组件
-14. 启动 SmallPhone 运行栈
-15. 修复 SmallPhone 运行栈
-16. 查看 App Shell hooks
-17. 只检查 Termux 环境
-18. 退出
+9. 只安装 Node.js 24 LTS
+10. 只安装 OpenCode
+11. 只安装 Codex
+12. 只安装 Claude Code
+13. 只安装 ClaudeCodeUI / CloudCLI
+14. 只安装 Reasonix
+15. 安装/注册 SmallPhone 运行组件
+16. 启动 SmallPhone 运行栈
+17. 修复 SmallPhone 运行栈
+18. 查看 App Shell hooks
+19. 只检查 Termux 环境
+20. 退出
 EOF
 }
 
@@ -352,6 +364,10 @@ main() {
       run_stage 70-configure-entry-ubuntu.sh
       return
       ;;
+    node|install-node)
+      run_stage 38-install-node.sh
+      return
+      ;;
     opencode)
       run_stage 40-install-opencode.sh
       return
@@ -362,6 +378,10 @@ main() {
       ;;
     claude-code)
       run_stage 44-install-claude-code.sh
+      return
+      ;;
+    claude-code-ui|cloudcli)
+      run_stage 45-install-claude-code-ui.sh
       return
       ;;
     reasonix)
@@ -392,7 +412,7 @@ main() {
 
   while true; do
     show_menu
-    printf '请选择 [1-18]: '
+    printf '请选择 [1-20]: '
     read -r choice
     case "$choice" in
       1) run_full_install ;;
@@ -403,17 +423,19 @@ main() {
       6) run_stage 35-sync-docs.sh ;;
       7) run_stage 30-update-ubuntu-packages.sh ;;
       8) run_stage 70-configure-entry-ubuntu.sh ;;
-      9) run_stage 40-install-opencode.sh ;;
-      10) run_stage 42-install-codex.sh ;;
-      11) run_stage 44-install-claude-code.sh ;;
-      12) run_stage 46-install-reasonix.sh ;;
-      13) run_stage 50-install-runtime-components.sh ;;
-      14) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      15) run_stage 50-install-runtime-components.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      16) run_machine_stage 65-smallphone-status.sh hooks ;;
-      17) run_stage 00-check-termux.sh ;;
-      18) exit 0 ;;
-      *) log "请输入 1 到 18。" ;;
+      9) run_stage 38-install-node.sh ;;
+      10) run_stage 40-install-opencode.sh ;;
+      11) run_stage 42-install-codex.sh ;;
+      12) run_stage 44-install-claude-code.sh ;;
+      13) run_stage 45-install-claude-code-ui.sh ;;
+      14) run_stage 46-install-reasonix.sh ;;
+      15) run_stage 50-install-runtime-components.sh ;;
+      16) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      17) run_stage 50-install-runtime-components.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      18) run_machine_stage 65-smallphone-status.sh hooks ;;
+      19) run_stage 00-check-termux.sh ;;
+      20) exit 0 ;;
+      *) log "请输入 1 到 20。" ;;
     esac
   done
 }

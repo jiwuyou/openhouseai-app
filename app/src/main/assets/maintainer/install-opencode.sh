@@ -10,13 +10,15 @@ if command -v opencode >/dev/null 2>&1; then
   exit 0
 fi
 
-if ! command -v npm >/dev/null 2>&1; then
-  export DEBIAN_FRONTEND=noninteractive
-  echo "正在修复可能被中断的 Ubuntu 软件包状态"
-  dpkg --configure -a
-  apt -f install -y
-  apt update
-  apt install -y nodejs npm
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "Node.js 尚未安装，请先执行 Node.js 24 LTS 安装阶段。" >&2
+  exit 3
+fi
+
+node_major="$(node -p "process.versions.node.split(\".\")[0]" 2>/dev/null || printf 0)"
+if [ "${node_major:-0}" -lt 24 ]; then
+  echo "Node.js 版本过旧：$(node -v)，请先执行 Node.js 24 LTS 安装阶段。" >&2
+  exit 4
 fi
 
 mkdir -p "$HOME/.npm-global/bin"

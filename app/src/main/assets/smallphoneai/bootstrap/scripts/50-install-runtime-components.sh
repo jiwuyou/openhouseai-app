@@ -613,14 +613,14 @@ ensure_smallphone_node_runtime() {
         major=0
         ;;
     esac
-    if [ "$major" -ge 22 ]; then
+    if [ "$major" -ge 24 ]; then
       log "SmallPhone Node runtime 已可用：$(node -v)"
       return 0
     fi
-    warn "SmallPhone 需要 Node >=22，当前为 $(node -v 2>/dev/null || printf unknown)，将安装本地 Node 22。"
+    warn "SmallPhone 需要 Node >=24，当前为 $(node -v 2>/dev/null || printf unknown)，将安装本地 Node 24。"
   fi
 
-  install_node22_runtime
+  install_node24_runtime
 }
 
 node_arch() {
@@ -640,15 +640,15 @@ node_arch() {
   esac
 }
 
-install_node22_runtime() {
+install_node24_runtime() {
   local arch
   local node_root="$HOME/.local/node"
   local node_tmp="$HOME/.local/node-download"
-  local node_dist_base="${SMALLPHONEAI_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v22.x}"
+  local node_dist_base="${SMALLPHONEAI_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v24.x}"
   local node_tarball
 
   if ! command -v curl >/dev/null 2>&1; then
-    warn "缺少 curl，无法安装 Node 22 runtime。"
+    warn "缺少 curl，无法安装 Node 24 runtime。"
     return 1
   fi
   if ! arch="$(node_arch)"; then
@@ -661,11 +661,11 @@ install_node22_runtime() {
   fi
 
   mkdir -p "$node_root" "$node_tmp"
-  log "正在从 Node 官方源安装 Node 22 runtime（不访问 GitHub）：$node_dist_base"
+  log "正在从 Node 官方源安装 Node 24 runtime（不访问 GitHub）：$node_dist_base"
   node_tarball="$(curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors "$node_dist_base/SHASUMS256.txt" \
     | awk -v arch="linux-$arch.tar.xz" '$2 ~ arch "$" { print $2; exit }')"
   if [ -z "$node_tarball" ]; then
-    warn "无法解析 Node 22 linux-$arch tarball。"
+    warn "无法解析 Node 24 linux-$arch tarball。"
     return 1
   fi
 

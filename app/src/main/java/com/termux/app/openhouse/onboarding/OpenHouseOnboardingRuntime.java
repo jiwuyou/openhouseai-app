@@ -19,6 +19,7 @@ import com.termux.app.openhouse.OpenHouseInstallController;
 import com.termux.app.openhouse.OpenHouseInstallState;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
 import com.termux.app.openhouse.OpenHouseOpenCodeController;
+import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
 import com.termux.app.openhouse.OpenHouseStatus;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.shared.logger.Logger;
@@ -161,6 +162,10 @@ public final class OpenHouseOnboardingRuntime {
                 Toast.makeText(activity, "无法打开电池优化设置。", Toast.LENGTH_SHORT).show();
             }
         }
+    }
+
+    public void openStartupPermissionSettings() {
+        OpenHouseStartupPermissionHelper.openStartupPermissionSettings(activity);
     }
 
     public void openDeepSeekKeyPage() {

@@ -7,8 +7,9 @@ import android.content.Intent;
 import com.termux.app.OpenHouseAgreement;
 import com.termux.app.TermuxActivity;
 import com.termux.app.activities.OpenHouseAgreementActivity;
+import com.termux.app.activities.OpenHouseHomeActivity;
 import com.termux.app.activities.OpenHouseOnboardingActivity;
-import com.termux.app.activities.SmallPhoneHostActivity;
+import com.termux.app.browser.ControlledBrowserContract;
 import com.termux.app.openhouse.OpenHouseOnboardingState;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.shared.activity.ActivityUtils;
@@ -61,8 +62,9 @@ public final class SmallPhoneFirstLaunchGate {
     }
 
     public static Intent newSmallPhoneHostIntent(Context context) {
-        Intent intent = new Intent(context, SmallPhoneHostActivity.class);
+        Intent intent = new Intent(context, OpenHouseHomeActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        intent.putExtra(ControlledBrowserContract.EXTRA_OPENHOUSE_PAGE, "smallphone");
         return intent;
     }
 

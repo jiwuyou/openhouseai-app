@@ -94,19 +94,12 @@ echo "Reasonix 配置：$HOME/.reasonix/config.json"
 fi
 
 if [ "${OPENHOUSEAI_CONFIGURE_CLAUDE:-1}" = "1" ]; then
-config_file="$HOME/.bashrc"
+mkdir -p "$HOME/.config/openhouseai"
+env_file="$HOME/.config/openhouseai/claude-code-env"
 start_marker="# >>> OpenHouseAI Claude Code DeepSeek >>>"
 end_marker="# <<< OpenHouseAI Claude Code DeepSeek <<<"
-tmp_file="$(mktemp)"
 
-awk -v start="$start_marker" -v end="$end_marker" '"'"'
-  $0 == start { skip=1; next }
-  $0 == end { skip=0; next }
-  skip != 1 { print }
-'"'"' "$config_file" 2>/dev/null > "$tmp_file" || true
-
-cat >> "$tmp_file" <<CONFIG
-$start_marker
+cat > "$env_file" <<CONFIG
 export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
 export ANTHROPIC_MODEL=deepseek-v4-pro
@@ -115,13 +108,30 @@ export ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-pro
 export ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
 export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
 export CLAUDE_CODE_EFFORT_LEVEL=max
+CONFIG
+chmod 600 "$env_file"
+
+for config_file in "$HOME/.bashrc" "$HOME/.profile"; do
+  tmp_file="$(mktemp)"
+  awk -v start="$start_marker" -v end="$end_marker" '"'"'
+    $0 == start { skip=1; next }
+    $0 == end { skip=0; next }
+    skip != 1 { print }
+  '"'"' "$config_file" 2>/dev/null > "$tmp_file" || true
+
+  cat >> "$tmp_file" <<CONFIG
+$start_marker
+if [ -f "\$HOME/.config/openhouseai/claude-code-env" ]; then
+  . "\$HOME/.config/openhouseai/claude-code-env"
+fi
 $end_marker
 CONFIG
 
-mv "$tmp_file" "$config_file"
-chmod 600 "$config_file"
+  mv "$tmp_file" "$config_file"
+  chmod 600 "$config_file"
+done
 
-echo "Claude Code 环境变量已写入：$config_file"
+echo "Claude Code 环境变量已写入：$env_file"
 fi
 '
 

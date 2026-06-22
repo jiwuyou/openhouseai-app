@@ -5,7 +5,7 @@ OpenHouseAI 运行在 Android 手机上，结构如下：
 - Android 是宿主系统。
 - Termux 提供终端环境和包管理。
 - Ubuntu 通过 `proot-distro` 安装在 Termux 内。
-- OpenCode、Codex CLI、Claude Code、Reasonix 安装在 Ubuntu 内。
+- OpenCode、Codex CLI、Claude Code、Node.js 24 LTS、ClaudeCodeUI / CloudCLI、Reasonix 安装在 Ubuntu 内。
 
 ## 安装范围
 
@@ -15,9 +15,11 @@ OpenHouseAI 只负责安装和检测：
 - OpenCode
 - Codex CLI
 - Claude Code
+- Node.js 24 LTS
+- ClaudeCodeUI / CloudCLI
 - Reasonix
 
-Node.js 不作为单独可见阶段。Codex、Claude Code 和 Reasonix 安装阶段会在内部检测并按需安装 Node.js。
+Node.js 24 LTS 是单独可见阶段，排在 OpenCode、Codex CLI、Claude Code、ClaudeCodeUI 和 Reasonix 之前。后续阶段只检查并使用该 Node.js runtime，不再各自隐式安装系统 Node.js。
 
 ## 阶段顺序
 
@@ -29,12 +31,14 @@ Node.js 不作为单独可见阶段。Codex、Claude Code 和 Reasonix 安装阶
 4. 同步 OpenHouseAI 文档。
 5. 安装 Ubuntu 基础包。
 6. 设置打开 Termux 后默认进入 Ubuntu。
-7. 安装 OpenCode。
-8. 安装 Codex CLI。
-9. 安装 Claude Code。
-10. 安装 Reasonix。
+7. 安装 Node.js 24 LTS。
+8. 安装 OpenCode。
+9. 安装 Codex CLI。
+10. 安装 Claude Code。
+11. 安装 ClaudeCodeUI / CloudCLI。
+12. 安装 Reasonix。
 
-默认进入 Ubuntu 必须在安装 OpenCode、Codex CLI、Claude Code 和 Reasonix 之前完成。
+默认进入 Ubuntu 必须在安装 Node.js 24 LTS、OpenCode、Codex CLI、Claude Code、ClaudeCodeUI 和 Reasonix 之前完成。
 
 Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubuntu cloud image 镜像源，选择当前可达且较快的 rootfs URL，再执行 `proot-distro install -n ubuntu <rootfs-url>`。如需指定源，可在执行前设置 `OPENHOUSEAI_UBUNTU_ROOTFS_URL`。
 

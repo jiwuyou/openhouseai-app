@@ -60,25 +60,11 @@
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
             tools:targetApi="n">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
                 <action android:name="${TERMUX_PACKAGE_NAME}.SMALLPHONE_HOST" />
                 <action android:name="${TERMUX_PACKAGE_NAME}.SMALLPHONE_RECOVERY" />
 
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
         </activity>
 
         <activity
@@ -104,12 +90,27 @@
             android:launchMode="singleTask"
             android:resizeableActivity="true"
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
-            tools:targetApi="n" />
+            tools:targetApi="n">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
 
         <activity-alias
             android:name=".HomeActivity"
             android:exported="true"
-            android:targetActivity=".app.activities.SmallPhoneHostActivity">
+            android:targetActivity=".app.activities.OpenHouseHomeActivity">
 
             <!-- Launch activity automatically on boot on Android Things devices -->
             <intent-filter>

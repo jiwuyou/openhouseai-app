@@ -283,6 +283,10 @@ public final class OpenHouseMaintainerRunner {
         START("start", "启动 OpenCode", "start-opencode.sh", 75),
         STOP("stop", "停止 OpenCode", "stop-opencode.sh", 30),
         RESTART("restart", "重启 OpenCode", "restart-opencode.sh", 75),
+        INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "安装 ClaudeCodeUI / CloudCLI", "install-claude-code-ui.sh", 600),
+        START_CLAUDE_CODE_UI("start_claude_code_ui", "启动 ClaudeCodeUI / CloudCLI", "start-claude-code-ui.sh", 75),
+        STOP_CLAUDE_CODE_UI("stop_claude_code_ui", "停止 ClaudeCodeUI / CloudCLI", "stop-claude-code-ui.sh", 30),
+        RESTART_CLAUDE_CODE_UI("restart_claude_code_ui", "重启 ClaudeCodeUI / CloudCLI", "restart-claude-code-ui.sh", 75),
         START_SMALLPHONE("start_smallphone", "启动 SmallPhoneAI 运行栈", "start-smallphone.sh", 150),
         REPAIR_SMALLPHONE("repair_smallphone", "修复 SmallPhoneAI 运行栈", "repair-smallphone.sh", 600),
         CONFIGURE_DEEPSEEK("configure_deepseek", "配置 DeepSeek Key", "configure-deepseek-key.sh", 75);

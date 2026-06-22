@@ -111,12 +111,14 @@ SmallPhoneAI bootstrap 负责安装、检查、注册和启动：
 - OpenCode
 - Codex CLI
 - Claude Code
+- Node.js 24 LTS
+- ClaudeCodeUI / CloudCLI
 - Reasonix
 - service-manager
 - cc-connect/openhouse-connect
 - SmallPhone
 
-Node.js 不作为单独可见阶段。Codex、Claude Code、Reasonix 和 SmallPhone 相关阶段会在内部检测并按需安装或使用 Node.js。
+Node.js 24 LTS 是单独可见阶段，排在 OpenCode、Codex CLI、Claude Code、ClaudeCodeUI 和 Reasonix 之前。后续阶段只检查并使用该 Node.js runtime，不再各自隐式安装系统 Node.js。
 
 ## 阶段顺序
 
@@ -128,15 +130,17 @@ Node.js 不作为单独可见阶段。Codex、Claude Code、Reasonix 和 SmallPh
 4. 同步 SmallPhoneAI 文档。
 5. 安装 Ubuntu 基础包。
 6. 设置打开 Termux 后默认进入 Ubuntu。
-7. 安装 OpenCode。
-8. 安装 Codex CLI。
-9. 安装 Claude Code。
-10. 安装 Reasonix。
-11. 进入 Ubuntu/proot，调用 service-manager、cc-connect/openhouse-connect、SmallPhone 子仓库自己的 `scripts/install.sh`、`scripts/check.sh`、`scripts/register-service.sh`。
-12. 在 Ubuntu/proot 内启动 service-manager，并通过 `group:local-stack` 启动已注册服务。
-13. 输出最终状态 JSON，供 App Shell 做健康判断。
+7. 安装 Node.js 24 LTS。
+8. 安装 OpenCode。
+9. 安装 Codex CLI。
+10. 安装 Claude Code。
+11. 安装 ClaudeCodeUI / CloudCLI。
+12. 安装 Reasonix。
+13. 进入 Ubuntu/proot，调用 service-manager、cc-connect/openhouse-connect、SmallPhone 子仓库自己的 `scripts/install.sh`、`scripts/check.sh`、`scripts/register-service.sh`。
+14. 在 Ubuntu/proot 内启动 service-manager，并通过 `group:local-stack` 启动已注册服务。
+15. 输出最终状态 JSON，供 App Shell 做健康判断。
 
-默认进入 Ubuntu 必须在安装 OpenCode、Codex CLI、Claude Code 和 Reasonix 之前完成。
+默认进入 Ubuntu 必须在安装 Node.js 24 LTS、OpenCode、Codex CLI、Claude Code、ClaudeCodeUI 和 Reasonix 之前完成。
 
 Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubuntu cloud image 镜像源，选择当前可达且较快的 rootfs URL，再执行 `proot-distro install -n ubuntu <rootfs-url>`。如需指定源，可在执行前设置 `SMALLPHONEAI_UBUNTU_ROOTFS_URL`。
 
