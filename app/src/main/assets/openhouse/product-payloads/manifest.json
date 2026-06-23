@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "generatedAt": "2026-06-22",
-  "description": "SmallPhoneAI first-run payloads bundled inside the APK. First-run source installation does not require GitHub; apt, npm, pip, health checks, and provider network access may still be used by stages.",
+  "generatedAt": "2026-06-23",
+  "description": "SmallPhoneAI first-run offline payloads bundled inside the APK. Network and GitHub are optional update paths after boot.",
   "components": [
-    { "id": "service-manager", "archive": "service-manager.tar", "targetDir": "service-manager", "sha256": "7aaa6adde21d3fb566a5336d2ef519525da6dda8a4a847e3c9e3339496cf3001", "size": 5642240 },
-    { "id": "openhouse-connect", "aliases": ["cc-connect"], "archive": "openhouse-connect.tar", "targetDir": "openhouse-connect", "sha256": "19e096b83f7cb2cc690146d3a669d278d0b98cbffc6e45610f2ab125f27411fb", "size": 38707200 },
-    { "id": "smallphone", "archive": "smallphone.tar", "targetDir": "smallphone-active", "sha256": "ed2ec03f9c928188d14e6ba02d56c8de0818df292817563e33fde5a792ab0004", "size": 1761280 },
-    { "id": "hermes", "archive": "hermes.tar.gz", "targetDir": "hermes", "sha256": "f8661bcb8dcc24be4eb4a77b227de5b996216685334699beab1263b95ba9abb5", "size": 18951847 }
+    { "id": "service-manager", "archive": "service-manager.tar", "targetDir": "service-manager", "sha256": "a0b86f29123d334d952f3bac2e13511c3185c0af8002898580e0d1b76cdde455", "size": 5888000 },
+    { "id": "openhouse-connect", "aliases": ["cc-connect"], "archive": "openhouse-connect.tar", "targetDir": "openhouse-connect", "sha256": "17adb055f3f11ad43274679cf49b2c3e5875904131553f4f7be4f3e3211e448c", "size": 39075840 },
+    { "id": "smallphone", "archive": "smallphone.tar", "targetDir": "smallphone-active", "sha256": "3319666e4d1e24abb20077e30b4c6a3b20a0afc12d6371c14681a7b8e4a2d2aa", "size": 1822720 },
+    { "id": "hermes", "archive": "hermes.tar.gz", "targetDir": "hermes", "sha256": "8b1a2a4d8f1e16ff40b6f562b35ec1d8b2279f538539c06abffd0f72d615aee2", "size": 73410302 }
   ]
 }

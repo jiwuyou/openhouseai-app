@@ -14,6 +14,7 @@ import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -23,24 +24,37 @@ import java.util.Locale;
 public final class OpenHouseComponentRegistry {
 
     private static final String LOG_TAG = "OpenHouseComponents";
-    private static final String COMPONENTS_DIR = ".config/openhouseai/components.d";
+    private static final String CONFIG_DIR = ".config/openhouseai";
+    private static final String COMPONENTS_DIR = "components.d";
+    private static final String REGISTRY_STATE_FILE = "registry-state.json";
     private static final String CONTROL_ENTRY_TYPE_SERVICE_CONTROL = "service-control";
 
     private OpenHouseComponentRegistry() {
     }
 
     public static List<OpenHouseComponent> load() {
-        File dir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, COMPONENTS_DIR);
+        return loadWithDiagnostics().components;
+    }
+
+    public static LoadResult loadWithDiagnostics() {
+        File configDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, CONFIG_DIR);
+        File dir = new File(configDir, COMPONENTS_DIR);
+        RegistryState registryState = readRegistryState(new File(configDir, REGISTRY_STATE_FILE));
+        List<String> warnings = new ArrayList<>();
         if (!dir.isDirectory()) {
-            return Collections.emptyList();
+            warnings.add("components.d 不存在：" + dir.getAbsolutePath());
+            return new LoadResult(Collections.emptyList(), registryState, dir, false, 0, 0, warnings);
         }
 
         File[] files = dir.listFiles((file, name) -> name != null && name.endsWith(".json"));
         if (files == null || files.length == 0) {
-            return Collections.emptyList();
+            warnings.add("components.d 中没有 JSON 注册项");
+            return new LoadResult(Collections.emptyList(), registryState, dir, true, 0, 0, warnings);
         }
+        Arrays.sort(files, (left, right) -> left.getName().compareToIgnoreCase(right.getName()));
 
         List<OpenHouseComponent> components = new ArrayList<>();
+        int skippedFiles = 0;
         for (File file : files) {
             try {
                 OpenHouseComponent component = parseComponent(readTextFile(file));
@@ -48,6 +62,8 @@ public final class OpenHouseComponentRegistry {
                     components.add(component);
                 }
             } catch (Exception e) {
+                skippedFiles++;
+                warnings.add(file.getName() + " 无法读取：" + compactError(e));
                 Logger.logStackTraceWithMessage(LOG_TAG,
                     "Ignoring invalid component registry file: " + file.getAbsolutePath(), e);
             }
@@ -63,7 +79,10 @@ public final class OpenHouseComponentRegistry {
                 return left.title.compareToIgnoreCase(right.title);
             }
         });
-        return components;
+        if (!filesAreEmpty(files) && components.isEmpty()) {
+            warnings.add("没有可用的菜单注册项，继续显示内置菜单");
+        }
+        return new LoadResult(components, registryState, dir, true, files.length, skippedFiles, warnings);
     }
 
     private static OpenHouseComponent parseComponent(String json) throws Exception {
@@ -359,5 +378,303 @@ public final class OpenHouseComponentRegistry {
             }
         }
         return builder.toString();
+    }
+
+    private static RegistryState readRegistryState(File file) {
+        if (file == null || !file.isFile()) {
+            return RegistryState.missing(file);
+        }
+        try {
+            return RegistryState.parse(file, readTextFile(file));
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG,
+                "Ignoring invalid openhouse registry state file: " + file.getAbsolutePath(), e);
+            return RegistryState.invalid(file, compactError(e));
+        }
+    }
+
+    private static boolean filesAreEmpty(File[] files) {
+        return files == null || files.length == 0;
+    }
+
+    private static String compactError(Throwable throwable) {
+        if (throwable == null) {
+            return "unknown";
+        }
+        String message = throwable.getMessage();
+        if (isBlank(message)) {
+            message = throwable.getClass().getSimpleName();
+        }
+        message = message.replace('\n', ' ').replace('\r', ' ').trim();
+        return message.length() > 160 ? message.substring(0, 160) + "..." : message;
+    }
+
+    private static String readOptionalString(JSONObject object, String... keys) {
+        if (object == null || keys == null) {
+            return "";
+        }
+        for (String key : keys) {
+            if (isBlank(key) || !object.has(key)) {
+                continue;
+            }
+            String value = object.optString(key, "");
+            if (!isBlank(value)) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private static int countJsonFiles(JSONObject root) {
+        if (root == null || !root.has("files")) {
+            return -1;
+        }
+        Object files = root.opt("files");
+        if (files instanceof JSONArray) {
+            return ((JSONArray) files).length();
+        }
+        if (files instanceof JSONObject) {
+            return ((JSONObject) files).length();
+        }
+        return -1;
+    }
+
+    private static List<String> readErrorList(JSONObject root) {
+        if (root == null) {
+            return Collections.emptyList();
+        }
+        List<String> errors = new ArrayList<>();
+        Object rawErrors = root.opt("errors");
+        if (rawErrors instanceof JSONArray) {
+            JSONArray array = (JSONArray) rawErrors;
+            for (int i = 0; i < array.length(); i++) {
+                String value = array.optString(i, "");
+                if (!isBlank(value)) {
+                    errors.add(value.trim());
+                }
+            }
+        } else if (rawErrors != null) {
+            String value = root.optString("errors", "");
+            if (!isBlank(value)) {
+                errors.add(value.trim());
+            }
+        }
+        String error = root.optString("error", "");
+        if (!isBlank(error)) {
+            errors.add(error.trim());
+        }
+        return errors;
+    }
+
+    private static String joinLimited(List<String> values, int limit) {
+        if (values == null || values.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        int count = Math.min(values.size(), Math.max(1, limit));
+        for (int i = 0; i < count; i++) {
+            if (i > 0) {
+                builder.append("; ");
+            }
+            builder.append(values.get(i));
+        }
+        if (values.size() > count) {
+            builder.append("; 另有 ").append(values.size() - count).append(" 个问题");
+        }
+        String text = builder.toString();
+        return text.length() > 360 ? text.substring(0, 360) + "..." : text;
+    }
+
+    public static final class LoadResult {
+        public final List<OpenHouseComponent> components;
+        public final RegistryState registryState;
+        public final File componentsDir;
+        public final boolean componentsDirExists;
+        public final int totalFiles;
+        public final int skippedFiles;
+        public final List<String> warnings;
+
+        private LoadResult(List<OpenHouseComponent> components,
+                           RegistryState registryState,
+                           File componentsDir,
+                           boolean componentsDirExists,
+                           int totalFiles,
+                           int skippedFiles,
+                           List<String> warnings) {
+            this.components = components == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(components));
+            this.registryState = registryState == null ? RegistryState.missing(null) : registryState;
+            this.componentsDir = componentsDir;
+            this.componentsDirExists = componentsDirExists;
+            this.totalFiles = Math.max(0, totalFiles);
+            this.skippedFiles = Math.max(0, skippedFiles);
+            this.warnings = warnings == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(warnings));
+        }
+
+        public boolean hasWarnings() {
+            return !warnings.isEmpty() || registryState.hasProblem();
+        }
+
+        public boolean shouldShowFallbackNavigation() {
+            return components.isEmpty() || hasWarnings();
+        }
+
+        public String toShortStatusText() {
+            StringBuilder builder = new StringBuilder();
+            if (components.isEmpty()) {
+                builder.append("使用内置菜单");
+            } else {
+                builder.append("扩展 ").append(components.size()).append(" 个");
+            }
+            if (totalFiles > 0) {
+                builder.append(" / JSON ").append(totalFiles).append(" 个");
+            }
+            if (skippedFiles > 0) {
+                builder.append("，跳过 ").append(skippedFiles).append(" 个");
+            }
+            if (registryState.exists) {
+                builder.append("；").append(registryState.toCompactStatusText());
+            }
+            return builder.toString();
+        }
+
+        public String toDiagnosticText() {
+            StringBuilder builder = new StringBuilder();
+            builder.append(toShortStatusText());
+            if (!componentsDirExists && componentsDir != null) {
+                builder.append('\n').append("components.d：").append(componentsDir.getAbsolutePath());
+            }
+            if (!warnings.isEmpty()) {
+                builder.append('\n').append("加载提示：").append(joinLimited(warnings, 3));
+            }
+            String stateText = registryState.toDiagnosticText();
+            if (!isBlank(stateText)) {
+                builder.append('\n').append(stateText);
+            }
+            return builder.toString();
+        }
+    }
+
+    public static final class RegistryState {
+        public final File file;
+        public final boolean exists;
+        public final boolean valid;
+        public final String status;
+        public final String generatedAt;
+        public final String sourcePath;
+        public final String targetPath;
+        public final int fileCount;
+        public final List<String> errors;
+        public final String readError;
+
+        private RegistryState(File file,
+                              boolean exists,
+                              boolean valid,
+                              String status,
+                              String generatedAt,
+                              String sourcePath,
+                              String targetPath,
+                              int fileCount,
+                              List<String> errors,
+                              String readError) {
+            this.file = file;
+            this.exists = exists;
+            this.valid = valid;
+            this.status = status == null ? "" : status.trim();
+            this.generatedAt = generatedAt == null ? "" : generatedAt.trim();
+            this.sourcePath = sourcePath == null ? "" : sourcePath.trim();
+            this.targetPath = targetPath == null ? "" : targetPath.trim();
+            this.fileCount = fileCount;
+            this.errors = errors == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(errors));
+            this.readError = readError == null ? "" : readError.trim();
+        }
+
+        private static RegistryState missing(File file) {
+            return new RegistryState(file, false, false, "", "", "", "", -1, Collections.emptyList(), "");
+        }
+
+        private static RegistryState invalid(File file, String readError) {
+            return new RegistryState(file, true, false, "", "", "", "", -1, Collections.emptyList(), readError);
+        }
+
+        private static RegistryState parse(File file, String json) throws Exception {
+            JSONObject root = new JSONObject(json);
+            return new RegistryState(
+                file,
+                true,
+                true,
+                readOptionalString(root, "status", "state", "phase"),
+                readOptionalString(root, "generatedAt", "generated_at", "syncedAt", "synced_at", "updatedAt", "updated_at", "completedAt", "completed_at"),
+                readOptionalString(root, "sourcePath", "source_path", "source"),
+                readOptionalString(root, "targetPath", "target_path", "target"),
+                countJsonFiles(root),
+                readErrorList(root),
+                "");
+        }
+
+        public boolean hasProblem() {
+            if (!exists) {
+                return false;
+            }
+            if (!valid || !errors.isEmpty()) {
+                return true;
+            }
+            String normalized = status.trim().toLowerCase(Locale.US);
+            return normalized.contains("syncing")
+                || normalized.contains("progress")
+                || normalized.contains("running")
+                || normalized.contains("pending")
+                || normalized.contains("partial")
+                || normalized.contains("fail")
+                || normalized.contains("error");
+        }
+
+        public String toCompactStatusText() {
+            if (!exists) {
+                return "state 未生成";
+            }
+            if (!valid) {
+                return "state 无法解析";
+            }
+            String state = isBlank(status) ? "unknown" : status;
+            StringBuilder builder = new StringBuilder("state=").append(state);
+            if (!isBlank(generatedAt)) {
+                builder.append(" @ ").append(generatedAt);
+            }
+            if (fileCount >= 0) {
+                builder.append("，files=").append(fileCount);
+            }
+            if (!errors.isEmpty()) {
+                builder.append("，errors=").append(errors.size());
+            }
+            return builder.toString();
+        }
+
+        public String toDiagnosticText() {
+            if (!exists) {
+                return "registry-state.json：未生成";
+            }
+            if (!valid) {
+                return "registry-state.json：无法解析"
+                    + (isBlank(readError) ? "" : "（" + readError + "）");
+            }
+            StringBuilder builder = new StringBuilder("registry-state.json：");
+            builder.append(toCompactStatusText());
+            if (!isBlank(sourcePath)) {
+                builder.append('\n').append("source：").append(sourcePath);
+            }
+            if (!isBlank(targetPath)) {
+                builder.append('\n').append("target：").append(targetPath);
+            }
+            if (!errors.isEmpty()) {
+                builder.append('\n').append("errors：").append(joinLimited(errors, 3));
+            }
+            return builder.toString();
+        }
     }
 }

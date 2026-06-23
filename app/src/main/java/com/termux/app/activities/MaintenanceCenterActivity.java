@@ -43,6 +43,7 @@ import com.termux.app.TermuxActivity;
 import com.termux.app.openhouse.OpenHouseDeepSeekController;
 import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
+import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.shell.ShellUtils;
@@ -3482,6 +3483,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         String stageOverview = getStageOverviewText();
         String permissionOverview = getPermissionOverviewText();
         String downloadSourceStatus = getDownloadSourceStatusText();
+        OpenHouseComponentRegistry.LoadResult registryResult = OpenHouseComponentRegistry.loadWithDiagnostics();
 
         if (commandInFlight) {
             statusHeadlineView.setText(R.string.status_running_title);
@@ -3506,6 +3508,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         body.append(permissionOverview).append('\n');
         body.append("产品文档：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/openhouseai-docs").append('\n');
         body.append("工作区：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/workspace").append('\n');
+        body.append("菜单注册：").append(registryResult.toDiagnosticText()).append('\n');
         body.append("阶段校验：").append(stageOverview);
         statusBodyView.setText(body.toString());
         updateCurrentStageSummary();

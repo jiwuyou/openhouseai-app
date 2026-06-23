@@ -104,6 +104,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private TextView pageSubtitleView;
     private String currentPage = PAGE_HOME;
     private List<OpenHouseComponent> dynamicComponents = Collections.emptyList();
+    private OpenHouseComponentRegistry.LoadResult dynamicRegistryResult;
     private int openCodePort = OpenCodeSettings.DEFAULT_OPENCODE_PORT;
     private String lastOpenCodeUrl = OpenCodeSettings.getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
     private final String cloudCliUrl = ClaudeCodeUiSettings.getLoopbackUrl();
@@ -271,8 +272,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void refreshDynamicComponents() {
-        dynamicComponents = OpenHouseComponentRegistry.load();
-        setFallbackNavigationVisible(dynamicComponents.isEmpty());
+        dynamicRegistryResult = OpenHouseComponentRegistry.loadWithDiagnostics();
+        dynamicComponents = dynamicRegistryResult.components;
+        setFallbackNavigationVisible(dynamicRegistryResult.shouldShowFallbackNavigation());
         renderDynamicNavigation();
     }
 
@@ -1607,6 +1609,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addTitle(panel, "高级设置", 19);
         addStatusRow(panel, "OpenCode 默认端口", Integer.toString(OpenCodeSettings.DEFAULT_OPENCODE_PORT));
         addStatusRow(panel, "OpenCode 启动目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
+        OpenHouseComponentRegistry.LoadResult registryResult = dynamicRegistryResult == null
+            ? OpenHouseComponentRegistry.loadWithDiagnostics()
+            : dynamicRegistryResult;
+        addStatusRow(panel, "菜单注册", registryResult.toShortStatusText());
+        addBody(panel, registryResult.toDiagnosticText());
         CheckBox hintToggle = checkbox("在终端显示半透明小字提示", TermuxActivity.isOpenHouseTerminalHintVisible(this));
         hintToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             TermuxActivity.setOpenHouseTerminalHintVisible(this, isChecked);
