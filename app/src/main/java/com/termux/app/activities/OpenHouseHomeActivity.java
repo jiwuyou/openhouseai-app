@@ -42,8 +42,10 @@ import com.termux.app.ClaudeCodeUiSettings;
 import com.termux.app.OpenCodeSettings;
 import com.termux.app.OpenHouseAgreement;
 import com.termux.app.TermuxActivity;
-import com.termux.app.browser.ControlledBrowserCommandResult;
+import com.termux.app.browser.ControlledBrowserCommandDispatcher;
 import com.termux.app.browser.ControlledBrowserContract;
+import com.termux.app.browser.ControlledBrowserRpcFiles;
+import com.termux.app.browser.ControlledBrowserRuntime;
 import com.termux.app.browser.ControlledBrowserView;
 import com.termux.app.openhouse.OpenHouseClaudeCodeUiController;
 import com.termux.app.openhouse.OpenHouseDeepSeekController;
@@ -57,9 +59,6 @@ import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -87,11 +86,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String EXTRA_SERVICE_CONTROL_TITLE = "openhouse_component_title";
     private static final String EXTRA_SERVICE_CONTROL_SERVICE_NAMES = "openhouse_service_names";
     private static final String EXTRA_SERVICE_CONTROL_SERVICE_REFS = "openhouse_service_refs";
-    private static final String LEGACY_BROWSER_REQUEST_ID = "com.termux.openhouse.browser.REQUEST_ID";
-    private static final String LEGACY_BROWSER_REQUEST_FILE = "com.termux.openhouse.browser.REQUEST_FILE";
-    private static final String LEGACY_BROWSER_RESULT_FILE = "com.termux.openhouse.browser.RESULT_FILE";
-    private static final String LEGACY_BROWSER_TIMEOUT_MS = "com.termux.openhouse.browser.TIMEOUT_MS";
-    private static final String LEGACY_BROWSER_TOKEN = "com.termux.openhouse.browser.TOKEN";
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -118,7 +112,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private boolean cloudCliControlsVisible = false;
     private boolean cloudCliLoadFailed = false;
     private ControlledBrowserView controlledBrowserView;
-    private Bundle pendingBrowserCommand;
     private LinearLayout dynamicWebPageView;
     private WebView dynamicWebView;
     private LinearLayout dynamicWebFallbackView;
@@ -164,7 +157,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             cloudCliWebView = null;
         }
         if (controlledBrowserView != null) {
-            controlledBrowserView.destroy();
+            controlledBrowserView.setExternalNavigationHandler(null);
+            if (controlledBrowserView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) controlledBrowserView.getParent()).removeView(controlledBrowserView);
+            }
             controlledBrowserView = null;
         }
         if (dynamicWebView != null) {
@@ -754,16 +750,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (embeddedContentView == null) {
             return;
         }
-        if (controlledBrowserView == null) {
-            controlledBrowserView = new ControlledBrowserView(this);
-            controlledBrowserView.setExternalNavigationHandler((browserView, uri) -> {
-                openUrl(uri.toString());
-                return true;
-            });
-        }
+        controlledBrowserView = ControlledBrowserRuntime.getInstance().getOrCreateView(this);
+        controlledBrowserView.setExternalNavigationHandler((browserView, uri) -> {
+            openUrl(uri.toString());
+            return true;
+        });
         attachEmbeddedView(controlledBrowserView);
         controlledBrowserView.onHostResume();
-        dispatchPendingBrowserCommand();
     }
 
     private void renderDynamicWebViewPage(OpenHouseComponent component) {
@@ -997,8 +990,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             smallPhoneController.onPause();
         } else if (PAGE_AI.equals(currentPage) && cloudCliWebView != null) {
             cloudCliWebView.onPause();
-        } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage) && controlledBrowserView != null) {
-            controlledBrowserView.onHostPause();
         } else if (isComponentPage(currentPage) && dynamicWebView != null) {
             dynamicWebView.onPause();
         }
@@ -1110,14 +1101,20 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return false;
         }
 
-        Bundle browserCommand = normalizeBrowserCommand(intent);
+        boolean hasBrowserCommand = ControlledBrowserRpcFiles.hasBrowserCommand(intent);
+        Bundle browserCommand = hasBrowserCommand
+            ? ControlledBrowserRpcFiles.normalizeCommand(this, intent)
+            : null;
         String requestedPage = intent.getStringExtra(ControlledBrowserContract.EXTRA_OPENHOUSE_PAGE);
         if (isBlank(requestedPage)) {
             requestedPage = intent.getStringExtra("openhouse_page");
         }
 
-        if (browserCommand != null || PAGE_CONTROLLED_BROWSER.equals(requestedPage)) {
-            pendingBrowserCommand = browserCommand;
+        if (hasBrowserCommand || PAGE_CONTROLLED_BROWSER.equals(requestedPage)) {
+            if (browserCommand != null) {
+                ControlledBrowserRuntime.getInstance().ensureStarted(this);
+                ControlledBrowserCommandDispatcher.getInstance().enqueue(this, browserCommand);
+            }
             selectPage(PAGE_CONTROLLED_BROWSER);
             return true;
         }
@@ -1136,8 +1133,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (intent == null) {
             return false;
         }
-        Bundle browserCommand = normalizeBrowserCommand(intent);
-        if (browserCommand != null) {
+        if (ControlledBrowserRpcFiles.hasBrowserCommand(intent)) {
             return true;
         }
         String requestedPage = intent.getStringExtra(ControlledBrowserContract.EXTRA_OPENHOUSE_PAGE);
@@ -1164,257 +1160,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return false;
     }
 
-    private Bundle normalizeBrowserCommand(Intent intent) {
-        Bundle extras = intent.getExtras();
-        if (extras == null) {
-            return null;
-        }
-        String command = firstNonBlank(
-            extras.getString(ControlledBrowserContract.EXTRA_COMMAND),
-            extras.getString(ControlledBrowserContract.LEGACY_EXTRA_COMMAND),
-            extras.getString("browser_command"));
-        String requestFile = firstNonBlank(
-            extras.getString(ControlledBrowserContract.EXTRA_REQUEST_FILE),
-            extras.getString(LEGACY_BROWSER_REQUEST_FILE));
-        if (isBlank(command) && isBlank(requestFile)) {
-            return null;
-        }
-
-        Bundle normalized = new Bundle();
-        if (!isBlank(command)) {
-            normalized.putString(ControlledBrowserContract.EXTRA_COMMAND, command);
-        }
-
-        String requestId = firstNonBlank(
-            extras.getString(ControlledBrowserContract.EXTRA_REQUEST_ID),
-            extras.getString(LEGACY_BROWSER_REQUEST_ID));
-        if (!isBlank(requestId)) {
-            normalized.putString(ControlledBrowserContract.EXTRA_REQUEST_ID, requestId);
-        }
-        if (!isBlank(requestFile)) {
-            normalized.putString(ControlledBrowserContract.EXTRA_REQUEST_FILE, requestFile);
-        }
-        String resultFile = firstNonBlank(
-            extras.getString(ControlledBrowserContract.EXTRA_RESULT_FILE),
-            extras.getString(LEGACY_BROWSER_RESULT_FILE));
-        if (!isBlank(resultFile)) {
-            normalized.putString(ControlledBrowserContract.EXTRA_RESULT_FILE, resultFile);
-        }
-        String token = firstNonBlank(
-            extras.getString(ControlledBrowserContract.EXTRA_TOKEN),
-            extras.getString(LEGACY_BROWSER_TOKEN));
-        if (isBrowserCommandTokenRequired(command, requestFile, resultFile)) {
-            try {
-                if (!isBlank(requestFile)) {
-                    validateBrowserRpcPath(requestFile, "requests");
-                }
-                if (!isBlank(resultFile)) {
-                    validateBrowserRpcPath(resultFile, "results");
-                }
-                if (!isBrowserRpcTokenValid(token)) {
-                    writeBrowserErrorResult(resultFile, requestId, "unauthorized", "Invalid browser RPC token");
-                    return null;
-                }
-            } catch (Exception e) {
-                writeBrowserErrorResult(resultFile, requestId, "invalid_rpc_path", e.getMessage());
-                return null;
-            }
-        }
-        if (!isBlank(token)) {
-            normalized.putString(ControlledBrowserContract.EXTRA_TOKEN, token);
-        }
-        Integer timeoutMs = getIntegerExtra(extras, ControlledBrowserContract.EXTRA_TIMEOUT_MS);
-        if (timeoutMs == null) {
-            timeoutMs = getIntegerExtra(extras, LEGACY_BROWSER_TIMEOUT_MS);
-        }
-        if (timeoutMs != null) {
-            normalized.putInt(ControlledBrowserContract.EXTRA_TIMEOUT_MS, timeoutMs);
-        }
-
-        String url = firstNonBlank(
-            extras.getString(ControlledBrowserContract.EXTRA_URL),
-            extras.getString(ControlledBrowserContract.LEGACY_EXTRA_URL),
-            extras.getString("browser_url"));
-        if (!isBlank(url)) {
-            normalized.putString(ControlledBrowserContract.EXTRA_URL, url);
-        }
-
-        String tabId = extras.getString(ControlledBrowserContract.EXTRA_TAB_ID);
-        if (!isBlank(tabId)) {
-            normalized.putString(ControlledBrowserContract.EXTRA_TAB_ID, tabId);
-        }
-        Integer officialTabIndex = getIntegerExtra(extras, ControlledBrowserContract.EXTRA_TAB_INDEX);
-        if (officialTabIndex != null) {
-            normalized.putInt(ControlledBrowserContract.EXTRA_TAB_INDEX, officialTabIndex);
-        }
-
-        String legacyTab = firstNonBlank(
-            extras.getString(ControlledBrowserContract.LEGACY_EXTRA_TAB),
-            extras.getString("browser_tab"),
-            extras.getString("browser_tab_id"));
-        if (!isBlank(legacyTab)) {
-            Integer index = parseInteger(legacyTab);
-            if (index == null) {
-                normalized.putString(ControlledBrowserContract.EXTRA_TAB_ID, legacyTab);
-            } else {
-                normalized.putInt(ControlledBrowserContract.EXTRA_TAB_INDEX, index);
-            }
-        }
-        Integer shortTabIndex = getIntegerExtra(extras, "browser_tab_index");
-        if (shortTabIndex != null) {
-            normalized.putInt(ControlledBrowserContract.EXTRA_TAB_INDEX, shortTabIndex);
-        }
-
-        String title = extras.getString(ControlledBrowserContract.EXTRA_TITLE);
-        if (!isBlank(title)) {
-            normalized.putString(ControlledBrowserContract.EXTRA_TITLE, title);
-        }
-        if (extras.containsKey(ControlledBrowserContract.EXTRA_ACTIVATE)) {
-            normalized.putBoolean(ControlledBrowserContract.EXTRA_ACTIVATE,
-                extras.getBoolean(ControlledBrowserContract.EXTRA_ACTIVATE, true));
-        }
-        copyStringExtra(extras, normalized, ControlledBrowserContract.EXTRA_PAYLOAD);
-        copyStringExtra(extras, normalized, ControlledBrowserContract.EXTRA_OUTPUT);
-        copyStringExtra(extras, normalized, ControlledBrowserContract.EXTRA_METHOD);
-        copyStringExtra(extras, normalized, ControlledBrowserContract.EXTRA_PARAMS);
-        return normalized;
-    }
-
-    private void dispatchPendingBrowserCommand() {
-        if (pendingBrowserCommand == null || controlledBrowserView == null) {
-            return;
-        }
-        Bundle command = pendingBrowserCommand;
-        pendingBrowserCommand = null;
-        controlledBrowserView.handleCommandAsync(command, result -> {
-            writeBrowserResultIfRequested(command, result);
-            if (!result.isSuccessful()) {
-                Toast.makeText(this, result.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
-    }
-
-    private void writeBrowserResultIfRequested(Bundle command, ControlledBrowserCommandResult result) {
-        String resultFile = command == null ? null : command.getString(ControlledBrowserContract.EXTRA_RESULT_FILE);
-        if (isBlank(resultFile)) {
-            return;
-        }
-        try {
-            writeBrowserResultFile(resultFile, result.toJsonString());
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to write browser command result", e);
-        }
-    }
-
-    private void writeBrowserErrorResult(String resultFile, String requestId, String code, String message) {
-        if (isBlank(resultFile)) {
-            return;
-        }
-        String safeMessage = message == null ? "" : message.replace("\\", "\\\\").replace("\"", "\\\"");
-        String safeCode = code == null ? "browser_rpc_error" : code.replace("\\", "\\\\").replace("\"", "\\\"");
-        String safeRequestId = requestId == null ? "" : requestId.replace("\\", "\\\\").replace("\"", "\\\"");
-        String json = "{\"ok\":false,\"successful\":false,\"requestId\":\"" + safeRequestId
-            + "\",\"message\":\"" + safeMessage + "\",\"error\":{\"code\":\"" + safeCode
-            + "\",\"message\":\"" + safeMessage + "\"}}";
-        try {
-            writeBrowserResultFile(resultFile, json);
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to write browser RPC error result", e);
-        }
-    }
-
-    private void writeBrowserResultFile(String resultFile, String json) throws IOException {
-        File outputFile = validateBrowserRpcPath(resultFile, "results");
-        File parent = outputFile.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IOException("Unable to create result directory: " + parent);
-        }
-        File tmpFile = new File(outputFile.getParentFile(), outputFile.getName() + ".tmp." + android.os.Process.myPid());
-        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-        try (FileOutputStream outputStream = new FileOutputStream(tmpFile)) {
-            outputStream.write(bytes);
-            outputStream.write('\n');
-        }
-        if (!tmpFile.renameTo(outputFile)) {
-            throw new IOException("Unable to move result file into place: " + outputFile);
-        }
-    }
-
-    private File validateBrowserRpcPath(String path, String expectedLeaf) throws IOException {
-        if (isBlank(path)) {
-            throw new IOException("Missing browser RPC path");
-        }
-        File target = new File(path).getCanonicalFile();
-        File termuxFilesDir = new File(getApplicationInfo().dataDir, "files").getCanonicalFile();
-        String targetPath = target.getPath();
-        String allowedPrefix = termuxFilesDir.getPath() + File.separator;
-        if (!targetPath.startsWith(allowedPrefix)) {
-            throw new IOException("Browser RPC path outside app files directory: " + targetPath);
-        }
-        if (expectedLeaf != null && !targetPath.contains(File.separator + ".openhouse-browser" + File.separator + expectedLeaf + File.separator)) {
-            throw new IOException("Browser RPC path outside ." + "openhouse-browser/" + expectedLeaf + ": " + targetPath);
-        }
-        return target;
-    }
-
-    private boolean isBrowserCommandTokenRequired(String command, String requestFile, String resultFile) {
-        if (!isBlank(requestFile) || !isBlank(resultFile)) {
-            return true;
-        }
-        if (isBlank(command)) {
-            return false;
-        }
-        String normalized = command.trim().toLowerCase(java.util.Locale.US);
-        return !ControlledBrowserContract.COMMAND_OPEN.equals(normalized)
-            && !ControlledBrowserContract.COMMAND_NEW_TAB.equals(normalized)
-            && !ControlledBrowserContract.COMMAND_SWITCH.equals(normalized)
-            && !ControlledBrowserContract.COMMAND_CLOSE.equals(normalized)
-            && !ControlledBrowserContract.COMMAND_RELOAD.equals(normalized)
-            && !ControlledBrowserContract.COMMAND_BACK.equals(normalized)
-            && !ControlledBrowserContract.COMMAND_FORWARD.equals(normalized);
-    }
-
-    private boolean isBrowserRpcTokenValid(String token) throws IOException {
-        if (isBlank(token)) {
-            return false;
-        }
-        File tokenFile = validateBrowserRpcPath(
-            new File(new File(getApplicationInfo().dataDir, "files"), "home/.openhouse-browser/token").getPath(),
-            null);
-        if (!tokenFile.isFile()) {
-            return false;
-        }
-        byte[] buffer = new byte[(int) Math.min(tokenFile.length(), 8192)];
-        int read;
-        try (java.io.FileInputStream inputStream = new java.io.FileInputStream(tokenFile)) {
-            read = inputStream.read(buffer);
-        }
-        String expected = read <= 0 ? "" : new String(buffer, 0, read, StandardCharsets.UTF_8).trim();
-        return !isBlank(expected) && expected.equals(token);
-    }
-
-    private void copyStringExtra(Bundle source, Bundle target, String key) {
-        if (source == null || target == null || isBlank(key)) {
-            return;
-        }
-        String value = source.getString(key);
-        if (!isBlank(value)) {
-            target.putString(key, value);
-        }
-    }
-
-    private String firstNonBlank(String... values) {
-        if (values == null) {
-            return null;
-        }
-        for (String value : values) {
-            if (!isBlank(value)) {
-                return value;
-            }
-        }
-        return null;
-    }
-
     private String joinValues(List<String> values) {
         if (values == null || values.isEmpty()) {
             return "";
@@ -1434,28 +1179,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
-    }
-
-    private Integer parseInteger(String value) {
-        try {
-            return Integer.parseInt(value.trim());
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private Integer getIntegerExtra(Bundle extras, String key) {
-        if (extras == null || !extras.containsKey(key)) {
-            return null;
-        }
-        Object value = extras.get(key);
-        if (value instanceof Integer) {
-            return (Integer) value;
-        }
-        if (value instanceof Number) {
-            return ((Number) value).intValue();
-        }
-        return value == null ? null : parseInteger(value.toString());
     }
 
     private void renderHomePage() {

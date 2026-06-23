@@ -140,15 +140,26 @@ install_controlled_browser_cli() {
 set -euo pipefail
 
 readonly TARGET_ACTIVITY="com.termux/.app.activities.OpenHouseHomeActivity"
+readonly TARGET_RECEIVER="com.termux/.app.browser.ControlledBrowserCommandReceiver"
+readonly COMMAND_ACTION="com.termux.app.browser.action.CONTROLLED_BROWSER_COMMAND"
 readonly PAGE_EXTRA="com.termux.openhouse.PAGE"
-readonly COMMAND_EXTRA="com.termux.openhouse.browser.COMMAND"
-readonly URL_EXTRA="com.termux.openhouse.browser.URL"
-readonly TAB_EXTRA="com.termux.openhouse.browser.TAB"
-readonly REQUEST_ID_EXTRA="com.termux.openhouse.browser.REQUEST_ID"
-readonly REQUEST_FILE_EXTRA="com.termux.openhouse.browser.REQUEST_FILE"
-readonly RESULT_FILE_EXTRA="com.termux.openhouse.browser.RESULT_FILE"
-readonly TIMEOUT_MS_EXTRA="com.termux.openhouse.browser.TIMEOUT_MS"
-readonly TOKEN_EXTRA="com.termux.openhouse.browser.TOKEN"
+readonly COMMAND_EXTRA="com.termux.app.browser.extra.COMMAND"
+readonly URL_EXTRA="com.termux.app.browser.extra.URL"
+readonly TAB_EXTRA="com.termux.app.browser.extra.TAB_ID"
+readonly TAB_INDEX_EXTRA="com.termux.app.browser.extra.TAB_INDEX"
+readonly REQUEST_ID_EXTRA="com.termux.app.browser.extra.REQUEST_ID"
+readonly REQUEST_FILE_EXTRA="com.termux.app.browser.extra.REQUEST_FILE"
+readonly RESULT_FILE_EXTRA="com.termux.app.browser.extra.RESULT_FILE"
+readonly TIMEOUT_MS_EXTRA="com.termux.app.browser.extra.TIMEOUT_MS"
+readonly TOKEN_EXTRA="com.termux.app.browser.extra.TOKEN"
+readonly LEGACY_COMMAND_EXTRA="com.termux.openhouse.browser.COMMAND"
+readonly LEGACY_URL_EXTRA="com.termux.openhouse.browser.URL"
+readonly LEGACY_TAB_EXTRA="com.termux.openhouse.browser.TAB"
+readonly LEGACY_REQUEST_ID_EXTRA="com.termux.openhouse.browser.REQUEST_ID"
+readonly LEGACY_REQUEST_FILE_EXTRA="com.termux.openhouse.browser.REQUEST_FILE"
+readonly LEGACY_RESULT_FILE_EXTRA="com.termux.openhouse.browser.RESULT_FILE"
+readonly LEGACY_TIMEOUT_MS_EXTRA="com.termux.openhouse.browser.TIMEOUT_MS"
+readonly LEGACY_TOKEN_EXTRA="com.termux.openhouse.browser.TOKEN"
 readonly TERMUX_HOME_DIR="${OPENHOUSE_BROWSER_TERMUX_HOME:-/data/data/com.termux/files/home}"
 readonly RPC_ROOT="$TERMUX_HOME_DIR/.openhouse-browser"
 readonly REQUEST_DIR="$RPC_ROOT/requests"
@@ -314,6 +325,16 @@ parse_timeout_options() {
   done
 }
 
+dispatch_browser_command() {
+  local am_bin="$1"
+  shift
+  local extras=("$@")
+
+  if ! "$am_bin" broadcast --user 0 -a "$COMMAND_ACTION" -n "$TARGET_RECEIVER" "${extras[@]}" >/dev/null; then
+    return 12
+  fi
+}
+
 legacy_start() {
   local command="$1"
   shift
@@ -349,23 +370,47 @@ legacy_start() {
   local am_bin
   am_bin="$(find_am)" || die "Termux activity manager 'am' not found"
 
-  local args=(
-    start
-    --user 0
-    -n "$TARGET_ACTIVITY"
+  ensure_rpc_dirs
+
+  local request_id
+  request_id="$(date +%Y%m%d%H%M%S)-$$-${RANDOM:-0}"
+  local request_file="$REQUEST_DIR/$request_id.json"
+  local result_file="$RESULT_DIR/$request_id.json"
+  local token
+  token="$(cat "$TOKEN_FILE")"
+
+  write_request_file "$request_id" "$request_file" "$command" "{}" "" "" "" "$url" "$tab"
+
+  local extras=(
     --es "$PAGE_EXTRA" controlled_browser
     --es "$COMMAND_EXTRA" "$command"
+    --es "$LEGACY_COMMAND_EXTRA" "$command"
+    --es "$REQUEST_ID_EXTRA" "$request_id"
+    --es "$LEGACY_REQUEST_ID_EXTRA" "$request_id"
+    --es "$REQUEST_FILE_EXTRA" "$request_file"
+    --es "$LEGACY_REQUEST_FILE_EXTRA" "$request_file"
+    --es "$RESULT_FILE_EXTRA" "$result_file"
+    --es "$LEGACY_RESULT_FILE_EXTRA" "$result_file"
+    --es "$TOKEN_EXTRA" "$token"
+    --es "$LEGACY_TOKEN_EXTRA" "$token"
+    --ei "$TIMEOUT_MS_EXTRA" "$DEFAULT_TIMEOUT_MS"
+    --ei "$LEGACY_TIMEOUT_MS_EXTRA" "$DEFAULT_TIMEOUT_MS"
   )
 
   if [ -n "$url" ]; then
-    args+=(--es "$URL_EXTRA" "$url")
+    extras+=(--es "$URL_EXTRA" "$url")
+    extras+=(--es "$LEGACY_URL_EXTRA" "$url")
   fi
 
   if [ -n "$tab" ]; then
-    args+=(--es "$TAB_EXTRA" "$tab")
+    extras+=(--es "$TAB_EXTRA" "$tab")
+    if [[ "$tab" =~ ^[0-9]+$ ]]; then
+      extras+=(--ei "$TAB_INDEX_EXTRA" "$tab")
+    fi
+    extras+=(--es "$LEGACY_TAB_EXTRA" "$tab")
   fi
 
-  "$am_bin" "${args[@]}" >/dev/null
+  dispatch_browser_command "$am_bin" "${extras[@]}" || die "failed to dispatch OpenHouse browser command"
 }
 
 write_request_file() {
@@ -376,6 +421,8 @@ write_request_file() {
   local output_path="${5:-}"
   local method="${6:-}"
   local params_json="${7:-}"
+  local url="${8:-}"
+  local tab="${9:-}"
   local tmp_file="${request_file}.tmp.$$"
 
   {
@@ -385,6 +432,18 @@ write_request_file() {
     printf ',"command":'
     json_value "$command"
     printf ',"payload":%s' "$payload_json"
+    if [ -n "$url" ]; then
+      printf ',"url":'
+      json_value "$url"
+    fi
+    if [ -n "$tab" ]; then
+      if [[ "$tab" =~ ^[0-9]+$ ]]; then
+        printf ',"tabIndex":%s' "$tab"
+      else
+        printf ',"tabId":'
+        json_value "$tab"
+      fi
+    fi
     if [ -n "$output_path" ]; then
       printf ',"output":'
       json_value "$output_path"
@@ -481,21 +540,24 @@ run_rpc() {
     return 127
   }
 
-  local args=(
-    start
-    --user 0
-    -n "$TARGET_ACTIVITY"
+  local extras=(
     --es "$PAGE_EXTRA" controlled_browser
     --es "$COMMAND_EXTRA" "$command"
+    --es "$LEGACY_COMMAND_EXTRA" "$command"
     --es "$REQUEST_ID_EXTRA" "$request_id"
+    --es "$LEGACY_REQUEST_ID_EXTRA" "$request_id"
     --es "$REQUEST_FILE_EXTRA" "$request_file"
+    --es "$LEGACY_REQUEST_FILE_EXTRA" "$request_file"
     --es "$RESULT_FILE_EXTRA" "$result_file"
+    --es "$LEGACY_RESULT_FILE_EXTRA" "$result_file"
     --es "$TOKEN_EXTRA" "$token"
+    --es "$LEGACY_TOKEN_EXTRA" "$token"
     --ei "$TIMEOUT_MS_EXTRA" "$timeout_ms"
+    --ei "$LEGACY_TIMEOUT_MS_EXTRA" "$timeout_ms"
   )
 
-  if ! "$am_bin" "${args[@]}" >/dev/null; then
-    emit_failure_json "$request_id" "am_start_failed" "failed to start OpenHouse browser activity"
+  if ! dispatch_browser_command "$am_bin" "${extras[@]}"; then
+    emit_failure_json "$request_id" "am_dispatch_failed" "failed to start OpenHouse browser activity or broadcast command"
     return 1
   fi
 

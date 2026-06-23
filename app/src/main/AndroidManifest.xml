@@ -240,6 +240,14 @@
             android:exported="false" />
 
         <receiver
+            android:name=".app.browser.ControlledBrowserCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.termux.app.browser.action.CONTROLLED_BROWSER_COMMAND" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".app.event.SystemEventReceiver"
             android:exported="false">
             <intent-filter>
