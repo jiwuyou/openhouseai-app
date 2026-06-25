@@ -86,6 +86,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String EXTRA_SERVICE_CONTROL_TITLE = "openhouse_component_title";
     private static final String EXTRA_SERVICE_CONTROL_SERVICE_NAMES = "openhouse_service_names";
     private static final String EXTRA_SERVICE_CONTROL_SERVICE_REFS = "openhouse_service_refs";
+    private static final String EXTRA_SERVICE_CONTROL_MODE = "openhouse_service_control_mode";
+    private static final String SERVICE_CONTROL_MODE_COMPONENT = "component";
+    private static final String SERVICE_CONTROL_MODE_ALL = "all";
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -254,6 +257,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavAi).setOnClickListener(v -> selectPage(PAGE_AI));
         findViewById(R.id.buttonNavSmallPhone).setOnClickListener(v -> selectPage(PAGE_SMALLPHONE));
         findViewById(R.id.buttonNavControlledBrowser).setOnClickListener(v -> selectPage(PAGE_CONTROLLED_BROWSER));
+        findViewById(R.id.buttonNavServiceControl).setOnClickListener(v -> openAllServiceControl());
         findViewById(R.id.buttonNavManual).setOnClickListener(v -> selectPage(PAGE_MANUAL));
         findViewById(R.id.buttonNavOpenCode).setOnClickListener(v -> selectPage(PAGE_OPENCODE));
         findViewById(R.id.buttonNavDeepSeek).setOnClickListener(v -> selectPage(PAGE_DEEPSEEK));
@@ -1026,12 +1030,25 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             openMaintenanceCenter();
             return;
         }
-        Intent intent = new Intent(this, MaintenanceCenterActivity.class);
+        Intent intent = new Intent(this, OpenHouseServiceControlActivity.class);
+        intent.putExtra(EXTRA_SERVICE_CONTROL_MODE, SERVICE_CONTROL_MODE_COMPONENT);
         intent.putExtra(EXTRA_SERVICE_CONTROL_COMPONENT_ID, component.id);
         intent.putExtra(EXTRA_SERVICE_CONTROL_TITLE, component.title);
         intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_NAMES, joinValues(component.serviceNames));
         intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_REFS, joinValues(component.serviceRefs));
-        openMaintenanceCenter(intent);
+        if (drawerLayout != null) {
+            drawerLayout.closeDrawer(GravityCompat.START);
+        }
+        ActivityUtils.startActivity(this, intent);
+    }
+
+    private void openAllServiceControl() {
+        Intent intent = new Intent(this, OpenHouseServiceControlActivity.class);
+        intent.putExtra(EXTRA_SERVICE_CONTROL_MODE, SERVICE_CONTROL_MODE_ALL);
+        if (drawerLayout != null) {
+            drawerLayout.closeDrawer(GravityCompat.START);
+        }
+        ActivityUtils.startActivity(this, intent);
     }
 
     private String resolveNativePage(String page) {

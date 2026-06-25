@@ -55,6 +55,9 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
         SMALLPHONEAI_COMPONENTS_AUTO_CLONE="${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}" \
         SMALLPHONEAI_COMPONENTS_STRICT="${SMALLPHONEAI_COMPONENTS_STRICT:-1}" \
         SMALLPHONEAI_COMPONENT_TARGETS="${SMALLPHONEAI_COMPONENT_TARGETS:-}" \
+        SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-$HOME}" \
+        SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+        SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
         SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
         SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
@@ -728,6 +731,106 @@ service_manager_auth_ready() {
   return "$status"
 }
 
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+service_manager_listen_addr() {
+  local value="$service_manager_url"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+    "") value="$service_manager_bind" ;;
+  esac
+  value="${value%%/*}"
+  [ -n "$value" ] || value="$service_manager_bind"
+  printf '%s' "$value"
+}
+
+write_openhouse_service_manager_config() {
+  local target="$1"
+  local token="$2"
+  local listen_addr="$3"
+  local dir
+  local tmp
+  local token_json
+  local listen_json
+
+  case "$target" in
+    */.config/service-manager/config.json)
+      warn "拒绝写入旧 service-manager 配置路径：$target"
+      return 1
+      ;;
+  esac
+
+  dir="$(dirname "$target")"
+  if ! mkdir -p "$dir"; then
+    warn "无法创建 OpenHouse service-manager 配置目录：$dir"
+    return 1
+  fi
+
+  token_json="$(json_escape "$token")"
+  listen_json="$(json_escape "$listen_addr")"
+  tmp="$target.tmp.$$"
+  if ! cat > "$tmp" <<EOF
+{
+  "auth_token": "$token_json",
+  "listen_addr": "$listen_json"
+}
+EOF
+  then
+    warn "无法写入 OpenHouse service-manager 临时配置：$tmp"
+    rm -f "$tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  chmod 600 "$tmp" >/dev/null 2>&1 || true
+  if ! mv "$tmp" "$target"; then
+    warn "无法更新 OpenHouse service-manager 配置：$target"
+    rm -f "$tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+}
+
+sync_openhouse_service_manager_config() {
+  local token="$1"
+  local listen_addr="${2:-}"
+  local target
+  local wrote=0
+  local failed=0
+
+  if [ -z "$token" ]; then
+    warn "service-manager token 为空，跳过同步到 OpenHouse 专用配置。"
+    return 1
+  fi
+  [ -n "$listen_addr" ] || listen_addr="$(service_manager_listen_addr)"
+
+  for target in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json" \
+    "$HOME/.config/openhouseai/service-manager/config.json"; do
+    [ -n "$target" ] || continue
+    case "$target" in
+      /data/data/com.termux/files/home/*)
+        [ -d "/data/data/com.termux/files/home" ] || continue
+        ;;
+    esac
+    if write_openhouse_service_manager_config "$target" "$token" "$listen_addr"; then
+      wrote=1
+    else
+      failed=1
+    fi
+  done
+
+  if [ "$wrote" = "1" ]; then
+    log "已同步 service-manager token 到 OpenHouse 专用配置：listen_addr=$listen_addr"
+  else
+    warn "未能同步 service-manager token 到任何 OpenHouse 专用配置路径。"
+  fi
+  [ "$failed" = "0" ] || return 1
+}
+
 stop_service_manager_for_registration() {
   local self="$$"
   ps -eo pid=,comm=,args= 2>/dev/null | while read -r pid comm args; do
@@ -789,6 +892,7 @@ ensure_service_manager_registration_context() {
   export SERVICE_MANAGER_URL="$service_manager_url"
   export SERVICE_MANAGER_TOKEN="$token"
   export SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-$token}"
+  sync_openhouse_service_manager_config "$token" "$(service_manager_listen_addr)" || true
   log "service-manager 注册上下文已就绪。"
 }
 
@@ -848,6 +952,10 @@ if should_run_component "cc-connect"; then
 fi
 if should_run_component "smallphone"; then
   run_component "SmallPhone" "$smallphone_dir" "${SMALLPHONEAI_SMALLPHONE_GIT_URL:-https://github.com/jiwuyou/wuxian-smallphone.git}" "1" "smallphone"
+fi
+
+if [ -n "${SERVICE_MANAGER_TOKEN:-}" ]; then
+  sync_openhouse_service_manager_config "$SERVICE_MANAGER_TOKEN" "$(service_manager_listen_addr)" || true
 fi
 
 if [ "$failures" -ne 0 ]; then

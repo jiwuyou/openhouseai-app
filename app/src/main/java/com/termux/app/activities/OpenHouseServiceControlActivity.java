@@ -1,0 +1,885 @@
+package com.termux.app.activities;
+
+import android.content.Intent;
+import android.graphics.Typeface;
+import android.os.Bundle;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+
+import com.termux.R;
+import com.termux.app.openhouse.OpenHouseMaintainerRunner;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerActionResult;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerLogEntry;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerService;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceStatus;
+import com.termux.shared.logger.Logger;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class OpenHouseServiceControlActivity extends AppCompatActivity {
+
+    public static final String EXTRA_SERVICE_CONTROL_MODE = "openhouse_service_control_mode";
+    public static final String MODE_ALL = "all";
+    public static final String EXTRA_SERVICE_CONTROL_COMPONENT_ID = "openhouse_component_id";
+    public static final String EXTRA_SERVICE_CONTROL_TITLE = "openhouse_component_title";
+    public static final String EXTRA_SERVICE_CONTROL_SERVICE_NAMES = "openhouse_service_names";
+    public static final String EXTRA_SERVICE_CONTROL_SERVICE_REFS = "openhouse_service_refs";
+
+    private static final String LOG_TAG = "OpenHouseServiceControl";
+    private static final String ACTION_START = "start";
+    private static final String ACTION_STOP = "stop";
+    private static final String ACTION_RESTART = "restart";
+    private static final String ACTION_REPAIR = "repair";
+    private static final int LOG_LIMIT = 80;
+    private static final int STATUS_TEXT_LIMIT = 10000;
+
+    private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
+    private final Map<String, ServiceCard> serviceCards = new LinkedHashMap<>();
+
+    private ServiceManagerControlClient controlClient;
+    private LinearLayout contentView;
+    private LinearLayout serviceListView;
+    private TextView statusView;
+    private Button repairControlPlaneButton;
+    private Button maintenanceButton;
+    private boolean allMode;
+    private String componentId = "";
+    private String componentTitle = "";
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        controlClient = new ServiceManagerControlClient(this);
+        parseIntent(getIntent());
+        buildContentView();
+        loadInitialServices();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        backgroundExecutor.shutdownNow();
+    }
+
+    private void parseIntent(Intent intent) {
+        if (intent == null) {
+            allMode = false;
+            return;
+        }
+        allMode = MODE_ALL.equalsIgnoreCase(safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_MODE)));
+        componentId = ServiceManagerClient.sanitizeServiceId(intent.getStringExtra(EXTRA_SERVICE_CONTROL_COMPONENT_ID));
+        componentTitle = safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_TITLE));
+    }
+
+    private void buildContentView() {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        scrollView.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
+        contentView = new LinearLayout(this);
+        contentView.setOrientation(LinearLayout.VERTICAL);
+        contentView.setPadding(dp(18), dp(18), dp(18), dp(24));
+        scrollView.addView(contentView, new ScrollView.LayoutParams(
+            ScrollView.LayoutParams.MATCH_PARENT,
+            ScrollView.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setBackgroundResource(R.drawable.panel_bg);
+        header.setPadding(dp(16), dp(16), dp(16), dp(16));
+        contentView.addView(header, fullWidthParams(0));
+
+        TextView titleView = new TextView(this);
+        titleView.setText(allMode ? "全部服务控制" : safeComponentTitle() + " 控制");
+        titleView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        titleView.setTextSize(22);
+        titleView.setTypeface(titleView.getTypeface(), Typeface.BOLD);
+        header.addView(titleView);
+
+        TextView descriptionView = bodyText(allMode
+            ? "日常运行控制页。这里只调用 service-manager，不展示首次安装详细进度。"
+            : "日常组件控制页。这里只控制该组件注册的服务，不展示首次安装详细进度。");
+        header.addView(descriptionView, topMarginParams(8));
+
+        statusView = bodyText("正在读取服务状态...");
+        statusView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        header.addView(statusView, topMarginParams(12));
+
+        repairControlPlaneButton = actionButton("修复控制中枢", v -> runControlPlaneRepair());
+        repairControlPlaneButton.setVisibility(View.GONE);
+        header.addView(repairControlPlaneButton, topMarginParams(10));
+
+        maintenanceButton = actionButton("打开维护与修复", v -> openMaintenanceCenter());
+        maintenanceButton.setVisibility(View.GONE);
+        header.addView(maintenanceButton, topMarginParams(10));
+
+        if (allMode) {
+            addBulkControls();
+        }
+
+        serviceListView = new LinearLayout(this);
+        serviceListView.setOrientation(LinearLayout.VERTICAL);
+        contentView.addView(serviceListView, topMarginParams(14));
+
+        setContentView(scrollView);
+    }
+
+    private void addBulkControls() {
+        LinearLayout panel = panel();
+        contentView.addView(panel, topMarginParams(14));
+
+        TextView title = sectionTitle("批量控制");
+        panel.addView(title);
+
+        TextView note = bodyText("全部关闭和全部重启会跳过 service-manager，避免先关掉控制中枢。");
+        panel.addView(note, topMarginParams(8));
+
+        addButtonRow(panel,
+            actionButton("全部启动", v -> runBulkAction(ACTION_START)),
+            actionButton("全部关闭", v -> runBulkAction(ACTION_STOP)));
+        addButtonRow(panel,
+            actionButton("全部重启", v -> runBulkAction(ACTION_RESTART)),
+            actionButton("刷新", v -> loadInitialServices()));
+    }
+
+    private void loadInitialServices() {
+        serviceListView.removeAllViews();
+        serviceCards.clear();
+        setBusy(true);
+        setStatus("正在读取服务列表...");
+        hideMaintenanceFallback();
+        if (allMode) {
+            loadAllServices();
+        } else {
+            loadComponentServices(readComponentServiceIds(getIntent()));
+        }
+    }
+
+    private void loadAllServices() {
+        backgroundExecutor.execute(() -> {
+            try {
+                List<ServiceManagerService> services = controlClient.listServices();
+                List<ServiceSnapshot> snapshots = new ArrayList<>();
+                for (ServiceManagerService service : services) {
+                    String serviceId = ServiceManagerClient.sanitizeServiceId(service.id());
+                    if (serviceId.isEmpty()) {
+                        continue;
+                    }
+                    snapshots.add(new ServiceSnapshot(
+                        serviceId,
+                        firstNonBlank(service.displayName(), serviceId),
+                        service.provider(),
+                        service.state(),
+                        service.pid(),
+                        service.message(),
+                        true));
+                }
+                runOnUiThread(() -> {
+                    renderServices(snapshots);
+                    refreshAllStatuses();
+                });
+            } catch (Exception e) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to list services", e);
+                runOnUiThread(() -> showServiceManagerError("无法读取 service-manager 服务列表。\n" + safeErrorMessage(e)));
+            }
+        });
+    }
+
+    private void loadComponentServices(List<String> serviceIds) {
+        if (serviceIds.isEmpty()) {
+            setBusy(false);
+            setStatus("这个组件没有注册可控制的 service-manager 服务。");
+            return;
+        }
+
+        List<ServiceSnapshot> snapshots = new ArrayList<>();
+        for (String serviceId : serviceIds) {
+            snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, "", true));
+        }
+        renderServices(snapshots);
+        refreshAllStatuses();
+    }
+
+    private List<String> readComponentServiceIds(Intent intent) {
+        List<String> out = new ArrayList<>();
+        if (intent == null || intent.getExtras() == null) {
+            return out;
+        }
+        for (String value : readIntentStringList(intent, EXTRA_SERVICE_CONTROL_SERVICE_NAMES)) {
+            addServiceId(out, value);
+        }
+        for (String serviceId : ServiceManagerClient.serviceIdsFromRefs(
+            readIntentStringList(intent, EXTRA_SERVICE_CONTROL_SERVICE_REFS))) {
+            addServiceId(out, serviceId);
+        }
+        return out;
+    }
+
+    private List<String> readIntentStringList(Intent intent, String key) {
+        List<String> out = new ArrayList<>();
+        if (intent == null || intent.getExtras() == null || key == null || key.isEmpty()) {
+            return out;
+        }
+        Object raw = intent.getExtras().get(key);
+        if (raw instanceof String[]) {
+            for (String value : (String[]) raw) {
+                collectSplitValues(out, value);
+            }
+        } else if (raw instanceof ArrayList) {
+            ArrayList<?> values = (ArrayList<?>) raw;
+            for (Object value : values) {
+                if (value instanceof String) {
+                    collectSplitValues(out, (String) value);
+                }
+            }
+        } else {
+            collectSplitValues(out, intent.getStringExtra(key));
+        }
+        return out;
+    }
+
+    private void collectSplitValues(List<String> out, String raw) {
+        if (out == null || raw == null) {
+            return;
+        }
+        for (String part : raw.split(",")) {
+            String value = safeTrim(part);
+            if (!value.isEmpty() && !out.contains(value)) {
+                out.add(value);
+            }
+        }
+    }
+
+    private void renderServices(List<ServiceSnapshot> services) {
+        serviceListView.removeAllViews();
+        serviceCards.clear();
+        if (services == null || services.isEmpty()) {
+            setBusy(false);
+            setStatus(allMode ? "service-manager 没有返回服务。" : "这个组件没有可控制的服务。");
+            return;
+        }
+        for (ServiceSnapshot snapshot : services) {
+            ServiceCard card = createServiceCard(snapshot);
+            serviceCards.put(snapshot.id, card);
+            serviceListView.addView(card.root, topMarginParams(0));
+        }
+        setStatus("已加载 " + services.size() + " 个服务。");
+    }
+
+    private ServiceCard createServiceCard(ServiceSnapshot snapshot) {
+        LinearLayout cardView = panel();
+
+        TextView titleView = sectionTitle(snapshot.displayName);
+        cardView.addView(titleView);
+
+        TextView idView = bodyText("服务 ID：" + snapshot.id);
+        cardView.addView(idView, topMarginParams(6));
+
+        TextView detailView = bodyText("");
+        cardView.addView(detailView, topMarginParams(8));
+
+        TextView logView = bodyText("");
+        logView.setVisibility(View.GONE);
+        cardView.addView(logView, topMarginParams(10));
+
+        ServiceCard card = new ServiceCard(snapshot.id, cardView, titleView, detailView, logView);
+        updateCard(card, snapshot);
+
+        addButtonRow(cardView,
+            actionButton("状态", v -> refreshServiceStatus(snapshot.id)),
+            actionButton("启动", v -> runSingleAction(snapshot.id, ACTION_START)));
+        addButtonRow(cardView,
+            actionButton("关闭", v -> runSingleAction(snapshot.id, ACTION_STOP)),
+            actionButton("重启", v -> runSingleAction(snapshot.id, ACTION_RESTART)));
+        addButtonRow(cardView,
+            actionButton("修复", v -> runSingleAction(snapshot.id, ACTION_REPAIR)),
+            actionButton("日志", v -> fetchLogs(snapshot.id)));
+
+        return card;
+    }
+
+    private void refreshAllStatuses() {
+        if (serviceCards.isEmpty()) {
+            setBusy(false);
+            return;
+        }
+        setBusy(true);
+        setStatus("正在刷新服务状态...");
+        hideMaintenanceFallback();
+        List<String> serviceIds = new ArrayList<>(serviceCards.keySet());
+        backgroundExecutor.execute(() -> {
+            List<ServiceSnapshot> snapshots = new ArrayList<>();
+            String error = "";
+            for (String serviceId : serviceIds) {
+                try {
+                    ServiceSnapshot snapshot = snapshotFromStatus(serviceId, controlClient.getStatus(serviceId));
+                    snapshots.add(snapshot);
+                    if (!snapshot.success && error.isEmpty()) {
+                        error = serviceId + " 状态读取失败：" + firstNonBlank(snapshot.message, "service-manager request failed");
+                    }
+                } catch (Exception e) {
+                    Logger.logStackTraceWithMessage(LOG_TAG, "Failed to refresh service status: " + serviceId, e);
+                    if (error.isEmpty()) {
+                        error = safeErrorMessage(e);
+                    }
+                    snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, safeErrorMessage(e), false));
+                }
+            }
+            String firstError = error;
+            runOnUiThread(() -> {
+                for (ServiceSnapshot snapshot : snapshots) {
+                    ServiceCard card = serviceCards.get(snapshot.id);
+                    if (card != null) {
+                        updateCard(card, snapshot);
+                    }
+                }
+                setBusy(false);
+                if (!firstError.isEmpty()) {
+                    setStatus("部分状态读取失败。\n" + firstError);
+                    showMaintenanceFallback();
+                } else {
+                    setStatus("状态已刷新。");
+                }
+            });
+        });
+    }
+
+    private void refreshServiceStatus(String serviceId) {
+        String cleanServiceId = ServiceManagerClient.sanitizeServiceId(serviceId);
+        if (cleanServiceId.isEmpty()) {
+            setStatus("服务 ID 无效。");
+            return;
+        }
+        setBusy(true);
+        setStatus("正在读取 " + cleanServiceId + " 状态...");
+        hideMaintenanceFallback();
+        backgroundExecutor.execute(() -> {
+            try {
+                ServiceSnapshot snapshot = snapshotFromStatus(cleanServiceId, controlClient.getStatus(cleanServiceId));
+                runOnUiThread(() -> {
+                    ServiceCard card = serviceCards.get(cleanServiceId);
+                    if (card != null) {
+                        updateCard(card, snapshot);
+                    }
+                    setBusy(false);
+                    if (snapshot.success) {
+                        setStatus(cleanServiceId + " 状态已刷新。");
+                    } else {
+                        showServiceManagerError(cleanServiceId + " 状态读取失败。\n"
+                            + firstNonBlank(snapshot.message, "service-manager request failed"));
+                    }
+                });
+            } catch (Exception e) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to refresh service status: " + cleanServiceId, e);
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    showServiceManagerError(cleanServiceId + " 状态读取失败。\n" + safeErrorMessage(e));
+                });
+            }
+        });
+    }
+
+    private void runSingleAction(String serviceId, String action) {
+        String cleanServiceId = ServiceManagerClient.sanitizeServiceId(serviceId);
+        if (cleanServiceId.isEmpty() || ServiceManagerClient.sanitizeAction(action).isEmpty()) {
+            setStatus("服务 ID 或动作无效。");
+            return;
+        }
+        setBusy(true);
+        setStatus("正在请求 " + cleanServiceId + " " + actionLabel(action) + "...");
+        hideMaintenanceFallback();
+        backgroundExecutor.execute(() -> {
+            try {
+                ServiceManagerActionResult result = controlClient.runAction(cleanServiceId, action);
+                if (!result.success()) {
+                    runOnUiThread(() -> {
+                        setBusy(false);
+                        showServiceManagerError(formatActionResult(cleanServiceId, action, result));
+                    });
+                    return;
+                }
+                try {
+                    ServiceManagerServiceStatus status = controlClient.getStatus(cleanServiceId);
+                    ServiceSnapshot snapshot = snapshotFromStatus(cleanServiceId, status);
+                    runOnUiThread(() -> {
+                        ServiceCard card = serviceCards.get(cleanServiceId);
+                        if (card != null) {
+                            updateCard(card, snapshot);
+                        }
+                        setBusy(false);
+                        if (snapshot.success) {
+                            setStatus(formatActionResult(cleanServiceId, action, result));
+                        } else {
+                            showServiceManagerError(formatActionResult(cleanServiceId, action, result)
+                                + "\n动作已提交，但状态刷新失败："
+                                + firstNonBlank(snapshot.message, "service-manager request failed"));
+                        }
+                    });
+                } catch (Exception statusError) {
+                    Logger.logStackTraceWithMessage(LOG_TAG, "Failed to refresh status after service action: " + cleanServiceId, statusError);
+                    runOnUiThread(() -> {
+                        setBusy(false);
+                        showServiceManagerError(formatActionResult(cleanServiceId, action, result)
+                            + "\n动作已提交，但状态刷新失败：" + safeErrorMessage(statusError));
+                    });
+                }
+            } catch (Exception e) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to run service action: " + cleanServiceId, e);
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    showServiceManagerError(cleanServiceId + " " + actionLabel(action) + "失败。\n" + safeErrorMessage(e));
+                });
+            }
+        });
+    }
+
+    private void runBulkAction(String action) {
+        String cleanAction = ServiceManagerClient.sanitizeAction(action);
+        if (cleanAction.isEmpty()) {
+            setStatus("批量动作无效。");
+            return;
+        }
+        List<String> serviceIds = new ArrayList<>(serviceCards.keySet());
+        if (serviceIds.isEmpty()) {
+            setStatus("没有可操作的服务。");
+            return;
+        }
+        setBusy(true);
+        setStatus("正在执行全部" + actionLabel(cleanAction) + "...");
+        hideMaintenanceFallback();
+        backgroundExecutor.execute(() -> {
+            StringBuilder report = new StringBuilder();
+            int okCount = 0;
+            int failCount = 0;
+            int skipCount = 0;
+            for (String serviceId : serviceIds) {
+                if (shouldSkipForBulkAction(serviceId, cleanAction)) {
+                    skipCount++;
+                    appendLine(report, serviceId + "：已跳过，避免关闭控制中枢。");
+                    continue;
+                }
+                try {
+                    ServiceManagerActionResult result = controlClient.runAction(serviceId, cleanAction);
+                    if (result.success()) {
+                        okCount++;
+                    } else {
+                        failCount++;
+                    }
+                    appendLine(report, serviceId + "：" + actionLabel(cleanAction) + " " + resultLabel(result));
+                } catch (Exception e) {
+                    failCount++;
+                    Logger.logStackTraceWithMessage(LOG_TAG, "Failed to run bulk action: " + serviceId, e);
+                    appendLine(report, serviceId + "：" + actionLabel(cleanAction) + "失败，" + safeErrorMessage(e));
+                }
+            }
+
+            List<ServiceSnapshot> snapshots = new ArrayList<>();
+            for (String serviceId : serviceIds) {
+                try {
+                    ServiceSnapshot snapshot = snapshotFromStatus(serviceId, controlClient.getStatus(serviceId));
+                    snapshots.add(snapshot);
+                    if (!snapshot.success) {
+                        failCount++;
+                        appendLine(report, serviceId + "：状态刷新失败，"
+                            + firstNonBlank(snapshot.message, "service-manager request failed"));
+                    }
+                } catch (Exception e) {
+                    failCount++;
+                    snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, safeErrorMessage(e), false));
+                    appendLine(report, serviceId + "：状态刷新失败，" + safeErrorMessage(e));
+                }
+            }
+            int finalOkCount = okCount;
+            int finalFailCount = failCount;
+            int finalSkipCount = skipCount;
+            String finalReport = trimForStatus(report.toString());
+            runOnUiThread(() -> {
+                for (ServiceSnapshot snapshot : snapshots) {
+                    ServiceCard card = serviceCards.get(snapshot.id);
+                    if (card != null) {
+                        updateCard(card, snapshot);
+                    }
+                }
+                setBusy(false);
+                setStatus("全部" + actionLabel(cleanAction) + "完成：成功 " + finalOkCount
+                    + "，失败 " + finalFailCount
+                    + "，跳过 " + finalSkipCount
+                    + (finalReport.isEmpty() ? "" : "\n" + finalReport));
+                if (finalFailCount > 0) {
+                    showMaintenanceFallback();
+                }
+            });
+        });
+    }
+
+    private void fetchLogs(String serviceId) {
+        String cleanServiceId = ServiceManagerClient.sanitizeServiceId(serviceId);
+        if (cleanServiceId.isEmpty()) {
+            setStatus("服务 ID 无效。");
+            return;
+        }
+        setBusy(true);
+        setStatus("正在读取 " + cleanServiceId + " 日志...");
+        hideMaintenanceFallback();
+        backgroundExecutor.execute(() -> {
+            try {
+                List<ServiceManagerLogEntry> logs = controlClient.getLogs(cleanServiceId, LOG_LIMIT);
+                String text = formatLogs(cleanServiceId, logs);
+                runOnUiThread(() -> {
+                    ServiceCard card = serviceCards.get(cleanServiceId);
+                    if (card != null) {
+                        card.logView.setText(text);
+                        card.logView.setVisibility(View.VISIBLE);
+                    }
+                    setBusy(false);
+                    setStatus(cleanServiceId + " 日志已读取。");
+                });
+            } catch (Exception e) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to fetch service logs: " + cleanServiceId, e);
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    showServiceManagerError(cleanServiceId + " 日志读取失败。\n" + safeErrorMessage(e));
+                });
+            }
+        });
+    }
+
+    private ServiceSnapshot snapshotFromStatus(String serviceId, ServiceManagerServiceStatus status) {
+        if (status == null) {
+            return new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, "service-manager request failed", false);
+        }
+        if (!status.success()) {
+            return new ServiceSnapshot(
+                serviceId,
+                firstNonBlank(status.displayName(), serviceId),
+                status.provider(),
+                "unknown",
+                status.pid(),
+                firstNonBlank(status.message(), "service-manager request failed"),
+                false);
+        }
+        return new ServiceSnapshot(
+            serviceId,
+            firstNonBlank(status.displayName(), serviceId),
+            status.provider(),
+            status.state(),
+            status.pid(),
+            status.message(),
+            true);
+    }
+
+    private void updateCard(ServiceCard card, ServiceSnapshot snapshot) {
+        if (card == null || snapshot == null) {
+            return;
+        }
+        card.titleView.setText(snapshot.displayName);
+        String pid = snapshot.pid > 0 ? String.valueOf(snapshot.pid) : "-";
+        card.detailView.setText(
+            "状态：" + firstNonBlank(snapshot.state, "unknown")
+                + "\nprovider：" + firstNonBlank(snapshot.provider, "-")
+                + "\npid：" + pid
+                + "\n消息：" + firstNonBlank(snapshot.message, "-"));
+    }
+
+    private void showServiceManagerError(String message) {
+        setBusy(false);
+        setStatus(message);
+        showMaintenanceFallback();
+    }
+
+    private void showMaintenanceFallback() {
+        if (repairControlPlaneButton != null) {
+            repairControlPlaneButton.setVisibility(View.VISIBLE);
+        }
+        if (maintenanceButton != null) {
+            maintenanceButton.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void hideMaintenanceFallback() {
+        if (repairControlPlaneButton != null) {
+            repairControlPlaneButton.setVisibility(View.GONE);
+        }
+        if (maintenanceButton != null) {
+            maintenanceButton.setVisibility(View.GONE);
+        }
+    }
+
+    private void openMaintenanceCenter() {
+        Toast.makeText(this, "打开维护与修复", Toast.LENGTH_SHORT).show();
+        startActivity(new Intent(this, MaintenanceCenterActivity.class));
+    }
+
+    private void runControlPlaneRepair() {
+        setBusy(true);
+        setStatus("正在轻量修复控制中枢。这个动作只恢复 service-manager 和控制配置，不执行全量安装或运行栈修复...");
+        backgroundExecutor.execute(() -> {
+            OpenHouseMaintainerRunner.Result result = new OpenHouseMaintainerRunner(this)
+                .run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0);
+            runOnUiThread(() -> {
+                setBusy(false);
+                if (result.isSuccess()) {
+                    setStatus("控制中枢轻量修复完成，正在重新读取服务状态。"
+                        + formatMaintainerOutput(result.output));
+                    hideMaintenanceFallback();
+                    loadInitialServices();
+                } else {
+                    showServiceManagerError("控制中枢轻量修复失败，退出码 " + result.exitCode
+                        + formatMaintainerOutput(result.output));
+                }
+            });
+        });
+    }
+
+    private boolean shouldSkipForBulkAction(String serviceId, String action) {
+        if (!ACTION_STOP.equals(action) && !ACTION_RESTART.equals(action)) {
+            return false;
+        }
+        String normalized = safeTrim(serviceId).toLowerCase(Locale.US);
+        return normalized.equals("service-manager")
+            || normalized.endsWith("-service-manager")
+            || normalized.contains("service-manager");
+    }
+
+    private String formatActionResult(String serviceId, String action, ServiceManagerActionResult result) {
+        return serviceId + " " + actionLabel(action) + (result.success() ? "已提交。" : "失败。")
+            + (safeTrim(result.message()).isEmpty() ? "" : "\n" + result.message());
+    }
+
+    private String resultLabel(ServiceManagerActionResult result) {
+        String message = safeTrim(result.message());
+        if (message.isEmpty()) {
+            return result.success() ? "已提交" : "失败";
+        }
+        return (result.success() ? "已提交，" : "失败，") + message;
+    }
+
+    private String formatLogs(String serviceId, List<ServiceManagerLogEntry> logs) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(serviceId).append(" 最近日志：");
+        if (logs == null || logs.isEmpty()) {
+            builder.append("\n暂无日志。");
+            return builder.toString();
+        }
+        int start = Math.max(0, logs.size() - 30);
+        for (int i = start; i < logs.size(); i++) {
+            ServiceManagerLogEntry entry = logs.get(i);
+            builder.append('\n')
+                .append(safeTrim(entry.time()))
+                .append(' ')
+                .append(safeTrim(entry.stream()))
+                .append(" | ")
+                .append(safeTrim(entry.message()));
+        }
+        return trimForStatus(builder.toString());
+    }
+
+    private void setBusy(boolean busy) {
+        setButtonsEnabled(contentView, !busy);
+    }
+
+    private void setButtonsEnabled(View view, boolean enabled) {
+        if (view == null) {
+            return;
+        }
+        if (view instanceof Button) {
+            view.setEnabled(enabled);
+            view.setAlpha(enabled ? 1.0f : 0.72f);
+            return;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                setButtonsEnabled(group.getChildAt(i), enabled);
+            }
+        }
+    }
+
+    private void setStatus(String text) {
+        if (statusView != null) {
+            statusView.setText(trimForStatus(text));
+        }
+    }
+
+    private LinearLayout panel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundResource(R.drawable.panel_bg);
+        panel.setPadding(dp(16), dp(16), dp(16), dp(16));
+        return panel;
+    }
+
+    private TextView sectionTitle(String text) {
+        TextView textView = new TextView(this);
+        textView.setText(text);
+        textView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        textView.setTextSize(17);
+        textView.setTypeface(textView.getTypeface(), Typeface.BOLD);
+        return textView;
+    }
+
+    private TextView bodyText(String text) {
+        TextView textView = new TextView(this);
+        textView.setText(text);
+        textView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        textView.setTextSize(14);
+        textView.setLineSpacing(dp(2), 1.0f);
+        return textView;
+    }
+
+    private Button actionButton(String text, View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setAllCaps(false);
+        button.setText(text);
+        button.setTextSize(13);
+        button.setOnClickListener(listener);
+        return button;
+    }
+
+    private void addButtonRow(LinearLayout parent, Button first, Button second) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.addView(first, new LinearLayout.LayoutParams(0, dp(44), 1));
+        LinearLayout.LayoutParams secondParams = new LinearLayout.LayoutParams(0, dp(44), 1);
+        secondParams.leftMargin = dp(8);
+        row.addView(second, secondParams);
+        parent.addView(row, topMarginParams(8));
+    }
+
+    private LinearLayout.LayoutParams fullWidthParams(int topMarginDp) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(topMarginDp);
+        return params;
+    }
+
+    private LinearLayout.LayoutParams topMarginParams(int topMarginDp) {
+        return fullWidthParams(topMarginDp);
+    }
+
+    private String safeComponentTitle() {
+        if (!componentTitle.isEmpty()) {
+            return componentTitle;
+        }
+        if (!componentId.isEmpty()) {
+            return componentId;
+        }
+        return "组件";
+    }
+
+    private void addServiceId(List<String> out, String rawServiceId) {
+        String serviceId = ServiceManagerClient.sanitizeServiceId(rawServiceId);
+        if (!serviceId.isEmpty() && !out.contains(serviceId)) {
+            out.add(serviceId);
+        }
+    }
+
+    private String actionLabel(String action) {
+        switch (action) {
+            case ACTION_START:
+                return "启动";
+            case ACTION_STOP:
+                return "关闭";
+            case ACTION_RESTART:
+                return "重启";
+            case ACTION_REPAIR:
+                return "修复";
+            default:
+                return action;
+        }
+    }
+
+    private String safeErrorMessage(Exception e) {
+        String message = e == null ? "" : safeTrim(e.getMessage());
+        if (message.isEmpty() && e != null) {
+            message = e.getClass().getSimpleName();
+        }
+        return message;
+    }
+
+    private String formatMaintainerOutput(String output) {
+        String cleanOutput = safeTrim(output);
+        return cleanOutput.isEmpty() ? "" : "\n\n最近输出：\n" + cleanOutput;
+    }
+
+    private String firstNonBlank(String first, String fallback) {
+        String cleanFirst = safeTrim(first);
+        return cleanFirst.isEmpty() ? safeTrim(fallback) : cleanFirst;
+    }
+
+    private void appendLine(StringBuilder builder, String line) {
+        if (builder.length() > 0) {
+            builder.append('\n');
+        }
+        builder.append(line);
+    }
+
+    private String safeTrim(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private String trimForStatus(String value) {
+        String text = value == null ? "" : value;
+        if (text.length() <= STATUS_TEXT_LIMIT) {
+            return text;
+        }
+        return text.substring(0, STATUS_TEXT_LIMIT) + "\n...输出过长，已截断。";
+    }
+
+    private int dp(int value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private static final class ServiceSnapshot {
+        final String id;
+        final String displayName;
+        final String provider;
+        final String state;
+        final int pid;
+        final String message;
+        final boolean success;
+
+        ServiceSnapshot(String id, String displayName, String provider, String state, int pid, String message, boolean success) {
+            this.id = id;
+            this.displayName = displayName;
+            this.provider = provider;
+            this.state = state;
+            this.pid = pid;
+            this.message = message;
+            this.success = success;
+        }
+    }
+
+    private static final class ServiceCard {
+        final String serviceId;
+        final LinearLayout root;
+        final TextView titleView;
+        final TextView detailView;
+        final TextView logView;
+
+        ServiceCard(String serviceId, LinearLayout root, TextView titleView, TextView detailView, TextView logView) {
+            this.serviceId = serviceId;
+            this.root = root;
+            this.titleView = titleView;
+            this.detailView = detailView;
+            this.logView = logView;
+        }
+    }
+}

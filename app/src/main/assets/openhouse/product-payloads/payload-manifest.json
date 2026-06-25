@@ -2,9 +2,9 @@
   "schema": 1,
   "assetRoot": "openhouse/product-payloads",
   "payloads": [
-    { "id": "service-manager", "archive": "service-manager.tar", "sha256": "a0b86f29123d334d952f3bac2e13511c3185c0af8002898580e0d1b76cdde455", "size": 5888000 },
+    { "id": "service-manager", "archive": "service-manager.tar", "sha256": "b76c33958a27de5ba4fe5a5110a1e6f9fc28e9d670398db5df7fde9479d0d908", "size": 5990400 },
     { "id": "openhouse-connect", "archive": "openhouse-connect.tar", "sha256": "17adb055f3f11ad43274679cf49b2c3e5875904131553f4f7be4f3e3211e448c", "size": 39075840 },
     { "id": "smallphone", "archive": "smallphone.tar", "sha256": "3319666e4d1e24abb20077e30b4c6a3b20a0afc12d6371c14681a7b8e4a2d2aa", "size": 1822720 },
-    { "id": "hermes", "archive": "hermes.tar.gz", "sha256": "8b1a2a4d8f1e16ff40b6f562b35ec1d8b2279f538539c06abffd0f72d615aee2", "size": 73410302 }
+    { "id": "hermes", "archive": "hermes.tgz", "sha256": "ec37c10721063c679ac847c1a30b9a0dbd819acfd6d3e12adcd5172bd546d13c", "size": 73416791 }
   ]
 }

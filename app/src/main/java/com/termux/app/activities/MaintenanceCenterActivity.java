@@ -44,6 +44,7 @@ import com.termux.app.openhouse.OpenHouseDeepSeekController;
 import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.shell.ShellUtils;
@@ -1100,23 +1101,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String resolveServiceManagerToken() throws IOException, JSONException {
-        File[] candidates = new File[] {
-            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/service-manager/config.json"),
-            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/openhouseai/service-manager/config.json"),
-            new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH,
-                "var/lib/proot-distro/installed-rootfs/ubuntu/root/.config/service-manager/config.json")
-        };
-        for (File candidate : candidates) {
-            if (!candidate.isFile()) {
-                continue;
-            }
-            JSONObject json = new JSONObject(readTextFile(candidate));
-            String token = safeTrim(json.optString("auth_token", ""));
-            if (!token.isEmpty()) {
-                return token;
-            }
-        }
-        return "";
+        return ServiceManagerClient.resolveTokenForBaseUrl(SERVICE_MANAGER_BASE_URL);
     }
 
     private String readConnectionBody(HttpURLConnection connection, boolean errorBody) throws IOException {

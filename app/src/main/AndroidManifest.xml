@@ -142,6 +142,12 @@
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
 
         <activity
+            android:name=".app.activities.OpenHouseServiceControlActivity"
+            android:exported="false"
+            android:label="@string/openhouse_nav_service_control"
+            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
+
+        <activity
             android:name=".app.activities.OpenHouseAgreementActivity"
             android:exported="false"
             android:label="@string/agreement_screen_title"

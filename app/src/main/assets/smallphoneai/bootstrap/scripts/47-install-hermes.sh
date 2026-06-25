@@ -59,7 +59,6 @@ find_payload_source() {
   local payload_name="$1"
   local candidate
   for candidate in \
-    "$payload_root/$payload_name.tar.gz" \
     "$payload_root/$payload_name.tgz" \
     "$payload_root/$payload_name.tar" \
     "$payload_root/$payload_name"; do
@@ -127,7 +126,7 @@ extract_payload_archive() {
 prepare_from_bundle() {
   local source
   if ! source="$(find_payload_source hermes)"; then
-    warn "未找到 APK 内置 Hermes payload：$payload_root/hermes.tar"
+    warn "未找到 APK 内置 Hermes payload：$payload_root/hermes.tgz"
     return 1
   fi
   validate_payload_source "$source" || {

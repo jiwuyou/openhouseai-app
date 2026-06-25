@@ -118,7 +118,7 @@ android {
     }
 
     androidResources {
-        noCompress += ["tar.gz"]
+        noCompress += ["tar", "tgz"]
     }
 
     testOptions {

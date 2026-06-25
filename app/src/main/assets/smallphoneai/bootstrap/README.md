@@ -70,7 +70,7 @@ The required APK asset archives are:
 | service-manager | `openhouse/product-payloads/service-manager.tar` | `$HOME/smallphoneai-repos/service-manager` |
 | cc-connect/openhouse-connect | `openhouse/product-payloads/openhouse-connect.tar` | `$HOME/smallphoneai-repos/openhouse-connect` |
 | SmallPhone | `openhouse/product-payloads/smallphone.tar` | `$HOME/smallphoneai-repos/smallphone-active` |
-| Hermes Agent + WebUI | `openhouse/product-payloads/hermes.tar.gz` | `$HOME/smallphoneai-repos/hermes` |
+| Hermes Agent + WebUI | `openhouse/product-payloads/hermes.tgz` | `$HOME/smallphoneai-repos/hermes` |
 
 The Android host or Gradle asset-copy step must extract/copy those payloads to
 `$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads` before

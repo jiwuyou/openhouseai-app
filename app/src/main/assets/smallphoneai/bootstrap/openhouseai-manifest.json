@@ -48,7 +48,7 @@
       {
         "id": "hermes",
         "title": "Hermes Agent + Hermes WebUI",
-        "apkAssetPath": "openhouse/product-payloads/hermes.tar.gz",
+        "apkAssetPath": "openhouse/product-payloads/hermes.tgz",
         "targetDir": "$HOME/smallphoneai-repos/hermes"
       }
     ]

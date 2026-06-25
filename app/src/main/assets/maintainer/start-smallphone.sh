@@ -111,6 +111,106 @@ stack_ready() {
     && { cc_connect_disabled || probe_url "$cc_url"; }
 }
 
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+service_manager_listen_addr() {
+  local value="$sm_url"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+    "") value="$bind" ;;
+  esac
+  value="${value%%/*}"
+  [ -n "$value" ] || value="$bind"
+  printf '%s' "$value"
+}
+
+write_openhouse_service_manager_config() {
+  local target="$1"
+  local token="$2"
+  local listen_addr="$3"
+  local dir
+  local tmp
+  local token_json
+  local listen_json
+
+  case "$target" in
+    */.config/service-manager/config.json)
+      warn "拒绝写入旧 service-manager 配置路径：$target"
+      return 1
+      ;;
+  esac
+
+  dir="$(dirname "$target")"
+  if ! mkdir -p "$dir"; then
+    warn "无法创建 OpenHouse service-manager 配置目录：$dir"
+    return 1
+  fi
+
+  token_json="$(json_escape "$token")"
+  listen_json="$(json_escape "$listen_addr")"
+  tmp="$target.tmp.$$"
+  if ! cat > "$tmp" <<EOF
+{
+  "auth_token": "$token_json",
+  "listen_addr": "$listen_json"
+}
+EOF
+  then
+    warn "无法写入 OpenHouse service-manager 临时配置：$tmp"
+    rm -f "$tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  chmod 600 "$tmp" >/dev/null 2>&1 || true
+  if ! mv "$tmp" "$target"; then
+    warn "无法更新 OpenHouse service-manager 配置：$target"
+    rm -f "$tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+}
+
+sync_openhouse_service_manager_config() {
+  local token="$1"
+  local listen_addr="${2:-}"
+  local target
+  local wrote=0
+  local failed=0
+
+  if [ -z "$token" ]; then
+    warn "service-manager token 为空，跳过同步到 OpenHouse 专用配置。"
+    return 1
+  fi
+  [ -n "$listen_addr" ] || listen_addr="$(service_manager_listen_addr)"
+
+  for target in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json" \
+    "$HOME/.config/openhouseai/service-manager/config.json"; do
+    [ -n "$target" ] || continue
+    case "$target" in
+      /data/data/com.termux/files/home/*)
+        [ -d "/data/data/com.termux/files/home" ] || continue
+        ;;
+    esac
+    if write_openhouse_service_manager_config "$target" "$token" "$listen_addr"; then
+      wrote=1
+    else
+      failed=1
+    fi
+  done
+
+  if [ "$wrote" = "1" ]; then
+    log "已同步 service-manager token 到 OpenHouse 专用配置：listen_addr=$listen_addr"
+  else
+    warn "未能同步 service-manager token 到任何 OpenHouse 专用配置路径。"
+  fi
+  [ "$failed" = "0" ] || return 1
+}
+
 register_if_present() {
   local label="$1"
   local dir="$2"
@@ -167,6 +267,7 @@ if [ -z "$sm_token" ]; then
   warn "无法获取 service-manager token，无法启动 group:local-stack。"
   exit 1
 fi
+sync_openhouse_service_manager_config "$sm_token" "$(service_manager_listen_addr)" || true
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-start.XXXXXX")"
 cleanup() {
