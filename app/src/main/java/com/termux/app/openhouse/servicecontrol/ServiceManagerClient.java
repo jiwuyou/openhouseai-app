@@ -102,6 +102,7 @@ public final class ServiceManagerClient {
                 .state(json.optString("state", "unknown"))
                 .provider(json.optString("provider", ""))
                 .pid(readPid(json))
+                .url(readUrl(json))
                 .build();
         } catch (Exception e) {
             return errorResult(e, cleanServiceId + " 状态读取失败");
@@ -139,6 +140,7 @@ public final class ServiceManagerClient {
                 .state(fields.state)
                 .provider(fields.provider)
                 .pid(fields.pid)
+                .url(fields.url)
                 .build();
         } catch (Exception e) {
             return errorResult(e, cleanServiceId + " " + cleanActionLabel(cleanAction) + "失败")
@@ -518,18 +520,57 @@ public final class ServiceManagerClient {
     private static StatusFields parseOptionalStatusFields(String body) {
         String trimmed = safeTrim(body);
         if (trimmed.isEmpty()) {
-            return new StatusFields("", "", null);
+            return new StatusFields("", "", null, "");
         }
         try {
             Object parsed = new JSONTokener(trimmed).nextValue();
             if (!(parsed instanceof JSONObject)) {
-                return new StatusFields("", "", null);
+                return new StatusFields("", "", null, "");
             }
             JSONObject json = (JSONObject) parsed;
-            return new StatusFields(json.optString("state", ""), json.optString("provider", ""), readPid(json));
+            return new StatusFields(json.optString("state", ""), json.optString("provider", ""), readPid(json), readUrl(json));
         } catch (JSONException ignored) {
-            return new StatusFields("", "", null);
+            return new StatusFields("", "", null, "");
         }
+    }
+
+    private static String readUrl(JSONObject json) {
+        if (json == null) {
+            return "";
+        }
+        String direct = normalizeHttpUrl(firstNonBlank(
+            json.optString("url", ""),
+            firstNonBlank(
+                json.optString("openUrl", ""),
+                firstNonBlank(
+                    json.optString("open_url", ""),
+                    firstNonBlank(json.optString("webUrl", ""), json.optString("web_url", ""))
+                )
+            )
+        ));
+        if (!direct.isEmpty()) {
+            return direct;
+        }
+        String[] nestedKeys = new String[] { "service", "spec", "status", "metadata" };
+        for (String key : nestedKeys) {
+            JSONObject nested = json.optJSONObject(key);
+            if (nested == null) {
+                continue;
+            }
+            String nestedUrl = readUrl(nested);
+            if (!nestedUrl.isEmpty()) {
+                return nestedUrl;
+            }
+        }
+        return "";
+    }
+
+    private static String normalizeHttpUrl(String value) {
+        String trimmed = safeTrim(value);
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+        return "";
     }
 
     private static ServiceManagerResult errorResult(Exception e, String fallbackMessage) {
@@ -654,11 +695,13 @@ public final class ServiceManagerClient {
         final String state;
         final String provider;
         final Integer pid;
+        final String url;
 
-        StatusFields(String state, String provider, Integer pid) {
+        StatusFields(String state, String provider, Integer pid, String url) {
             this.state = state == null ? "" : state;
             this.provider = provider == null ? "" : provider;
             this.pid = pid;
+            this.url = url == null ? "" : url;
         }
     }
 

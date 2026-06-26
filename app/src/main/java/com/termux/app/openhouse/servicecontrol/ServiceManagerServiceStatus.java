@@ -11,6 +11,7 @@ public final class ServiceManagerServiceStatus {
     private final String state;
     private final String provider;
     private final int pid;
+    private final String url;
 
     ServiceManagerServiceStatus(String serviceId, ServiceManagerResult result) {
         this.success = result != null && result.success;
@@ -22,6 +23,7 @@ public final class ServiceManagerServiceStatus {
         this.state = result == null || result.state.isEmpty() ? "unknown" : result.state;
         this.provider = result == null ? "" : result.provider;
         this.pid = result == null || result.pid == null ? -1 : result.pid;
+        this.url = result == null ? "" : result.url;
     }
 
     public boolean success() {
@@ -58,5 +60,9 @@ public final class ServiceManagerServiceStatus {
 
     public int pid() {
         return pid;
+    }
+
+    public String url() {
+        return url;
     }
 }

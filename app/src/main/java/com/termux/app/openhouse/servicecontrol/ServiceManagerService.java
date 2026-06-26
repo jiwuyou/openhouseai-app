@@ -17,6 +17,7 @@ public final class ServiceManagerService {
     public final String state;
     public final Integer pid;
     public final String message;
+    public final String url;
     public final List<String> tags;
     public final String raw;
 
@@ -29,6 +30,7 @@ public final class ServiceManagerService {
         String state,
         Integer pid,
         String message,
+        String url,
         List<String> tags,
         String raw
     ) {
@@ -40,13 +42,14 @@ public final class ServiceManagerService {
         this.state = state == null ? "" : state;
         this.pid = pid;
         this.message = message == null ? "" : message;
+        this.url = normalizeUrl(url);
         this.tags = tags == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(tags));
         this.raw = raw == null ? "" : raw;
     }
 
     static ServiceManagerService fromJson(JSONObject json) {
         if (json == null) {
-            return new ServiceManagerService("", "", "", "", "", "", null, "", Collections.emptyList(), "");
+            return new ServiceManagerService("", "", "", "", "", "", null, "", "", Collections.emptyList(), "");
         }
         JSONObject spec = json.optJSONObject("spec");
         JSONObject service = json.optJSONObject("service");
@@ -88,6 +91,10 @@ public final class ServiceManagerService {
             state,
             pid,
             message,
+            firstNonBlank(
+                readUrl(source),
+                firstNonBlank(readUrl(json), status != null ? readUrl(status) : "")
+            ),
             readStringList(source.optJSONArray("tags")),
             json.toString()
         );
@@ -127,6 +134,10 @@ public final class ServiceManagerService {
 
     public String message() {
         return message;
+    }
+
+    public String url() {
+        return url;
     }
 
     public List<String> tags() {
@@ -173,6 +184,30 @@ public final class ServiceManagerService {
     private static String firstNonBlank(String first, String second) {
         String value = safeTrim(first);
         return value.isEmpty() ? safeTrim(second) : value;
+    }
+
+    private static String readUrl(JSONObject json) {
+        if (json == null) {
+            return "";
+        }
+        return normalizeUrl(firstNonBlank(
+            json.optString("url", ""),
+            firstNonBlank(
+                json.optString("openUrl", ""),
+                firstNonBlank(
+                    json.optString("open_url", ""),
+                    firstNonBlank(json.optString("webUrl", ""), json.optString("web_url", ""))
+                )
+            )
+        ));
+    }
+
+    private static String normalizeUrl(String value) {
+        String trimmed = safeTrim(value);
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+        return "";
     }
 
     private static String safeTrim(String value) {

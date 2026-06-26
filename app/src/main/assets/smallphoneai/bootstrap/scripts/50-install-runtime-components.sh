@@ -55,6 +55,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
         SMALLPHONEAI_COMPONENTS_AUTO_CLONE="${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}" \
         SMALLPHONEAI_COMPONENTS_STRICT="${SMALLPHONEAI_COMPONENTS_STRICT:-1}" \
         SMALLPHONEAI_COMPONENT_TARGETS="${SMALLPHONEAI_COMPONENT_TARGETS:-}" \
+        SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
         SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-$HOME}" \
         SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
@@ -78,6 +79,7 @@ component_source_mode="${SMALLPHONEAI_COMPONENT_SOURCE_MODE:-bundle}"
 allow_git_update="${SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE:-${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}}"
 strict="${SMALLPHONEAI_COMPONENTS_STRICT:-1}"
 component_targets="${SMALLPHONEAI_COMPONENT_TARGETS:-}"
+force_payload_refresh="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}"
 failures=0
 
 normalize_target() {
@@ -406,7 +408,9 @@ install_payload_if_needed() {
   fi
 
   if [ -f "$dir/scripts/install.sh" ] && [ -f "$dir/scripts/check.sh" ]; then
-    if required_payload_executable "$payload_name" >/dev/null \
+    if [ "$force_payload_refresh" = "1" ]; then
+      log "$name: APK payload 刷新已开启，将从当前 APK bundle 覆盖刷新：$dir"
+    elif required_payload_executable "$payload_name" >/dev/null \
       && ! payload_dir_contains_executable "$dir" "$payload_name"; then
       log "$name: 已存在安装目录但缺少 APK bundle 必需二进制，将从 payload 刷新：$dir"
     elif payload_dir_needs_refresh "$dir" "$payload_name"; then
@@ -934,6 +938,9 @@ log "组件仓库根目录：$repo_root"
 log "组件来源模式：$component_source_mode"
 if [ "$component_source_mode" = "bundle" ]; then
   log "APK payload 根目录：$payload_root"
+  if [ "$force_payload_refresh" = "1" ]; then
+    log "APK payload 强制刷新：开启"
+  fi
 fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"

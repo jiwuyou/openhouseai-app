@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -57,17 +58,27 @@ import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.app.smallphone.SmallPhoneHostController;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
+import com.termux.shared.termux.TermuxConstants;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.json.JSONObject;
+
 public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private static final String LOG_TAG = "OpenHouseHome";
+    private static final String PREFS_NAME = "openhouse_home";
+    private static final String PREF_HOME_PAGE = "home_page";
     private static final String PAGE_HOME = "home";
+    private static final String PAGE_HERMES = "hermes";
     private static final String PAGE_AI = "ai";
     private static final String PAGE_SMALLPHONE = "smallphone";
     private static final String PAGE_CONTROLLED_BROWSER = ControlledBrowserContract.PAGE_CONTROLLED_BROWSER;
@@ -84,11 +95,18 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PAGE_COMPONENT_PREFIX = "component:";
     private static final String EXTRA_SERVICE_CONTROL_COMPONENT_ID = "openhouse_component_id";
     private static final String EXTRA_SERVICE_CONTROL_TITLE = "openhouse_component_title";
+    private static final String EXTRA_SERVICE_CONTROL_URL = "openhouse_component_url";
     private static final String EXTRA_SERVICE_CONTROL_SERVICE_NAMES = "openhouse_service_names";
     private static final String EXTRA_SERVICE_CONTROL_SERVICE_REFS = "openhouse_service_refs";
     private static final String EXTRA_SERVICE_CONTROL_MODE = "openhouse_service_control_mode";
     private static final String SERVICE_CONTROL_MODE_COMPONENT = "component";
     private static final String SERVICE_CONTROL_MODE_ALL = "all";
+    private static final String HERMES_URL = "http://127.0.0.1:23084/";
+    private static final String HERMES_SERVICE_NAME = "hermes-webui";
+    private static final String CC_CODEX_SERVICE_NAME = "cloudcli";
+    private static final String SMALLPHONE_HOME_TARGET = "messages";
+    private static final String MENU_OVERRIDES_RELATIVE_PATH = ".config/openhouseai/menu-overrides.json";
+    private static final String CC_CODEX_TITLE = "CC/Codex";
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -96,7 +114,14 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private ScrollView scrollContentView;
     private FrameLayout embeddedContentView;
     private LinearLayout contentView;
+    private LinearLayout dynamicQuickNavView;
     private LinearLayout dynamicNavView;
+    private TextView homeStatusView;
+    private Button setCurrentHomeButton;
+    private Button copyCurrentButton;
+    private Button openCurrentBrowserButton;
+    private Button openCurrentControlButton;
+    private Button refreshCurrentButton;
     private TextView pageTitleView;
     private TextView pageSubtitleView;
     private String currentPage = PAGE_HOME;
@@ -114,6 +139,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private TextView cloudCliStatusView;
     private boolean cloudCliControlsVisible = false;
     private boolean cloudCliLoadFailed = false;
+    private LinearLayout hermesPageView;
+    private WebView hermesWebView;
+    private LinearLayout hermesFallbackView;
+    private TextView hermesStatusView;
+    private String renderedHermesUrl;
+    private boolean hermesLoadFailed = false;
     private ControlledBrowserView controlledBrowserView;
     private LinearLayout dynamicWebPageView;
     private WebView dynamicWebView;
@@ -122,6 +153,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private OpenHouseComponent dynamicWebComponent;
     private boolean dynamicWebLoadFailed = false;
     private boolean firstLaunchGateForwarded;
+    private String renderedCloudCliUrl;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -132,20 +164,38 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         scrollContentView = findViewById(R.id.openhouseScrollContent);
         embeddedContentView = findViewById(R.id.openhouseEmbeddedContent);
         contentView = findViewById(R.id.openhouseContent);
+        dynamicQuickNavView = findViewById(R.id.openhouseDynamicQuickNav);
         dynamicNavView = findViewById(R.id.openhouseDynamicNav);
+        homeStatusView = findViewById(R.id.openhouseHomeStatus);
+        setCurrentHomeButton = findViewById(R.id.buttonSetCurrentHome);
+        copyCurrentButton = findViewById(R.id.buttonCopyCurrent);
+        openCurrentBrowserButton = findViewById(R.id.buttonOpenCurrentBrowser);
+        openCurrentControlButton = findViewById(R.id.buttonOpenCurrentControl);
+        refreshCurrentButton = findViewById(R.id.buttonRefreshCurrent);
         pageTitleView = findViewById(R.id.openhousePageTitle);
         pageSubtitleView = findViewById(R.id.openhousePageSubtitle);
 
         findViewById(R.id.buttonOpenDrawer).setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
         findViewById(R.id.buttonCloseDrawer).setOnClickListener(v -> drawerLayout.closeDrawer(GravityCompat.START));
-        findViewById(R.id.buttonOpenAdvanced).setOnClickListener(v -> selectPage(PAGE_ADVANCED));
+        if (copyCurrentButton != null) {
+            copyCurrentButton.setOnClickListener(v -> copyCurrentTarget());
+        }
+        if (openCurrentBrowserButton != null) {
+            openCurrentBrowserButton.setOnClickListener(v -> openCurrentTargetInBrowser());
+        }
+        if (openCurrentControlButton != null) {
+            openCurrentControlButton.setOnClickListener(v -> openCurrentControl());
+        }
+        if (refreshCurrentButton != null) {
+            refreshCurrentButton.setOnClickListener(v -> refreshCurrentTarget());
+        }
         bindNavigation();
         refreshDynamicComponents();
         if (!handleOpenHouseIntent(getIntent())) {
             if (routeFirstLaunchGateIfNeeded()) {
                 return;
             }
-            selectPage(PAGE_SMALLPHONE);
+            selectConfiguredHomePage();
         }
     }
 
@@ -158,6 +208,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (cloudCliWebView != null) {
             cloudCliWebView.destroy();
             cloudCliWebView = null;
+        }
+        if (hermesWebView != null) {
+            hermesWebView.destroy();
+            hermesWebView = null;
         }
         if (controlledBrowserView != null) {
             controlledBrowserView.setExternalNavigationHandler(null);
@@ -184,10 +238,20 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_PERMISSIONS.equals(currentPage)) {
             renderPage();
         }
-        if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
+        if (PAGE_HERMES.equals(currentPage) && hermesWebView != null) {
+            hermesWebView.onResume();
+        } else if (PAGE_SMALLPHONE.equals(currentPage)
+            && isCurrentDynamicWebComponent(findSmallPhoneComponent())
+            && dynamicWebView != null) {
+            dynamicWebView.onResume();
+        } else if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
             smallPhoneController.onResume(false);
         } else if (PAGE_AI.equals(currentPage) && cloudCliWebView != null) {
             cloudCliWebView.onResume();
+        } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
+            && isCurrentDynamicWebComponent(findControlledBrowserComponent())
+            && dynamicWebView != null) {
+            dynamicWebView.onResume();
         } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage) && controlledBrowserView != null) {
             controlledBrowserView.onHostResume();
         } else if (isComponentPage(currentPage) && dynamicWebView != null) {
@@ -213,7 +277,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return;
         }
         if (isLauncherOpenIntent(intent)) {
-            selectPage(PAGE_SMALLPHONE);
+            selectConfiguredHomePage();
         }
     }
 
@@ -224,14 +288,34 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return;
         }
         if (PAGE_SMALLPHONE.equals(currentPage)
+            && isCurrentDynamicWebComponent(findSmallPhoneComponent())
+            && dynamicWebView != null
+            && dynamicWebView.canGoBack()) {
+            dynamicWebView.goBack();
+            return;
+        }
+        if (PAGE_SMALLPHONE.equals(currentPage)
             && smallPhoneController != null
             && smallPhoneController.handleBackPressed()) {
+            return;
+        }
+        if (PAGE_HERMES.equals(currentPage)
+            && hermesWebView != null
+            && hermesWebView.canGoBack()) {
+            hermesWebView.goBack();
             return;
         }
         if (PAGE_AI.equals(currentPage)
             && cloudCliWebView != null
             && cloudCliWebView.canGoBack()) {
             cloudCliWebView.goBack();
+            return;
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
+            && isCurrentDynamicWebComponent(findControlledBrowserComponent())
+            && dynamicWebView != null
+            && dynamicWebView.canGoBack()) {
+            dynamicWebView.goBack();
             return;
         }
         if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
@@ -245,8 +329,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             dynamicWebView.goBack();
             return;
         }
-        if (!PAGE_HOME.equals(currentPage)) {
-            selectPage(PAGE_HOME);
+        String configuredHomePage = getConfiguredHomePage();
+        if (!PAGE_HOME.equals(currentPage) && !currentPage.equals(configuredHomePage)) {
+            selectConfiguredHomePage();
             return;
         }
         super.onBackPressed();
@@ -254,9 +339,18 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void bindNavigation() {
         findViewById(R.id.buttonNavHome).setOnClickListener(v -> selectPage(PAGE_HOME));
-        findViewById(R.id.buttonNavAi).setOnClickListener(v -> selectPage(PAGE_AI));
-        findViewById(R.id.buttonNavSmallPhone).setOnClickListener(v -> selectPage(PAGE_SMALLPHONE));
-        findViewById(R.id.buttonNavControlledBrowser).setOnClickListener(v -> selectPage(PAGE_CONTROLLED_BROWSER));
+        findViewById(R.id.buttonNavHermes).setOnClickListener(
+            v -> openBuiltinComponentOrFallback(findHermesComponent(), PAGE_HERMES));
+        findViewById(R.id.buttonNavHermesControl).setOnClickListener(v -> openHermesControl());
+        findViewById(R.id.buttonNavAi).setOnClickListener(
+            v -> openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI));
+        findViewById(R.id.buttonNavAiControl).setOnClickListener(v -> openCcCodexControlOrToggle());
+        findViewById(R.id.buttonNavSmallPhone).setOnClickListener(
+            v -> openBuiltinComponentOrFallback(findSmallPhoneComponent(), PAGE_SMALLPHONE));
+        findViewById(R.id.buttonNavSmallPhoneControl).setOnClickListener(v -> openComponentControl(findSmallPhoneComponent()));
+        findViewById(R.id.buttonNavControlledBrowser).setOnClickListener(
+            v -> openBuiltinComponentOrFallback(findControlledBrowserComponent(), PAGE_CONTROLLED_BROWSER));
+        findViewById(R.id.buttonNavControlledBrowserControl).setOnClickListener(v -> openComponentControl(findControlledBrowserComponent()));
         findViewById(R.id.buttonNavServiceControl).setOnClickListener(v -> openAllServiceControl());
         findViewById(R.id.buttonNavManual).setOnClickListener(v -> selectPage(PAGE_MANUAL));
         findViewById(R.id.buttonNavOpenCode).setOnClickListener(v -> selectPage(PAGE_OPENCODE));
@@ -269,22 +363,65 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavLogs).setOnClickListener(v -> selectPage(PAGE_LOGS));
         findViewById(R.id.buttonNavAdvanced).setOnClickListener(v -> selectPage(PAGE_ADVANCED));
         findViewById(R.id.buttonNavTerminal).setOnClickListener(v -> openTerminal(false));
+        if (setCurrentHomeButton != null) {
+            setCurrentHomeButton.setOnClickListener(v -> setCurrentPageAsHome());
+        }
+        updateHomePreferenceViews();
     }
 
     private void refreshDynamicComponents() {
         dynamicRegistryResult = OpenHouseComponentRegistry.loadWithDiagnostics();
         dynamicComponents = dynamicRegistryResult.components;
         setFallbackNavigationVisible(dynamicRegistryResult.shouldShowFallbackNavigation());
+        updateBuiltinNavigationLabels();
+        renderDynamicQuickNavigation();
         renderDynamicNavigation();
+        updateHomePreferenceViews();
+        updateTopActionState();
+    }
+
+    private void updateBuiltinNavigationLabels() {
+        setBuiltinNavigationRowState(R.id.rowNavHermes, R.id.buttonNavHermes, R.id.buttonNavHermesControl,
+            findHermesComponent(), getHermesTitle());
+        setBuiltinNavigationRowState(R.id.rowNavAi, R.id.buttonNavAi, R.id.buttonNavAiControl,
+            findCcCodexComponent(), getCcCodexTitle());
+        setBuiltinNavigationRowState(R.id.rowNavSmallPhone, R.id.buttonNavSmallPhone, R.id.buttonNavSmallPhoneControl,
+            findSmallPhoneComponent(), getSmallPhoneTitle());
+        setBuiltinNavigationRowState(R.id.rowNavControlledBrowser, R.id.buttonNavControlledBrowser, R.id.buttonNavControlledBrowserControl,
+            findControlledBrowserComponent(), getControlledBrowserTitle());
+    }
+
+    private void setBuiltinNavigationRowState(int rowId, int openButtonId, int controlButtonId,
+                                               OpenHouseComponent component, String text) {
+        View row = findViewById(rowId);
+        if (row == null) {
+            return;
+        }
+        boolean visible = isComponentVisible(component);
+        row.setVisibility(visible ? View.VISIBLE : View.GONE);
+        View openButton = findViewById(openButtonId);
+        if (openButton instanceof Button && !isBlank(text)) {
+            ((Button) openButton).setText(text);
+        }
+        View controlButton = findViewById(controlButtonId);
+        if (controlButton != null) {
+            controlButton.setVisibility(visible && component != null && component.hasControlEntry()
+                ? View.VISIBLE
+                : View.GONE);
+        }
     }
 
     private void setFallbackNavigationVisible(boolean visible) {
-        int visibility = visible ? View.VISIBLE : View.GONE;
+        // Built-in entries are the app shell fallback and must stay available even
+        // when components.d is present. Dynamic registry entries only append below.
+        int visibility = View.VISIBLE;
         int[] fallbackButtonIds = new int[] {
+            R.id.rowNavHermes,
+            R.id.rowNavAi,
+            R.id.rowNavSmallPhone,
+            R.id.rowNavControlledBrowser,
             R.id.buttonNavHome,
-            R.id.buttonNavAi,
-            R.id.buttonNavSmallPhone,
-            R.id.buttonNavControlledBrowser,
+            R.id.buttonNavServiceControl,
             R.id.buttonNavManual,
             R.id.buttonNavOpenCode,
             R.id.buttonNavDeepSeek,
@@ -305,19 +442,57 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
     }
 
+    private void renderDynamicQuickNavigation() {
+        if (dynamicQuickNavView == null) {
+            return;
+        }
+        dynamicQuickNavView.removeAllViews();
+        boolean hasQuickEntry = false;
+        for (OpenHouseComponent component : dynamicComponents) {
+            if (!isComponentVisible(component)
+                || isBuiltinNavigationComponent(component)
+                || (!component.favorite && !component.home)
+                || !component.hasEntry()) {
+                continue;
+            }
+            hasQuickEntry = true;
+            addComponentNavButton(dynamicQuickNavView, component);
+        }
+        dynamicQuickNavView.setVisibility(hasQuickEntry ? View.VISIBLE : View.GONE);
+    }
+
     private void renderDynamicNavigation() {
         if (dynamicNavView == null) {
             return;
         }
         dynamicNavView.removeAllViews();
-        if (dynamicComponents.isEmpty()) {
+        boolean hasVisibleDynamicComponent = false;
+        for (OpenHouseComponent component : dynamicComponents) {
+            if (!isComponentVisible(component)) {
+                continue;
+            }
+            if (!isBuiltinNavigationComponent(component)) {
+                hasVisibleDynamicComponent = true;
+            }
+        }
+        if (!hasVisibleDynamicComponent) {
             dynamicNavView.setVisibility(View.GONE);
             return;
         }
 
         dynamicNavView.setVisibility(View.VISIBLE);
+        addDynamicSectionTitle("扩展应用");
+        for (OpenHouseComponent component : dynamicComponents) {
+            if (!isComponentVisible(component) || isBuiltinNavigationComponent(component)) {
+                continue;
+            }
+            addComponentNavButton(dynamicNavView, component);
+        }
+    }
+
+    private void addDynamicSectionTitle(String text) {
         TextView title = new TextView(this);
-        title.setText("扩展应用");
+        title.setText(text);
         title.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
         title.setTextSize(12);
         LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
@@ -325,49 +500,50 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             LinearLayout.LayoutParams.WRAP_CONTENT);
         titleParams.setMargins(0, dp(14), 0, 0);
         dynamicNavView.addView(title, titleParams);
+    }
 
-        for (OpenHouseComponent component : dynamicComponents) {
-            if (component.hasEntry() && component.hasControlEntry()) {
-                LinearLayout row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
+    private void addComponentNavButton(LinearLayout parent, OpenHouseComponent component) {
+        if (component.hasEntry() && component.hasControlEntry()) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
 
-                Button openButton = new Button(this);
-                openButton.setText(component.title);
-                openButton.setAllCaps(false);
-                openButton.setOnClickListener(v -> openComponent(component));
-                row.addView(openButton, new LinearLayout.LayoutParams(0, dp(52), 1));
+            Button openButton = new Button(this);
+            openButton.setText(component.title);
+            openButton.setAllCaps(false);
+            openButton.setOnClickListener(v -> openComponent(component));
+            row.addView(openButton, new LinearLayout.LayoutParams(0, dp(52), 1));
 
-                Button controlButton = compactButton(
-                    isBlank(component.controlTitle) ? "控制" : component.controlTitle,
-                    v -> openComponentControl(component),
-                    true);
-                LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(dp(68), dp(52));
-                controlParams.setMargins(dp(8), 0, 0, 0);
-                row.addView(controlButton, controlParams);
+            Button controlButton = compactButton(
+                isBlank(component.controlTitle) ? "控制" : component.controlTitle,
+                v -> openComponentControl(component),
+                true);
+            LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(dp(68), dp(52));
+            controlParams.setMargins(dp(8), 0, 0, 0);
+            row.addView(controlButton, controlParams);
 
-                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-                rowParams.setMargins(0, dp(8), 0, 0);
-                dynamicNavView.addView(row, rowParams);
-            } else {
-                Button button = new Button(this);
-                button.setText(component.hasEntry() ? component.title : component.title + " 控制");
-                button.setAllCaps(false);
-                button.setOnClickListener(v -> {
-                    if (component.hasEntry()) {
-                        openComponent(component);
-                    } else {
-                        openComponentControl(component);
-                    }
-                });
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(52));
-                params.setMargins(0, dp(8), 0, 0);
-                dynamicNavView.addView(button, params);
-            }
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+            rowParams.setMargins(0, dp(8), 0, 0);
+            parent.addView(row, rowParams);
+            return;
         }
+
+        Button button = new Button(this);
+        button.setText(component.hasEntry() ? component.title : component.title + " 控制");
+        button.setAllCaps(false);
+        button.setOnClickListener(v -> {
+            if (component.hasEntry()) {
+                openComponent(component);
+            } else {
+                openComponentControl(component);
+            }
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(52));
+        params.setMargins(0, dp(8), 0, 0);
+        parent.addView(button, params);
     }
 
     private void selectPage(String page) {
@@ -377,6 +553,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         currentPage = page;
         drawerLayout.closeDrawer(GravityCompat.START);
         renderPage();
+        updateHomePreferenceViews();
     }
 
     private void renderPage() {
@@ -395,16 +572,20 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
 
         switch (currentPage) {
+            case PAGE_HERMES:
+                setHeader(getHermesTitle(), getHermesSubtitle("默认 AI 伙伴"));
+                renderHermesPage();
+                break;
             case PAGE_AI:
-                setHeader("AI", "ClaudeCodeUI / CloudCLI");
+                setHeader(getCcCodexTitle(), getCcCodexSubtitle("Claude Code / Codex 网页工作台"));
                 renderAiPage();
                 break;
             case PAGE_SMALLPHONE:
-                setHeader("SmallPhone", "小手机页面和运行栈修复");
+                setHeader(getSmallPhoneTitle(), getSmallPhoneSubtitle("小手机页面和运行栈修复"));
                 renderSmallPhonePage();
                 break;
             case PAGE_CONTROLLED_BROWSER:
-                setHeader("受控浏览器", "多标签，可由 Termux 命令控制");
+                setHeader(getControlledBrowserTitle(), getControlledBrowserSubtitle("多标签，可由 Termux 命令控制"));
                 renderControlledBrowserPage();
                 break;
             case PAGE_MANUAL:
@@ -467,8 +648,193 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void setHeader(String title, String subtitle) {
-        pageTitleView.setText(title);
-        pageSubtitleView.setText(subtitle);
+        if (pageTitleView != null) {
+            pageTitleView.setText(title);
+        }
+        if (pageSubtitleView != null) {
+            pageSubtitleView.setText(subtitle);
+        }
+        updateTopActionState();
+    }
+
+    private void updateTopActionState() {
+        String browserUrl = getCurrentBrowserUrl();
+        if (copyCurrentButton != null) {
+            copyCurrentButton.setEnabled(!isBlank(browserUrl) || !isBlank(getCurrentCopyText()));
+        }
+        if (openCurrentBrowserButton != null) {
+            openCurrentBrowserButton.setEnabled(!isBlank(browserUrl));
+        }
+        if (openCurrentControlButton != null) {
+            openCurrentControlButton.setEnabled(true);
+        }
+        if (refreshCurrentButton != null) {
+            refreshCurrentButton.setEnabled(true);
+        }
+    }
+
+    private void copyCurrentTarget() {
+        String label = getCurrentDisplayTitle();
+        String text = getCurrentCopyText();
+        if (isBlank(text)) {
+            Toast.makeText(this, "当前页面没有可复制内容。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        copyText(isBlank(label) ? "当前页面" : label, text);
+    }
+
+    private void openCurrentTargetInBrowser() {
+        String browserUrl = getCurrentBrowserUrl();
+        if (isBlank(browserUrl)) {
+            Toast.makeText(this, "当前页面没有浏览器地址。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        openUrl(browserUrl);
+    }
+
+    private void openCurrentControl() {
+        OpenHouseComponent component = getCurrentControlComponent();
+        if (component != null && component.hasControlEntry()) {
+            openComponentControl(component);
+            return;
+        }
+        if (PAGE_AI.equals(currentPage)) {
+            openCcCodexControlOrToggle();
+            return;
+        }
+        if (PAGE_HERMES.equals(currentPage)) {
+            openHermesControl();
+            return;
+        }
+        openAllServiceControl();
+    }
+
+    private void refreshCurrentTarget() {
+        if (PAGE_HERMES.equals(currentPage)) {
+            reloadHermesWebView();
+            return;
+        }
+        if (PAGE_AI.equals(currentPage)) {
+            reloadCloudCliWebView();
+            return;
+        }
+        if (PAGE_SMALLPHONE.equals(currentPage)) {
+            OpenHouseComponent smallPhoneComponent = findSmallPhoneComponent();
+            if (smallPhoneComponent != null && smallPhoneComponent.entryType == OpenHouseComponent.EntryType.WEBVIEW) {
+                reloadDynamicWebView();
+            } else if (smallPhoneController != null) {
+                smallPhoneController.onResume(true);
+            } else {
+                renderPage();
+            }
+            return;
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(currentPage)) {
+            OpenHouseComponent browserComponent = findControlledBrowserComponent();
+            if (browserComponent != null && browserComponent.entryType == OpenHouseComponent.EntryType.WEBVIEW) {
+                reloadDynamicWebView();
+            } else if (controlledBrowserView != null) {
+                controlledBrowserView.onHostResume();
+            } else {
+                renderPage();
+            }
+            return;
+        }
+        if (isComponentPage(currentPage)) {
+            reloadDynamicWebView();
+            return;
+        }
+        renderPage();
+    }
+
+    private String getCurrentBrowserUrl() {
+        if (PAGE_HERMES.equals(currentPage)) {
+            return getHermesUrl();
+        }
+        if (PAGE_AI.equals(currentPage)) {
+            return getCcCodexUrl();
+        }
+        if (PAGE_SMALLPHONE.equals(currentPage)) {
+            OpenHouseComponent component = findSmallPhoneComponent();
+            if (component != null
+                && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+                && !isBlank(component.url)) {
+                return component.url;
+            }
+            return null;
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(currentPage)) {
+            OpenHouseComponent component = findControlledBrowserComponent();
+            if (component != null
+                && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+                && !isBlank(component.url)) {
+                return component.url;
+            }
+            return null;
+        }
+        if (PAGE_OPENCODE.equals(currentPage)) {
+            return lastOpenCodeUrl;
+        }
+        if (PAGE_DEEPSEEK.equals(currentPage)) {
+            return getString(R.string.openhouse_deepseek_url);
+        }
+        if (isComponentPage(currentPage)) {
+            OpenHouseComponent component = findDynamicComponent(extractComponentId(currentPage));
+            if (component != null
+                && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+                && !isBlank(component.url)) {
+                return component.url;
+            }
+        }
+        return null;
+    }
+
+    private String getCurrentCopyText() {
+        String browserUrl = getCurrentBrowserUrl();
+        if (!isBlank(browserUrl)) {
+            return browserUrl;
+        }
+        String title = getCurrentDisplayTitle();
+        String subtitle = pageSubtitleView == null ? "" : pageSubtitleView.getText().toString();
+        if (isBlank(title)) {
+            return subtitle;
+        }
+        if (isBlank(subtitle)) {
+            return title;
+        }
+        return title + "\n" + subtitle;
+    }
+
+    private String getCurrentDisplayTitle() {
+        if (pageTitleView != null && pageTitleView.getText() != null && !isBlank(pageTitleView.getText().toString())) {
+            return pageTitleView.getText().toString();
+        }
+        return getHomeDisplayTitle(currentPage);
+    }
+
+    private OpenHouseComponent getCurrentControlComponent() {
+        if (PAGE_HERMES.equals(currentPage)) {
+            return findHermesComponent();
+        }
+        if (PAGE_AI.equals(currentPage)) {
+            return findCcCodexComponent();
+        }
+        if (PAGE_SMALLPHONE.equals(currentPage)) {
+            return findSmallPhoneComponent();
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(currentPage)) {
+            return findControlledBrowserComponent();
+        }
+        if (isComponentPage(currentPage)) {
+            return findDynamicComponent(extractComponentId(currentPage));
+        }
+        return null;
+    }
+
+    private boolean isCurrentDynamicWebComponent(OpenHouseComponent component) {
+        return component != null
+            && dynamicWebComponent != null
+            && component.id.equals(dynamicWebComponent.id);
     }
 
     private void showScrollContent() {
@@ -496,7 +862,177 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
     }
 
+    private void renderHermesPage() {
+        showEmbeddedContent();
+        if (embeddedContentView == null) {
+            return;
+        }
+        String hermesUrl = getHermesUrl();
+        if (hermesPageView == null || !hermesUrl.equals(renderedHermesUrl)) {
+            if (hermesWebView != null) {
+                hermesWebView.destroy();
+                hermesWebView = null;
+            }
+            hermesPageView = createHermesPageView();
+            renderedHermesUrl = hermesUrl;
+        }
+        attachEmbeddedView(hermesPageView);
+        if (hermesWebView != null) {
+            hermesWebView.onResume();
+            if (hermesWebView.getUrl() == null) {
+                reloadHermesWebView();
+            }
+        }
+    }
+
+    private LinearLayout createHermesPageView() {
+        String hermesUrl = getHermesUrl();
+        String hermesTitle = getHermesTitle();
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
+        hermesStatusView = new TextView(this);
+        hermesStatusView.setText(hermesTitle + " 地址：" + hermesUrl);
+        hermesStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        hermesStatusView.setTextSize(12);
+        hermesStatusView.setPadding(dp(12), dp(6), dp(12), dp(6));
+        hermesStatusView.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
+        page.addView(hermesStatusView, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        FrameLayout browserHost = new FrameLayout(this);
+        hermesWebView = new WebView(this);
+        configureHermesWebView(hermesWebView);
+        browserHost.addView(hermesWebView, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+
+        hermesFallbackView = createHermesFallbackView();
+        hermesFallbackView.setVisibility(View.GONE);
+        browserHost.addView(hermesFallbackView, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+        page.addView(browserHost, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1));
+        return page;
+    }
+
+    private LinearLayout createHermesFallbackView() {
+        String hermesUrl = getHermesUrl();
+        String hermesTitle = getHermesTitle();
+        LinearLayout fallback = new LinearLayout(this);
+        fallback.setOrientation(LinearLayout.VERTICAL);
+        fallback.setGravity(Gravity.CENTER);
+        fallback.setPadding(dp(22), dp(22), dp(22), dp(22));
+        fallback.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
+        TextView title = new TextView(this);
+        title.setText(hermesTitle + " 未连接");
+        title.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        title.setTextSize(20);
+        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
+        fallback.addView(title);
+
+        TextView body = new TextView(this);
+        body.setText(hermesTitle + " 是默认首页。没有连接到 " + hermesUrl + " 时，可以先进入控制页启动或修复服务。");
+        body.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        body.setTextSize(14);
+        body.setGravity(Gravity.CENTER);
+        body.setLineSpacing(dp(2), 1.0f);
+        LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        bodyParams.setMargins(0, dp(10), 0, dp(6));
+        fallback.addView(body, bodyParams);
+
+        addButtonRow(fallback,
+            compactButton("服务控制", v -> openHermesControl(), true),
+            compactButton("刷新", v -> reloadHermesWebView(), true));
+        fallback.addView(button("进入安装引导", v -> openInstallGuide()));
+        return fallback;
+    }
+
+    private void configureHermesWebView(WebView webView) {
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                hermesLoadFailed = false;
+                setHermesFallbackVisible(false);
+                setHermesStatus("正在连接 " + getHermesTitle() + "：" + getHermesUrl());
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (!hermesLoadFailed) {
+                    setHermesFallbackVisible(false);
+                    setHermesStatus(getHermesTitle() + " 已连接：" + getHermesUrl());
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request != null && request.isForMainFrame()) {
+                    showHermesUnavailable();
+                }
+            }
+
+            @SuppressWarnings("deprecation")
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                showHermesUnavailable();
+            }
+        });
+    }
+
+    private void reloadHermesWebView() {
+        hermesLoadFailed = false;
+        setHermesFallbackVisible(false);
+        String hermesUrl = getHermesUrl();
+        setHermesStatus("正在刷新 " + getHermesTitle() + "：" + hermesUrl);
+        if (hermesWebView != null) {
+            hermesWebView.loadUrl(hermesUrl);
+        }
+    }
+
+    private void showHermesUnavailable() {
+        hermesLoadFailed = true;
+        setHermesStatus(getHermesTitle() + " 未连接：" + getHermesUrl());
+        setHermesFallbackVisible(true);
+    }
+
+    private void setHermesFallbackVisible(boolean visible) {
+        if (hermesFallbackView != null) {
+            hermesFallbackView.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void setHermesStatus(String text) {
+        if (hermesStatusView != null) {
+            hermesStatusView.setText(text);
+        }
+    }
+
     private void renderSmallPhonePage() {
+        OpenHouseComponent component = findSmallPhoneComponent();
+        if (component != null
+            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+            && !isBlank(component.url)) {
+            renderDynamicWebViewPage(component);
+            return;
+        }
         showEmbeddedContent();
         if (embeddedContentView == null) {
             return;
@@ -539,8 +1075,14 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (embeddedContentView == null) {
             return;
         }
-        if (cloudCliPageView == null) {
+        String ccCodexUrl = getCcCodexUrl();
+        if (cloudCliPageView == null || !ccCodexUrl.equals(renderedCloudCliUrl)) {
+            if (cloudCliWebView != null) {
+                cloudCliWebView.destroy();
+                cloudCliWebView = null;
+            }
             cloudCliPageView = createCloudCliPageView();
+            renderedCloudCliUrl = ccCodexUrl;
         }
         attachEmbeddedView(cloudCliPageView);
         if (cloudCliWebView != null) {
@@ -552,39 +1094,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private LinearLayout createCloudCliPageView() {
+        String ccCodexUrl = getCcCodexUrl();
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
-
-        LinearLayout toolbar = new LinearLayout(this);
-        toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(8), dp(6), dp(8), dp(6));
-        toolbar.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
-
-        Button menuButton = compactButton("菜单", v -> drawerLayout.openDrawer(GravityCompat.START), true);
-        toolbar.addView(menuButton, new LinearLayout.LayoutParams(dp(60), dp(42)));
-
-        TextView addressView = new TextView(this);
-        addressView.setText(cloudCliUrl);
-        addressView.setSingleLine(true);
-        addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        addressView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
-        addressView.setTextSize(12);
-        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-        addressParams.setMargins(dp(8), 0, dp(8), 0);
-        toolbar.addView(addressView, addressParams);
-
-        Button controlButton = compactButton("控制", v -> toggleCloudCliControls(), true);
-        toolbar.addView(controlButton, new LinearLayout.LayoutParams(dp(64), dp(42)));
-
-        Button refreshButton = compactButton("刷新", v -> reloadCloudCliWebView(), true);
-        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(dp(64), dp(42));
-        refreshParams.setMargins(dp(8), 0, 0, 0);
-        toolbar.addView(refreshButton, refreshParams);
-        page.addView(toolbar, new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT));
 
         cloudCliControlPanel = createCloudCliControlPanel();
         cloudCliControlPanel.setVisibility(cloudCliControlsVisible ? View.VISIBLE : View.GONE);
@@ -612,13 +1125,15 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private LinearLayout createCloudCliControlPanel() {
+        String ccCodexTitle = getCcCodexTitle();
+        String ccCodexUrl = getCcCodexUrl();
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(12));
         panel.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
 
         cloudCliStatusView = new TextView(this);
-        cloudCliStatusView.setText("CloudCLI 地址：" + cloudCliUrl);
+        cloudCliStatusView.setText(ccCodexTitle + " 地址：" + ccCodexUrl);
         cloudCliStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
         cloudCliStatusView.setTextSize(13);
         panel.addView(cloudCliStatusView);
@@ -630,12 +1145,14 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             compactButton("停止", v -> runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action.STOP_CLAUDE_CODE_UI), true),
             compactButton("重启", v -> runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action.RESTART_CLAUDE_CODE_UI), true));
         addButtonRow(panel,
-            compactButton("复制地址", v -> copyText("CloudCLI 地址", cloudCliUrl), true),
+            compactButton("复制地址", v -> copyText(getCcCodexTitle() + " 地址", getCcCodexUrl()), true),
             compactButton("刷新", v -> reloadCloudCliWebView(), true));
         return panel;
     }
 
     private LinearLayout createCloudCliFallbackView() {
+        String ccCodexTitle = getCcCodexTitle();
+        String ccCodexUrl = getCcCodexUrl();
         LinearLayout fallback = new LinearLayout(this);
         fallback.setOrientation(LinearLayout.VERTICAL);
         fallback.setGravity(Gravity.CENTER);
@@ -643,14 +1160,14 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         fallback.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
 
         TextView title = new TextView(this);
-        title.setText("CloudCLI 未连接");
+        title.setText(ccCodexTitle + " 未连接");
         title.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
         title.setTextSize(20);
         title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
         fallback.addView(title);
 
         TextView body = new TextView(this);
-        body.setText("没有连接到 " + cloudCliUrl + "。可以先启动 CloudCLI，启动后本页会继续使用内置浏览器打开。");
+        body.setText("没有连接到 " + ccCodexUrl + "。可以先启动 " + ccCodexTitle + "，启动后本页会继续使用内置浏览器打开。");
         body.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
         body.setTextSize(14);
         body.setGravity(Gravity.CENTER);
@@ -689,14 +1206,14 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 cloudCliLoadFailed = false;
                 setCloudCliFallbackVisible(false);
-                setCloudCliStatus("正在连接 CloudCLI：" + cloudCliUrl);
+                setCloudCliStatus("正在连接 " + getCcCodexTitle() + "：" + getCcCodexUrl());
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 if (!cloudCliLoadFailed) {
                     setCloudCliFallbackVisible(false);
-                    setCloudCliStatus("CloudCLI 已连接：" + cloudCliUrl);
+                    setCloudCliStatus(getCcCodexTitle() + " 已连接：" + getCcCodexUrl());
                 }
             }
 
@@ -722,18 +1239,28 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
     }
 
+    private void openCcCodexControlOrToggle() {
+        OpenHouseComponent ccCodexComponent = findCcCodexComponent();
+        if (ccCodexComponent != null && ccCodexComponent.hasControlEntry()) {
+            openComponentControl(ccCodexComponent);
+            return;
+        }
+        toggleCloudCliControls();
+    }
+
     private void reloadCloudCliWebView() {
         cloudCliLoadFailed = false;
         setCloudCliFallbackVisible(false);
-        setCloudCliStatus("正在刷新 CloudCLI：" + cloudCliUrl);
+        String ccCodexUrl = getCcCodexUrl();
+        setCloudCliStatus("正在刷新 " + getCcCodexTitle() + "：" + ccCodexUrl);
         if (cloudCliWebView != null) {
-            cloudCliWebView.loadUrl(cloudCliUrl);
+            cloudCliWebView.loadUrl(ccCodexUrl);
         }
     }
 
     private void showCloudCliUnavailable() {
         cloudCliLoadFailed = true;
-        setCloudCliStatus("CloudCLI 未连接：" + cloudCliUrl);
+        setCloudCliStatus(getCcCodexTitle() + " 未连接：" + getCcCodexUrl());
         setCloudCliFallbackVisible(true);
     }
 
@@ -750,6 +1277,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void renderControlledBrowserPage() {
+        OpenHouseComponent component = findControlledBrowserComponent();
+        if (component != null
+            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+            && !isBlank(component.url)) {
+            renderDynamicWebViewPage(component);
+            return;
+        }
         showEmbeddedContent();
         if (embeddedContentView == null) {
             return;
@@ -793,43 +1327,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
-
-        LinearLayout toolbar = new LinearLayout(this);
-        toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(8), dp(6), dp(8), dp(6));
-        toolbar.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
-
-        Button menuButton = compactButton("菜单", v -> drawerLayout.openDrawer(GravityCompat.START), true);
-        toolbar.addView(menuButton, new LinearLayout.LayoutParams(dp(60), dp(42)));
-
-        TextView addressView = new TextView(this);
-        addressView.setText(component.url);
-        addressView.setSingleLine(true);
-        addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        addressView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
-        addressView.setTextSize(12);
-        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-        addressParams.setMargins(dp(8), 0, dp(8), 0);
-        toolbar.addView(addressView, addressParams);
-
-        Button copyButton = compactButton("复制", v -> copyText(component.title, component.url), true);
-        toolbar.addView(copyButton, new LinearLayout.LayoutParams(dp(58), dp(42)));
-
-        if (component.hasControlEntry()) {
-            Button controlButton = compactButton("控制", v -> openComponentControl(component), true);
-            LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(dp(58), dp(42));
-            controlParams.setMargins(dp(8), 0, 0, 0);
-            toolbar.addView(controlButton, controlParams);
-        }
-
-        Button refreshButton = compactButton("刷新", v -> reloadDynamicWebView(), true);
-        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(dp(58), dp(42));
-        refreshParams.setMargins(dp(8), 0, 0, 0);
-        toolbar.addView(refreshButton, refreshParams);
-        page.addView(toolbar, new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT));
 
         dynamicWebStatusView = new TextView(this);
         dynamicWebStatusView.setText(component.title + " 地址：" + component.url);
@@ -990,13 +1487,32 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void pauseCurrentEmbeddedPage() {
-        if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
+        if (PAGE_HERMES.equals(currentPage) && hermesWebView != null) {
+            hermesWebView.onPause();
+        } else if (PAGE_SMALLPHONE.equals(currentPage)
+            && isCurrentDynamicWebComponent(findSmallPhoneComponent())
+            && dynamicWebView != null) {
+            dynamicWebView.onPause();
+        } else if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
             smallPhoneController.onPause();
         } else if (PAGE_AI.equals(currentPage) && cloudCliWebView != null) {
             cloudCliWebView.onPause();
+        } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
+            && isCurrentDynamicWebComponent(findControlledBrowserComponent())
+            && dynamicWebView != null) {
+            dynamicWebView.onPause();
         } else if (isComponentPage(currentPage) && dynamicWebView != null) {
             dynamicWebView.onPause();
         }
+    }
+
+    private void openHermesControl() {
+        OpenHouseComponent hermesComponent = findHermesComponent();
+        if (hermesComponent != null && hermesComponent.hasControlEntry()) {
+            openComponentControl(hermesComponent);
+            return;
+        }
+        openAllServiceControl();
     }
 
     private void openComponent(OpenHouseComponent component) {
@@ -1025,6 +1541,38 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
     }
 
+    private void openBuiltinComponentOrFallback(OpenHouseComponent component, String fallbackPage) {
+        if (openComponentEntryIfAvailable(component)) {
+            return;
+        }
+        selectPage(fallbackPage);
+    }
+
+    private boolean openComponentEntryIfAvailable(OpenHouseComponent component) {
+        if (component == null || !component.hasEntry()) {
+            return false;
+        }
+        if (component.entryType == OpenHouseComponent.EntryType.WEBVIEW) {
+            if (isBlank(component.url)) {
+                return false;
+            }
+            openComponent(component);
+            return true;
+        }
+        if (component.entryType == OpenHouseComponent.EntryType.NATIVE_PAGE) {
+            if (isBlank(resolveNativePage(component.nativePage))) {
+                return false;
+            }
+            openComponent(component);
+            return true;
+        }
+        if (component.entryType == OpenHouseComponent.EntryType.TERMINAL) {
+            openComponent(component);
+            return true;
+        }
+        return false;
+    }
+
     private void openComponentControl(OpenHouseComponent component) {
         if (component == null || !component.hasControlEntry()) {
             openMaintenanceCenter();
@@ -1034,6 +1582,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         intent.putExtra(EXTRA_SERVICE_CONTROL_MODE, SERVICE_CONTROL_MODE_COMPONENT);
         intent.putExtra(EXTRA_SERVICE_CONTROL_COMPONENT_ID, component.id);
         intent.putExtra(EXTRA_SERVICE_CONTROL_TITLE, component.title);
+        intent.putExtra(EXTRA_SERVICE_CONTROL_URL, firstNonBlank(component.url, getCurrentBrowserUrl()));
         intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_NAMES, joinValues(component.serviceNames));
         intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_REFS, joinValues(component.serviceRefs));
         if (drawerLayout != null) {
@@ -1059,7 +1608,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         switch (normalized) {
             case PAGE_HOME:
                 return PAGE_HOME;
+            case PAGE_HERMES:
+            case "hermes-webui":
+                return PAGE_HERMES;
             case PAGE_AI:
+            case "cc-codex":
+            case "cloudcli":
+            case "claude-code-ui":
                 return PAGE_AI;
             case PAGE_SMALLPHONE:
                 return PAGE_SMALLPHONE;
@@ -1113,6 +1668,262 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return null;
     }
 
+    private boolean isComponentVisible(OpenHouseComponent component) {
+        return component == null || component.visible;
+    }
+
+    private OpenHouseComponent findBuiltinComponent(String homeTarget) {
+        String normalized = normalizeId(homeTarget);
+        if (HERMES_SERVICE_NAME.equals(normalized) || PAGE_HERMES.equals(normalized)) {
+            return findHermesComponent();
+        }
+        if (CC_CODEX_SERVICE_NAME.equals(normalized)
+            || "cc-codex".equals(normalized)
+            || "claude-code-ui".equals(normalized)
+            || "claudecodeui".equals(normalized)
+            || PAGE_AI.equals(normalized)) {
+            return findCcCodexComponent();
+        }
+        if (SMALLPHONE_HOME_TARGET.equals(normalized)
+            || PAGE_SMALLPHONE.equals(normalized)
+            || "smallphone-core".equals(normalized)) {
+            return findSmallPhoneComponent();
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(normalized)) {
+            return findControlledBrowserComponent();
+        }
+        return null;
+    }
+
+    private OpenHouseComponent findHermesComponent() {
+        for (OpenHouseComponent component : dynamicComponents) {
+            if (component == null) {
+                continue;
+            }
+            if (isHermesComponent(component)) {
+                return component;
+            }
+        }
+        return null;
+    }
+
+    private OpenHouseComponent findCcCodexComponent() {
+        for (OpenHouseComponent component : dynamicComponents) {
+            if (component == null) {
+                continue;
+            }
+            if (isCcCodexComponent(component)) {
+                return component;
+            }
+        }
+        return null;
+    }
+
+    private OpenHouseComponent findSmallPhoneComponent() {
+        for (OpenHouseComponent component : dynamicComponents) {
+            if (component == null) {
+                continue;
+            }
+            if (isSmallPhoneComponent(component)) {
+                return component;
+            }
+        }
+        return null;
+    }
+
+    private OpenHouseComponent findControlledBrowserComponent() {
+        for (OpenHouseComponent component : dynamicComponents) {
+            if (component == null) {
+                continue;
+            }
+            if (isControlledBrowserComponent(component)) {
+                return component;
+            }
+        }
+        return null;
+    }
+
+    private boolean isBuiltinNavigationComponent(OpenHouseComponent component) {
+        if (component == null) {
+            return false;
+        }
+        return isHermesComponent(component)
+            || isCcCodexComponent(component)
+            || isSmallPhoneComponent(component)
+            || isControlledBrowserComponent(component)
+            || isNativeBuiltinComponent(component);
+    }
+
+    private boolean isHermesComponent(OpenHouseComponent component) {
+        if (component == null) {
+            return false;
+        }
+        String id = normalizeId(component.id);
+        if (PAGE_HERMES.equals(id) || HERMES_SERVICE_NAME.equals(id)) {
+            return true;
+        }
+        for (String name : component.serviceNames) {
+            if (HERMES_SERVICE_NAME.equals(normalizeId(name))) {
+                return true;
+            }
+        }
+        return sameUrl(component.url, HERMES_URL);
+    }
+
+    private boolean isCcCodexComponent(OpenHouseComponent component) {
+        if (component == null) {
+            return false;
+        }
+        String id = normalizeId(component.id);
+        if ("cc-codex".equals(id)
+            || "cloudcli".equals(id)
+            || "claude-code-ui".equals(id)
+            || "claudecodeui".equals(id)) {
+            return true;
+        }
+        return sameUrl(component.url, cloudCliUrl);
+    }
+
+    private boolean isSmallPhoneComponent(OpenHouseComponent component) {
+        if (component == null) {
+            return false;
+        }
+        String id = normalizeId(component.id);
+        if (SMALLPHONE_HOME_TARGET.equals(id)
+            || PAGE_SMALLPHONE.equals(id)
+            || "smallphone-core".equals(id)) {
+            return true;
+        }
+        if (PAGE_SMALLPHONE.equals(resolveNativePage(component.nativePage))) {
+            return true;
+        }
+        for (String name : component.serviceNames) {
+            if ("smallphone-core".equals(normalizeId(name))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isControlledBrowserComponent(OpenHouseComponent component) {
+        if (component == null) {
+            return false;
+        }
+        String id = normalizeId(component.id);
+        if (PAGE_CONTROLLED_BROWSER.equals(id)) {
+            return true;
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(resolveNativePage(component.nativePage))) {
+            return true;
+        }
+        for (String name : component.serviceNames) {
+            if (PAGE_CONTROLLED_BROWSER.equals(normalizeId(name))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String getHermesTitle() {
+        OpenHouseComponent component = findHermesComponent();
+        return componentTitleOrDefault(component, "Hermes");
+    }
+
+    private String getHermesSubtitle(String fallback) {
+        return componentSubtitleOrDefault(findHermesComponent(), fallback);
+    }
+
+    private String getHermesUrl() {
+        OpenHouseComponent component = findHermesComponent();
+        if (component != null
+            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+            && !isBlank(component.url)) {
+            return component.url;
+        }
+        return HERMES_URL;
+    }
+
+    private String getCcCodexTitle() {
+        OpenHouseComponent component = findCcCodexComponent();
+        return componentTitleOrDefault(component, CC_CODEX_TITLE);
+    }
+
+    private String getCcCodexSubtitle(String fallback) {
+        return componentSubtitleOrDefault(findCcCodexComponent(), fallback);
+    }
+
+    private String getCcCodexUrl() {
+        OpenHouseComponent component = findCcCodexComponent();
+        if (component != null
+            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+            && !isBlank(component.url)) {
+            return component.url;
+        }
+        return cloudCliUrl;
+    }
+
+    private String getSmallPhoneTitle() {
+        return componentTitleOrDefault(findSmallPhoneComponent(), "SmallPhone");
+    }
+
+    private String getSmallPhoneSubtitle(String fallback) {
+        return componentSubtitleOrDefault(findSmallPhoneComponent(), fallback);
+    }
+
+    private String getControlledBrowserTitle() {
+        return componentTitleOrDefault(findControlledBrowserComponent(), "受控浏览器");
+    }
+
+    private String getControlledBrowserSubtitle(String fallback) {
+        return componentSubtitleOrDefault(findControlledBrowserComponent(), fallback);
+    }
+
+    private String componentTitleOrDefault(OpenHouseComponent component, String fallback) {
+        return component != null && !isBlank(component.title) ? component.title : fallback;
+    }
+
+    private String componentSubtitleOrDefault(OpenHouseComponent component, String fallback) {
+        return component != null && !isBlank(component.subtitle) ? component.subtitle : fallback;
+    }
+
+    private boolean isNativeBuiltinComponent(OpenHouseComponent component) {
+        if (component == null || component.entryType != OpenHouseComponent.EntryType.NATIVE_PAGE) {
+            return false;
+        }
+        return resolveNativePage(component.nativePage) != null;
+    }
+
+    private String normalizeId(String value) {
+        return isBlank(value) ? "" : value.trim().toLowerCase(java.util.Locale.US).replace('_', '-');
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (!isBlank(value)) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private boolean sameUrl(String left, String right) {
+        if (isBlank(left) || isBlank(right)) {
+            return false;
+        }
+        String normalizedLeft = left.trim();
+        String normalizedRight = right.trim();
+        if (normalizedLeft.endsWith("/") && !normalizedRight.endsWith("/")) {
+            normalizedLeft = normalizedLeft.substring(0, normalizedLeft.length() - 1);
+        }
+        if (normalizedRight.endsWith("/") && !normalizedLeft.endsWith("/")) {
+            normalizedRight = normalizedRight.substring(0, normalizedRight.length() - 1);
+        }
+        return normalizedLeft.equalsIgnoreCase(normalizedRight);
+    }
+
     private boolean handleOpenHouseIntent(Intent intent) {
         if (intent == null) {
             return false;
@@ -1135,12 +1946,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             selectPage(PAGE_CONTROLLED_BROWSER);
             return true;
         }
-        if (PAGE_SMALLPHONE.equals(requestedPage)) {
-            selectPage(PAGE_SMALLPHONE);
-            return true;
-        }
-        if (PAGE_AI.equals(requestedPage)) {
-            selectPage(PAGE_AI);
+        String resolvedPage = resolveNativePage(requestedPage);
+        if (!isBlank(resolvedPage)) {
+            selectPage(resolvedPage);
             return true;
         }
         return false;
@@ -1177,6 +1985,268 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return false;
     }
 
+    private void selectConfiguredHomePage() {
+        selectPage(getConfiguredHomePage());
+    }
+
+    private String getConfiguredHomePage() {
+        String configuredTarget = readConfiguredHomeTarget();
+        String configured = homeTargetToPage(configuredTarget);
+        if (isHomeCandidate(configured)) {
+            return configured;
+        }
+        configured = getOpenHouseHomePrefs().getString(PREF_HOME_PAGE, PAGE_HERMES);
+        if (isHomeCandidate(configured)) {
+            return configured;
+        }
+        return firstVisibleHomePage();
+    }
+
+    private String firstVisibleHomePage() {
+        if (isComponentVisible(findHermesComponent())) {
+            return PAGE_HERMES;
+        }
+        if (isComponentVisible(findSmallPhoneComponent())) {
+            return PAGE_SMALLPHONE;
+        }
+        if (isComponentVisible(findCcCodexComponent())) {
+            return PAGE_AI;
+        }
+        if (isComponentVisible(findControlledBrowserComponent())) {
+            return PAGE_CONTROLLED_BROWSER;
+        }
+        for (OpenHouseComponent component : dynamicComponents) {
+            if (component != null && component.hasEntry() && isComponentVisible(component)) {
+                if (component.entryType == OpenHouseComponent.EntryType.NATIVE_PAGE) {
+                    String page = resolveNativePage(component.nativePage);
+                    if (!isBlank(page)) {
+                        return page;
+                    }
+                }
+                return PAGE_COMPONENT_PREFIX + component.id;
+            }
+        }
+        return PAGE_HOME;
+    }
+
+    private SharedPreferences getOpenHouseHomePrefs() {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+    }
+
+    private void setCurrentPageAsHome() {
+        if (!isHomeCandidate(currentPage)) {
+            Toast.makeText(this, "当前页面不能设为首页。", Toast.LENGTH_SHORT).show();
+            updateHomePreferenceViews();
+            return;
+        }
+        setHomePage(currentPage);
+    }
+
+    private void setHomePage(String page) {
+        if (!isHomeCandidate(page)) {
+            Toast.makeText(this, "这个入口暂时不能设为首页。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String homeTarget = pageToHomeTarget(page);
+        boolean wroteUnifiedConfig = !isBlank(homeTarget) && writeConfiguredHomeTarget(homeTarget);
+        if (wroteUnifiedConfig) {
+            getOpenHouseHomePrefs().edit().remove(PREF_HOME_PAGE).apply();
+            refreshDynamicComponents();
+        } else {
+            getOpenHouseHomePrefs().edit().putString(PREF_HOME_PAGE, page).apply();
+            updateHomePreferenceViews();
+        }
+        String message = "首页已设为：" + getHomeDisplayTitle(page);
+        if (!wroteUnifiedConfig) {
+            message += "（已保存到本地兜底配置）";
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    private File getMenuOverridesFile() {
+        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, MENU_OVERRIDES_RELATIVE_PATH);
+    }
+
+    private String readConfiguredHomeTarget() {
+        if (dynamicRegistryResult != null && !isBlank(dynamicRegistryResult.homeTarget)) {
+            return dynamicRegistryResult.homeTarget;
+        }
+        File file = getMenuOverridesFile();
+        if (!file.isFile()) {
+            return null;
+        }
+        try {
+            JSONObject root = new JSONObject(readTextFile(file));
+            return firstNonBlank(
+                root.optString("homeTarget", ""),
+                root.optString("home_target", ""),
+                root.optString("defaultHome", ""),
+                root.optString("default_home", ""),
+                root.optString("home", ""));
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG,
+                "Unable to read menu overrides from " + file.getAbsolutePath(), e);
+            return null;
+        }
+    }
+
+    private boolean writeConfiguredHomeTarget(String homeTarget) {
+        File file = getMenuOverridesFile();
+        try {
+            File parent = file.getParentFile();
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs() && !parent.isDirectory()) {
+                return false;
+            }
+            JSONObject root = file.isFile()
+                ? new JSONObject(readTextFile(file))
+                : new JSONObject();
+            root.put("homeTarget", homeTarget);
+            writeTextFile(file, root.toString(2) + "\n");
+            return true;
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG,
+                "Unable to write menu overrides to " + file.getAbsolutePath(), e);
+            return false;
+        }
+    }
+
+    private String readTextFile(File file) throws Exception {
+        FileInputStream input = new FileInputStream(file);
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
+        } finally {
+            input.close();
+        }
+    }
+
+    private void writeTextFile(File file, String text) throws Exception {
+        FileOutputStream output = new FileOutputStream(file, false);
+        try {
+            output.write(text.getBytes(StandardCharsets.UTF_8));
+        } finally {
+            output.close();
+        }
+    }
+
+    private String homeTargetToPage(String homeTarget) {
+        String normalized = normalizeId(homeTarget);
+        if (isBlank(normalized)) {
+            return null;
+        }
+        if (HERMES_SERVICE_NAME.equals(normalized) || PAGE_HERMES.equals(normalized)) {
+            return isComponentVisible(findHermesComponent()) ? PAGE_HERMES : null;
+        }
+        if (CC_CODEX_SERVICE_NAME.equals(normalized)
+            || "cc-codex".equals(normalized)
+            || "claude-code-ui".equals(normalized)
+            || "claudecodeui".equals(normalized)
+            || PAGE_AI.equals(normalized)) {
+            return isComponentVisible(findCcCodexComponent()) ? PAGE_AI : null;
+        }
+        if (SMALLPHONE_HOME_TARGET.equals(normalized)
+            || PAGE_SMALLPHONE.equals(normalized)
+            || "smallphone-core".equals(normalized)) {
+            return isComponentVisible(findSmallPhoneComponent()) ? PAGE_SMALLPHONE : null;
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(normalized)) {
+            return isComponentVisible(findControlledBrowserComponent()) ? PAGE_CONTROLLED_BROWSER : null;
+        }
+        OpenHouseComponent builtin = findBuiltinComponent(normalized);
+        if (builtin != null && isComponentVisible(builtin)) {
+            String nativePage = resolveNativePage(builtin.nativePage);
+            if (!isBlank(nativePage)) {
+                return nativePage;
+            }
+            if (builtin.entryType == OpenHouseComponent.EntryType.WEBVIEW) {
+                return PAGE_COMPONENT_PREFIX + builtin.id;
+            }
+        }
+        OpenHouseComponent component = findDynamicComponent(normalized);
+        if (component != null && component.hasEntry() && isComponentVisible(component)) {
+            if (component.entryType == OpenHouseComponent.EntryType.NATIVE_PAGE) {
+                return resolveNativePage(component.nativePage);
+            }
+            return PAGE_COMPONENT_PREFIX + component.id;
+        }
+        return null;
+    }
+
+    private String pageToHomeTarget(String page) {
+        if (PAGE_HERMES.equals(page)) {
+            return HERMES_SERVICE_NAME;
+        }
+        if (PAGE_AI.equals(page)) {
+            return CC_CODEX_SERVICE_NAME;
+        }
+        if (PAGE_SMALLPHONE.equals(page)) {
+            return SMALLPHONE_HOME_TARGET;
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(page)) {
+            return PAGE_CONTROLLED_BROWSER;
+        }
+        if (isComponentPage(page)) {
+            return extractComponentId(page);
+        }
+        return null;
+    }
+
+    private boolean isHomeCandidate(String page) {
+        if (isBlank(page)) {
+            return false;
+        }
+        if (PAGE_HERMES.equals(page)
+            || PAGE_SMALLPHONE.equals(page)
+            || PAGE_AI.equals(page)
+            || PAGE_CONTROLLED_BROWSER.equals(page)) {
+            return isComponentVisible(findBuiltinComponent(page));
+        }
+        if (isComponentPage(page)) {
+            OpenHouseComponent component = findDynamicComponent(extractComponentId(page));
+            return component != null && component.hasEntry() && isComponentVisible(component);
+        }
+        return false;
+    }
+
+    private void updateHomePreferenceViews() {
+        String homePage = getConfiguredHomePage();
+        if (homeStatusView != null) {
+            homeStatusView.setText("当前首页：" + getHomeDisplayTitle(homePage));
+        }
+        if (setCurrentHomeButton != null) {
+            boolean canSet = isHomeCandidate(currentPage);
+            setCurrentHomeButton.setEnabled(canSet);
+            setCurrentHomeButton.setText(canSet && currentPage.equals(homePage) ? "已是首页" : "设当前页为首页");
+        }
+    }
+
+    private String getHomeDisplayTitle(String page) {
+        if (PAGE_HERMES.equals(page)) {
+            return getHermesTitle();
+        }
+        if (PAGE_SMALLPHONE.equals(page)) {
+            return getSmallPhoneTitle();
+        }
+        if (PAGE_AI.equals(page)) {
+            return getCcCodexTitle();
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(page)) {
+            return getControlledBrowserTitle();
+        }
+        if (isComponentPage(page)) {
+            OpenHouseComponent component = findDynamicComponent(extractComponentId(page));
+            if (component != null && !isBlank(component.title)) {
+                return component.title;
+            }
+        }
+        return getHermesTitle();
+    }
+
     private String joinValues(List<String> values) {
         if (values == null || values.isEmpty()) {
             return "";
@@ -1204,8 +2274,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addBody(panel, "这里保留主入口，具体内容请从左侧侧边栏进入：使用手册、OpenCode 控制、DeepSeek Key、权限获取、终端快捷键和高级设置。");
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
-            compactButton("打开 AI", v -> selectPage(PAGE_AI), true));
-        panel.addView(button("打开 SmallPhone", v -> openSmallPhone()));
+            compactButton("打开 " + getCcCodexTitle(),
+                v -> openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI),
+                true));
+        panel.addView(button("打开 " + getHermesTitle(),
+            v -> openBuiltinComponentOrFallback(findHermesComponent(), PAGE_HERMES)));
+        panel.addView(button("打开 " + getSmallPhoneTitle(), v -> openSmallPhone()));
         panel.addView(button("退出菜单，回到终端", v -> openTerminal(false)));
         addButtonRow(panel,
             compactButton("OpenCode 控制", v -> selectPage(PAGE_OPENCODE), true),
@@ -1215,7 +2289,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         LinearLayout quick = panel();
         addTitle(quick, "快速状态", 17);
         addStatusRow(quick, "OpenCode 默认地址", getOpenCodeUrl(openCodePort));
-        addStatusRow(quick, "CloudCLI 默认地址", cloudCliUrl);
+        addStatusRow(quick, getCcCodexTitle() + " 地址", getCcCodexUrl());
+        addStatusRow(quick, getHermesTitle() + " 地址", getHermesUrl());
         addStatusRow(quick, "OpenCode 目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
         addStatusRow(quick, "运行环境", "AI 工具安装在 Ubuntu /root");
         contentView.addView(quick);
@@ -1536,7 +2611,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             }
             runOnUiThread(() -> {
                 setCloudCliStatus(result.isSuccess()
-                    ? result.action.label + "完成：" + cloudCliUrl
+                    ? result.action.label + "完成：" + getCcCodexUrl()
                     : result.action.label + "失败，请查看维护日志。");
                 if (result.isSuccess()
                     && (action == OpenHouseMaintainerRunner.Action.START_CLAUDE_CODE_UI
@@ -1593,7 +2668,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void openSmallPhone() {
-        selectPage(PAGE_SMALLPHONE);
+        openBuiltinComponentOrFallback(findSmallPhoneComponent(), PAGE_SMALLPHONE);
     }
 
     private void openMaintenanceLog(String stageSlug, String stageLabel) {
@@ -1614,6 +2689,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void openUrl(String url) {
+        if (isBlank(url)) {
+            Toast.makeText(this, "没有可打开的浏览器地址。", Toast.LENGTH_SHORT).show();
+            return;
+        }
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             startActivity(intent);

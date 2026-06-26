@@ -151,9 +151,6 @@ required_stage_scripts() {
     entry-ubuntu)
       printf '%s\n' 70-configure-entry-ubuntu.sh
       ;;
-    node|install-node)
-      printf '%s\n' 38-install-node.sh
-      ;;
     opencode)
       printf '%s\n' 40-install-opencode.sh
       ;;
@@ -163,20 +160,21 @@ required_stage_scripts() {
     claude-code)
       printf '%s\n' 44-install-claude-code.sh
       ;;
-    claude-code-ui|cloudcli)
-      printf '%s\n' 45-install-claude-code-ui.sh
-      ;;
-    hermes|hermes-webui)
-      printf '%s\n' 47-install-hermes.sh
-      ;;
-    registry-sync|sync-registry)
-      printf '%s\n' 48-sync-openhouse-registry.sh
-      ;;
     reasonix)
       printf '%s\n' 46-install-reasonix.sh
       ;;
     components|runtime-components)
       printf '%s\n' 50-install-runtime-components.sh
+      ;;
+    registry-sync|sync-registry)
+      printf '%s\n' 48-sync-openhouse-registry.sh
+      ;;
+    sync-core-stack|post-apk-update|apk-update)
+      printf '%s\n' \
+        50-install-runtime-components.sh \
+        48-sync-openhouse-registry.sh \
+        60-start-smallphone.sh \
+        65-smallphone-status.sh
       ;;
     start|restart)
       printf '%s\n' \
@@ -189,7 +187,6 @@ required_stage_scripts() {
     repair)
       printf '%s\n' \
         50-install-runtime-components.sh \
-        47-install-hermes.sh \
         48-sync-openhouse-registry.sh \
         60-start-smallphone.sh \
         65-smallphone-status.sh
@@ -203,14 +200,11 @@ required_stage_scripts() {
         35-sync-docs.sh \
         30-update-ubuntu-packages.sh \
         70-configure-entry-ubuntu.sh \
-        38-install-node.sh \
         40-install-opencode.sh \
         42-install-codex.sh \
         44-install-claude-code.sh \
-        45-install-claude-code-ui.sh \
         46-install-reasonix.sh \
         50-install-runtime-components.sh \
-        47-install-hermes.sh \
         48-sync-openhouse-registry.sh \
         60-start-smallphone.sh \
         65-smallphone-status.sh
@@ -267,7 +261,9 @@ run_stage() {
   [ -f "$path" ] || die "缺少阶段脚本：$path"
   chmod +x "$path"
   log "开始：$name"
-  SMALLPHONEAI_ROOT="$root" bash "$path" "$@"
+  SMALLPHONEAI_ROOT="$root" \
+    SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
+    bash "$path" "$@"
   log "完成：$name"
 }
 
@@ -291,14 +287,11 @@ run_full_install() {
   run_stage 35-sync-docs.sh
   run_stage 30-update-ubuntu-packages.sh
   run_stage 70-configure-entry-ubuntu.sh
-  run_stage 38-install-node.sh
   run_stage 40-install-opencode.sh
   run_stage 42-install-codex.sh
   run_stage 44-install-claude-code.sh
-  run_stage 45-install-claude-code-ui.sh
   run_stage 46-install-reasonix.sh
   run_stage 50-install-runtime-components.sh
-  run_stage 47-install-hermes.sh
   run_stage 48-sync-openhouse-registry.sh
   run_stage 60-start-smallphone.sh
   run_machine_stage 65-smallphone-status.sh status
@@ -316,20 +309,18 @@ SmallPhoneAI Installer
 6. 只同步 SmallPhoneAI 文档
 7. 只更新 Ubuntu 软件包
 8. 设置默认进入 Ubuntu
-9. 只安装 Node.js 24 LTS
-10. 只安装 OpenCode
-11. 只安装 Codex
-12. 只安装 Claude Code
-13. 只安装 ClaudeCodeUI / CloudCLI
-14. 只安装 Reasonix
-15. 安装/注册 SmallPhone 运行组件
-16. 只安装/注册 Hermes
-17. 同步 OpenHouseAI registry
-18. 启动 SmallPhone 运行栈
-19. 修复 SmallPhone 运行栈
-20. 查看 App Shell hooks
-21. 只检查 Termux 环境
-22. 退出
+9. 只安装 OpenCode
+10. 只安装 Codex
+11. 只安装 Claude Code
+12. 只安装 Reasonix
+13. 安装/注册 SmallPhone 运行组件
+14. 同步 OpenHouseAI registry
+15. 启动 SmallPhone 运行栈
+16. 修复 SmallPhone 运行栈
+17. APK 更新后同步核心运行栈
+18. 查看 App Shell hooks
+19. 只检查 Termux 环境
+20. 退出
 EOF
 }
 
@@ -378,10 +369,6 @@ main() {
       run_stage 70-configure-entry-ubuntu.sh
       return
       ;;
-    node|install-node)
-      run_stage 38-install-node.sh
-      return
-      ;;
     opencode)
       run_stage 40-install-opencode.sh
       return
@@ -394,18 +381,6 @@ main() {
       run_stage 44-install-claude-code.sh
       return
       ;;
-    claude-code-ui|cloudcli)
-      run_stage 45-install-claude-code-ui.sh
-      return
-      ;;
-    hermes|hermes-webui)
-      run_stage 47-install-hermes.sh
-      return
-      ;;
-    registry-sync|sync-registry)
-      run_stage 48-sync-openhouse-registry.sh
-      return
-      ;;
     reasonix)
       run_stage 46-install-reasonix.sh
       return
@@ -414,14 +389,24 @@ main() {
       run_stage 50-install-runtime-components.sh
       return
       ;;
+    registry-sync|sync-registry)
+      run_stage 48-sync-openhouse-registry.sh
+      return
+      ;;
     start|restart)
+      run_stage 60-start-smallphone.sh
+      run_machine_stage 65-smallphone-status.sh status
+      return
+      ;;
+    sync-core-stack|post-apk-update|apk-update)
+      SMALLPHONEAI_FORCE_PAYLOAD_REFRESH=1 run_stage 50-install-runtime-components.sh
+      run_stage 48-sync-openhouse-registry.sh
       run_stage 60-start-smallphone.sh
       run_machine_stage 65-smallphone-status.sh status
       return
       ;;
     repair)
       run_stage 50-install-runtime-components.sh
-      run_stage 47-install-hermes.sh
       run_stage 48-sync-openhouse-registry.sh
       run_stage 60-start-smallphone.sh
       run_machine_stage 65-smallphone-status.sh status
@@ -436,7 +421,7 @@ main() {
 
   while true; do
     show_menu
-    printf '请选择 [1-22]: '
+    printf '请选择 [1-20]: '
     read -r choice
     case "$choice" in
       1) run_full_install ;;
@@ -447,21 +432,19 @@ main() {
       6) run_stage 35-sync-docs.sh ;;
       7) run_stage 30-update-ubuntu-packages.sh ;;
       8) run_stage 70-configure-entry-ubuntu.sh ;;
-      9) run_stage 38-install-node.sh ;;
-      10) run_stage 40-install-opencode.sh ;;
-      11) run_stage 42-install-codex.sh ;;
-      12) run_stage 44-install-claude-code.sh ;;
-      13) run_stage 45-install-claude-code-ui.sh ;;
-      14) run_stage 46-install-reasonix.sh ;;
-      15) run_stage 50-install-runtime-components.sh ;;
-      16) run_stage 47-install-hermes.sh ;;
-      17) run_stage 48-sync-openhouse-registry.sh ;;
-      18) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      19) run_stage 50-install-runtime-components.sh; run_stage 47-install-hermes.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      20) run_machine_stage 65-smallphone-status.sh hooks ;;
-      21) run_stage 00-check-termux.sh ;;
-      22) exit 0 ;;
-      *) log "请输入 1 到 22。" ;;
+      9) run_stage 40-install-opencode.sh ;;
+      10) run_stage 42-install-codex.sh ;;
+      11) run_stage 44-install-claude-code.sh ;;
+      12) run_stage 46-install-reasonix.sh ;;
+      13) run_stage 50-install-runtime-components.sh ;;
+      14) run_stage 48-sync-openhouse-registry.sh ;;
+      15) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      16) run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      17) run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      18) run_machine_stage 65-smallphone-status.sh hooks ;;
+      19) run_stage 00-check-termux.sh ;;
+      20) exit 0 ;;
+      *) log "请输入 1 到 20。" ;;
     esac
   done
 }

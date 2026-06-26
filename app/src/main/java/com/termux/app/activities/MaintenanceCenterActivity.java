@@ -44,6 +44,12 @@ import com.termux.app.openhouse.OpenHouseDeepSeekController;
 import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
+import com.termux.app.openhouse.release.OpenHouseReleaseDownloader;
+import com.termux.app.openhouse.release.OpenHouseReleaseException;
+import com.termux.app.openhouse.release.OpenHouseReleaseInstaller;
+import com.termux.app.openhouse.release.OpenHouseReleaseManifest;
+import com.termux.app.openhouse.release.OpenHouseReleaseSettings;
+import com.termux.app.openhouse.release.OpenHouseReleaseValidator;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
@@ -157,6 +163,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private TextView downloadSourceSummaryView;
     private TextView maintenanceSourceSummaryView;
     private TextView localMaintenanceWebSummaryView;
+    private TextView releaseUpdateServerSummaryView;
+    private TextView releaseUpdateStatusView;
     private TextView sharedInstallProgressView;
     private TextView sharedInstallDetailView;
     private TextView sharedInstallLogView;
@@ -174,6 +182,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private Button probeDownloadSourceButton;
     private Button configureMaintenanceSourceButton;
     private Button refreshMaintenanceSourceButton;
+    private Button configureReleaseServerButton;
+    private Button checkReleaseUpdateButton;
+    private Button downloadReleaseUpdateButton;
     private Button restartEntryTerminalButton;
     private Button stageManualModeButton;
     private Button stageOneClickModeButton;
@@ -229,6 +240,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean sharedInstallRunning;
     private boolean sharedInstallStarted;
     private boolean sharedInstallCompleted;
+    private boolean releaseUpdateInFlight;
     private boolean serviceControlFocusPending;
     private String serviceControlComponentId;
     private String serviceControlTitle;
@@ -237,9 +249,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private long lastLiveLogRefreshUptimeMs;
     private long lastCompletionScanUptimeMs;
     private long lastOneClickStatusRefreshUptimeMs;
+    private long lastReleaseProgressUpdateUptimeMs;
     private TerminalSession pendingTerminalUpdateSession;
     private MaintenanceManifest activeManifest;
     private String activeManifestError;
+    private OpenHouseReleaseManifest checkedReleaseManifest;
+    private String releaseUpdateStatusText;
     private SharedPreferences maintenancePreferences;
     private Object sharedInstallController;
     private Object sharedInstallListener;
@@ -310,6 +325,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         downloadSourceSummaryView = findViewById(R.id.downloadSourceSummary);
         maintenanceSourceSummaryView = findViewById(R.id.maintenanceSourceSummary);
         localMaintenanceWebSummaryView = findViewById(R.id.localMaintenanceWebSummary);
+        releaseUpdateServerSummaryView = findViewById(R.id.releaseUpdateServerSummary);
+        releaseUpdateStatusView = findViewById(R.id.releaseUpdateStatus);
         sharedInstallProgressView = findViewById(R.id.sharedInstallProgress);
         sharedInstallDetailView = findViewById(R.id.sharedInstallDetail);
         sharedInstallLogView = findViewById(R.id.sharedInstallLog);
@@ -326,6 +343,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         probeDownloadSourceButton = findViewById(R.id.buttonProbeDownloadSource);
         configureMaintenanceSourceButton = findViewById(R.id.buttonConfigureMaintenanceSource);
         refreshMaintenanceSourceButton = findViewById(R.id.buttonRefreshMaintenanceSource);
+        configureReleaseServerButton = findViewById(R.id.buttonConfigureReleaseServer);
+        checkReleaseUpdateButton = findViewById(R.id.buttonCheckReleaseUpdate);
+        downloadReleaseUpdateButton = findViewById(R.id.buttonDownloadReleaseUpdate);
         restartEntryTerminalButton = findViewById(R.id.buttonRestartEntryTerminal);
         stageManualModeButton = findViewById(R.id.buttonStageManualMode);
         stageOneClickModeButton = findViewById(R.id.buttonStageOneClickMode);
@@ -369,6 +389,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         bindPermissionButtons();
         bindExecutionModeButtons();
+        bindReleaseUpdateButtons();
         bindStageButtons();
         initializeStagePresentations();
         configureDefaultPortButton.setVisibility(View.GONE);
@@ -382,6 +403,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             copyToClipboard(getString(R.string.button_copy_deepseek_key_url), DEEPSEEK_API_KEYS_URL));
         viewFullLogButton.setOnClickListener(v -> openFullLog());
         updateLogButtonState();
+        updateReleaseUpdateCard();
         updateMaintenanceSourceCard();
         refreshMaintenanceManifest(false);
         refreshStatus();
@@ -393,6 +415,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         super.onResume();
         startSharedInstallObservation();
         scheduleMaintenanceSessionInit();
+        updateReleaseUpdateCard();
         refreshStatus();
         requestStageStatusRefresh();
         scheduleTerminalCompletionPoll();
@@ -464,6 +487,336 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             refreshStatus();
             applyStagePresentations();
         });
+    }
+
+    private void bindReleaseUpdateButtons() {
+        if (configureReleaseServerButton != null) {
+            configureReleaseServerButton.setOnClickListener(v -> showReleaseServerDialog());
+        }
+        if (checkReleaseUpdateButton != null) {
+            checkReleaseUpdateButton.setOnClickListener(v -> checkReleaseUpdate(true));
+        }
+        if (downloadReleaseUpdateButton != null) {
+            downloadReleaseUpdateButton.setOnClickListener(v -> downloadCheckedReleaseUpdate());
+        }
+    }
+
+    private void showReleaseServerDialog() {
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        input.setSingleLine(false);
+        input.setMinLines(2);
+        input.setHint(getString(R.string.release_update_server_hint));
+        input.setText(OpenHouseReleaseSettings.getServerUrl(this));
+        input.setSelection(input.getText().length());
+
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.release_update_server_dialog_title)
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setNeutralButton(R.string.release_update_clear_server, (dialog, which) -> {
+                OpenHouseReleaseSettings.clearServerUrl(this);
+                checkedReleaseManifest = null;
+                setReleaseUpdateStatus(null);
+                updateReleaseUpdateCard();
+                Toast.makeText(this, R.string.release_update_server_cleared, Toast.LENGTH_SHORT).show();
+            })
+            .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                String value = input.getText() == null ? "" : input.getText().toString().trim();
+                if (!OpenHouseReleaseSettings.isValidServerUrl(value)) {
+                    Toast.makeText(this, R.string.release_update_server_invalid, Toast.LENGTH_LONG).show();
+                    return;
+                }
+                OpenHouseReleaseSettings.setServerUrl(this, value);
+                checkedReleaseManifest = null;
+                setReleaseUpdateStatus(null);
+                updateReleaseUpdateCard();
+                Toast.makeText(this, R.string.release_update_server_saved, Toast.LENGTH_SHORT).show();
+            })
+            .show();
+    }
+
+    private void checkReleaseUpdate(boolean userInitiated) {
+        if (releaseUpdateInFlight) {
+            return;
+        }
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
+            updateReleaseUpdateCard();
+            return;
+        }
+
+        String serverUrl = OpenHouseReleaseSettings.getServerUrl(this);
+        final List<String> manifestUrls;
+        try {
+            manifestUrls = OpenHouseReleaseSettings.resolveManifestUrls(serverUrl, OpenHouseReleaseSettings.getChannel(this));
+        } catch (OpenHouseReleaseException e) {
+            checkedReleaseManifest = null;
+            setReleaseUpdateStatus(e.getMessage());
+            updateReleaseUpdateCard();
+            if (userInitiated) {
+                Toast.makeText(this, R.string.release_update_server_invalid, Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+
+        releaseUpdateInFlight = true;
+        checkedReleaseManifest = null;
+        setReleaseUpdateStatus(getString(R.string.release_update_status_checking, manifestUrls.get(0)));
+        updateReleaseUpdateCard();
+
+        backgroundExecutor.execute(() -> {
+            OpenHouseReleaseManifest manifest = null;
+            OpenHouseReleaseValidator.ManifestValidationResult validationResult = null;
+            String error = null;
+            OpenHouseReleaseDownloader downloader = new OpenHouseReleaseDownloader();
+            for (String manifestUrl : manifestUrls) {
+                try {
+                    manifest = downloader.fetchManifest(manifestUrl);
+                    validationResult = OpenHouseReleaseValidator.validateManifest(getApplicationContext(), manifest);
+                    error = null;
+                    break;
+                } catch (Exception e) {
+                    error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    Logger.logStackTraceWithMessage(LOG_TAG, "Failed to check remote APK release manifest: " + manifestUrl, e);
+                }
+            }
+
+            OpenHouseReleaseManifest finalManifest = manifest;
+            OpenHouseReleaseValidator.ManifestValidationResult finalValidationResult = validationResult;
+            String finalError = error;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                releaseUpdateInFlight = false;
+                if (finalError != null) {
+                    checkedReleaseManifest = null;
+                    setReleaseUpdateStatus(getString(R.string.release_update_status_failed, finalError));
+                    if (userInitiated) {
+                        Toast.makeText(this, R.string.release_update_check_failed, Toast.LENGTH_SHORT).show();
+                    }
+                } else if (finalValidationResult != null && finalValidationResult.updateAvailable) {
+                    checkedReleaseManifest = finalManifest;
+                    setReleaseUpdateStatus(buildReleaseAvailableStatus(finalManifest));
+                    if (userInitiated) {
+                        Toast.makeText(this, R.string.release_update_check_available, Toast.LENGTH_SHORT).show();
+                    }
+                } else if (finalValidationResult != null) {
+                    checkedReleaseManifest = null;
+                    setReleaseUpdateStatus(finalValidationResult.message);
+                    if (userInitiated) {
+                        Toast.makeText(this, R.string.release_update_check_no_update, Toast.LENGTH_SHORT).show();
+                    }
+                }
+                updateReleaseUpdateCard();
+            });
+        });
+    }
+
+    private void downloadCheckedReleaseUpdate() {
+        final OpenHouseReleaseManifest manifest = checkedReleaseManifest;
+        if (manifest == null) {
+            checkReleaseUpdate(true);
+            return;
+        }
+        if (releaseUpdateInFlight) {
+            return;
+        }
+        if (isMaintenanceActionBlocked()) {
+            showMaintenanceActionBlockedToast();
+            updateReleaseUpdateCard();
+            return;
+        }
+        if (!OpenHouseReleaseInstaller.canRequestPackageInstalls(this)) {
+            showReleaseInstallPermissionDialog();
+            return;
+        }
+
+        releaseUpdateInFlight = true;
+        lastReleaseProgressUpdateUptimeMs = 0L;
+        setReleaseUpdateStatus(getString(R.string.release_update_status_downloading, formatBytes(0), formatBytes(manifest.apkSizeBytes)));
+        updateReleaseUpdateCard();
+
+        OpenHouseReleaseDownloader.ProgressListener progressListener = (bytesRead, totalBytes) -> {
+            long now = SystemClock.uptimeMillis();
+            if (now - lastReleaseProgressUpdateUptimeMs < 500 && (totalBytes <= 0 || bytesRead < totalBytes)) {
+                return;
+            }
+            lastReleaseProgressUpdateUptimeMs = now;
+            runOnUiThread(() -> {
+                if (!releaseUpdateInFlight || isFinishing() || isDestroyed()) return;
+                String totalText = totalBytes > 0 ? formatBytes(totalBytes) : getString(R.string.release_update_size_unknown);
+                setReleaseUpdateStatus(getString(R.string.release_update_status_downloading, formatBytes(bytesRead), totalText));
+            });
+        };
+
+        backgroundExecutor.execute(() -> {
+            OpenHouseReleaseDownloader.DownloadResult downloadResult = null;
+            OpenHouseReleaseValidator.DownloadedApkInfo apkInfo = null;
+            String error = null;
+            try {
+                OpenHouseReleaseDownloader downloader = new OpenHouseReleaseDownloader();
+                File apkFile = OpenHouseReleaseInstaller.getDownloadFile(getApplicationContext());
+                downloadResult = downloader.downloadApk(manifest, apkFile, progressListener);
+                apkInfo = OpenHouseReleaseValidator.validateDownloadedApk(getApplicationContext(), manifest, downloadResult.apkFile);
+            } catch (Exception e) {
+                error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to download or validate remote APK release", e);
+            }
+
+            OpenHouseReleaseDownloader.DownloadResult finalDownloadResult = downloadResult;
+            OpenHouseReleaseValidator.DownloadedApkInfo finalApkInfo = apkInfo;
+            String finalError = error;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                releaseUpdateInFlight = false;
+                if (finalError != null) {
+                    setReleaseUpdateStatus(getString(R.string.release_update_status_failed, finalError));
+                    Toast.makeText(this, R.string.release_update_download_failed, Toast.LENGTH_SHORT).show();
+                    updateReleaseUpdateCard();
+                    return;
+                }
+
+                setReleaseUpdateStatus(getString(
+                    R.string.release_update_ready_to_install,
+                    finalApkInfo.versionName,
+                    finalApkInfo.versionCode,
+                    formatBytes(finalDownloadResult.bytesRead)
+                ));
+                updateReleaseUpdateCard();
+                startReleaseInstaller(finalDownloadResult.apkFile);
+            });
+        });
+    }
+
+    private void startReleaseInstaller(File apkFile) {
+        if (!OpenHouseReleaseInstaller.canRequestPackageInstalls(this)) {
+            showReleaseInstallPermissionDialog();
+            return;
+        }
+
+        try {
+            Intent intent = OpenHouseReleaseInstaller.createInstallIntent(this, apkFile);
+            startActivity(intent);
+            setReleaseUpdateStatus(getString(R.string.release_update_installer_started));
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to start APK installer", e);
+            setReleaseUpdateStatus(getString(R.string.release_update_status_failed,
+                e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+            Toast.makeText(this, R.string.release_update_installer_failed, Toast.LENGTH_SHORT).show();
+        }
+        updateReleaseUpdateCard();
+    }
+
+    private void showReleaseInstallPermissionDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.release_update_install_permission_title)
+            .setMessage(R.string.release_update_install_permission_message)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.release_update_open_install_permission, (dialog, which) -> {
+                try {
+                    startActivity(OpenHouseReleaseInstaller.createUnknownSourcesSettingsIntent(this));
+                } catch (Exception e) {
+                    Logger.logStackTraceWithMessage(LOG_TAG, "Failed to open APK install permission settings", e);
+                    Toast.makeText(this, R.string.release_update_install_permission_failed, Toast.LENGTH_SHORT).show();
+                }
+            })
+            .show();
+    }
+
+    private void updateReleaseUpdateCard() {
+        String serverUrl = OpenHouseReleaseSettings.getServerUrl(this);
+        boolean hasServerUrl = serverUrl != null && !serverUrl.trim().isEmpty();
+        boolean validServerUrl = hasServerUrl && OpenHouseReleaseSettings.isValidServerUrl(serverUrl);
+
+        if (releaseUpdateServerSummaryView != null) {
+            if (!hasServerUrl) {
+                releaseUpdateServerSummaryView.setText(R.string.release_update_server_not_configured);
+            } else {
+                try {
+                    releaseUpdateServerSummaryView.setText(getString(
+                        R.string.release_update_server_summary,
+                        serverUrl,
+                        OpenHouseReleaseSettings.resolveManifestUrls(serverUrl, OpenHouseReleaseSettings.getChannel(this)).get(0)
+                    ));
+                } catch (OpenHouseReleaseException e) {
+                    releaseUpdateServerSummaryView.setText(getString(
+                        R.string.release_update_server_summary_invalid,
+                        serverUrl,
+                        e.getMessage()
+                    ));
+                }
+            }
+        }
+
+        if (releaseUpdateStatusView != null) {
+            if (releaseUpdateStatusText != null && !releaseUpdateStatusText.isEmpty()) {
+                releaseUpdateStatusView.setText(releaseUpdateStatusText);
+            } else if (checkedReleaseManifest != null) {
+                releaseUpdateStatusView.setText(buildReleaseAvailableStatus(checkedReleaseManifest));
+            } else if (!hasServerUrl) {
+                releaseUpdateStatusView.setText(R.string.release_update_status_waiting_for_server);
+            } else {
+                releaseUpdateStatusView.setText(R.string.release_update_status_idle);
+            }
+        }
+
+        setReleaseButtonEnabled(configureReleaseServerButton, !releaseUpdateInFlight);
+        setReleaseButtonEnabled(checkReleaseUpdateButton, validServerUrl && !releaseUpdateInFlight && !isMaintenanceActionBlocked());
+        setReleaseButtonEnabled(downloadReleaseUpdateButton, checkedReleaseManifest != null
+            && !releaseUpdateInFlight
+            && !isMaintenanceActionBlocked());
+    }
+
+    private void setReleaseUpdateStatus(String status) {
+        releaseUpdateStatusText = status;
+        if (releaseUpdateStatusView != null && status != null && !status.isEmpty()) {
+            releaseUpdateStatusView.setText(status);
+        }
+    }
+
+    private void setReleaseButtonEnabled(Button button, boolean enabled) {
+        if (button == null) {
+            return;
+        }
+        button.setEnabled(enabled);
+        button.setAlpha(enabled ? 1.0f : 0.72f);
+    }
+
+    private String buildReleaseAvailableStatus(OpenHouseReleaseManifest manifest) {
+        String releaseNotes = manifest.releaseNotes == null || manifest.releaseNotes.trim().isEmpty()
+            ? getString(R.string.release_update_no_release_notes)
+            : manifest.releaseNotes.trim();
+        String runtimePayloadVersion = manifest.runtimePayloadVersion == null || manifest.runtimePayloadVersion.trim().isEmpty()
+            ? getString(R.string.release_update_runtime_unknown)
+            : manifest.runtimePayloadVersion.trim();
+        return getString(
+            R.string.release_update_available_status,
+            manifest.latestVersionName,
+            manifest.latestVersionCode,
+            manifest.channel,
+            runtimePayloadVersion,
+            formatBytes(manifest.apkSizeBytes),
+            manifest.forceUpdate ? getString(R.string.release_update_force_yes) : getString(R.string.release_update_force_no),
+            releaseNotes
+        );
+    }
+
+    private String formatBytes(long bytes) {
+        if (bytes < 0) {
+            return getString(R.string.release_update_size_unknown);
+        }
+        if (bytes < 1024) {
+            return bytes + " B";
+        }
+        double value = bytes / 1024.0;
+        if (value < 1024.0) {
+            return String.format(Locale.US, "%.1f KB", value);
+        }
+        value = value / 1024.0;
+        if (value < 1024.0) {
+            return String.format(Locale.US, "%.1f MB", value);
+        }
+        return String.format(Locale.US, "%.1f GB", value / 1024.0);
     }
 
     private void showRestartEntryTerminalDialog() {

@@ -2,9 +2,9 @@
   "schema": 1,
   "assetRoot": "openhouse/product-payloads",
   "payloads": [
-    { "id": "service-manager", "archive": "service-manager.tar", "sha256": "0e9343f6619b3340a805ae1511e30f338360e78cda20afb7c38029232279c924", "size": 5990400 },
+    { "id": "service-manager", "archive": "service-manager.tar", "sha256": "6fe4bebd15d01bfbe82433fbdf74ca4c570cd27c0c22ae1ec35dc110ea49f1c5", "size": 6000640 },
     { "id": "openhouse-connect", "archive": "openhouse-connect.tar", "sha256": "17adb055f3f11ad43274679cf49b2c3e5875904131553f4f7be4f3e3211e448c", "size": 39075840 },
-    { "id": "smallphone", "archive": "smallphone.tar", "sha256": "02679d5a90f25bd98b1eaa805f84ecb67d5a23fc4871a2ad09033c35a26e9ad7", "size": 1832960 },
-    { "id": "hermes", "archive": "hermes.tgz", "sha256": "8b509ac0095092e34d7681c7cff5f8a27a3e42bd353fa520d2cef3ba464042f2", "size": 73417917 }
+    { "id": "smallphone", "archive": "smallphone.tar", "sha256": "01ed81c09d0baa1f1e3e46d2fcad73d117a1f02fdcf5161d92e17d7e8d019ff0", "size": 1914880 },
+    { "id": "hermes", "archive": "hermes.tgz", "sha256": "0660b634d4117b05050c8f19917d76575aad6dc166d9372cbdb7d783aaeb01ae", "size": 73417294 }
   ]
 }

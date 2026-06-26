@@ -1,27 +1,26 @@
 {
   "schema": 1,
-  "version": "2026.06.22.1",
+  "version": "2026.06.11.1",
   "title": "SmallPhoneAI 维护器",
   "sourceName": "SmallPhoneAI APK 维护源",
-  "updatedAt": "2026-06-22",
+  "updatedAt": "2026-06-11",
   "bootstrapUrl": "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh",
   "bootstrapUrlRole": "optional_update_only",
   "defaultOneClickAction": "install",
   "machineReadable": {
     "status": { "type": "bootstrap", "args": ["status"], "output": "json" },
     "check": { "type": "bootstrap", "args": ["check"], "output": "json" },
-    "hooks": { "type": "bootstrap", "args": ["hooks"], "output": "json" }
-  },
-  "componentManifestPolicy": {
-    "scope": "components.d/*.json only",
-    "requiredLayers": ["shellMenu", "smallphoneApp", "serviceManager", "ai"],
-    "forbiddenKeys": ["command", "shell", "script", "args"],
-    "notAppliedTo": ["bootstrap manifest actions", "service-manager ServiceSpec"]
+    "hooks": { "type": "bootstrap", "args": ["hooks"], "output": "json" },
+    "postApkUpdate": {
+      "type": "bootstrap",
+      "args": ["sync-core-stack"],
+      "reportsFinalHealth": true,
+      "finalHealth": { "format": "json", "source": "final stdout object" }
+    }
   },
   "runtimePayloads": {
     "firstRunSource": "apk_bundled",
-    "networkRole": "github_disabled_for_first_run_sources",
-    "offlineMeaning": "APK-bundled payloads avoid GitHub source downloads during first run; apt, npm, pip, health checks, and provider network access may still be used by stages.",
+    "networkRole": "optional_update_only",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
     "installRoot": "$HOME/smallphoneai-repos",
@@ -44,12 +43,6 @@
         "title": "SmallPhone",
         "apkAssetPath": "openhouse/product-payloads/smallphone.tar",
         "targetDir": "$HOME/smallphoneai-repos/smallphone-active"
-      },
-      {
-        "id": "hermes",
-        "title": "Hermes Agent + Hermes WebUI",
-        "apkAssetPath": "openhouse/product-payloads/hermes.tgz",
-        "targetDir": "$HOME/smallphoneai-repos/hermes"
       }
     ]
   },
@@ -61,13 +54,13 @@
     },
     {
       "title": "安装 Agent CLI",
-      "description": "先安装 Node.js 24 LTS，再安装或检查 OpenCode、Codex、Claude Code、ClaudeCodeUI/CloudCLI 和 Reasonix。",
-      "stages": ["entry_ubuntu", "install_node", "install_opencode", "install_codex", "install_claude_code", "install_claude_code_ui", "install_reasonix"]
+      "description": "安装或检查 OpenCode、Codex、Claude Code 和 Reasonix。",
+      "stages": ["entry_ubuntu", "install_opencode", "install_codex", "install_claude_code", "install_reasonix"]
     },
     {
       "title": "安装 SmallPhone 运行组件",
-      "description": "从 APK-bundled payloads 安装 service-manager、cc-connect/openhouse-connect、SmallPhone、Hermes，并调用各自 install/check/register-service 入口，然后同步 registry。",
-      "stages": ["runtime_components", "install_hermes", "sync_openhouse_registry"]
+      "description": "从 APK-bundled payloads 安装 service-manager、cc-connect/openhouse-connect、SmallPhone，并调用各自 install/check/register-service 入口。",
+      "stages": ["runtime_components"]
     },
     {
       "title": "启动 SmallPhone",
@@ -124,6 +117,18 @@
             "reportsFinalHealth": true,
             "finalHealth": { "format": "json", "source": "final stdout object" }
           }
+        },
+        {
+          "id": "sync_core_stack",
+          "type": "button",
+          "label": "同步核心运行栈",
+          "description": "APK 更新后同步内置 service-manager、openhouse-connect、SmallPhone 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
+          "action": {
+            "type": "bootstrap",
+            "args": ["sync-core-stack"],
+            "reportsFinalHealth": true,
+            "finalHealth": { "format": "json", "source": "final stdout object" }
+          }
         }
       ]
     },
@@ -131,15 +136,8 @@
       "id": "agent_cli_repair",
       "type": "actions",
       "title": "AI 工具补装与修复",
-      "description": "单独补装或检查 Node.js、OpenCode、Codex、Claude Code、ClaudeCodeUI/CloudCLI、Reasonix。",
+      "description": "单独补装或检查 OpenCode、Codex、Claude Code、Reasonix。",
       "items": [
-        {
-          "id": "install_node",
-          "type": "button",
-          "label": "安装 Node.js 24 LTS",
-          "description": "在 Ubuntu 内安装或检查 Node.js 24 LTS，供所有 AI 工具复用。",
-          "action": { "type": "bootstrap", "args": ["node"] }
-        },
         {
           "id": "install_opencode",
           "type": "button",
@@ -162,32 +160,11 @@
           "action": { "type": "bootstrap", "args": ["claude-code"] }
         },
         {
-          "id": "install_claude_code_ui",
-          "type": "button",
-          "label": "安装 ClaudeCodeUI",
-          "description": "在 Ubuntu 内安装 ClaudeCodeUI / CloudCLI，并固定使用 23083 端口。",
-          "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
-        },
-        {
           "id": "install_reasonix",
           "type": "button",
           "label": "安装 Reasonix",
           "description": "在 Ubuntu 内安装 DeepSeek-native Reasonix。",
           "action": { "type": "bootstrap", "args": ["reasonix"] }
-        },
-        {
-          "id": "install_hermes",
-          "type": "button",
-          "label": "安装 Hermes",
-          "description": "从 APK-bundled payload 安装 Hermes Agent / Hermes WebUI，固定端口 23084，并注册到 service-manager 与 components.d。",
-          "action": { "type": "bootstrap", "args": ["hermes"] }
-        },
-        {
-          "id": "sync_openhouse_registry",
-          "type": "button",
-          "label": "同步 OpenHouseAI registry",
-          "description": "把 Ubuntu mirror 下的 components.d、service-manager/services.d 和 AI docs 同步到 Termux canonical。",
-          "action": { "type": "bootstrap", "args": ["registry-sync"] }
         }
       ]
     }
@@ -236,12 +213,6 @@
       "action": { "type": "bootstrap", "args": ["entry-ubuntu"] }
     },
     {
-      "id": "install_node",
-      "title": "安装 Node.js 24 LTS",
-      "description": "安装或检查 Ubuntu 内的 Node.js 24 LTS 与 npm，全体 AI 工具共用。",
-      "action": { "type": "bootstrap", "args": ["node"] }
-    },
-    {
       "id": "install_opencode",
       "title": "安装 OpenCode",
       "description": "通过 npm 安装或检查 opencode-ai。",
@@ -260,12 +231,6 @@
       "action": { "type": "bootstrap", "args": ["claude-code"] }
     },
     {
-      "id": "install_claude_code_ui",
-      "title": "安装 ClaudeCodeUI / CloudCLI",
-      "description": "通过 npm 安装或检查 @cloudcli-ai/cloudcli，固定端口 23083。",
-      "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
-    },
-    {
       "id": "install_reasonix",
       "title": "安装 Reasonix",
       "description": "通过 npm 安装或检查 reasonix。",
@@ -276,18 +241,6 @@
       "title": "安装运行组件",
       "description": "从 APK-bundled payloads 安装、检查并注册 service-manager、cc-connect/openhouse-connect、SmallPhone。",
       "action": { "type": "bootstrap", "args": ["components"] }
-    },
-    {
-      "id": "install_hermes",
-      "title": "安装 Hermes",
-      "description": "从 APK-bundled payload 安装 Hermes Agent / Hermes WebUI，写入 components.d/hermes-webui.json，并注册 hermes-webui 服务。",
-      "action": { "type": "bootstrap", "args": ["hermes"] }
-    },
-    {
-      "id": "sync_openhouse_registry",
-      "title": "同步 OpenHouseAI registry",
-      "description": "把 Ubuntu mirror 同步到 Termux canonical，确保 App Shell、SmallPhone 和 AI 能读取同一套注册。",
-      "action": { "type": "bootstrap", "args": ["registry-sync"] }
     },
     {
       "id": "start",
@@ -307,6 +260,17 @@
       "action": {
         "type": "bootstrap",
         "args": ["repair"],
+        "reportsFinalHealth": true,
+        "finalHealth": { "format": "json", "source": "final stdout object" }
+      }
+    },
+    {
+      "id": "sync_core_stack",
+      "title": "同步核心运行栈",
+      "description": "APK 更新后同步内置运行组件、registry 和本机服务状态，不执行首次安装的系统包或 AI CLI 安装阶段。",
+      "action": {
+        "type": "bootstrap",
+        "args": ["sync-core-stack"],
         "reportsFinalHealth": true,
         "finalHealth": { "format": "json", "source": "final stdout object" }
       }

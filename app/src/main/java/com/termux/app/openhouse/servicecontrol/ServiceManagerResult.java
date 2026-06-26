@@ -15,6 +15,7 @@ public final class ServiceManagerResult {
     public final String state;
     public final String provider;
     public final Integer pid;
+    public final String url;
     public final List<ServiceManagerService> services;
     public final List<ServiceManagerLogLine> logLines;
 
@@ -28,6 +29,7 @@ public final class ServiceManagerResult {
         this.state = builder.state == null ? "" : builder.state;
         this.provider = builder.provider == null ? "" : builder.provider;
         this.pid = builder.pid;
+        this.url = builder.url == null ? "" : builder.url;
         this.services = immutableCopy(builder.services);
         this.logLines = immutableCopy(builder.logLines);
     }
@@ -62,6 +64,7 @@ public final class ServiceManagerResult {
             .state(state)
             .provider(provider)
             .pid(pid)
+            .url(url)
             .services(services)
             .logLines(logLines)
             .build();
@@ -92,6 +95,7 @@ public final class ServiceManagerResult {
         private String state;
         private String provider;
         private Integer pid;
+        private String url;
         private List<ServiceManagerService> services = Collections.emptyList();
         private List<ServiceManagerLogLine> logLines = Collections.emptyList();
 
@@ -136,6 +140,11 @@ public final class ServiceManagerResult {
 
         Builder pid(Integer pid) {
             this.pid = pid;
+            return this;
+        }
+
+        Builder url(String url) {
+            this.url = url;
             return this;
         }
 

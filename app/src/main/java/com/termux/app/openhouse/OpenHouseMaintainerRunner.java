@@ -290,6 +290,7 @@ public final class OpenHouseMaintainerRunner {
         START_SMALLPHONE("start_smallphone", "启动 SmallPhoneAI 运行栈", "start-smallphone.sh", 150),
         REPAIR_CONTROL_PLANE("repair_control_plane", "修复控制中枢", "repair-control-plane.sh", 150),
         REPAIR_SMALLPHONE("repair_smallphone", "修复 SmallPhoneAI 运行栈", "repair-smallphone.sh", 600),
+        POST_APK_UPDATE("post_apk_update", "APK 更新后同步核心运行栈", "post-apk-update.sh", 900),
         CONFIGURE_DEEPSEEK("configure_deepseek", "配置 DeepSeek Key", "configure-deepseek-key.sh", 75);
 
         public final String slug;

@@ -2,6 +2,7 @@ package com.termux.app.activities;
 
 import android.content.Intent;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
@@ -38,6 +39,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     public static final String MODE_ALL = "all";
     public static final String EXTRA_SERVICE_CONTROL_COMPONENT_ID = "openhouse_component_id";
     public static final String EXTRA_SERVICE_CONTROL_TITLE = "openhouse_component_title";
+    public static final String EXTRA_SERVICE_CONTROL_URL = "openhouse_component_url";
     public static final String EXTRA_SERVICE_CONTROL_SERVICE_NAMES = "openhouse_service_names";
     public static final String EXTRA_SERVICE_CONTROL_SERVICE_REFS = "openhouse_service_refs";
 
@@ -46,6 +48,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private static final String ACTION_STOP = "stop";
     private static final String ACTION_RESTART = "restart";
     private static final String ACTION_REPAIR = "repair";
+    private static final String LOCKED_DISABLED_BUTTON_TAG = "openhouse_locked_disabled";
     private static final int LOG_LIMIT = 80;
     private static final int STATUS_TEXT_LIMIT = 10000;
 
@@ -61,6 +64,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private boolean allMode;
     private String componentId = "";
     private String componentTitle = "";
+    private String componentUrl = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,6 +89,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         allMode = MODE_ALL.equalsIgnoreCase(safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_MODE)));
         componentId = ServiceManagerClient.sanitizeServiceId(intent.getStringExtra(EXTRA_SERVICE_CONTROL_COMPONENT_ID));
         componentTitle = safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_TITLE));
+        componentUrl = normalizeOpenUrl(intent.getStringExtra(EXTRA_SERVICE_CONTROL_URL));
     }
 
     private void buildContentView() {
@@ -120,6 +125,10 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         statusView = bodyText("正在读取服务状态...");
         statusView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
         header.addView(statusView, topMarginParams(12));
+
+        if (!componentUrl.isEmpty()) {
+            header.addView(actionButton("浏览器打开", v -> openBrowserUrl(componentUrl)), topMarginParams(10));
+        }
 
         repairControlPlaneButton = actionButton("修复控制中枢", v -> runControlPlaneRepair());
         repairControlPlaneButton.setVisibility(View.GONE);
@@ -188,6 +197,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                         service.state(),
                         service.pid(),
                         service.message(),
+                        service.url(),
                         true));
                 }
                 runOnUiThread(() -> {
@@ -210,7 +220,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
 
         List<ServiceSnapshot> snapshots = new ArrayList<>();
         for (String serviceId : serviceIds) {
-            snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, "", true));
+            snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, "", componentUrl, true));
         }
         renderServices(snapshots);
         refreshAllStatuses();
@@ -298,18 +308,23 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         logView.setVisibility(View.GONE);
         cardView.addView(logView, topMarginParams(10));
 
-        ServiceCard card = new ServiceCard(snapshot.id, cardView, titleView, detailView, logView);
+        Button openButton = actionButton("浏览器打开", v -> openBrowserUrl(currentServiceUrl(snapshot.id)));
+
+        ServiceCard card = new ServiceCard(snapshot.id, cardView, titleView, detailView, logView, openButton);
         updateCard(card, snapshot);
 
         addButtonRow(cardView,
-            actionButton("状态", v -> refreshServiceStatus(snapshot.id)),
-            actionButton("启动", v -> runSingleAction(snapshot.id, ACTION_START)));
+            openButton,
+            actionButton("状态", v -> refreshServiceStatus(snapshot.id)));
         addButtonRow(cardView,
-            actionButton("关闭", v -> runSingleAction(snapshot.id, ACTION_STOP)),
-            actionButton("重启", v -> runSingleAction(snapshot.id, ACTION_RESTART)));
+            actionButton("启动", v -> runSingleAction(snapshot.id, ACTION_START)),
+            actionButton("关闭", v -> runSingleAction(snapshot.id, ACTION_STOP)));
         addButtonRow(cardView,
-            actionButton("修复", v -> runSingleAction(snapshot.id, ACTION_REPAIR)),
-            actionButton("日志", v -> fetchLogs(snapshot.id)));
+            actionButton("重启", v -> runSingleAction(snapshot.id, ACTION_RESTART)),
+            actionButton("修复", v -> runSingleAction(snapshot.id, ACTION_REPAIR)));
+        addButtonRow(cardView,
+            actionButton("日志", v -> fetchLogs(snapshot.id)),
+            actionButton("刷新", v -> refreshServiceStatus(snapshot.id)));
 
         return card;
     }
@@ -338,7 +353,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                     if (error.isEmpty()) {
                         error = safeErrorMessage(e);
                     }
-                    snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, safeErrorMessage(e), false));
+                    snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, safeErrorMessage(e), currentServiceUrl(serviceId), false));
                 }
             }
             String firstError = error;
@@ -501,7 +516,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                     }
                 } catch (Exception e) {
                     failCount++;
-                    snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, safeErrorMessage(e), false));
+                    snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, safeErrorMessage(e), currentServiceUrl(serviceId), false));
                     appendLine(report, serviceId + "：状态刷新失败，" + safeErrorMessage(e));
                 }
             }
@@ -562,7 +577,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
 
     private ServiceSnapshot snapshotFromStatus(String serviceId, ServiceManagerServiceStatus status) {
         if (status == null) {
-            return new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, "service-manager request failed", false);
+            return new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, "service-manager request failed", currentServiceUrl(serviceId), false);
         }
         if (!status.success()) {
             return new ServiceSnapshot(
@@ -572,6 +587,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                 "unknown",
                 status.pid(),
                 firstNonBlank(status.message(), "service-manager request failed"),
+                firstNonBlank(status.url(), currentServiceUrl(serviceId)),
                 false);
         }
         return new ServiceSnapshot(
@@ -581,6 +597,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             status.state(),
             status.pid(),
             status.message(),
+            firstNonBlank(status.url(), currentServiceUrl(serviceId)),
             true);
     }
 
@@ -589,9 +606,11 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             return;
         }
         card.titleView.setText(snapshot.displayName);
+        card.url = firstNonBlank(snapshot.url, card.url);
+        updateOpenButton(card.openButton, card.url);
         String pid = snapshot.pid > 0 ? String.valueOf(snapshot.pid) : "-";
         card.detailView.setText(
-            "状态：" + firstNonBlank(snapshot.state, "unknown")
+            "状态：" + stateLabel(snapshot.state)
                 + "\nprovider：" + firstNonBlank(snapshot.provider, "-")
                 + "\npid：" + pid
                 + "\n消息：" + firstNonBlank(snapshot.message, "-"));
@@ -624,6 +643,19 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private void openMaintenanceCenter() {
         Toast.makeText(this, "打开维护与修复", Toast.LENGTH_SHORT).show();
         startActivity(new Intent(this, MaintenanceCenterActivity.class));
+    }
+
+    private void openBrowserUrl(String url) {
+        String target = normalizeOpenUrl(url);
+        if (target.isEmpty()) {
+            Toast.makeText(this, "这个服务没有可打开的浏览器地址。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(target)));
+        } catch (Exception e) {
+            Toast.makeText(this, "无法打开浏览器：" + safeErrorMessage(e), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void runControlPlaneRepair() {
@@ -699,8 +731,10 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             return;
         }
         if (view instanceof Button) {
-            view.setEnabled(enabled);
-            view.setAlpha(enabled ? 1.0f : 0.72f);
+            boolean lockedDisabled = LOCKED_DISABLED_BUTTON_TAG.equals(view.getTag());
+            boolean buttonEnabled = enabled && !lockedDisabled;
+            view.setEnabled(buttonEnabled);
+            view.setAlpha(buttonEnabled ? 1.0f : 0.72f);
             return;
         }
         if (view instanceof ViewGroup) {
@@ -762,6 +796,22 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         parent.addView(row, topMarginParams(8));
     }
 
+    private void updateOpenButton(Button button, String url) {
+        if (button == null) {
+            return;
+        }
+        boolean hasUrl = !normalizeOpenUrl(url).isEmpty();
+        button.setTag(hasUrl ? null : LOCKED_DISABLED_BUTTON_TAG);
+        button.setEnabled(hasUrl);
+        button.setAlpha(hasUrl ? 1.0f : 0.72f);
+    }
+
+    private String currentServiceUrl(String serviceId) {
+        String cleanServiceId = ServiceManagerClient.sanitizeServiceId(serviceId);
+        ServiceCard card = cleanServiceId.isEmpty() ? null : serviceCards.get(cleanServiceId);
+        return firstNonBlank(card == null ? "" : card.url, componentUrl);
+    }
+
     private LinearLayout.LayoutParams fullWidthParams(int topMarginDp) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -804,6 +854,61 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             default:
                 return action;
         }
+    }
+
+    private String stateLabel(String state) {
+        String value = safeTrim(state);
+        if (value.isEmpty()) {
+            return "未知";
+        }
+        switch (value.toLowerCase(Locale.US)) {
+            case "running":
+            case "active":
+            case "up":
+                return "运行中";
+            case "stopped":
+            case "inactive":
+            case "down":
+                return "已停止";
+            case "unknown":
+                return "未知";
+            case "starting":
+                return "启动中";
+            case "stopping":
+                return "关闭中";
+            case "restarting":
+                return "重启中";
+            case "repairing":
+                return "修复中";
+            case "error":
+            case "failed":
+            case "unhealthy":
+                return "异常";
+            case "healthy":
+            case "ready":
+                return "正常";
+            case "disabled":
+                return "已禁用";
+            case "enabled":
+                return "已启用";
+            case "missing":
+                return "缺失";
+            case "installing":
+                return "安装中";
+            case "not-installed":
+            case "not_installed":
+                return "未安装";
+            default:
+                return value;
+        }
+    }
+
+    private String normalizeOpenUrl(String value) {
+        String trimmed = safeTrim(value);
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+        return "";
     }
 
     private String safeErrorMessage(Exception e) {
@@ -854,15 +959,17 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         final String state;
         final int pid;
         final String message;
+        final String url;
         final boolean success;
 
-        ServiceSnapshot(String id, String displayName, String provider, String state, int pid, String message, boolean success) {
+        ServiceSnapshot(String id, String displayName, String provider, String state, int pid, String message, String url, boolean success) {
             this.id = id;
             this.displayName = displayName;
             this.provider = provider;
             this.state = state;
             this.pid = pid;
             this.message = message;
+            this.url = url;
             this.success = success;
         }
     }
@@ -873,13 +980,17 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         final TextView titleView;
         final TextView detailView;
         final TextView logView;
+        final Button openButton;
+        String url;
 
-        ServiceCard(String serviceId, LinearLayout root, TextView titleView, TextView detailView, TextView logView) {
+        ServiceCard(String serviceId, LinearLayout root, TextView titleView, TextView detailView, TextView logView, Button openButton) {
             this.serviceId = serviceId;
             this.root = root;
             this.titleView = titleView;
             this.detailView = detailView;
             this.logView = logView;
+            this.openButton = openButton;
+            this.url = "";
         }
     }
 }

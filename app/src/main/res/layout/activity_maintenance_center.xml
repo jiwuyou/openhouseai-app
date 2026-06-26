@@ -243,6 +243,68 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/releaseUpdatePanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/panel_bg"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/release_update_title"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/releaseUpdateServerSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="@string/release_update_server_not_configured"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/releaseUpdateStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="@string/release_update_status_waiting_for_server"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/buttonConfigureReleaseServer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/button_configure_release_server"
+                    android:textAllCaps="false" />
+
+                <Button
+                    android:id="@+id/buttonCheckReleaseUpdate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/button_check_release_update"
+                    android:textAllCaps="false" />
+
+                <Button
+                    android:id="@+id/buttonDownloadReleaseUpdate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/button_download_release_update"
+                    android:textAllCaps="false" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/maintenanceLegacyBindings"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

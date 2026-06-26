@@ -5,6 +5,8 @@
 # Built application files
 build/
 release/
+!app/src/main/java/com/termux/app/openhouse/release/
+!app/src/main/java/com/termux/app/openhouse/release/**
 *.apk
 *.so
 .externalNativeBuild
