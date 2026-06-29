@@ -43,6 +43,12 @@
         "title": "SmallPhone",
         "apkAssetPath": "openhouse/product-payloads/smallphone.tar",
         "targetDir": "$HOME/smallphoneai-repos/smallphone-active"
+      },
+      {
+        "id": "hermes",
+        "title": "Hermes Agent + WebUI",
+        "apkAssetPath": "openhouse/product-payloads/hermes.tgz",
+        "targetDir": "$HOME/smallphoneai-repos/hermes"
       }
     ]
   },
@@ -60,7 +66,7 @@
     {
       "title": "安装 SmallPhone 运行组件",
       "description": "从 APK-bundled payloads 安装 service-manager、cc-connect/openhouse-connect、SmallPhone，并调用各自 install/check/register-service 入口。",
-      "stages": ["runtime_components"]
+      "stages": ["runtime_components", "install_hermes"]
     },
     {
       "title": "启动 SmallPhone",
@@ -241,6 +247,12 @@
       "title": "安装运行组件",
       "description": "从 APK-bundled payloads 安装、检查并注册 service-manager、cc-connect/openhouse-connect、SmallPhone。",
       "action": { "type": "bootstrap", "args": ["components"] }
+    },
+    {
+      "id": "install_hermes",
+      "title": "安装 Hermes",
+      "description": "从 APK-bundled payload 安装、检查并注册 Hermes Agent 和 Hermes WebUI。",
+      "action": { "type": "bootstrap", "args": ["hermes"] }
     },
     {
       "id": "start",

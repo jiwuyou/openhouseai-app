@@ -41,6 +41,7 @@ import com.termux.app.OpenCodeDownloadSourceSettings;
 import com.termux.app.OpenCodeSettings;
 import com.termux.app.TermuxActivity;
 import com.termux.app.openhouse.OpenHouseDeepSeekController;
+import com.termux.app.openhouse.OpenHouseBundledRuntimeSync;
 import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
@@ -122,6 +123,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final String PREF_MAINTENANCE_SOURCE_URL = "maintenance_source_url";
     private static final String PREF_USER_PLUGIN_PATH = "maintenance_user_plugin_path";
     private static final String PREF_LOCAL_MAINTENANCE_WEB_PORT = "local_maintenance_web_port";
+    private static final String PREF_USE_REMOTE_BOOTSTRAP = "maintenance_use_remote_bootstrap";
     private static final String DEFAULT_MAINTENANCE_MANIFEST_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/openhouseai-manifest.json";
     private static final String DEFAULT_BOOTSTRAP_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh";
     private static final String DEEPSEEK_API_KEYS_URL = "https://platform.deepseek.com/api_keys";
@@ -1721,10 +1723,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
 
         oneClickStagesInFlight = true;
-        oneClickUseBundledStages = false;
+        oneClickUseBundledStages = true;
         currentStageUsedRemote = false;
         setOneClickStageMode(true);
-        if (activeManifest != null && activeManifest.bootstrapUrl != null && isHttpUrl(activeManifest.bootstrapUrl)) {
+        if (shouldUseRemoteBootstrap()
+            && activeManifest != null
+            && activeManifest.bootstrapUrl != null
+            && isHttpUrl(activeManifest.bootstrapUrl)) {
             startOneClickRemoteProbe();
         } else {
             oneClickUseBundledStages = true;
@@ -3100,9 +3105,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private boolean shouldUseRemoteStage(StageAction stageAction) {
-        return activeManifest != null
+        return shouldUseRemoteBootstrap()
+            && activeManifest != null
             && activeManifest.stages.containsKey(stageAction.slug)
             && (!oneClickStagesInFlight || !oneClickUseBundledStages);
+    }
+
+    private boolean shouldUseRemoteBootstrap() {
+        return maintenancePreferences != null
+            && maintenancePreferences.getBoolean(PREF_USE_REMOTE_BOOTSTRAP, false);
     }
 
     private void runRemoteBootstrapAction(String stageSlug, String stageLabel, BootstrapAction action) {
@@ -3146,7 +3157,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             String postRemoteScriptBody = "manifest_full".equals(stageSlug)
                 ? buildPostRemoteOneClickScript()
                 : null;
-            String command = buildRemoteBootstrapExecutionCommand(stageLabel, stageSlug, action, fallbackScriptBody, postRemoteScriptBody);
+            String command = shouldUseRemoteBootstrap()
+                ? buildRemoteBootstrapExecutionCommand(stageLabel, stageSlug, action, fallbackScriptBody, postRemoteScriptBody)
+                : buildBundledBootstrapExecutionCommand(stageLabel, stageSlug, action);
             maintenanceSession.getTerminalSession().write(command);
             if (!command.endsWith("\n")) {
                 maintenanceSession.getTerminalSession().write("\n");
@@ -3303,6 +3316,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildRemoteBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String fallbackScriptBody, String postRemoteScriptBody) throws IOException {
+        if (!shouldUseRemoteBootstrap()) {
+            return buildBundledBootstrapExecutionCommand(stageLabel, stageSlug, action);
+        }
         if (activeManifest == null) {
             throw new IOException("远程维护源尚未加载");
         }
@@ -3319,6 +3335,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String bootstrapUrl, String fallbackScriptBody, String postRemoteScriptBody) throws IOException {
+        syncBundledRuntimeAssets();
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("BOOTSTRAP_URL=").append(shellQuote(bootstrapUrl)).append('\n');
         scriptBody.append("select_fastest_termux_main_repo(){\n");
@@ -3430,6 +3447,47 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         return builder.toString();
     }
 
+    private String buildBundledBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action) throws IOException {
+        syncBundledRuntimeAssets();
+        StringBuilder scriptBody = new StringBuilder();
+        scriptBody.append("bootstrap=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n");
+        scriptBody.append("payload_dir=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n");
+        scriptBody.append("if [ ! -f \"$bootstrap\" ]; then log '未找到 APK 内置 SmallPhoneAI bootstrap，请重新安装或修复应用。'; exit 1; fi\n");
+        scriptBody.append("if [ -d \"$payload_dir\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"$payload_dir\" SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT=\"$payload_dir\"; fi\n");
+        scriptBody.append("log \"正在执行 APK 内置维护动作：").append(action.toDisplayString()).append("\"\n");
+        scriptBody.append("run_logged env OPENHOUSEAI_PORT=").append(shellQuote(Integer.toString(getDefaultOpenCodePort())))
+            .append(" OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())))
+            .append(" OPENCODE_INSTALL_URL=").append(shellQuote(resolveOpenCodeInstallSpec().primaryUrl))
+            .append(" SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle")
+            .append(" SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE=0")
+            .append(" SMALLPHONEAI_COMPONENTS_AUTO_CLONE=0");
+        StageAction bootstrapStageAction = StageAction.fromSlug(stageSlug);
+        if (bootstrapStageAction != null && bootstrapStageAction.requiredComponentTargets != null) {
+            scriptBody.append(" OPENHOUSEAI_REQUIRED_COMPONENT_TARGETS=")
+                .append(shellQuote(bootstrapStageAction.requiredComponentTargets));
+        }
+        scriptBody.append(" bash \"$bootstrap\"");
+        for (String arg : action.args) {
+            scriptBody.append(' ').append(shellQuote(arg));
+        }
+        scriptBody.append('\n');
+
+        String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody.toString());
+        String tempScriptPath = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs/run-" + stageSlug + ".sh";
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("mkdir -p ").append(shellQuote(TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs")).append('\n');
+        builder.append("cat > ").append(shellQuote(tempScriptPath)).append(" <<'__TERMUX_MAINT__'\n");
+        builder.append(wrapperScript);
+        if (!wrapperScript.endsWith("\n")) {
+            builder.append('\n');
+        }
+        builder.append("__TERMUX_MAINT__\n");
+        builder.append("/data/data/com.termux/files/usr/bin/bash ").append(shellQuote(tempScriptPath)).append('\n');
+        builder.append("rm -f ").append(shellQuote(tempScriptPath)).append('\n');
+        return builder.toString();
+    }
+
     private String getBootstrapUrlForLocalMaintenance() {
         if (activeManifest != null && activeManifest.bootstrapUrl != null && !activeManifest.bootstrapUrl.trim().isEmpty()) {
             return activeManifest.bootstrapUrl;
@@ -3475,6 +3533,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildAssetExecutionCommand(StageAction stageAction, String stageLabel, String stageSlug, String assetName, int port, OpenCodeInstallSpec installSpec) throws IOException {
+        syncBundledRuntimeAssets();
         String scriptBody = buildAssetScriptBody(stageAction, assetName, port, installSpec);
         String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody);
         String tempScriptPath = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs/run-" + stageSlug + ".sh";
@@ -3531,6 +3590,14 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("log '远程一键安装完成。OpenCode 需要点击启动按钮后再启动。'\n");
         return scriptBody.toString();
+    }
+
+    private OpenHouseBundledRuntimeSync.Result syncBundledRuntimeAssets() throws IOException {
+        try {
+            return OpenHouseBundledRuntimeSync.sync(this);
+        } catch (IOException e) {
+            throw new IOException("APK 内置 bootstrap/scripts/payload 同步失败：" + e.getMessage(), e);
+        }
     }
 
     private void showDeepSeekKeyGuideDialog() {
@@ -3747,6 +3814,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         builder.append("export LD_LIBRARY_PATH=\"$PREFIX/lib:${LD_LIBRARY_PATH:-}\"\n");
         builder.append("export TMPDIR=\"${TMPDIR:-$PREFIX/tmp}\"\n");
         builder.append("export TERM=\"xterm-256color\"\n");
+        builder.append("export SMALLPHONEAI_BOOTSTRAP=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n");
+        builder.append("export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n");
+        builder.append("if [ -f \"$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST:-$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json}\"; fi\n");
         builder.append("STAGE_NAME=").append(shellQuote(stageLabel)).append('\n');
         builder.append("STAGE_SLUG=").append(shellQuote(stageSlug)).append('\n');
         builder.append("LOG_DIR=\"$HOME/.maintainer-logs\"\n");

@@ -6,13 +6,11 @@ import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.BufferedReader;
-import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Collections;
@@ -24,8 +22,6 @@ public final class OpenHouseMaintainerRunner {
     private static final String LOG_TAG = "OpenHouseMaintainer";
     private static final Pattern SECRET_PATTERN = Pattern.compile("(?i)\\b(api[_-]?key|authorization|bearer|token|password)([=:\"' ]+)([^\\s\"']{8,})");
     private static final Pattern OPENAI_STYLE_KEY_PATTERN = Pattern.compile("\\bsk-[A-Za-z0-9_-]{12,}\\b");
-    private static final String BOOTSTRAP_ASSET_DIR = "smallphoneai/bootstrap";
-    private static final String PAYLOAD_ASSET_DIR = "openhouse/product-payloads";
 
     private final Context context;
 
@@ -51,8 +47,7 @@ public final class OpenHouseMaintainerRunner {
             if (!logDir.exists()) {
                 logDir.mkdirs();
             }
-            File bootstrapFile = prepareBundledBootstrap();
-            File offlinePayloadDir = prepareOfflinePayloads();
+            OpenHouseBundledRuntimeSync.Result runtimeSync = OpenHouseBundledRuntimeSync.sync(context);
 
             String assetBody = loadAsset("maintainer/" + action.assetName)
                 .replace("__PORT__", Integer.toString(port))
@@ -79,15 +74,11 @@ public final class OpenHouseMaintainerRunner {
             environment.put("SMALLPHONEAI_NO_AUTO_UBUNTU", "1");
             environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
             environment.put("OPENHOUSEAI_DEEPSEEK_KEY_FILE", OpenHouseStatusRepository.getDeepSeekKeyTempFile().getAbsolutePath());
-            if (bootstrapFile != null && bootstrapFile.isFile()) {
-                environment.put("SMALLPHONEAI_BOOTSTRAP", bootstrapFile.getAbsolutePath());
-            }
-            if (offlinePayloadDir != null && offlinePayloadDir.isDirectory()) {
-                environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_DIR", offlinePayloadDir.getAbsolutePath());
-                File manifest = new File(offlinePayloadDir, "manifest.json");
-                if (manifest.isFile()) {
-                    environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST", manifest.getAbsolutePath());
-                }
+            environment.put("SMALLPHONEAI_BOOTSTRAP", runtimeSync.bootstrapFile.getAbsolutePath());
+            environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_DIR", runtimeSync.payloadDir.getAbsolutePath());
+            File manifest = new File(runtimeSync.payloadDir, "manifest.json");
+            if (manifest.isFile()) {
+                environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST", manifest.getAbsolutePath());
             }
             if (extraEnvironment != null) {
                 for (Map.Entry<String, String> entry : extraEnvironment.entrySet()) {
@@ -116,79 +107,6 @@ public final class OpenHouseMaintainerRunner {
             }
             if (outputFile != null) {
                 outputFile.delete();
-            }
-        }
-    }
-
-    private File prepareBundledBootstrap() {
-        File bootstrapDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".smallphoneai-bootstrap");
-        File bootstrapFile = new File(bootstrapDir, "bootstrap.sh");
-        try {
-            String[] children = context.getAssets().list(BOOTSTRAP_ASSET_DIR);
-            if (children == null || children.length == 0) {
-                return bootstrapFile;
-            }
-            copyAssetDirectory(BOOTSTRAP_ASSET_DIR, bootstrapDir);
-            if (bootstrapFile.isFile()) {
-                bootstrapFile.setExecutable(true, true);
-            }
-            File scriptsDir = new File(bootstrapDir, "scripts");
-            File[] scripts = scriptsDir.listFiles();
-            if (scripts != null) {
-                for (File script : scripts) {
-                    if (script.isFile() && script.getName().endsWith(".sh")) {
-                        script.setExecutable(true, true);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to extract SmallPhoneAI bootstrap", e);
-        }
-        return bootstrapFile;
-    }
-
-    private File prepareOfflinePayloads() {
-        File payloadDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH,
-            ".smallphoneai-bootstrap/apk-assets/openhouse/product-payloads");
-        try {
-            String[] children = context.getAssets().list(PAYLOAD_ASSET_DIR);
-            if (children == null || children.length == 0) {
-                return payloadDir;
-            }
-            copyAssetDirectory(PAYLOAD_ASSET_DIR, payloadDir);
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to extract SmallPhoneAI offline payloads", e);
-        }
-        return payloadDir;
-    }
-
-    private void copyAssetDirectory(String assetPath, File outputDir) throws Exception {
-        String[] children = context.getAssets().list(assetPath);
-        if (children == null || children.length == 0) {
-            copyAssetFile(assetPath, outputDir);
-            return;
-        }
-
-        if (!outputDir.exists() && !outputDir.mkdirs()) {
-            throw new IllegalStateException("Failed to create " + outputDir.getAbsolutePath());
-        }
-        for (String child : children) {
-            copyAssetDirectory(assetPath + "/" + child, new File(outputDir, child));
-        }
-    }
-
-    private void copyAssetFile(String assetPath, File outputFile) throws Exception {
-        File parent = outputFile.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IllegalStateException("Failed to create " + parent.getAbsolutePath());
-        }
-
-        try (InputStream inputStream = context.getAssets().open(assetPath);
-             OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile, false))) {
-            byte[] buffer = new byte[8192];
-            int readBytes;
-            while ((readBytes = inputStream.read(buffer)) >= 0) {
-                outputStream.write(buffer, 0, readBytes);
             }
         }
     }
@@ -247,6 +165,9 @@ public final class OpenHouseMaintainerRunner {
         builder.append("export LD_LIBRARY_PATH=\"$PREFIX/lib:${LD_LIBRARY_PATH:-}\"\n");
         builder.append("export TMPDIR=\"${TMPDIR:-$PREFIX/tmp}\"\n");
         builder.append("export TERM=\"xterm-256color\"\n");
+        builder.append("export SMALLPHONEAI_BOOTSTRAP=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n");
+        builder.append("export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n");
+        builder.append("if [ -f \"$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST:-$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json}\"; fi\n");
         builder.append("STAGE_NAME=").append(shellQuote(stageLabel)).append('\n');
         builder.append("STAGE_SLUG=").append(shellQuote(stageSlug)).append('\n');
         builder.append("LOG_DIR=\"$HOME/.maintainer-logs\"\n");

@@ -11,13 +11,11 @@ import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.BufferedReader;
-import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -37,8 +35,6 @@ public final class OpenHouseInstallController {
     private static final String LOG_TAG = "OpenHouseInstall";
     private static final String MANIFEST_FULL_SLUG = "manifest_full";
     private static final String OFFICIAL_DOCS_ASSET_DIR = "openhouse/docs-public";
-    private static final String BOOTSTRAP_ASSET_DIR = "smallphoneai/bootstrap";
-    private static final String PAYLOAD_ASSET_DIR = "openhouse/product-payloads";
     private static final String DEFAULT_BOOTSTRAP_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh";
     private static final String REMOTE_SCHEDULE_HINT = "远程一键初始化会按全程约30分钟模拟进度";
     private static final int DEFAULT_LOCAL_MAINTENANCE_WEB_PORT = 38423;
@@ -237,7 +233,7 @@ public final class OpenHouseInstallController {
 
                 File logDir = ensureLogDir();
                 File tempScript = new File(logDir, "run-" + MANIFEST_FULL_SLUG + ".sh");
-                prepareBundledRuntimeAssets();
+                OpenHouseBundledRuntimeSync.Result runtimeSync = prepareBundledRuntimeAssets();
                 writeScript(tempScript, buildFullInstallScript());
                 resetManifestLogForNewRun();
                 long startedAtMs = System.currentTimeMillis();
@@ -252,7 +248,7 @@ public final class OpenHouseInstallController {
                 processBuilder.directory(new File(TermuxConstants.TERMUX_HOME_DIR_PATH));
                 processBuilder.redirectErrorStream(true);
                 processBuilder.redirectOutput(ProcessBuilder.Redirect.to(outputFile));
-                configureEnvironment(processBuilder.environment(), startedAtMs);
+                configureEnvironment(processBuilder.environment(), startedAtMs, runtimeSync);
 
                 Process process = processBuilder.start();
                 currentProcess = process;
@@ -988,7 +984,9 @@ public final class OpenHouseInstallController {
         }
     }
 
-    private void configureEnvironment(Map<String, String> environment, long startedAtMs) {
+    private void configureEnvironment(Map<String, String> environment,
+                                      long startedAtMs,
+                                      OpenHouseBundledRuntimeSync.Result runtimeSync) {
         environment.put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
         environment.put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
         environment.put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":/system/bin");
@@ -998,6 +996,14 @@ public final class OpenHouseInstallController {
         environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
         environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
         environment.put("OPENHOUSE_RUN_STARTED_AT_MS", Long.toString(startedAtMs));
+        if (runtimeSync != null) {
+            environment.put("SMALLPHONEAI_BOOTSTRAP", runtimeSync.bootstrapFile.getAbsolutePath());
+            environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_DIR", runtimeSync.payloadDir.getAbsolutePath());
+            File manifest = new File(runtimeSync.payloadDir, "manifest.json");
+            if (manifest.isFile()) {
+                environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST", manifest.getAbsolutePath());
+            }
+        }
         removeProxyEnvironment(environment);
     }
 
@@ -1091,62 +1097,11 @@ public final class OpenHouseInstallController {
             .replace("__OPENCODE_INSTALL_ALLOW_FALLBACK__", installSpec.allowFallback ? "1" : "0");
     }
 
-    private void prepareBundledRuntimeAssets() throws IOException {
-        File bootstrapDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".smallphoneai-bootstrap");
-        String[] bootstrapChildren = context.getAssets().list(BOOTSTRAP_ASSET_DIR);
-        if (bootstrapChildren != null && bootstrapChildren.length > 0) {
-            copyAssetDirectory(BOOTSTRAP_ASSET_DIR, bootstrapDir);
-            File bootstrapFile = new File(bootstrapDir, "bootstrap.sh");
-            if (bootstrapFile.isFile()) {
-                bootstrapFile.setExecutable(true, true);
-            }
-            File scriptsDir = new File(bootstrapDir, "scripts");
-            File[] scripts = scriptsDir.listFiles();
-            if (scripts != null) {
-                for (File script : scripts) {
-                    if (script.isFile() && script.getName().endsWith(".sh")) {
-                        script.setExecutable(true, true);
-                    }
-                }
-            }
-        }
-
-        File payloadDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH,
-            ".smallphoneai-bootstrap/apk-assets/openhouse/product-payloads");
-        String[] payloadChildren = context.getAssets().list(PAYLOAD_ASSET_DIR);
-        if (payloadChildren != null && payloadChildren.length > 0) {
-            copyAssetDirectory(PAYLOAD_ASSET_DIR, payloadDir);
-        }
-    }
-
-    private void copyAssetDirectory(String assetPath, File outputDir) throws IOException {
-        String[] children = context.getAssets().list(assetPath);
-        if (children == null || children.length == 0) {
-            copyAssetFile(assetPath, outputDir);
-            return;
-        }
-
-        if (!outputDir.exists() && !outputDir.mkdirs()) {
-            throw new IOException("Failed to create " + outputDir.getAbsolutePath());
-        }
-        for (String child : children) {
-            copyAssetDirectory(assetPath + "/" + child, new File(outputDir, child));
-        }
-    }
-
-    private void copyAssetFile(String assetPath, File outputFile) throws IOException {
-        File parent = outputFile.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IOException("Failed to create " + parent.getAbsolutePath());
-        }
-
-        try (InputStream inputStream = context.getAssets().open(assetPath);
-             OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile, false))) {
-            byte[] buffer = new byte[8192];
-            int readBytes;
-            while ((readBytes = inputStream.read(buffer)) >= 0) {
-                outputStream.write(buffer, 0, readBytes);
-            }
+    private OpenHouseBundledRuntimeSync.Result prepareBundledRuntimeAssets() throws IOException {
+        try {
+            return OpenHouseBundledRuntimeSync.sync(context);
+        } catch (IOException e) {
+            throw new IOException("APK 内置 bootstrap/scripts/payload 同步失败：" + e.getMessage(), e);
         }
     }
 
@@ -1162,6 +1117,9 @@ public final class OpenHouseInstallController {
         builder.append("export TERM=\"xterm-256color\"\n");
         builder.append("export OPENHOUSEAI_NO_AUTO_UBUNTU=1\n");
         builder.append("export TERMUX_NO_AUTO_UBUNTU=1\n");
+        builder.append("export SMALLPHONEAI_BOOTSTRAP=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n");
+        builder.append("export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n");
+        builder.append("if [ -f \"$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST:-$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json}\"; fi\n");
         builder.append("unset http_proxy https_proxy ftp_proxy all_proxy no_proxy HTTP_PROXY HTTPS_PROXY FTP_PROXY ALL_PROXY NO_PROXY\n");
         builder.append("STAGE_NAME=").append(shellQuote(stageLabel)).append('\n');
         builder.append("STAGE_SLUG=").append(shellQuote(stageSlug)).append('\n');

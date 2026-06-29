@@ -3,3 +3,4 @@
 *.gradle    text eol=lf
 *.mk        text eol=lf
 *.sh        text eol=lf
+app/src/main/assets/openhouse/product-payloads/hermes.tgz filter=lfs diff=lfs merge=lfs -text

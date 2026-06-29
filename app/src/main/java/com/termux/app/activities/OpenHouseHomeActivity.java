@@ -363,10 +363,34 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavLogs).setOnClickListener(v -> selectPage(PAGE_LOGS));
         findViewById(R.id.buttonNavAdvanced).setOnClickListener(v -> selectPage(PAGE_ADVANCED));
         findViewById(R.id.buttonNavTerminal).setOnClickListener(v -> openTerminal(false));
+        addAiFriendHelpDrawerEntry();
         if (setCurrentHomeButton != null) {
             setCurrentHomeButton.setOnClickListener(v -> setCurrentPageAsHome());
         }
         updateHomePreferenceViews();
+    }
+
+    private void addAiFriendHelpDrawerEntry() {
+        View anchor = findViewById(R.id.buttonNavServiceControl);
+        if (anchor == null || !(anchor.getParent() instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout parent = (LinearLayout) anchor.getParent();
+        if (parent.findViewWithTag("ai_friend_help_entry") != null) {
+            return;
+        }
+
+        Button button = new Button(this);
+        button.setTag("ai_friend_help_entry");
+        button.setText(R.string.operit_ai_friend_help_nav_title);
+        button.setAllCaps(false);
+        button.setOnClickListener(v -> openAiFriendHelp());
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(52));
+        params.setMargins(0, dp(8), 0, 0);
+        parent.addView(button, parent.indexOfChild(anchor) + 1, params);
     }
 
     private void refreshDynamicComponents() {
@@ -2669,6 +2693,16 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void openSmallPhone() {
         openBuiltinComponentOrFallback(findSmallPhoneComponent(), PAGE_SMALLPHONE);
+    }
+
+    private void openAiFriendHelp() {
+        if (drawerLayout != null) {
+            drawerLayout.closeDrawer(GravityCompat.START);
+        }
+        Intent intent = new Intent(this, OperitAssistantActivity.class);
+        intent.putExtra(OperitAssistantActivity.EXTRA_HOSTED_MODE, true);
+        intent.putExtra(OperitAssistantActivity.EXTRA_HELP_MODE, true);
+        ActivityUtils.startActivity(this, intent);
     }
 
     private void openMaintenanceLog(String stageSlug, String stageLabel) {

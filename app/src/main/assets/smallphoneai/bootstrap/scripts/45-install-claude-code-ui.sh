@@ -57,6 +57,110 @@ npm config set fetch-retry-mintimeout "${SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT
 npm config set fetch-retry-maxtimeout "${SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT:-120000}"
 npm config set fetch-timeout "${SMALLPHONEAI_NPM_FETCH_TIMEOUT:-600000}"
 
+cloudcli_package_root() {
+  npm_root="$(npm root -g 2>/dev/null || true)"
+  for dir in \
+    "$npm_root/@cloudcli-ai/cloudcli" \
+    "$HOME/.npm-global/lib/node_modules/@cloudcli-ai/cloudcli" \
+    "/usr/local/lib/node_modules/@cloudcli-ai/cloudcli"; do
+    [ -n "$dir" ] && [ -d "$dir" ] && { printf "%s\n" "$dir"; return 0; }
+  done
+  return 1
+}
+
+patch_cloudcli_workspace_policy() {
+  package_root="$(cloudcli_package_root)" || {
+    echo "WARN: CloudCLI package root not found; skip workspace policy patch." >&2
+    return 0
+  }
+  patched=0
+  for target in \
+    "$package_root/dist-server/server/shared/utils.js" \
+    "$package_root/server/shared/utils.ts"; do
+    [ -f "$target" ] || continue
+    node - "$target" <<\NODE
+const fs = require("fs");
+const file = process.argv[2] || process.argv[1];
+const sq = String.fromCharCode(39);
+const dq = String.fromCharCode(34);
+const text = fs.readFileSync(file, "utf8");
+const lines = text.split(/\r?\n/).filter((line) => {
+  const trimmed = line.trim();
+  return ![
+    `${sq}/root${sq},`,
+    `${dq}/root${dq},`,
+    `${sq}/root${sq}`,
+    `${dq}/root${dq}`,
+  ].includes(trimmed);
+});
+const next = lines.join("\n");
+if (next !== text) fs.writeFileSync(file, next);
+NODE
+    patched=1
+  done
+  [ "$patched" = "1" ] || echo "WARN: CloudCLI workspace policy file not found under $package_root." >&2
+}
+
+seed_cloudcli_default_project() {
+  mkdir -p "$HOME/workspace" "$HOME/.cloudcli"
+  package_root="$(cloudcli_package_root)" || {
+    echo "WARN: CloudCLI package root not found; skip default project seed." >&2
+    return 0
+  }
+  CLOUDCLI_PACKAGE_ROOT="$package_root" \
+  CLOUDCLI_DEFAULT_WORKSPACE="${CLOUDCLI_DEFAULT_WORKSPACE:-$HOME/workspace}" \
+  DATABASE_PATH="${DATABASE_PATH:-$HOME/.cloudcli/openhouse-auth.db}" \
+  WORKSPACES_ROOT="${WORKSPACES_ROOT:-$HOME}" \
+    node --input-type=module <<\NODE || echo "WARN: CloudCLI default project seed failed; continuing." >&2
+import path from "node:path";
+import fs from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const packageRoot = process.env.CLOUDCLI_PACKAGE_ROOT;
+const workspace = process.env.CLOUDCLI_DEFAULT_WORKSPACE || "/root/workspace";
+process.env.DATABASE_PATH = process.env.DATABASE_PATH || "/root/.cloudcli/openhouse-auth.db";
+process.env.WORKSPACES_ROOT = process.env.WORKSPACES_ROOT || "/root";
+
+const dbIndex = [
+  path.join(packageRoot, "dist-server/server/modules/database/index.js"),
+  path.join(packageRoot, "dist/server/modules/database/index.js"),
+  path.join(packageRoot, "server/modules/database/index.js"),
+].find((candidate) => fs.existsSync(candidate));
+if (!dbIndex) {
+  throw new Error("CloudCLI database module is unavailable");
+}
+const dbModule = await import(pathToFileURL(dbIndex).href);
+if (typeof dbModule.initializeDatabase === "function") {
+  await dbModule.initializeDatabase();
+}
+const projectsDb = dbModule.projectsDb || (dbModule.default && dbModule.default.projectsDb);
+if (!projectsDb || typeof projectsDb.createProjectPath !== "function") {
+  throw new Error("CloudCLI projectsDb.createProjectPath is unavailable");
+}
+let exists = false;
+for (const method of ["getProjectByPath", "findByPath"]) {
+  if (typeof projectsDb[method] === "function") {
+    const found = projectsDb[method](workspace);
+    if (found) exists = true;
+  }
+}
+if (!exists && typeof projectsDb.getAllProjects === "function") {
+  const all = projectsDb.getAllProjects();
+  if (Array.isArray(all)) {
+    exists = all.some((item) => String(item && (item.project_path || item.projectPath || item.path || "")).trim() === workspace);
+  }
+}
+if (!exists) {
+  try {
+    projectsDb.createProjectPath(workspace, "workspace");
+  } catch (error) {
+    const message = String(error && error.message || error);
+    if (!/exists|duplicate|unique/i.test(message)) throw error;
+  }
+}
+NODE
+}
+
 install_timeout="${SMALLPHONEAI_NPM_INSTALL_TIMEOUT:-7200s}"
 if command -v cloudcli >/dev/null 2>&1; then
   echo "CloudCLI 已安装：$(command -v cloudcli)"
@@ -80,6 +184,10 @@ else
 fi
 
 export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+export WORKSPACES_ROOT="${WORKSPACES_ROOT:-$HOME}"
+export DATABASE_PATH="${DATABASE_PATH:-$HOME/.cloudcli/openhouse-auth.db}"
+patch_cloudcli_workspace_policy
+seed_cloudcli_default_project
 command -v cloudcli
 cloudcli version || cloudcli --version || true
 

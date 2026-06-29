@@ -1,11 +1,38 @@
 {
   "schema": 1,
-  "generatedAt": "2026-06-26",
+  "generatedAt": "2026-06-29",
   "description": "SmallPhoneAI first-run offline payloads bundled inside the APK. Network and GitHub are optional update paths after boot.",
   "components": [
-    { "id": "service-manager", "archive": "service-manager.tar", "targetDir": "service-manager", "sha256": "6fe4bebd15d01bfbe82433fbdf74ca4c570cd27c0c22ae1ec35dc110ea49f1c5", "size": 6000640 },
-    { "id": "openhouse-connect", "aliases": ["cc-connect"], "archive": "openhouse-connect.tar", "targetDir": "openhouse-connect", "sha256": "17adb055f3f11ad43274679cf49b2c3e5875904131553f4f7be4f3e3211e448c", "size": 39075840 },
-    { "id": "smallphone", "archive": "smallphone.tar", "targetDir": "smallphone-active", "sha256": "01ed81c09d0baa1f1e3e46d2fcad73d117a1f02fdcf5161d92e17d7e8d019ff0", "size": 1914880 },
-    { "id": "hermes", "archive": "hermes.tgz", "targetDir": "hermes", "sha256": "0660b634d4117b05050c8f19917d76575aad6dc166d9372cbdb7d783aaeb01ae", "size": 73417294 }
+    {
+      "id": "service-manager",
+      "archive": "service-manager.tar",
+      "targetDir": "service-manager",
+      "sha256": "dea8200257cec77379b42927d99960732729ab2cfa94d9109835b356af8407c3",
+      "size": 6000640
+    },
+    {
+      "id": "openhouse-connect",
+      "aliases": [
+        "cc-connect"
+      ],
+      "archive": "openhouse-connect.tar",
+      "targetDir": "openhouse-connect",
+      "sha256": "17adb055f3f11ad43274679cf49b2c3e5875904131553f4f7be4f3e3211e448c",
+      "size": 39075840
+    },
+    {
+      "id": "smallphone",
+      "archive": "smallphone.tar",
+      "targetDir": "smallphone-active",
+      "sha256": "dd250243e08b3222f79b7e12419bc829fafb2426394eb1e83b70d7ed771ac99f",
+      "size": 1914880
+    },
+    {
+      "id": "hermes",
+      "archive": "hermes.tgz",
+      "targetDir": "hermes",
+      "sha256": "61f9b382066ef9fa538a1bf408a1a6ef57307cba9913cc5d890120d31c475e4d",
+      "size": 132941652
+    }
   ]
 }

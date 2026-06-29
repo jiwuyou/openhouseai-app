@@ -107,6 +107,12 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <activity
+            android:name=".app.activities.OperitAssistantActivity"
+            android:exported="false"
+            android:label="@string/operit_assistant_title"
+            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
+
         <activity-alias
             android:name=".HomeActivity"
             android:exported="true"
