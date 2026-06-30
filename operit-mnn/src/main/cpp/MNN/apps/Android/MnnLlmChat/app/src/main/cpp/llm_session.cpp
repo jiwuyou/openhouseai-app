@@ -1,0 +1,869 @@
+//
+// Created by ruoyi.sjd on 2025/4/18.
+//
+
+#include "llm_session.h"
+#include <utility>
+#include <chrono>
+#include <fstream>
+#include <algorithm>
+#include "MNN/MNNForwardType.h"
+#include "MNN/expr/ExecutorScope.hpp"
+#include "mls_log.h"
+#include "mls_config.h"
+#include "utf8_stream_processor.hpp"
+#include "llm_stream_buffer.hpp"
+#include "processor.h"
+
+#ifdef __ANDROID__
+#include "video/video_processor.h"
+#endif
+
+void ReportLlmSetConfigToFirebase(const std::string& stage, const std::string& config_json);
+
+namespace mls {
+
+namespace {
+
+void restoreAndroidSteppingStatusIfNeeded(Llm* llm) {
+    if (llm == nullptr) {
+        return;
+    }
+    auto* context = llm->getContext();
+    if (context == nullptr) {
+        return;
+    }
+    if (context->status == MNN::Transformer::LlmStatus::MAX_TOKENS_FINISHED ||
+        context->status == MNN::Transformer::LlmStatus::NORMAL_FINISHED) {
+        // Android links the prebuilt libMNN.so runtime, so this wrapper locally resets
+        // terminal step states instead of depending on a shared engine change.
+        auto* mutable_context = const_cast<MNN::Transformer::LlmContext*>(context);
+        mutable_context->status = MNN::Transformer::LlmStatus::RUNNING;
+    }
+}
+
+struct AndroidSteppingStreamState {
+    std::stringstream& response_buffer;
+    const std::function<bool(const std::string&, bool is_eop)>& on_progress;
+    bool& generate_text_end;
+    bool& stop_requested;
+    std::string& response_string_for_debug;
+    std::function<void(const std::string&)> on_response_complete;
+    const char* result_log_tag;
+    bool pending_eop = false;
+
+    void processChunk(const std::string& utf8Char) {
+        const bool is_eop = utf8Char.find("<eop>") != std::string::npos;
+        if (!is_eop) {
+            response_buffer << utf8Char;
+            if (on_progress) {
+                stop_requested = stop_requested || on_progress(utf8Char, false);
+            }
+            return;
+        }
+        pending_eop = true;
+    }
+
+    void finalizePendingEop() {
+        if (!pending_eop) {
+            return;
+        }
+        std::string response_result = response_buffer.str();
+        MNN_DEBUG("%s %s", result_log_tag, response_result.c_str());
+        response_string_for_debug = response_result;
+        on_response_complete(response_result);
+        if (on_progress) {
+            stop_requested = stop_requested || on_progress("<eop>", true);
+        }
+        generate_text_end = true;
+        pending_eop = false;
+    }
+};
+
+void resolveAndroidSteppingEop(
+        Llm* llm,
+        AndroidSteppingStreamState& stream_state,
+        int current_size,
+        int max_new_tokens) {
+    auto* context = llm != nullptr ? llm->getContext() : nullptr;
+    if (context != nullptr &&
+        context->status == MNN::Transformer::LlmStatus::MAX_TOKENS_FINISHED &&
+        !stream_state.stop_requested &&
+        current_size < max_new_tokens) {
+        // Android currently links a prebuilt runtime that emits <eop> at the end of
+        // every generate(1) step. Treat that as an intermediate boundary, not final end.
+        restoreAndroidSteppingStatusIfNeeded(llm);
+        if (stream_state.pending_eop) {
+            stream_state.generate_text_end = false;
+            stream_state.pending_eop = false;
+        }
+        return;
+    }
+    if (context != nullptr &&
+        context->status == MNN::Transformer::LlmStatus::NORMAL_FINISHED &&
+        !stream_state.pending_eop &&
+        !stream_state.stop_requested &&
+        current_size < max_new_tokens) {
+        // After one round finishes naturally, prefill-only response(..., 0) can leave the
+        // next round's first generate(1) starting from NORMAL_FINISHED in the prebuilt runtime.
+        restoreAndroidSteppingStatusIfNeeded(llm);
+        return;
+    }
+    if (stream_state.pending_eop) {
+        stream_state.finalizePendingEop();
+    }
+}
+
+} // namespace
+
+std::string trimLeadingWhitespace(const std::string& str) {
+    auto it = std::find_if(str.begin(), str.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    });
+    return {it, str.end()};
+}
+
+std::string getUserString(const char* user_content, bool for_history, bool is_r1) {
+    if (is_r1) {
+        return "<|User|>" + std::string(user_content) + "<|Assistant|>" + (for_history ? "" : "<think>\n");
+    } else {
+        return user_content;
+    }
+}
+
+std::string GetSystemPromptString(std::string system_prompt,  bool is_r1) {
+    if (is_r1) {
+        return std::string("<|begin_of_sentence|>") + system_prompt;
+    } else {
+        return system_prompt;
+    }
+}
+
+std::string deleteThinkPart(std::string assistant_content) {
+    std::size_t think_start = assistant_content.find("<think>");
+    if (think_start == std::string::npos) {
+        return assistant_content;
+    }
+    std::size_t think_end = assistant_content.find("</think>", think_start);
+    if (think_end == std::string::npos) {
+        return assistant_content;
+    }
+    think_end += std::string("</think>").length();
+    assistant_content.erase(think_start, think_end - think_start);
+    return assistant_content;
+}
+
+std::string getR1AssistantString(std::string assistant_content) {
+    std::size_t pos = assistant_content.find("</think>");
+    if (pos != std::string::npos) {
+        assistant_content.erase(0, pos + std::string("</think>").length());
+    }
+    return trimLeadingWhitespace(assistant_content) + "<|end_of_sentence|>";
+}
+
+// Process multimodal prompt and convert to MultimodalPrompt structure
+mls::PromptProcessingResult processMultimodalPrompt(const std::string& prompt_text) {
+    mls::PromptProcessor processor;
+    return processor.Process(prompt_text);
+}
+
+void LlmSession::Reset() {
+    history_.resize(1);
+    if (llm_) {
+        llm_->reset();
+    }
+}
+
+LlmSession::LlmSession(std::string model_path, json config, json extra_config, std::vector<std::string> history):
+        model_path_(std::move(model_path)), config_(std::move(config)), extra_config_(std::move(extra_config)) {
+    max_new_tokens_ = config_.contains("max_new_tokens") ?  config_["max_new_tokens"].get<int>() : 2048;
+    keep_history_ = !extra_config_.contains("keep_history") || extra_config_["keep_history"].get<bool>();
+    is_r1_ = extra_config_.contains("is_r1") && extra_config_["is_r1"].get<bool>();
+    system_prompt_ = config_.contains("system_prompt") ? config_["system_prompt"].get<std::string>() : "You are a helpful assistant.";
+    history_.emplace_back("system", GetSystemPromptString(system_prompt_, is_r1_));
+    if (!history.empty()) {
+        for (int i = 0; i < history.size(); i++) {
+            if (is_r1_) {
+                if (i % 2 == 0) {
+                    history_.emplace_back("user", getUserString(history[i].c_str(), true, is_r1_));
+                } else {
+                    history_.emplace_back("assistant", getR1AssistantString(history[i]));
+                }
+            } else {
+                history_.emplace_back(i % 2 == 0 ? "user" : "assistant",
+                                      i % 2 == 0 ? history[i] :
+                                      deleteThinkPart(history[i]));
+            }
+        }
+    }
+}
+
+bool LlmSession::Load() {
+    last_load_error_.clear();
+    std::string root_cache_dir_str = extra_config_["mmap_dir"];
+    bool use_mmap = !extra_config_["mmap_dir"].get<std::string>().empty();
+    llm_ = Llm::createLLM(model_path_);
+    if (llm_ == nullptr) {
+        last_load_error_ = "createLLM failed for config path: " + model_path_ +
+            " (config file missing or invalid)";
+        MNN_DEBUG("Failed to create LLM instance: %s", last_load_error_.c_str());
+        model_loaded_ = false;
+        return false;
+    }
+    json config = config_;
+    config["use_mmap"] = use_mmap;
+    if (use_mmap) {
+        std::string temp_dir = root_cache_dir_str;
+        config["tmp_path"] = temp_dir;
+    }
+    if (is_r1_) {
+        config["use_template"] = false;
+        config["precision"] = "high";
+    }
+    current_config_ = config;
+    auto config_str = config.dump();
+    MNN_DEBUG("extra_config: %s", config_str.c_str());
+    ReportLlmSetConfigToFirebase("load", config_str);
+    llm_->set_config(config_str);
+    MNN_DEBUG("dumped config: %s", llm_->dump_config().c_str());
+    model_loaded_ = llm_->load();
+    if (!model_loaded_) {
+        last_load_error_ = "Module load failed for config: " + model_path_ +
+            ". Common causes: model file (.mnn) missing or corrupted, wrong backend (e.g. NPU on CPU-only device), insufficient memory.";
+        MNN_DEBUG("Model load() returned false: %s", last_load_error_.c_str());
+    }
+    return model_loaded_;
+}
+
+LlmSession::~LlmSession() {
+    MNN_DEBUG("LIFECYCLE: LlmSession DESTROYED at %p", this);
+    delete llm_;
+}
+
+const MNN::Transformer::LlmContext * LlmSession::Response(const std::string &prompt,
+                                                          const std::function<bool(const std::string&, bool is_eop)>& on_progress) {
+    if (llm_ == nullptr) {
+        return nullptr;
+    }
+
+    if (!keep_history_) {
+        history_.resize(1);
+    }
+    int current_size = 0;
+    stop_requested_ = false;
+    generate_text_end_ = false;
+    std::stringstream response_buffer;
+    AndroidSteppingStreamState stream_state{
+            response_buffer,
+            on_progress,
+            generate_text_end_,
+            stop_requested_,
+            response_string_for_debug,
+            [this](const std::string& raw_response) {
+                std::string response_result = raw_response;
+                if (is_r1_) {
+                    auto& last_message = history_.at(history_.size() - 1);
+                    std::size_t user_think_pos = last_message.second.find("<think>\n");
+                    if (user_think_pos != std::string::npos) {
+                        last_message.second.erase(user_think_pos, std::string("<think>\n").length());
+                    }
+                    response_result = getR1AssistantString(response_result);
+                }
+                response_result = trimLeadingWhitespace(deleteThinkPart(response_result));
+                history_.emplace_back("assistant", response_result);
+            },
+            "submitNative Result"
+    };
+    mls::Utf8StreamProcessor processor([&stream_state](const std::string& utf8Char) {
+        stream_state.processChunk(utf8Char);
+    });
+    LlmStreamBuffer stream_buffer{[&processor](const char* str, size_t len){
+        processor.processStream(str, len);
+    }};
+    std::ostream output_ostream(&stream_buffer);
+//#define USE_DEBUG_PROMOT
+#ifdef USE_DEBUG_PROMOT
+    std::string debug_prompt = "<audio>/data/user/0/com.alibaba.mnnllm.android/files/history/1746690738111/record_1746690751335.wav</audio>";
+    history_.emplace_back("user", getUserString(debug_prompt.c_str(), false, is_r1_));
+#else
+    history_.emplace_back("user", getUserString(prompt.c_str(), false, is_r1_));
+#endif
+    MNN_DEBUG("submitNative history count %zu", history_.size());
+    
+    // Generate full prompt string using Prompt::applyTemplate
+    std::string full_prompt_text;
+    for (auto & it : history_) {
+        full_prompt_text += it.second;
+        prompt_string_for_debug += it.second;
+    }
+    
+    MNN_DEBUG("submitNative prompt_string_for_debug count %s max_new_tokens_:%d", prompt_string_for_debug.c_str(), max_new_tokens_);
+    
+    // Check for multimodal content in the full prompt
+    auto multimodal_result = processMultimodalPrompt(full_prompt_text);
+    restoreAndroidSteppingStatusIfNeeded(llm_);
+    if (multimodal_result.has_multimodal) {
+        MNN_DEBUG("Detected multimodal content, using multimodal API prompt %s with %zu images",
+             multimodal_result.multimodal_prompt.prompt_template.c_str(),
+             multimodal_result.multimodal_prompt.images.size());
+        if (!multimodal_result.error_message.empty()) {
+            MNN_ERROR("Multimodal processing errors: %s", multimodal_result.error_message.c_str());
+        }
+        // Prefill only. Stepping decode one token at a time via llm_->generate(1) keeps
+        // streaming active without letting the engine mark the session as finished up front.
+        llm_->response(multimodal_result.multimodal_prompt, &output_ostream, "<eop>", 0);
+    } else {
+        MNN_DEBUG("No multimodal content detected, using regular text API");
+        llm_->response(history_, &output_ostream, "<eop>", 0);
+    }
+    resolveAndroidSteppingEop(llm_, stream_state, current_size, max_new_tokens_);
+    while (!stop_requested_ && !generate_text_end_ && current_size < max_new_tokens_) {
+        llm_->generate(1);
+        current_size++;
+        resolveAndroidSteppingEop(llm_, stream_state, current_size, max_new_tokens_);
+    }
+    if (!stop_requested_ && enable_audio_output_) {
+        llm_->generateWavform();
+    }
+    // Two post-decode outcomes:
+    // 1. Natural <eop>: finalizePendingEop fires the on_response_complete
+    //    callback which adds the assistant reply to history_ — sync cache.
+    // 2. No <eop> (max-tokens truncation OR user cancel): the partial
+    //    response was streamed to the UI and the caller always persists
+    //    the assistant item, so add it to history_ and sync to keep
+    //    engine state aligned with the visible conversation.
+    size_t history_after = history_.size();
+    stream_state.finalizePendingEop();
+    if (history_.size() > history_after) {
+        // (1) Natural <eop> — callback already added the assistant reply
+        llm_->syncPromptCache(history_);
+    } else if (current_size > 0) {
+        // (2) No <eop> — add the partial response to history_ using the
+        //     same processing as the on_response_complete callback.
+        std::string response_result = response_buffer.str();
+        if (is_r1_) {
+            auto& last_message = history_.at(history_.size() - 1);
+            std::size_t user_think_pos = last_message.second.find("<think>\n");
+            if (user_think_pos != std::string::npos) {
+                last_message.second.erase(user_think_pos, std::string("<think>\n").length());
+            }
+            response_result = getR1AssistantString(response_result);
+        }
+        response_result = trimLeadingWhitespace(deleteThinkPart(response_result));
+        if (!response_result.empty()) {
+            history_.emplace_back("assistant", response_result);
+        }
+        llm_->syncPromptCache(history_);
+    }
+
+    auto context = llm_->getContext();
+    float prefill_s = context->prefill_us / 1e6f;
+    float decode_s = context->decode_us / 1e6f;
+    float prefill_tps = (prefill_s > 0) ? context->prompt_len / prefill_s : 0;
+    float decode_tps = (decode_s > 0) ? context->gen_seq_len / decode_s : 0;
+    MNN_DEBUG("PERF | prefill: %d tok in %.2fs (%.1f t/s) | decode: %d tok in %.2fs (%.1f t/s) | history: %zu msgs",
+              context->prompt_len, prefill_s, prefill_tps,
+              context->gen_seq_len, decode_s, decode_tps,
+              history_.size());
+    return context;
+}
+
+std::string LlmSession::getDebugInfo() {
+    return ("last_prompt:\n" + prompt_string_for_debug + "\nlast_response:\n" + response_string_for_debug);
+}
+
+void LlmSession::SetWavformCallback(std::function<bool(const float *, size_t, bool)> callback) {
+    if (llm_ != nullptr && callback != nullptr) {
+        waveform.clear();
+        llm_->setWavformCallback([this, callback = std::move(callback)](const float *ptr, size_t size, bool last_chunk) {
+#if DEBUG_SAVE_WAV
+            waveform.reserve(waveform.size() + size);
+            waveform.insert(waveform.end(), ptr, ptr + size);
+            MNN_DEBUG("waveform size %zu", waveform.size());
+            if (last_chunk) {
+                auto waveform_var = MNN::Express::_Const(waveform.data(), {(int)waveform.size()}, MNN::Express::NCHW, halide_type_of<float>());
+                MNN::AUDIO::save("/data/data/com.alibaba.mnnllm.android/files/output.wav", waveform_var, 24000);
+                waveform.clear();
+            }
+#endif
+            if (!enable_audio_output_ || stop_requested_) {
+                return false;
+            }
+            if (callback) {
+                return !callback(ptr, size, last_chunk);
+            }
+            return false;
+        });
+    } else {
+        MNN_ERROR("no llm instance");
+    }
+}
+
+void LlmSession::SetMaxNewTokens(int i) {
+    max_new_tokens_ = i;
+}
+
+void LlmSession::setSystemPrompt(std::string system_prompt) {
+    system_prompt_= std::move(system_prompt);
+    if (history_.size() > 1) {
+        history_.at(0).second = GetSystemPromptString(system_prompt_, is_r1_);
+    } else {
+        history_.emplace_back("system", GetSystemPromptString(system_prompt_, is_r1_));
+    }
+}
+
+void LlmSession::SetAssistantPrompt(const std::string& assistant_prompt) {
+    current_config_["assistant_prompt_template"] = assistant_prompt;
+    if (llm_) {
+        auto config_str = current_config_.dump();
+        ReportLlmSetConfigToFirebase("set_assistant_prompt", config_str);
+        llm_->set_config(config_str);
+    }
+    MNN_DEBUG("dumped config: %s", llm_->dump_config().c_str());
+}
+
+void LlmSession::updateConfig(const std::string& config_json) {
+    json new_config = json::parse(config_json, nullptr, false);
+    if (new_config.is_null()) {
+        MNN_ERROR("Failed to parse config JSON: invalid JSON format");
+        return;
+    }
+    
+    for (auto& [key, value] : new_config.items()) {
+        current_config_[key] = value;
+    }
+    if (llm_) {
+        auto config_str = current_config_.dump();
+        ReportLlmSetConfigToFirebase("update_config", config_str);
+        llm_->set_config(config_str);
+        MNN_DEBUG("Updated config applied: %s", current_config_.dump().c_str());
+    } else {
+        MNN_DEBUG("LLM not initialized yet, config saved for later: %s", current_config_.dump().c_str());
+    }
+}
+
+void LlmSession::enableAudioOutput(bool enable) {
+    enable_audio_output_ = enable;
+}
+
+const MNN::Transformer::LlmContext * LlmSession::ResponseWithHistory(
+        const std::vector<PromptItem>& full_history,
+        const std::function<bool(const std::string&, bool is_eop)>& on_progress) {
+    if (llm_ == nullptr) {
+        return nullptr;
+    }
+
+    // Create temporary history without modifying member variables
+    std::vector<PromptItem> temp_history;
+
+    // Directly use the provided full history without saving to member variables
+    temp_history.insert(temp_history.end(), full_history.begin(), full_history.end());
+
+    int current_size = 0;
+    stop_requested_ = false;
+    generate_text_end_ = false;
+    std::stringstream response_buffer;
+
+    // Stream processing logic without modifying history_ member
+    AndroidSteppingStreamState stream_state{
+            response_buffer,
+            on_progress,
+            generate_text_end_,
+            stop_requested_,
+            response_string_for_debug,
+            [this](const std::string& raw_response) {
+                std::string response_result = raw_response;
+                if (is_r1_) {
+                    response_result = getR1AssistantString(response_result);
+                }
+                response_result = trimLeadingWhitespace(deleteThinkPart(response_result));
+            },
+            "ResponseWithHistory Result"
+    };
+    mls::Utf8StreamProcessor processor([&stream_state](const std::string& utf8Char) {
+        stream_state.processChunk(utf8Char);
+    });
+
+    LlmStreamBuffer stream_buffer{[&processor](const char* str, size_t len){
+        processor.processStream(str, len);
+    }};
+    std::ostream output_ostream(&stream_buffer);
+
+
+
+    MNN_DEBUG("submitNative history count %zu", temp_history.size());
+    prompt_string_for_debug.clear(); // Clear old data to avoid duplicate appending
+    
+    // Generate full prompt text from history
+    std::string full_prompt_text;
+    for (const auto& it : temp_history) {
+        prompt_string_for_debug += "[" + it.first + "]: " + it.second + "\n";
+        full_prompt_text += it.second;
+    }
+    
+    MNN_DEBUG("submitNative prompt_string_for_debug:\n%s\nmax_new_tokens_:%d", prompt_string_for_debug.c_str(), max_new_tokens_);
+    
+    // Check for multimodal content in the full prompt
+    auto multimodal_result = processMultimodalPrompt(full_prompt_text);
+    restoreAndroidSteppingStatusIfNeeded(llm_);
+    if (multimodal_result.has_multimodal) {
+        MNN_DEBUG("ResponseWithHistory: Detected multimodal content, using multimodal API");
+        if (!multimodal_result.error_message.empty()) {
+            MNN_ERROR("ResponseWithHistory: Multimodal processing errors: %s", multimodal_result.error_message.c_str());
+        }
+        llm_->response(multimodal_result.multimodal_prompt, &output_ostream, "<eop>", 0);
+    } else {
+        MNN_DEBUG("ResponseWithHistory: No multimodal content detected, using regular text API");
+        llm_->response(temp_history, &output_ostream, "<eop>", 0);
+    }
+    size_t kv_before_decode = llm_->getCurrentHistory();
+    resolveAndroidSteppingEop(llm_, stream_state, current_size, max_new_tokens_);
+
+    while (!stop_requested_ && !generate_text_end_ && current_size < max_new_tokens_) {
+        llm_->generate(1);
+        current_size++;
+        resolveAndroidSteppingEop(llm_, stream_state, current_size, max_new_tokens_);
+    }
+
+    if (!stop_requested_ && enable_audio_output_) {
+        llm_->generateWavform();
+    }
+
+    // Sync prompt cache if generation completed normally: either by <eop>
+    // (generate_text_end_) or by reaching max_new_tokens. Only skip sync
+    // when explicitly stopped (disconnect/cancel) since the caller typically
+    // won't include that partial reply in the next request.
+    stream_state.finalizePendingEop();  // flush any pending eop
+    if (!stop_requested_) {
+        std::string response_result = response_buffer.str();
+        if (is_r1_) {
+            response_result = getR1AssistantString(response_result);
+        }
+        response_result = trimLeadingWhitespace(deleteThinkPart(response_result));
+        if (!response_result.empty()) {
+            temp_history.emplace_back("assistant", response_result);
+        }
+        llm_->syncPromptCache(temp_history);
+    } else if (current_size > 0) {
+        // Cancelled — engine's KV/history is ahead of what the caller will
+        // include in the next request. Roll back to pre-decode state.
+        llm_->eraseHistory(kv_before_decode, 0);
+    }
+
+    return llm_->getContext();
+}
+
+void LlmSession::clearHistory(int numToKeep) {
+    if (numToKeep < 0) {
+        numToKeep = 0;
+    }
+    if (history_.size() > static_cast<size_t>(numToKeep)) {
+        history_.erase(history_.begin() + numToKeep, history_.end());
+    }
+    // 清空相关缓存
+    prompt_string_for_debug.clear();
+    //response_string_for_debug.clear();
+    if (llm_) {
+        llm_->reset();
+    }
+}
+
+std::string LlmSession::getSystemPrompt() const {
+    return system_prompt_;
+}
+
+std::string LlmSession::dumpConfig() const {
+    if (llm_ != nullptr) {
+        return llm_->dump_config();
+    }
+    return "{}";
+}
+
+// Pure C++ benchmark implementation following llm_bench.cpp exactly
+LlmSession::BenchmarkResult LlmSession::runBenchmark(int backend, int threads, bool useMmap, int power, 
+                                                    int precision, int memory, int dynamicOption, int nPrompt, 
+                                                    int nGenerate, int nRepeat, bool kvCache, 
+                                                    const BenchmarkCallback& callback) {
+    MNN_DEBUG("BENCHMARK: runBenchmark() STARTED! this=%p", this);
+    MNN_DEBUG("BENCHMARK: Parameters - nPrompt=%d, nGenerate=%d, nRepeat=%d, kvCache=%s", 
+                nPrompt, nGenerate, nRepeat, kvCache ? "true" : "false");
+    
+    // Initialize result structure
+    MNN_DEBUG("BENCHMARK: Initializing benchmark result structure");
+    BenchmarkResult result = initializeBenchmarkResult(nPrompt, nGenerate, nRepeat, kvCache);
+    
+    // Initialize LLM for benchmark
+    MNN_DEBUG("BENCHMARK: About to initialize LLM for benchmark");
+    if (!initializeLlmForBenchmark(result, callback)) {
+        MNN_DEBUG("BENCHMARK: initializeLlmForBenchmark FAILED!");
+        return result;
+    }
+    MNN_DEBUG("BENCHMARK: initializeLlmForBenchmark SUCCESS - entering benchmark loop");
+
+    // Run benchmark iterations
+    MNN_DEBUG("BENCHMARK: Starting benchmark loop for %d iterations", nRepeat + 1);
+    for (int i = 0; i < nRepeat + 1; ++i) {
+        MNN_DEBUG("BENCHMARK: Starting iteration %d/%d", i, nRepeat);
+        auto start_time = std::chrono::high_resolution_clock::now();
+        
+        // Report progress
+        MNN_DEBUG("BENCHMARK: Reporting progress for iteration %d", i);
+        reportBenchmarkProgress(i, nRepeat, nPrompt, nGenerate, callback);
+        
+        // Run the actual test
+        if (kvCache) {
+            if (!runKvCacheTest(i, nPrompt, nGenerate, start_time, result, callback)) {
+                return result;
+            }
+        } else {
+            if (!runLlamaBenchTest(i, nPrompt, nGenerate, start_time, result, callback)) {
+                return result;
+            }
+        }
+    }
+    
+    // Report completion
+    if (callback.onProgress) {
+        BenchmarkProgressInfo completionInfo;
+        completionInfo.progress = 100;
+        completionInfo.statusMessage = "Benchmark completed!";
+        completionInfo.progressType = ProgressType::COMPLETED;
+        callback.onProgress(completionInfo);
+    }
+
+    result.success = true;
+    return result;
+}
+
+// Initialize benchmark result structure
+LlmSession::BenchmarkResult LlmSession::initializeBenchmarkResult(int nPrompt, int nGenerate, int nRepeat, bool kvCache) {
+    BenchmarkResult result;
+    result.prompt_tokens = nPrompt;
+    result.generate_tokens = nGenerate;
+    result.repeat_count = nRepeat;
+    result.kv_cache_enabled = kvCache;
+    result.success = false;
+    return result;
+}
+
+// Initialize LLM for benchmark and verify it's ready
+bool LlmSession::initializeLlmForBenchmark(BenchmarkResult& result, const BenchmarkCallback& callback) {
+    // Validate this pointer first
+    // Note: this check is removed as it's always false in well-defined C++ code
+
+    // Get underlying Llm object for direct access
+    auto *llm = this->getLlm();
+    if (!llm) {
+        result.error_message = "Underlying LLM object is not initialized";
+        if (callback.onError) callback.onError(result.error_message);
+        return false;
+    }
+
+    // Basic validation that the llm object pointer looks reasonable
+    // Check if the pointer is in a reasonable memory range (basic sanity check)
+    if (reinterpret_cast<uintptr_t>(llm) < 0x1000) {
+        result.error_message = "LLM object pointer appears invalid (too low address)";
+        if (callback.onError) callback.onError(result.error_message);
+        return false;
+    }
+
+    // Verify LLM context is valid before proceeding
+    auto context = llm->getContext();
+    if (!context) {
+        result.error_message = "LLM context is not valid - model may not be properly loaded";
+        if (callback.onError) callback.onError(result.error_message);
+        return false;
+    }
+
+    // Reset session state for clean benchmark
+    this->Reset();
+    
+    // Re-verify context after reset
+    context = llm->getContext();
+    if (!context) {
+        result.error_message = "LLM context became invalid after reset";
+        if (callback.onError) callback.onError(result.error_message);
+        return false;
+    }
+
+    return true;
+}
+
+// Report benchmark progress
+void LlmSession::reportBenchmarkProgress(int iteration, int nRepeat, int nPrompt, int nGenerate, const BenchmarkCallback& callback) {
+    if (callback.onProgress) {
+        BenchmarkProgressInfo progressInfo;
+        
+        if (iteration == 0) {
+            progressInfo.progress = 0;
+            progressInfo.statusMessage = "Warming up...";
+            progressInfo.progressType = ProgressType::WARMING_UP;
+        } else {
+            progressInfo.progress = (iteration * 100) / nRepeat;
+            progressInfo.statusMessage = "Running test " + std::to_string(iteration) + "/" + std::to_string(nRepeat) + 
+                                        " (prompt=" + std::to_string(nPrompt) + ", generate=" + std::to_string(nGenerate) + ")";
+            progressInfo.progressType = ProgressType::RUNNING_TEST;
+        }
+        
+        // Set structured data
+        progressInfo.currentIteration = iteration;
+        progressInfo.totalIterations = nRepeat;
+        progressInfo.nPrompt = nPrompt;
+        progressInfo.nGenerate = nGenerate;
+        
+        callback.onProgress(progressInfo);
+    }
+}
+
+// Run KV cache test iteration
+bool LlmSession::runKvCacheTest(int iteration, int nPrompt, int nGenerate, 
+                                std::chrono::high_resolution_clock::time_point start_time,
+                                BenchmarkResult& result, const BenchmarkCallback& callback) {
+    auto *llm = this->getLlm();
+    const int tok = 16; // Same token ID as used in llm_bench.cpp
+    
+    std::vector<int> tokens(nPrompt, tok);
+    
+    // Validate token vector
+    if (tokens.empty() || nPrompt <= 0) {
+        result.error_message = "Invalid token configuration for kv-cache test";
+        if (callback.onError) callback.onError(result.error_message);
+        return false;
+    }
+    
+    llm->response(tokens, nullptr, nullptr, nGenerate);
+    
+    // Re-get context after response to ensure it's still valid
+    auto context = llm->getContext();
+    if (!context) {
+        result.error_message = "Context became invalid after response in kv-cache test " + std::to_string(iteration);
+        if (callback.onError) callback.onError(result.error_message);
+        return false;
+    }
+    
+    if (iteration > 0) { // Exclude the first performance value
+        auto end_time = std::chrono::high_resolution_clock::now();
+        processBenchmarkResults(context->prefill_us, context->decode_us, start_time, end_time, iteration, nPrompt, nGenerate, 
+                                result, callback, true);
+    }
+    return true;
+}
+
+// Run llama-bench test iteration (without kv cache)
+bool LlmSession::runLlamaBenchTest(int iteration, int nPrompt, int nGenerate,
+                                    std::chrono::high_resolution_clock::time_point start_time,
+                                    BenchmarkResult& result, const BenchmarkCallback& callback) {
+    auto *llm = this->getLlm();
+    const int tok = 500;
+    int64_t prefill_us = 0;
+    int64_t decode_us = 0;
+    std::vector<int> tokens(nPrompt, tok);
+    std::vector<int> tokens1(1, tok);
+    
+    // Validate token vectors
+    if ((nPrompt > 0 && tokens.empty()) || tokens1.empty()) {
+        result.error_message = "Invalid token configuration for llama-bench test " + std::to_string(iteration);
+        if (callback.onError) callback.onError(result.error_message);
+        return false;
+    }
+    MNN_DEBUG("runLlamaBenchTest nPrompt:%d, nGenerate:%d tokens:\n", nPrompt, nGenerate);
+    if (nPrompt > 0) {
+        MNN_DEBUG("runLlamaBenchTest prefill begin");
+        llm->response(tokens, nullptr, nullptr, 1);
+        MNN_DEBUG("runLlamaBenchTest prefill beginx");
+        auto context = llm->getContext();
+        if (!context) {
+            result.error_message = "Context became invalid after prefill response in llama-bench test " + std::to_string(iteration);
+            if (callback.onError) callback.onError(result.error_message);
+            return false;
+        }
+        MNN_DEBUG("runLlamaBenchTest prefill end");
+        prefill_us = context->prefill_us;
+    }
+    
+    if (nGenerate > 0) {
+        MNN_DEBUG("runLlamaBenchTest generate begin");
+        llm->response(tokens1, nullptr, nullptr, nGenerate);
+
+        auto context = llm->getContext();
+        if (!context) {
+            result.error_message = "Context became invalid after decode response in llama-bench test " + std::to_string(iteration);
+            if (callback.onError) callback.onError(result.error_message);
+            return false;
+        }
+        decode_us = context->decode_us;
+        MNN_DEBUG("runLlamaBenchTest generate end");
+    }
+    
+    if (iteration > 0) { // Exclude the first performance value
+        auto end_time = std::chrono::high_resolution_clock::now();
+        
+        processBenchmarkResults(prefill_us, decode_us,
+                                start_time, end_time, iteration, nPrompt, nGenerate, 
+                                result, callback, false);
+        
+        result.sample_times_us.push_back(prefill_us + decode_us);
+        result.decode_times_us.push_back(decode_us);
+        result.prefill_times_us.push_back(prefill_us);
+    }
+    return true;
+}
+
+// Process and report benchmark results
+void LlmSession::processBenchmarkResults(int64_t prefillTime, int64_t decodeTime,
+                                        std::chrono::high_resolution_clock::time_point start_time,
+                                        std::chrono::high_resolution_clock::time_point end_time,
+                                        int iteration, int nPrompt, int nGenerate,
+                                        BenchmarkResult& result, const BenchmarkCallback& callback,
+                                        bool isKvCache) {
+    auto runTime = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    
+    if (isKvCache) {
+        result.prefill_times_us.push_back(prefillTime);
+        result.decode_times_us.push_back(decodeTime);
+    }
+    
+    // Convert times to seconds
+    float runTimeSeconds = runTime / 1000000.0f;
+    float prefillTimeSeconds = prefillTime / 1000000.0f;
+    float decodeTimeSeconds = decodeTime / 1000000.0f;
+    
+    // Calculate speeds (tokens per second)
+    float prefillSpeed = (prefillTime > 0 && nPrompt > 0) ? ((float)nPrompt / prefillTimeSeconds) : 0.0f;
+    float decodeSpeed = (decodeTime > 0 && nGenerate > 0) ? ((float)nGenerate / decodeTimeSeconds) : 0.0f;
+    
+    // Report detailed results with structured data
+    BenchmarkProgressInfo detailedInfo;
+    detailedInfo.progress = (iteration * 100) / result.repeat_count;
+    detailedInfo.progressType = ProgressType::RUNNING_TEST;
+    detailedInfo.currentIteration = iteration;
+    detailedInfo.totalIterations = result.repeat_count;
+    detailedInfo.nPrompt = nPrompt;
+    detailedInfo.nGenerate = nGenerate;
+    detailedInfo.runTimeSeconds = runTimeSeconds;
+    detailedInfo.prefillTimeSeconds = prefillTimeSeconds;
+    detailedInfo.decodeTimeSeconds = decodeTimeSeconds;
+    detailedInfo.prefillSpeed = prefillSpeed;
+    detailedInfo.decodeSpeed = decodeSpeed;
+    
+    // Keep detailed message for backward compatibility
+    char detailedMsg[1024];
+    snprintf(detailedMsg, sizeof(detailedMsg), 
+        "BenchmarkService: Native Progress [%dp+%dg] (%d%%): Running test %d/%d (prompt=%d, generate=%d) runTime:%.3fs, prefillTime:%.3fs, decodeTime:%.3fs, prefillSpeed:%.2f tok/s, decodeSpeed:%.2f tok/s",
+        nPrompt, nGenerate, detailedInfo.progress, iteration, result.repeat_count, nPrompt, nGenerate, 
+        runTimeSeconds, prefillTimeSeconds, decodeTimeSeconds, prefillSpeed, decodeSpeed);
+    
+    detailedInfo.statusMessage = std::string(detailedMsg);
+    
+    MNN_DEBUG("%s", detailedMsg);
+    
+    if (callback.onProgress) {
+        callback.onProgress(detailedInfo);
+    }
+    
+    if (callback.onIterationComplete) {
+        callback.onIterationComplete(std::string(detailedMsg));
+    }
+}
+
+}

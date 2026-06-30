@@ -1,0 +1,67 @@
+// Created by ruoyi.sjd on 2025/2/11.
+// Copyright (c) 2024 Alibaba Group Holding Limited All rights reserved.
+package com.alibaba.mls.api.source
+
+import com.alibaba.mls.api.download.R
+
+class ModelSources {
+    enum class ModelSourceType {
+        MODEL_SCOPE,
+        HUGGING_FACE,
+        MODELERS,
+        LOCAL
+    }
+
+    val remoteSourceType: ModelSourceType
+        get() {
+            return currentSourceType
+        }
+
+    private object InstanceHolder {
+        val instance: ModelSources = ModelSources()
+    }
+
+    val config: ModelSourceConfig
+        get() {
+            if (mockConfig == null) {
+                mockConfig = ModelSourceConfig.createMockSourceConfig()
+            }
+            return mockConfig!!
+        }
+
+    companion object {
+        private var mockConfig: ModelSourceConfig? = null
+
+        @Volatile
+        private var currentSourceType: ModelSourceType = ModelSourceType.MODEL_SCOPE
+
+        /**
+         * 设置当前下载源类型
+         */
+        @JvmStatic
+        fun setSourceType(type: ModelSourceType) {
+            currentSourceType = type
+        }
+
+        const val sourceHuffingFace = "HuggingFace"
+        const val sourceModelers = "Modelers"
+        const val sourceModelScope = "ModelScope"
+
+        val sourceList = listOf(
+            sourceHuffingFace,
+            sourceModelScope,
+            sourceModelers
+        )
+
+        val sourceDisPlayList = listOf(
+            R.string.source_huggingface,
+            R.string.source_modelscope,
+            R.string.source_modelers
+        )
+
+        @JvmStatic
+        fun get(): ModelSources {
+            return InstanceHolder.instance
+        }
+    }
+}

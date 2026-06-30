@@ -1,0 +1,398 @@
+package com.ai.assistance.operit.ui.recovery
+
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ai.assistance.operit.ui.common.OperitUtilityTheme
+
+class DataRecoveryActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            OperitUtilityTheme {
+                DataRecoveryScreen()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun DataRecoveryScreen() {
+    val context = LocalContext.current
+    val viewModel: DataRecoveryViewModel =
+        viewModel(factory = DataRecoveryViewModel.Factory(context))
+    val state by viewModel.state.collectAsState()
+    var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+
+    val snapshotPicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                pendingRestoreUri = uri
+            }
+        }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("数据救援") },
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+            )
+        }
+    ) { paddingValues ->
+        LazyColumn(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item { Spacer(modifier = Modifier.height(2.dp)) }
+
+            item {
+                StatusPanel(
+                    isRunning = state.isRunning,
+                    status = state.status,
+                    error = state.error,
+                    affectedRows = state.affectedRows
+                )
+            }
+
+            item {
+                RecoverySection(title = "原始快照") {
+                    Text(
+                        text = "导出会打包内部 files、shared_prefs、datastore、databases 和 Android/data 包目录；导入会覆盖当前数据。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = { viewModel.exportRawSnapshot() },
+                            enabled = !state.isRunning
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("导出快照")
+                        }
+                        OutlinedButton(
+                            onClick = { snapshotPicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                            enabled = !state.isRunning
+                        ) {
+                            Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("导入快照")
+                        }
+                    }
+                    state.lastSnapshotPath?.let { path ->
+                        Spacer(modifier = Modifier.height(10.dp))
+                        SelectionContainer {
+                            Text(
+                                text = path,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                            )
+                        }
+                    }
+                    if (state.restoreCompleted) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        FilledTonalButton(onClick = { restartMainApp(context) }) {
+                            Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("启动主应用")
+                        }
+                    }
+                }
+            }
+
+            item {
+                RecoverySection(title = "文件管理") {
+                    val authority = "${context.packageName}.documents.data"
+                    Text(
+                        text = "此页不直接打开文件管理器。需要手动查看或导出内部文件时，可以打开 MT 管理器，添加「本地存储仓库」，选择 Operit 的数据仓库后再管理。provider: $authority",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            item {
+                RecoverySection(title = "SQL 执行器") {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AssistChip(
+                            onClick = { viewModel.setSqlText(DataRecoveryViewModel.SAFE_MESSAGES_QUERY) },
+                            label = { Text("messages 大小") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                        )
+                        AssistChip(
+                            onClick = { viewModel.setSqlText(DataRecoveryViewModel.SAFE_VARIANTS_QUERY) },
+                            label = { Text("variants 大小") },
+                            leadingIcon = {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                        )
+                        AssistChip(
+                            onClick = { viewModel.setSqlText(DataRecoveryViewModel.SAFE_CHATS_QUERY) },
+                            label = { Text("chats 字段") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = state.sqlText,
+                        onValueChange = viewModel::setSqlText,
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        label = { Text("SQL") },
+                        minLines = 4,
+                        maxLines = 8
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = { viewModel.runSql() },
+                        enabled = !state.isRunning
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("执行")
+                    }
+                }
+            }
+
+            state.queryResult?.let { result ->
+                item {
+                    QueryResultPanel(result)
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(16.dp)) }
+        }
+    }
+
+    pendingRestoreUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingRestoreUri = null },
+            title = { Text("导入原始快照") },
+            text = { Text("导入会覆盖当前应用数据。确认导入这个快照？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingRestoreUri = null
+                        viewModel.restoreRawSnapshot(uri)
+                    }
+                ) {
+                    Text("导入")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRestoreUri = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun StatusPanel(
+    isRunning: Boolean,
+    status: String?,
+    error: String?,
+    affectedRows: Int?
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (isRunning) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            }
+            Column {
+                Text(
+                    text = error ?: status ?: "救援进程已启动",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color =
+                        if (error != null) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                )
+                affectedRows?.let {
+                    Text(
+                        text = "受影响行数：$it",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecoverySection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(6.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun QueryResultPanel(result: DataRecoveryViewModel.QueryResult) {
+    RecoverySection(title = "查询结果 ${result.rows.size} 行") {
+        val horizontalScrollState = rememberScrollState()
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(320.dp)
+                    .horizontalScroll(horizontalScrollState)
+        ) {
+            Column {
+                ResultRow(values = result.columns, header = true)
+                HorizontalDivider()
+                result.rows.forEach { row ->
+                    ResultRow(values = row, header = false)
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultRow(values: List<String>, header: Boolean) {
+    Row(
+        modifier =
+            Modifier
+                .background(
+                    if (header) {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    }
+                )
+                .padding(vertical = 6.dp)
+    ) {
+        values.forEach { value ->
+            SelectionContainer {
+                Text(
+                    text = value,
+                    modifier = Modifier.width(180.dp).padding(horizontal = 8.dp),
+                    style =
+                        if (header) {
+                            MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace)
+                        } else {
+                            MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                        }
+                )
+            }
+        }
+    }
+}
+
+private fun restartMainApp(context: Context) {
+    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+    if (intent == null) {
+        Toast.makeText(context, "无法启动主应用", Toast.LENGTH_LONG).show()
+        return
+    }
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    context.startActivity(intent)
+    (context as? Activity)?.finishAffinity()
+}

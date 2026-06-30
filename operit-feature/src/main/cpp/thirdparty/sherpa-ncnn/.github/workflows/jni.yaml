@@ -1,0 +1,89 @@
+name: jni
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/jni.yaml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'sherpa-ncnn/csrc/*'
+      - 'sherpa-ncnn/jni/*'
+      - 'sherpa-ncnn/kotlin-api/*'
+      - '.github/scripts/test-jni.sh'
+      - 'kotlin-api-examples/*'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/jni.yaml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'sherpa-ncnn/csrc/*'
+      - 'sherpa-ncnn/jni/*'
+      - 'sherpa-ncnn/kotlin-api/*'
+      - '.github/scripts/test-jni.sh'
+      - 'kotlin-api-examples/*'
+
+  workflow_dispatch:
+
+concurrency:
+  group: jni-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  jni:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update version
+        shell: bash
+        run: |
+          ./new-release.sh
+          git diff .
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.os }}-jni
+
+      - name: Display kotlin version
+        shell: bash
+        run: |
+          kotlinc -version
+
+      - name: Display java version
+        shell: bash
+        run: |
+          java -version
+          echo "JAVA_HOME is: ${JAVA_HOME}"
+
+      - name:  Test Kotlin (SenseVoice)
+        shell: bash
+        run: |
+          export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
+
+          cd kotlin-api-examples
+
+          ./run-offline-sense-voice-asr.sh
+
+      - name:  Run JNI test
+        shell: bash
+        run: |
+          export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
+
+          .github/scripts/test-jni.sh

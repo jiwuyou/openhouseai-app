@@ -1,0 +1,320 @@
+name: build
+
+on:
+  push:
+    branches:
+      - master
+      - refactor-python-wheel
+    paths:
+      - '.github/workflows/build.yaml'
+      - '.github/scripts/run-test.sh'
+      - '.github/scripts/test-vad.sh'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'sherpa-ncnn/csrc/*'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/build.yaml'
+      - '.github/scripts/run-test.sh'
+      - '.github/scripts/test-vad.sh'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'sherpa-ncnn/csrc/*'
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x64
+
+          - os: ubuntu-24.04-arm
+            arch: arm64
+
+          - os: macos-latest
+            arch: arm64
+
+          - os: macos-13
+            arch: x64
+
+          - os: windows-latest
+            arch: x86
+
+          - os: windows-latest
+            arch: x64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update version
+        shell: bash
+        run: |
+          ./new-release.sh
+          git diff .
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.os }}-build
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
+          cmake --version
+
+          if [[ ${{ matrix.os }} == 'windows-latest' && ${{ matrix.arch }} == 'x86' ]]; then
+            extra_opts="-A Win32"
+          else
+            extra_opts=""
+          fi
+
+          mkdir build
+          cd build
+          cmake "$extra_opts" \
+            -D CMAKE_BUILD_TYPE=Release \
+            -D SHERPA_NCNN_ENABLE_FFMPEG_EXAMPLES=OFF \
+            -D CMAKE_INSTALL_PREFIX=./install \
+            ..
+
+      - name: Build sherpa-ncnn for ${{ matrix.os }} ${{ matrix.arch }}
+        shell: bash
+        run: |
+          export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
+
+          cd build
+
+          cmake --build . --config Release -j2
+          cmake  --build . --config Release --target install -j2
+
+      - name: Display build output (build)
+        shell: bash
+        run: |
+          ls -lh build/*
+
+          echo "---build/bin/"
+
+          ls -lh build/bin/
+
+          echo "---build/lib/"
+
+          ls -lh build/lib/
+
+      - name: Display build output (install)
+        shell: bash
+        run: |
+          ls -lh build/install/*
+
+      - name: Test offline sense-voice
+        shell: bash
+        run: |
+          curl -SL -O https://github.com/k2-fsa/sherpa-ncnn/releases/download/asr-models/sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
+          tar xvf sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
+
+          ./build/install/bin/sherpa-ncnn-offline \
+            --sense-voice-model-dir=sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17 \
+            --tokens=sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17/tokens.txt \
+            sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17/test_wavs/zh.wav \
+            sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17/test_wavs/en.wav \
+            sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17/test_wavs/yue.wav \
+            sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17/test_wavs/ja.wav \
+            sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17/test_wavs/ko.wav
+
+          rm sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
+          rm -rf sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17
+
+      - name: Test tts
+        shell: bash
+        run: |
+          curl -SL -O https://github.com/k2-fsa/sherpa-ncnn/releases/download/tts-models/ncnn-vits-piper-en_US-amy-low.tar.bz2
+          tar xvf ncnn-vits-piper-en_US-amy-low.tar.bz2
+          rm ncnn-vits-piper-en_US-amy-low.tar.bz2
+          ls -lh ncnn-vits-piper-en_US-amy-low
+
+          ./build/install/bin/sherpa-ncnn-offline-tts \
+              --num-threads=1 \
+              --vits-model-dir=./ncnn-vits-piper-en_US-amy-low/  \
+              "And so, my fellow Americans: ask not what your country can do for you; ask what you can do for your country. My fellow citizens of the world: ask not what America will do for you, but what together we can do for the freedom of man"
+
+      - name: Display tts wav
+        shell: bash
+        run: |
+          ls -lh generated.wav
+          mv generated.wav ${{ matrix.os }}-${{ matrix.arch }}.wav
+          ls -lh *.wav
+
+      - name: Upload tts wav
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-${{ matrix.arch }}
+          path: ./*.wav
+
+      - name: Test vad
+        shell: bash
+        run: |
+          export PATH=$PWD/build/bin:$PATH
+          export EXE=sherpa-ncnn-vad
+
+          .github/scripts/test-vad.sh
+
+      - name: Test sherpa-ncnn
+        shell: bash
+        run: |
+          export PATH=$PWD/build/bin:$PATH
+          export EXE=sherpa-ncnn
+
+          .github/scripts/run-test.sh
+
+      - name: Test C API
+        shell: bash
+        run: |
+          export PATH=$PWD/build/bin:$PATH
+          export EXE=decode-file-c-api
+
+          .github/scripts/run-test.sh
+
+  build_python:
+    name: ${{ matrix.os }} ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest, ubuntu-24.04-arm, macos-13]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+    env:
+      PYTHONUTF8: 1
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.os }}-build-python-${{ matrix.python-version }}
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Python deps
+        shell: bash
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install wheel twine==5.0.0 setuptools soundfile
+
+      - name: Build ${{ matrix.os }} ${{ matrix.python-version }}
+        shell: bash
+        run: |
+          export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
+
+          cmake --version
+
+          python3 setup.py bdist_wheel
+
+      - name: Show ${{ matrix.os }} ${{ matrix.python-version }}
+        shell: bash
+        run: |
+          ls -lh dist
+          unzip -l ./dist/*.whl
+          cd dist
+
+          unzip ./*.whl
+          echo "---"
+
+          ls -lh sherpa_ncnn/
+          echo "---"
+          ls -lh sherpa_ncnn/lib
+
+      - name: Install ${{ matrix.os }} ${{ matrix.python-version }}
+        shell: bash
+        run: |
+          ls -lh dist
+          python3 -m pip install ./dist/*.whl
+
+      - name: Test offline sense-voice
+        shell: bash
+        run: |
+          curl -SL -O https://github.com/k2-fsa/sherpa-ncnn/releases/download/asr-models/sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
+          tar xvf sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
+          rm sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
+
+          python3 ./python-api-examples/offline-decode-file-sense-voice.py
+          rm -rf sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2024-07-17
+
+      - name: Test asr ${{ matrix.os }} ${{ matrix.python-version }}
+        shell: bash
+        run: |
+          curl -SL -O https://github.com/k2-fsa/sherpa-ncnn/releases/download/models/sherpa-ncnn-conv-emformer-transducer-2022-12-06.tar.bz2
+          tar xvf sherpa-ncnn-conv-emformer-transducer-2022-12-06.tar.bz2
+          rm sherpa-ncnn-conv-emformer-transducer-2022-12-06.tar.bz2
+          ls -lh sherpa-ncnn-conv-emformer-transducer-2022-12-06
+
+          python3 ./python-api-examples/decode-file.py
+
+      - name: Test Chinese tts ${{ matrix.os }} ${{ matrix.python-version }}
+        shell: bash
+        run: |
+          curl -SL -O https://github.com/k2-fsa/sherpa-ncnn/releases/download/tts-models/ncnn-vits-piper-zh_CN-huayan-medium-fp16.tar.bz2
+          tar xvf ncnn-vits-piper-zh_CN-huayan-medium-fp16.tar.bz2
+          rm ncnn-vits-piper-zh_CN-huayan-medium-fp16.tar.bz2
+          ls -lh ncnn-vits-piper-zh_CN-huayan-medium-fp16
+
+          python3 ./python-api-examples/tts-piper-chinese-single-speaker.py
+          ls -lh *.wav
+
+          rm -rf ncnn-vits-piper-zh_CN-huayan-medium-fp16
+
+      - name: Test English tts 1 ${{ matrix.os }} ${{ matrix.python-version }}
+        shell: bash
+        run: |
+          curl -SL -O https://github.com/k2-fsa/sherpa-ncnn/releases/download/tts-models/ncnn-vits-piper-en_US-bryce-medium-fp16.tar.bz2
+          tar xvf ncnn-vits-piper-en_US-bryce-medium-fp16.tar.bz2
+          rm ncnn-vits-piper-en_US-bryce-medium-fp16.tar.bz2
+          ls -lh ncnn-vits-piper-en_US-bryce-medium-fp16
+
+          python3 ./python-api-examples/tts-piper-english-single-speaker.py
+          ls -lh *.wav
+
+          rm -rf ncnn-vits-piper-en_US-bryce-medium-fp16
+
+      - name: Test English tts 2 ${{ matrix.os }} ${{ matrix.python-version }}
+        shell: bash
+        run: |
+          curl -SL -O https://github.com/k2-fsa/sherpa-ncnn/releases/download/tts-models/ncnn-vits-piper-en_US-libritts_r-medium-fp16.tar.bz2
+          tar xvf ncnn-vits-piper-en_US-libritts_r-medium-fp16.tar.bz2
+          rm ncnn-vits-piper-en_US-libritts_r-medium-fp16.tar.bz2
+          ls -lh ncnn-vits-piper-en_US-libritts_r-medium-fp16
+
+
+          python3 ./python-api-examples/tts-piper-english-multi-speakers.py
+          ls -lh *.wav
+
+          rm -rf ncnn-vits-piper-en_US-libritts_r-medium-fp16
+
+      - name: Upload tts wav
+        uses: actions/upload-artifact@v4
+        with:
+          name: tts-${{ matrix.os }}-${{ matrix.python-version }}
+          path: ./*.wav

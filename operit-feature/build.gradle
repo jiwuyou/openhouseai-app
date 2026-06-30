@@ -1,0 +1,215 @@
+plugins {
+    id "com.android.library"
+    id "org.jetbrains.kotlin.android" version "2.2.0"
+    id "org.jetbrains.kotlin.plugin.compose" version "2.2.0"
+    id "org.jetbrains.kotlin.plugin.serialization" version "2.2.0"
+    id "org.jetbrains.kotlin.kapt" version "2.2.0"
+    id "org.jetbrains.kotlin.plugin.parcelize" version "2.2.0"
+    id "io.objectbox"
+}
+
+android {
+    namespace "com.ai.assistance.operit"
+    compileSdkVersion project.properties.compileSdkVersion.toInteger()
+    ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
+
+    defaultConfig {
+        minSdkVersion project.properties.minSdkVersion.toInteger()
+        targetSdkVersion project.properties.targetSdkVersion.toInteger()
+        consumerProguardFiles "consumer-rules.pro"
+        buildConfigField "String", "VERSION_NAME", "\"1.11.0+5\""
+        buildConfigField "int", "VERSION_CODE", "44"
+        buildConfigField "String", "APPLICATION_ID", "\"com.termux\""
+        buildConfigField "String", "GITHUB_CLIENT_ID", "\"\""
+        buildConfigField "String", "GITHUB_CLIENT_SECRET", "\"\""
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+            }
+        }
+    }
+
+    buildFeatures {
+        aidl true
+        buildConfig true
+        compose true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/DEPENDENCIES"
+            excludes += "/META-INF/LICENSE"
+            excludes += "/META-INF/LICENSE.txt"
+            excludes += "/META-INF/license.txt"
+            excludes += "/META-INF/NOTICE"
+            excludes += "/META-INF/NOTICE.txt"
+            excludes += "/META-INF/notice.txt"
+            excludes += "/META-INF/ASL2.0"
+            excludes += "/META-INF/*.SF"
+            excludes += "/META-INF/*.DSA"
+            excludes += "/META-INF/*.RSA"
+            excludes += "/META-INF/*.kotlin_module"
+            pickFirsts += "**/*.so"
+        }
+    }
+}
+
+dependencies {
+    api project(":termux-shared")
+    implementation project(":operit-dragonbones")
+    implementation project(":operit-mnn")
+    implementation project(":operit-llama")
+    implementation project(":operit-mmd")
+    implementation project(":operit-fbx")
+    implementation project(":operit-quickjs")
+    implementation project(":operit-showerclient")
+    implementation fileTree(dir: "libs", include: ["*.jar"])
+    implementation "com.arthenica:ffmpeg-kit-full-gpl:6.0-2"
+
+    implementation "androidx.annotation:annotation:1.9.0"
+    implementation "androidx.appcompat:appcompat:1.6.1"
+    implementation "androidx.core:core-ktx:1.12.0"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.7.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0"
+    implementation "androidx.activity:activity-compose:1.8.2"
+    implementation "androidx.navigation:navigation-compose:2.7.7"
+    implementation "androidx.window:window:1.1.0"
+    implementation "androidx.webkit:webkit:1.12.1"
+    implementation "com.google.android.material:material:1.10.0"
+
+    implementation platform("androidx.compose:compose-bom:2026.02.01")
+    implementation "androidx.compose.animation:animation"
+    implementation "androidx.compose.animation:animation-core"
+    implementation "androidx.compose.foundation:foundation"
+    implementation "androidx.compose.material:material-icons-extended"
+    implementation "androidx.compose.material3:material3"
+    implementation "androidx.compose.material3:material3-window-size-class:1.2.0"
+    implementation "androidx.compose.runtime:runtime"
+    implementation "androidx.compose.ui:ui"
+    implementation "androidx.compose.ui:ui-graphics"
+    implementation "androidx.compose.ui:ui-tooling-preview"
+    debugImplementation "androidx.compose.ui:ui-tooling"
+    debugImplementation "androidx.compose.ui:ui-test-manifest"
+
+    implementation "org.jetbrains.kotlin:kotlin-reflect:2.2.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0"
+    implementation "com.google.code.gson:gson:2.10.1"
+    implementation "org.hjson:hjson:3.0.0"
+    implementation "io.github.java-diff-utils:java-diff-utils:4.12"
+
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "com.squareup.okhttp3:okhttp-sse:4.12.0"
+    implementation "com.squareup.okhttp3:logging-interceptor:4.11.0"
+    implementation "com.squareup.retrofit2:retrofit:2.9.0"
+    implementation "com.squareup.retrofit2:converter-moshi:2.9.0"
+    implementation "com.squareup.moshi:moshi-kotlin:1.15.0"
+    implementation "org.jsoup:jsoup:1.16.2"
+    implementation "org.nanohttpd:nanohttpd:2.3.1"
+
+    implementation "androidx.datastore:datastore-preferences:1.0.0"
+    implementation "androidx.datastore:datastore-preferences-core:1.0.0"
+    implementation "androidx.room:room-runtime:2.8.4"
+    implementation "androidx.room:room-ktx:2.8.4"
+    kapt "androidx.room:room-compiler:2.8.4"
+    implementation "io.objectbox:objectbox-kotlin:5.3.0"
+    kapt "io.objectbox:objectbox-processor:5.3.0"
+
+    implementation "com.google.mlkit:text-recognition:16.0.0"
+    implementation "com.google.mlkit:text-recognition-chinese:16.0.0"
+    implementation "com.google.mlkit:text-recognition-japanese:16.0.0"
+    implementation "com.google.mlkit:text-recognition-korean:16.0.0"
+    implementation "com.google.mlkit:text-recognition-devanagari:16.0.0"
+    implementation "com.google.zxing:core:3.5.3"
+    implementation "org.tensorflow:tensorflow-lite:2.10.0"
+    implementation "com.google.mediapipe:tasks-text:0.10.11"
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.17.1"
+    implementation "com.google.android.filament:filament-android:1.69.2"
+    implementation "com.google.android.filament:gltfio-android:1.69.2"
+    implementation "com.google.android.filament:filament-utils-android:1.69.2"
+
+    implementation "commons-io:commons-io:2.13.0"
+    implementation "org.apache.commons:commons-compress:1.25.0"
+    implementation "org.apache.commons:commons-compress:1.24.0"
+    implementation "com.github.junrar:junrar:7.5.0"
+    implementation "net.lingala.zip4j:zip4j:2.11.5"
+    implementation "org.apache.poi:poi:5.2.3"
+    implementation "org.apache.poi:poi-ooxml:5.2.3"
+    implementation "org.apache.poi:poi-scratchpad:5.2.3"
+    implementation "com.itextpdf:itextg:5.5.10"
+    implementation "com.tom-roush:pdfbox-android:2.0.27.0"
+
+    implementation "io.coil-kt:coil:2.5.0"
+    implementation "io.coil-kt:coil-compose:2.5.0"
+    implementation "io.coil-kt:coil-gif:2.5.0"
+    implementation "com.github.bumptech.glide:glide:4.16.0"
+    implementation "com.caverock:androidsvg-aar:1.4"
+    implementation "pl.droidsonroids.gif:android-gif-drawable:1.2.28"
+    implementation "com.vanniktech:android-image-cropper:4.5.0"
+    implementation "com.google.android.exoplayer:exoplayer:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-core:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
+
+    implementation "com.github.topjohnwu.libsu:core:6.0.0"
+    implementation "com.github.topjohnwu.libsu:service:6.0.0"
+    implementation "com.github.topjohnwu.libsu:nio:6.0.0"
+    implementation "dev.rikka.shizuku:api:13.1.5"
+    implementation "dev.rikka.shizuku:provider:13.1.5"
+    implementation "com.joaomgcd:taskerpluginlibrary:0.4.10"
+    implementation "androidx.work:work-runtime-ktx:2.9.0"
+    implementation "androidx.security:security-crypto:1.1.0-alpha06"
+    implementation "org.bouncycastle:bcprov-jdk18on:1.78"
+    implementation "com.android.tools.build:apksig:8.1.0"
+    implementation "net.dongliu:apk-parser:2.6.10"
+    implementation "com.github.Sable:axml:2.0.0"
+    implementation "com.github.iyxan23:zipalign-java:1.2.1"
+
+    implementation "io.github.oshai:kotlin-logging-jvm:5.1.0"
+    implementation "org.slf4j:slf4j-api:2.0.9"
+    implementation "org.slf4j:slf4j-simple:2.0.9"
+    implementation "com.github.jelmerk:hnswlib-core:1.2.1"
+    implementation "com.github.jelmerk:hnswlib-utils:0.0.46"
+    implementation "com.huaban:jieba-analysis:1.0.2"
+
+    implementation "com.github.skydoves:colorpicker-compose:1.0.6"
+    implementation "com.github.skydoves:cloudy:0.2.4"
+    implementation "io.github.kyant0:backdrop:1.0.6"
+    implementation "io.github.fletchmckee.liquid:liquid:1.1.1"
+    implementation "com.github.tech-pw:RenderX:1.0.0"
+    implementation "ru.noties:jlatexmath-android:0.2.0"
+    implementation "sh.calvin.reorderable:reorderable:2.5.1"
+    implementation "me.saket.swipe:swipe:1.2.0"
+    implementation "com.google.accompanist:accompanist-systemuicontroller:0.32.0"
+    implementation "androidx.glance:glance-appwidget:1.0.0"
+    implementation "androidx.glance:glance-material3:1.0.0"
+
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
+    testImplementation "junit:junit:4.13.2"
+}

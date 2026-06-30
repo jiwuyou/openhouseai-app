@@ -1,0 +1,440 @@
+// Created by ruoyi.sjd on 2024/12/24.
+// Copyright (c) 2024 Alibaba Group Holding Limited All rights reserved.
+package com.alibaba.mls.api.download
+
+import android.content.Context
+import com.alibaba.mls.api.ApplicationProvider
+import com.alibaba.mls.api.download.hf.HfModelDownloader
+import com.alibaba.mls.api.download.ms.MsModelDownloader
+import com.alibaba.mls.api.download.DownloadCoroutineManager
+import com.alibaba.mls.api.download.DownloadPersistentData
+import java.io.File
+
+/**
+ * Minimal ModelDownloadManager for framework
+ * Apps can extend or wrap this class for additional functionality
+ */
+class ModelDownloadManager(context: Context) : ModelRepoDownloader.ModelRepoDownloadCallback {
+
+    private val cacheDir: String = context.filesDir.absolutePath + "/.mnnmodels"
+    private val hfDownloader: HfModelDownloader
+    private val msDownloader: MsModelDownloader
+
+    private var downloadListener: DownloadListener? = null
+    private val downloadListeners: MutableList<DownloadListener> = java.util.concurrent.CopyOnWriteArrayList()
+
+    init {
+        hfDownloader = HfModelDownloader(this, cacheDir)
+        msDownloader = MsModelDownloader(this, cacheDir)
+    }
+    
+    // Cache for download info to support progress and pause states
+    private val downloadInfoMap = java.util.concurrent.ConcurrentHashMap<String, DownloadInfo>()
+    
+    // Helper to get or create info
+    private fun getOrCreateInfo(modelId: String): DownloadInfo {
+        return downloadInfoMap.getOrPut(modelId) { DownloadInfo() }
+    }
+
+    fun setListener(listener: DownloadListener?) {
+        if (this.downloadListener != null) {
+            removeListener(this.downloadListener!!)
+        }
+        if (listener != null) {
+            addListener(listener)
+        }
+        this.downloadListener = listener
+    }
+
+    fun addListener(listener: DownloadListener) {
+        if (!downloadListeners.contains(listener)) {
+            downloadListeners.add(listener)
+        }
+    }
+
+    fun removeListener(listener: DownloadListener) {
+        downloadListeners.remove(listener)
+    }
+
+    fun setDownloadListener(listener: DownloadListener?) {
+        this.downloadListener = listener
+    }
+
+    /**
+     * Set minimum interval (ms) between DOWNLOADING progress callbacks for the same model/stage.
+     * Set 0 to disable throttling.
+     */
+    fun setProgressCallbackIntervalMs(intervalMs: Long) {
+        progressCallbackIntervalMs = intervalMs.coerceAtLeast(0L)
+    }
+
+    fun getProgressCallbackIntervalMs(): Long = progressCallbackIntervalMs
+
+    fun startDownload(modelId: String) {
+        // Clear stale pause flags (e.g. after deleteModel on an idle task).
+        hfDownloader.clearPause(modelId)
+        msDownloader.clearPause(modelId)
+        progressDispatchTrackers.remove(modelId)
+
+        // Immediately trigger preparing state to update UI
+        val info = getOrCreateInfo(modelId)
+        info.downloadState = DownloadState.PREPARING
+        info.downlodaState = DownloadState.PREPARING
+        info.progress = 0.0
+        downloadListeners.forEach { it.onDownloadStart(modelId) }
+        
+        when {
+            modelId.startsWith("HuggingFace/") || modelId.startsWith("Huggingface/") -> {
+                hfDownloader.download(modelId)
+            }
+            modelId.startsWith("ModelScope/") -> {
+                msDownloader.download(modelId)
+            }
+            else -> {
+                // Default to ModelScope for unprefixed models
+                // This supports models like "taobao-mnn/..." from ModelScope
+                msDownloader.download(modelId)
+            }
+        }
+    }
+
+    fun isDownloading(modelId: String): Boolean {
+        // Simplified - apps can override
+        return false
+    }
+
+    fun pauseDownload(modelId: String) {
+        hfDownloader.pause(modelId)
+        msDownloader.pause(modelId)
+    }
+
+    fun pauseAllDownloads() {
+        // Simplified - apps can track active downloads and pause them
+    }
+
+    fun deleteModel(modelId: String) {
+        // Stop ongoing transfer first to avoid progress callbacks restoring stale state.
+        pauseDownload(modelId)
+        progressDispatchTrackers.remove(modelId)
+
+        // Delete both link folder and repo storage folder via downloader-specific cleanup.
+        getDownloader(modelId).deleteRepo(modelId)
+
+        // Clear persisted and in-memory progress so subsequent getDownloadInfo() resets.
+        DownloadPersistentData.removeProgress(ApplicationProvider.get(), modelId)
+        downloadInfoMap.remove(modelId)
+        downloadListeners.forEach { it.onDownloadFileRemoved(modelId) }
+    }
+
+    fun downloadQnnLibs(): Boolean {
+        // Stub - apps can implement QNN library download if needed
+        return false
+    }
+
+    fun tryStartForegroundService() {
+        // Stub - apps can implement foreground service management if needed
+    }
+
+    fun checkForUpdate(modelId: String?) {
+        if (modelId == null) return
+        DownloadCoroutineManager.launchDownload {
+             if (modelId.startsWith("HuggingFace/") || modelId.startsWith("Huggingface/")) {
+                 hfDownloader.checkUpdate(modelId)
+             } else {
+                 // Default to ModelScope for unprefixed models
+                 msDownloader.checkUpdate(modelId)
+             }
+        }
+    }
+
+    fun getDownloadInfo(modelId: String): DownloadInfo {
+        // First check if we have active/cached info
+        val cachedInfo = downloadInfoMap[modelId]
+        if (cachedInfo != null) {
+             // Always return cached info if it exists, regardless of state
+             // This ensures modifications (like totalSize from ModelMarketViewModel) are preserved
+             return cachedInfo
+        }
+
+        val isDownloaded = if (modelId.startsWith("HuggingFace/") || modelId.startsWith("Huggingface/")) {
+            hfDownloader.isDownloaded(modelId)
+        } else {
+            // Default to ModelScope for unprefixed models
+            msDownloader.isDownloaded(modelId)
+        }
+        
+        val info = if (isDownloaded) {
+            val totalSize = DownloadPersistentData.getDownloadSizeTotal(ApplicationProvider.get(), modelId)
+            DownloadInfo(downloadState = DownloadState.DOWNLOAD_SUCCESS, downlodaState = DownloadState.DOWNLOAD_SUCCESS, progress = 1.0, totalSize = totalSize)
+        } else {
+            val totalSize = DownloadPersistentData.getDownloadSizeTotal(ApplicationProvider.get(), modelId)
+            if (totalSize > 0) {
+                 val savedSize = getRealDownloadSize(modelId)
+                 val progress = if (totalSize > 0) savedSize.toDouble() / totalSize else 0.0
+                 val state = if (savedSize > 0) DownloadState.PAUSED else DownloadState.NOT_START
+                 DownloadInfo(downloadState = state, downlodaState = state, progress = progress, totalSize = totalSize, savedSize = savedSize)
+            } else {
+                 DownloadInfo(downloadState = DownloadState.NOT_START, downlodaState = DownloadState.NOT_START)
+            }
+        }
+        // Cache the info so modifications are preserved
+        downloadInfoMap[modelId] = info
+        return info
+    }
+
+    fun getDownloadState(modelId: String): RepoDownloadSate {
+        val info = getDownloadInfo(modelId)
+        return RepoDownloadSate(
+            modelId = modelId,
+            state = info.downloadState,
+            downlodaState = info.downloadState,
+            progress = info.progress,
+            totalSize = info.totalSize,
+            savedSize = info.savedSize,
+            errorMessage = info.errorMessage
+        )
+    }
+
+    fun getDownloadedFile(modelId: String): File? {
+        return when {
+            modelId.startsWith("HuggingFace/") || modelId.startsWith("Huggingface/") -> {
+                hfDownloader.getDownloadPath(modelId).takeIf { it.exists() }
+            }
+            modelId.startsWith("ModelScope/") -> {
+                msDownloader.getDownloadPath(modelId).takeIf { it.exists() }
+            }
+            else -> {
+                // Keep backward compatibility for unscoped ids.
+                hfDownloader.getDownloadPath(modelId).takeIf { it.exists() }
+                    ?: msDownloader.getDownloadPath(modelId).takeIf { it.exists() }
+            }
+        }
+    }
+
+    // ModelRepoDownloadCallback implementation
+    override fun onDownloadFailed(modelId: String, e: Exception) {
+        progressDispatchTrackers.remove(modelId)
+        val info = getOrCreateInfo(modelId)
+        info.downloadState = DownloadState.FAILED
+        info.downlodaState = DownloadState.FAILED
+        info.errorException = e
+        info.errorMessage = e.message
+        downloadListeners.forEach { it.onDownloadFailed(modelId, e) }
+    }
+
+    override fun onDownloadTaskAdded() {
+        // No direct mapping
+    }
+
+    override fun onDownloadTaskRemoved() {
+        // No direct mapping
+    }
+
+    override fun onDownloadPending(modelId: String) {
+        progressDispatchTrackers.remove(modelId)
+        val info = getOrCreateInfo(modelId)
+        info.downloadState = DownloadState.PREPARING
+        info.progressStage = "Preparing"
+        downloadListeners.forEach { it.onDownloadStart(modelId) }
+    }
+
+    override fun onDownloadPaused(modelId: String) {
+        progressDispatchTrackers.remove(modelId)
+        val info = getOrCreateInfo(modelId)
+        info.downloadState = DownloadState.PAUSED
+        info.downlodaState = DownloadState.PAUSED
+        persistProgressIfNeeded(modelId, info.progressStage, info.savedSize, info.totalSize, force = true)
+        downloadListeners.forEach { it.onDownloadPaused(modelId) }
+    }
+
+    override fun onDownloadFileFinished(modelId: String, absolutePath: String) {
+        progressDispatchTrackers.remove(modelId)
+        val info = getOrCreateInfo(modelId)
+        info.downloadState = DownloadState.DOWNLOAD_SUCCESS
+        info.downlodaState = DownloadState.DOWNLOAD_SUCCESS
+        info.progress = 1.0
+        info.hasUpdate = false
+        DownloadPersistentData.saveDownloadedTime(ApplicationProvider.get(), modelId, System.currentTimeMillis())
+        
+        // Save total size to persistent data for future retrievals
+        if (info.totalSize > 0) {
+            DownloadPersistentData.saveDownloadSizeTotal(ApplicationProvider.get(), modelId, info.totalSize)
+        }
+        if (info.savedSize > 0) {
+            DownloadPersistentData.saveDownloadSizeSaved(ApplicationProvider.get(), modelId, info.savedSize)
+        }
+        persistTrackers.remove(modelId)
+
+        downloadListeners.forEach { it.onDownloadFinished(modelId, absolutePath) }
+    }
+
+    // Speed tracking helper
+    private data class SpeedTracker(var lastTime: Long = 0, var lastSaved: Long = 0)
+    private val speedTrackers = java.util.concurrent.ConcurrentHashMap<String, SpeedTracker>()
+    private data class ProgressDispatchTracker(var lastDispatchTime: Long = 0L, var lastStage: String = "")
+    private val progressDispatchTrackers = java.util.concurrent.ConcurrentHashMap<String, ProgressDispatchTracker>()
+    private data class PersistTracker(
+        var lastPersistTimeMs: Long = 0L,
+        var lastPersistSavedBytes: Long = 0L,
+        var lastPersistStage: String = ""
+    )
+    private val persistTrackers = java.util.concurrent.ConcurrentHashMap<String, PersistTracker>()
+
+    private fun persistProgressIfNeeded(modelId: String, stage: String, saved: Long, total: Long, force: Boolean = false) {
+        if (saved <= 0 && total <= 0 && !force) return
+        val now = System.currentTimeMillis()
+        val tracker = persistTrackers.getOrPut(modelId) { PersistTracker() }
+        val intervalElapsed = now - tracker.lastPersistTimeMs >= PERSIST_INTERVAL_MS
+        val bytesAdvanced = saved - tracker.lastPersistSavedBytes >= PERSIST_MIN_DELTA_BYTES
+        val stageChanged = tracker.lastPersistStage != stage
+        if (force || intervalElapsed || bytesAdvanced || stageChanged) {
+            if (total > 0) {
+                DownloadPersistentData.saveDownloadSizeTotal(ApplicationProvider.get(), modelId, total)
+            }
+            if (saved > 0) {
+                DownloadPersistentData.saveDownloadSizeSaved(ApplicationProvider.get(), modelId, saved)
+            }
+            tracker.lastPersistTimeMs = now
+            tracker.lastPersistSavedBytes = saved
+            tracker.lastPersistStage = stage
+        }
+    }
+
+    override fun onDownloadingProgress(
+        modelId: String,
+        stage: String,
+        currentFile: String?,
+        saved: Long,
+        total: Long
+    ) {
+        val progress = if (total > 0) saved.toDouble() / total else 0.0
+        
+        // Calculate speed with throttling (every 1 second)
+        val currentTime = System.currentTimeMillis()
+        val info = getOrCreateInfo(modelId)
+        val tracker = speedTrackers.getOrPut(modelId) { SpeedTracker(currentTime, saved) }
+        
+        if (currentTime - tracker.lastTime >= 1000) {
+           val timeDelta = currentTime - tracker.lastTime
+           val bytesDelta = saved - tracker.lastSaved
+           if (timeDelta > 0 && bytesDelta >= 0) {
+               val speed = bytesDelta * 1000 / timeDelta
+               val speedStr = if (speed < 1024) "$speed B" else if (speed < 1024 * 1024) String.format("%.2f KB", speed / 1024.0) else String.format("%.2f MB", speed / (1024.0 * 1024.0))
+               info.speedInfo = "$speedStr/s"
+           }
+           // Update tracker
+           tracker.lastTime = currentTime
+           tracker.lastSaved = saved
+        }
+        
+        info.downloadState = DownloadState.DOWNLOADING
+        info.downlodaState = DownloadState.DOWNLOADING
+        info.progress = progress
+        info.savedSize = saved
+        // Only update totalSize if it's valid (prevent flickering if total is 0 during preparing)
+        if (total > 0) {
+            info.totalSize = total
+        }
+        persistProgressIfNeeded(modelId, stage, saved, total, force = false)
+        info.currentFile = currentFile
+        info.progressStage = stage
+        info.lastProgressUpdateTime = currentTime
+        
+        val dispatchTracker = progressDispatchTrackers.getOrPut(modelId) { ProgressDispatchTracker() }
+        val intervalMs = progressCallbackIntervalMs
+        val stageChanged = dispatchTracker.lastStage != stage
+        val intervalPassed = intervalMs <= 0 || currentTime - dispatchTracker.lastDispatchTime >= intervalMs
+        if (stageChanged || intervalPassed) {
+            downloadListeners.forEach { it.onDownloadProgress(modelId, info) }
+            dispatchTracker.lastDispatchTime = currentTime
+            dispatchTracker.lastStage = stage
+        }
+        
+        // Also trigger onDownloadStart if it's the first progress update (simplified)
+        if (saved == 0L) {
+             downloadListeners.forEach { it.onDownloadStart(modelId) }
+        }
+    }
+
+    override fun onRepoInfo(modelId: String, lastModified: Long, repoSize: Long) {
+        val info = getOrCreateInfo(modelId)
+        val localKnownTotalSize = if (info.totalSize > 0L) {
+            info.totalSize
+        } else {
+            DownloadPersistentData.getDownloadSizeTotal(ApplicationProvider.get(), modelId)
+        }
+        info.totalSize = repoSize
+        if (repoSize > 0) {
+            DownloadPersistentData.saveDownloadSizeTotal(ApplicationProvider.get(), modelId, repoSize)
+        }
+        info.remoteUpdateTime = lastModified
+        
+        if (info.downloadState == DownloadState.DOWNLOAD_SUCCESS) {
+            val localDownloadedTime = getLocalDownloadedTime(modelId)
+            val hasUpdate = when {
+                lastModified > 0L && localDownloadedTime > 0L -> lastModified > localDownloadedTime
+                lastModified <= 0L && localKnownTotalSize > 0L && repoSize > 0L -> localKnownTotalSize != repoSize
+                else -> false
+            }
+            info.hasUpdate = hasUpdate
+            if (hasUpdate) {
+                downloadListeners.forEach { it.onDownloadHasUpdate(modelId, info) }
+            }
+        }
+        
+        downloadListeners.forEach { it.onDownloadTotalSize(modelId, repoSize) }
+    }
+
+    private fun getDownloader(modelId: String): ModelRepoDownloader {
+        return if (modelId.startsWith("HuggingFace/") || modelId.startsWith("Huggingface/")) {
+            hfDownloader
+        } else {
+             msDownloader
+        }
+    }
+
+    fun getRealDownloadSize(modelId: String): Long {
+         val savedSize = DownloadPersistentData.getDownloadSizeSaved(ApplicationProvider.get(), modelId)
+         if (savedSize > 0) return savedSize
+         
+         val downloader = getDownloader(modelId)
+         val realFile = downloader.repoModelRealFile(modelId)
+         if (realFile.exists()) {
+              return FileUtils.getFileSize(realFile)
+         }
+         return 0L
+    }
+
+    private fun getLocalDownloadedTime(modelId: String): Long {
+        val persisted = DownloadPersistentData.getDownloadedTime(ApplicationProvider.get(), modelId)
+        if (persisted > 0L) return persisted
+
+        val downloadPath = getDownloader(modelId).getDownloadPath(modelId)
+        return if (downloadPath.exists()) downloadPath.lastModified() else 0L
+    }
+
+    companion object {
+        const val REQUEST_CODE_POST_NOTIFICATIONS = 1001  // Stub constant for foreground service notifications
+        private const val PERSIST_INTERVAL_MS = 1000L
+        private const val PERSIST_MIN_DELTA_BYTES = 1024L * 1024L
+        @Volatile
+        private var progressCallbackIntervalMs: Long = 0L
+
+        @Volatile
+        private var instance: ModelDownloadManager? = null
+
+        @JvmStatic
+        fun getInstance(context: Context): ModelDownloadManager {
+            return instance ?: synchronized(this) {
+                instance ?: ModelDownloadManager(context.applicationContext).also {
+                    instance = it
+                }
+            }
+        }
+
+        @JvmStatic
+        fun getInstance(): ModelDownloadManager {
+            return getInstance(ApplicationProvider.get())
+        }
+    }
+}

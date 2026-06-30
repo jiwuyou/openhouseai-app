@@ -1,0 +1,66 @@
+name: swift-api-test
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/swift-api-test.yaml'
+      - '.github/scripts/swift-api-test.sh'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'sherpa-ncnn/csrc/*'
+      - 'sherpa-ncnn/swift-api-examples/*'
+      - 'build-swift-macos.sh'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/swift-api-test.yaml'
+      - '.github/scripts/swift-api-test.sh'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'sherpa-ncnn/csrc/*'
+      - 'sherpa-ncnn/swift-api-examples/*'
+      - 'build-swift-macos.sh'
+
+  workflow_dispatch:
+
+concurrency:
+  group: swift-api-test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  swift-api-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update version
+        shell: bash
+        run: |
+          ./new-release.sh
+          git diff .
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.os }}-swift
+
+      - name: Run swift-api-test
+        shell: bash
+        run: |
+          export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
+
+          .github/scripts/swift-api-test.sh

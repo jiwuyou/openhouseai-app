@@ -21,6 +21,7 @@ openhouse-preview/
 
 # Gradle generated files
 .gradle/
+.kotlin/
 
 # Signing files
 .signing/

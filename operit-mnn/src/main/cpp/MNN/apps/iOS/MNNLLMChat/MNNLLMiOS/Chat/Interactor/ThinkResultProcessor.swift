@@ -1,0 +1,58 @@
+//
+//  ThinkResultProcessor.swift
+//  MNNLLMiOS
+//
+//  Created by 游薪渝(揽清) on 2025/2/11.
+//
+
+import Foundation
+
+class ThinkResultProcessor {
+    private let thinkingPrefix: String
+    private var startTime: TimeInterval
+    private var hasProcessed: Bool
+    private let completePrefix: String
+
+    var displayString: String
+
+    init(thinkingPrefix: String, completePrefix: String) {
+        self.thinkingPrefix = thinkingPrefix
+        self.completePrefix = completePrefix
+        displayString = "\(thinkingPrefix)\n> "
+        startTime = Date().timeIntervalSince1970
+        hasProcessed = false
+    }
+
+    func startNewChat() {
+        displayString = "> "
+        hasProcessed = false
+        startGeneration()
+    }
+
+    func startGeneration() {
+        startTime = Date().timeIntervalSince1970
+    }
+
+    func getResult() -> String {
+        return displayString
+    }
+
+    func process(progress: String?) -> String? {
+        guard let progress = progress else { return nil }
+
+        var updatedProgress = progress
+        var rawBuilder = ""
+        rawBuilder.append(progress)
+
+        if progress.contains(completePrefix) {
+            updatedProgress = updatedProgress.replacingOccurrences(of: completePrefix, with: "\n")
+            hasProcessed = true
+        } else if !hasProcessed, progress.contains("\n"), !progress.contains("\n >") {
+            updatedProgress = updatedProgress.replacingOccurrences(of: thinkingPrefix, with: "\n")
+            updatedProgress = updatedProgress.replacingOccurrences(of: "\n", with: "\n > ")
+        }
+
+        displayString.append(updatedProgress)
+        return displayString
+    }
+}

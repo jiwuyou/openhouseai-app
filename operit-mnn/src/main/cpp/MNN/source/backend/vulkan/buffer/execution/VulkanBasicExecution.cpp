@@ -1,0 +1,101 @@
+//
+//  VulkanBasicExecution.cpp
+//  MNN
+//
+//  Created by MNN on 2019/01/31.
+//  Copyright © 2018, Alibaba Group Holding Limited
+//
+
+#include "VulkanBasicExecution.hpp"
+#include "VulkanBackend.hpp"
+#include "core/TensorUtils.hpp"
+namespace MNN {
+VulkanBasicExecutionDirect::VulkanBasicExecutionDirect(std::shared_ptr<VulkanBasicExecution> encoder) : Execution(encoder->backend()) {
+    mEncoder = encoder;
+    auto extra = static_cast<VulkanBackend *>(encoder->backend());
+    mCmdBuffer.reset(const_cast<VulkanCommandPool::Buffer *>(extra->getPool().allocBuffer()));
+}
+
+ErrorCode VulkanBasicExecutionDirect::onExecute(const std::vector<Tensor *> &inputs, const std::vector<Tensor *> &outputs) {
+    auto extra = static_cast<VulkanBackend *>(backend());
+    auto code = mEncoder->onBeforeExecute(inputs, outputs);
+    if (NO_ERROR != code) {
+        return code;
+    }
+    extra->pushCommand(mCmdBuffer->get());
+    return NO_ERROR;
+}
+
+
+ErrorCode VulkanBasicExecutionDirect::onResize(const std::vector<Tensor *> &inputs, const std::vector<Tensor *> &outputs) {
+    mCmdBuffer->begin(0);
+
+    auto vkBn = static_cast<VulkanBackend*>(backend());
+    for (auto input : inputs) {
+        auto des = TensorUtils::getDescribeOrigin(input);
+        if (0 == input->deviceId()) {
+            continue;
+        }
+        auto vkTensor = (VulkanBuffer*)(input->deviceId());
+        if (nullptr == vkTensor) {
+            // The case occured if we don't need the content of input
+            continue;
+        }
+        auto offset = des->offset;
+        mCmdBuffer->barrierSource(vkTensor->buffer(), offset, vkBn->getTensorSize(input));
+    }
+
+#ifdef ENABLE_VULKAN_TIME_PROFILE
+    ErrorCode code = NO_ERROR;
+    {
+        VulkanTimeProfileScope scope(vkBn->timeProfiler(), mCmdBuffer->get(), mEncoder->getName().c_str(),
+                                     VulkanTimeProfiler::Kind::Execution);
+        code = mEncoder->onEncode(inputs, outputs, mCmdBuffer.get());
+    }
+#else
+    auto code = mEncoder->onEncode(inputs, outputs, mCmdBuffer.get());
+#endif
+
+    mCmdBuffer->end();
+    return code;
+}
+
+
+VulkanBasicExecutionInDirect::VulkanBasicExecutionInDirect(std::shared_ptr<VulkanBasicExecution> encoder) : Execution(encoder->backend()) {
+    mEncoder = encoder;
+}
+ErrorCode VulkanBasicExecutionInDirect::onExecute(const std::vector<Tensor *> &inputs, const std::vector<Tensor *> &outputs) {
+    auto code = mEncoder->onBeforeExecute(inputs, outputs);
+    return code;
+}
+ErrorCode VulkanBasicExecutionInDirect::onResize(const std::vector<Tensor *> &inputs, const std::vector<Tensor *> &outputs) {
+    auto extra = static_cast<VulkanBackend *>(backend());
+    auto cmdBuffer = extra->acquireIndirectSegmentForRecord();
+    auto vkBn = static_cast<VulkanBackend*>(backend());
+    for (auto input : inputs) {
+        auto vkTensor = (VulkanBuffer*)(input->deviceId());
+        auto des = TensorUtils::getDescribeOrigin(input);
+        if (nullptr == vkTensor) {
+            // The case occured if we don't need the content of input
+            continue;
+        }
+        auto offset = des->offset;
+        cmdBuffer->barrierSource(vkTensor->buffer(), offset, vkBn->getTensorSize(input));
+    }
+    ErrorCode code = NO_ERROR;
+#ifdef ENABLE_VULKAN_TIME_PROFILE
+    {
+        // The scope must finish before the indirect segment may be sealed.
+        VulkanTimeProfileScope scope(vkBn->timeProfiler(), cmdBuffer->get(), mEncoder->getName().c_str(),
+                                     VulkanTimeProfiler::Kind::Execution);
+        code = mEncoder->onEncode(inputs, outputs, cmdBuffer.get());
+    }
+#else
+    code = mEncoder->onEncode(inputs, outputs, cmdBuffer.get());
+#endif
+    if (NO_ERROR == code) {
+        extra->finishIndirectRecordedOp();
+    }
+    return code;
+}
+} // namespace MNN

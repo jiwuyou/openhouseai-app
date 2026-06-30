@@ -1,0 +1,86 @@
+# Modified from https://github.com/Tencent/ncnn/blob/master/.github/workflows/linux-arm-cpu-gcc.yml
+name: aarch64-linux-gnu
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/scripts/run-test.sh'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'sherpa-ncnn/csrc/*'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '.github/scripts/run-test.sh'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'sherpa-ncnn/csrc/*'
+
+  workflow_dispatch:
+
+concurrency:
+  group: aarch64-linux-gnu-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  aarch64_linux_gnu:
+    name: shared libs ${{ matrix.shared_libs }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04-arm]
+        shared_libs: [ON, OFF]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update version
+        shell: bash
+        run: |
+          ./new-release.sh
+          git diff .
+
+      - name: Install alsa
+        shell: bash
+        run: |
+          sudo apt-get install alsa-utils libasound2-dev pkg-config
+
+      - name: build aarch64-linux-gnu
+        shell: bash
+        run: |
+          mkdir build
+          cd build
+          cmake -DBUILD_SHARED_LIBS=${{ matrix.shared_libs }} ..
+          make -j
+
+          ls -lh ./bin
+          ls -lh ./lib
+
+          file ./bin/sherpa-ncnn
+
+      - name: Test sherpa-ncnn
+        shell: bash
+        run: |
+          export EXE="build/bin/sherpa-ncnn"
+
+          ls -lh ./build/bin
+
+          .github/scripts/run-test.sh
+
+      - name: Test C API
+        shell: bash
+        run: |
+          export EXE="./build/bin/decode-file-c-api"
+
+          ls -lh ./build/bin
+
+          .github/scripts/run-test.sh

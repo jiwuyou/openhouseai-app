@@ -48,6 +48,7 @@
         android:supportsRtl="false"
         android:theme="@style/Theme.TermuxApp.DayNight.DarkActionBar"
         android:usesCleartextTraffic="true"
+        tools:replace="android:allowBackup,android:label,android:supportsRtl,android:theme"
         tools:targetApi="m">
 
         <activity
@@ -101,6 +102,47 @@
 
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="github-oauth-callback"
+                    android:scheme="operit" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="*/*" />
+            </intent-filter>
 
             <meta-data
                 android:name="android.app.shortcuts"
@@ -112,6 +154,17 @@
             android:exported="false"
             android:label="@string/operit_assistant_title"
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
+
+        <activity
+            android:name="live.pw.renderX.LatexView"
+            android:exported="false"
+            tools:replace="android:exported">
+            <intent-filter tools:node="remove">
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <activity-alias
             android:name=".HomeActivity"
@@ -248,12 +301,12 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="${TERMUX_PACKAGE_NAME}.release.fileprovider"
+            android:authorities="${TERMUX_PACKAGE_NAME}.release.fileprovider;${TERMUX_PACKAGE_NAME}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/openhouse_release_file_paths" />
+                android:resource="@xml/file_paths" />
         </provider>
 
 

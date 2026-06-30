@@ -1,1 +1,28 @@
-include ':app', ':termux-shared', ':terminal-emulator', ':terminal-view'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        maven { url = uri("${rootDir}/local-maven") }
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://api.xposed.info/") }
+        maven { url = uri("https://oss.sonatype.org/content/repositories/snapshots") }
+    }
+}
+
+include ':app', ':termux-shared', ':terminal-emulator', ':terminal-view', ':operit-feature'
+include ':operit-dragonbones'
+include ':operit-mnn'
+include ':operit-llama'
+include ':operit-mmd'
+include ':operit-fbx'
+include ':operit-quickjs'
+include ':operit-showerclient'

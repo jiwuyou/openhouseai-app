@@ -36,7 +36,12 @@ public final class OperitRuntimeBridge {
     private static final int COMMAND_NOT_FOUND_EXIT_CODE = 127;
     private static final int HTTP_CONNECT_TIMEOUT_MS = 2_500;
     private static final int HTTP_READ_TIMEOUT_MS = 7_000;
+    private static final long UBUNTU_LOGIN_PROBE_TIMEOUT_MS = 10_000L;
     private static final int MAX_CAPTURE_CHARS = 256 * 1024;
+    private static final String UBUNTU_CURRENT_ROOTFS_RELATIVE_PATH =
+        "var/lib/proot-distro/containers/ubuntu/rootfs";
+    private static final String UBUNTU_LEGACY_ROOTFS_RELATIVE_PATH =
+        "var/lib/proot-distro/installed-rootfs/ubuntu";
     private static final Pattern BACKGROUND_OPERATOR_PATTERN = Pattern.compile("(?<![>&])&(?![&>])");
     private static final Pattern DAEMONIZER_COMMAND_PATTERN = Pattern.compile(
         "(?i)(?:^|[;|(){}]|&&|\\|\\|)\\s*(?:nohup|setsid|daemon|disown|supervisord)(?=$|[\\s;|(){}])"
@@ -229,26 +234,35 @@ public final class OperitRuntimeBridge {
                     target,
                     cleanCommand,
                     COMMAND_NOT_FOUND_EXIT_CODE,
-                    "proot-distro is not installed: " + prootDistro.getAbsolutePath(),
+                    "Ubuntu terminal is not ready yet because proot-distro is not installed: "
+                        + prootDistro.getAbsolutePath()
+                        + ". Complete the first-run Ubuntu setup, then retry.",
                     startedAt
                 );
             }
 
-            File ubuntuRootfs = new File(
-                TermuxConstants.TERMUX_PREFIX_DIR_PATH,
-                "var/lib/proot-distro/installed-rootfs/ubuntu"
-            );
+            File ubuntuRootfs = findUbuntuRootfsDirectory();
             if (!ubuntuRootfs.isDirectory()) {
                 return commandError(
                     target,
                     cleanCommand,
                     COMMAND_NOT_FOUND_EXIT_CODE,
-                    "Ubuntu rootfs is not installed: " + ubuntuRootfs.getAbsolutePath(),
+                    "Ubuntu terminal is not ready yet because the Ubuntu rootfs is not installed. "
+                        + "Checked: "
+                        + describeUbuntuRootfsCandidates()
+                        + ". Complete the first-run Ubuntu setup, then retry.",
                     startedAt
                 );
             }
 
-            shellCommand = "proot-distro login ubuntu -- bash -lc " + shellQuote(cleanCommand);
+            String loginError = probeUbuntuLogin(bash, home, prootDistro, effectiveTimeoutMs);
+            if (!loginError.isEmpty()) {
+                return commandError(target, cleanCommand, COMMAND_ERROR_EXIT_CODE, loginError, startedAt);
+            }
+
+            shellCommand = shellQuote(prootDistro.getAbsolutePath())
+                + " login ubuntu -- bash -lc "
+                + shellQuote(cleanCommand);
         }
 
         Process process = null;
@@ -329,6 +343,95 @@ public final class OperitRuntimeBridge {
         environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
         environment.put("SMALLPHONEAI_NO_AUTO_UBUNTU", "1");
         environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
+    }
+
+    private static File findUbuntuRootfsDirectory() {
+        for (File candidate : ubuntuRootfsCandidates()) {
+            if (candidate.isDirectory()) {
+                return candidate;
+            }
+        }
+        return ubuntuRootfsCandidates()[0];
+    }
+
+    private static File[] ubuntuRootfsCandidates() {
+        return new File[] {
+            new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH, UBUNTU_CURRENT_ROOTFS_RELATIVE_PATH),
+            new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH, UBUNTU_LEGACY_ROOTFS_RELATIVE_PATH)
+        };
+    }
+
+    private static String describeUbuntuRootfsCandidates() {
+        File[] candidates = ubuntuRootfsCandidates();
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < candidates.length; i++) {
+            if (i > 0) {
+                builder.append(", ");
+            }
+            builder.append(candidates[i].getAbsolutePath());
+        }
+        return builder.toString();
+    }
+
+    private static String probeUbuntuLogin(File bash, File home, File prootDistro, long effectiveTimeoutMs) {
+        long probeTimeoutMs = Math.min(effectiveTimeoutMs, UBUNTU_LOGIN_PROBE_TIMEOUT_MS);
+        Process process = null;
+        ExecutorService streamReaders = Executors.newFixedThreadPool(2);
+        Future<StreamCapture> stdoutFuture = null;
+        Future<StreamCapture> stderrFuture = null;
+        try {
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                bash.getAbsolutePath(),
+                "-lc",
+                shellQuote(prootDistro.getAbsolutePath()) + " login ubuntu -- true"
+            );
+            processBuilder.directory(home);
+            processBuilder.redirectErrorStream(false);
+            applyTermuxEnvironment(processBuilder.environment());
+
+            process = processBuilder.start();
+            stdoutFuture = streamReaders.submit(new StreamReader(process.getInputStream(), "stdout"));
+            stderrFuture = streamReaders.submit(new StreamReader(process.getErrorStream(), "stderr"));
+
+            boolean finished = process.waitFor(probeTimeoutMs, TimeUnit.MILLISECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                process.waitFor(STREAM_DRAIN_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            }
+
+            StreamCapture stdout = collectStream(stdoutFuture);
+            StreamCapture stderr = collectStream(stderrFuture);
+            String streamError = combineErrors(stdout.error, stderr.error);
+            if (!finished) {
+                return combineErrors(
+                    "Ubuntu terminal login failed because proot-distro login ubuntu -- true timed out after "
+                        + probeTimeoutMs
+                        + " ms.",
+                    streamError
+                );
+            }
+
+            int exitCode = process.exitValue();
+            if (exitCode == 0) {
+                return streamError;
+            }
+
+            String processOutput = combineErrors(stderr.text, stdout.text);
+            String details = combineErrors(processOutput, streamError);
+            return combineErrors(
+                "Ubuntu terminal login failed because proot-distro login ubuntu -- true exited with code "
+                    + exitCode
+                    + ".",
+                details
+            );
+        } catch (Exception e) {
+            return "Ubuntu terminal login failed before running the requested command: " + compactException(e);
+        } finally {
+            if (process != null) {
+                process.destroy();
+            }
+            streamReaders.shutdownNow();
+        }
     }
 
     private static OperitCommandResult commandError(

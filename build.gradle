@@ -2,9 +2,11 @@ buildscript {
     repositories {
         mavenCentral()
         google()
+        gradlePluginPortal()
     }
     dependencies {
         classpath "com.android.tools.build:gradle:8.13.2"
+        classpath "io.objectbox:objectbox-gradle-plugin:5.3.0"
     }
 }
 
@@ -13,5 +15,16 @@ allprojects {
         google()
         mavenCentral()
         maven { url "https://jitpack.io" }
+        maven { url "https://api.xposed.info/" }
+        maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+    }
+
+    configurations.configureEach {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == "com.google.guava" && details.requested.name == "guava") {
+                details.useVersion "31.1-jre"
+                details.because "Termux file deletion uses Guava JRE MoreFiles APIs that are absent from guava-android."
+            }
+        }
     }
 }

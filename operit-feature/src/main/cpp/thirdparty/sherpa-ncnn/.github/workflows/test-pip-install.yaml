@@ -1,0 +1,73 @@
+name: test-pip-install
+
+on:
+  push:
+    branches:
+      - nightly
+  schedule:
+    # minute (0-59)
+    # hour (0-23)
+    # day of the month (1-31)
+    # month (1-12)
+    # day of the week (0-6)
+    # nightly test at 22:50 UTC time every day
+    - cron: "50 22 * * *"
+
+  workflow_dispatch:
+
+concurrency:
+  group: test_pip_install-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test_pip_install:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update version
+        shell: bash
+        run: |
+          ./new-release.sh
+          git diff .
+
+      # see https://github.com/microsoft/setup-msbuild
+      - name: Add msbuild to PATH
+        if: startsWith(matrix.os, 'windows')
+        uses: microsoft/setup-msbuild@v1.0.2
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Display Python version
+        run: python -c "import sys; print(sys.version)"
+
+      - name: Download pretrained model and test-data
+        shell: bash
+        run: |
+          git lfs install
+          git clone https://huggingface.co/csukuangfj/sherpa-ncnn-conv-emformer-transducer-2022-12-06
+
+      - name: Install sherpa-ncnn
+        shell: bash
+        run: |
+          pip3 install --verbose -U sherpa-ncnn
+
+      - name: Run test
+        shell: bash
+        run: |
+          python3 .github/scripts/test-recognizer.py
+

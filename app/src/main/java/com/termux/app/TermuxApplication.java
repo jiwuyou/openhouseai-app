@@ -2,6 +2,8 @@ package com.termux.app;
 
 import android.app.Application;
 import android.content.Context;
+import android.os.Build;
+import android.webkit.WebView;
 
 import com.termux.BuildConfig;
 import com.termux.shared.errors.Error;
@@ -17,6 +19,11 @@ import com.termux.shared.termux.shell.am.TermuxAmSocketServer;
 import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.app.openhouse.release.OpenHousePostUpdateSync;
+import com.termux.app.operit.init.OperitHostBootstrap;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 
 public class TermuxApplication extends Application {
 
@@ -26,6 +33,9 @@ public class TermuxApplication extends Application {
         super.onCreate();
 
         Context context = getApplicationContext();
+
+        configureProcessScopedWebViewDataDirectory(context);
+        OperitHostBootstrap.installHostBridge(context);
 
         // Set crash handler for the app
         TermuxCrashUtils.setDefaultCrashHandler(this);
@@ -73,6 +83,52 @@ public class TermuxApplication extends Application {
             TermuxShellEnvironment.writeEnvironmentToFile(this);
             OpenHousePostUpdateSync.maybeRun(context);
         }
+    }
+
+    private static void configureProcessScopedWebViewDataDirectory(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || context == null) {
+            return;
+        }
+
+        String packageName = context.getPackageName();
+        String processName = getCurrentProcessName();
+        if (processName == null || processName.equals(packageName) || !processName.startsWith(packageName + ":")) {
+            return;
+        }
+
+        String suffix = processName.substring(packageName.length() + 1);
+        if (suffix.trim().isEmpty()) {
+            return;
+        }
+
+        try {
+            WebView.setDataDirectorySuffix(suffix);
+            Logger.logInfo(LOG_TAG, "Configured WebView data directory suffix for process: " + processName);
+        } catch (Throwable throwable) {
+            Logger.logError(LOG_TAG, "Failed to configure WebView data directory suffix for " + processName + ": " + throwable.getMessage());
+        }
+    }
+
+    private static String getCurrentProcessName() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            String processName = Application.getProcessName();
+            if (processName != null && !processName.trim().isEmpty()) {
+                return processName;
+            }
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader("/proc/self/cmdline"))) {
+            String processName = reader.readLine();
+            if (processName != null) {
+                processName = processName.replace('\u0000', ' ').trim();
+                if (!processName.isEmpty()) {
+                    return processName;
+                }
+            }
+        } catch (IOException ignored) {
+            // Best effort only; the main process can safely keep WebView's default data directory.
+        }
+        return null;
     }
 
     public static void setLogConfig(Context context) {

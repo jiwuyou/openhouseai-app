@@ -39,6 +39,9 @@ android {
 
         implementation project(":terminal-view")
         implementation project(":termux-shared")
+        implementation(project(":operit-feature")) {
+            exclude group: "org.bouncycastle", module: "bcprov-jdk18on"
+        }
     }
 
     defaultConfig {
@@ -131,6 +134,12 @@ android {
         jniLibs {
             useLegacyPackaging true
         }
+        resources {
+            pickFirsts += [
+                "LICENSE-EDL-1.0.txt",
+                "LICENSE-EPL-1.0.txt"
+            ]
+        }
     }
 
     applicationVariants.all { variant ->
@@ -153,7 +162,7 @@ android {
 dependencies {
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.robolectric:robolectric:4.10"
-    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:1.1.5"
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
 }
 
 task versionName {

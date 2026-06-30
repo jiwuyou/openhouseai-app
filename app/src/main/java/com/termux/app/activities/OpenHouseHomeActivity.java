@@ -1,6 +1,7 @@
 package com.termux.app.activities;
 
 import android.Manifest;
+import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
@@ -54,11 +55,16 @@ import com.termux.app.openhouse.OpenHouseMaintainerRunner;
 import com.termux.app.openhouse.OpenHouseOpenCodeController;
 import com.termux.app.openhouse.components.OpenHouseComponent;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
+import com.termux.app.operit.runtime.SmallPhoneOperitHost;
 import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.app.smallphone.SmallPhoneHostController;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
+import com.ai.assistance.operit.host.control.OperitControlProtocol;
+import com.ai.assistance.operit.host.control.OperitControlStateSnapshot;
+import com.ai.assistance.operit.host.control.OperitControlStateStore;
+import com.ai.assistance.operit.host.control.OperitProcessState;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -107,6 +113,26 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String SMALLPHONE_HOME_TARGET = "messages";
     private static final String MENU_OVERRIDES_RELATIVE_PATH = ".config/openhouseai/menu-overrides.json";
     private static final String CC_CODEX_TITLE = "CC/Codex";
+    private static final String OPERIT_MAIN_ACTIVITY_CLASS = "com.ai.assistance.operit.ui.main.MainActivity";
+    private static final String OPERIT_EXTRA_HOSTED_MODE = "com.ai.assistance.operit.extra.HOSTED_MODE";
+    private static final String OPERIT_EXTRA_HELP_MODE = "com.ai.assistance.operit.extra.HELP_MODE";
+    private static final String AI_FRIEND_HELP_ENTRY_TAG = "ai_friend_help_entry";
+    private static final long OPERIT_SHUTDOWN_PENDING_UI_MS = 5000L;
+    private static final long OPERIT_LAUNCH_PENDING_UI_MS = 7000L;
+    private static final long OPERIT_LAUNCH_PROCESS_GRACE_MS = 1500L;
+    private static final int OPERIT_FORWARD_GRANT_FLAGS =
+        Intent.FLAG_GRANT_READ_URI_PERMISSION
+            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION;
+
+    private enum AiFriendHelpUiState {
+        NOT_RUNNING,
+        STARTING,
+        FOREGROUND,
+        BACKGROUND,
+        STOPPING
+    }
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -124,6 +150,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private Button refreshCurrentButton;
     private TextView pageTitleView;
     private TextView pageSubtitleView;
+    private LinearLayout aiFriendHelpNavContainer;
+    private TextView aiFriendHelpNavStatusView;
+    private Button aiFriendHelpNavOpenButton;
+    private Button aiFriendHelpNavCloseButton;
+    private TextView aiFriendHelpHomeStatusView;
+    private Button aiFriendHelpHomeOpenButton;
+    private Button aiFriendHelpHomeCloseButton;
     private String currentPage = PAGE_HOME;
     private List<OpenHouseComponent> dynamicComponents = Collections.emptyList();
     private OpenHouseComponentRegistry.LoadResult dynamicRegistryResult;
@@ -154,10 +187,17 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private boolean dynamicWebLoadFailed = false;
     private boolean firstLaunchGateForwarded;
     private String renderedCloudCliUrl;
+    private long aiFriendHelpShutdownRequestedAtMs = 0L;
+    private long aiFriendHelpLaunchRequestedAtMs = 0L;
+    private boolean aiFriendHelpLaunchFailureNotified = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (forwardExternalOperitIntentIfNeeded(getIntent())) {
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_openhouse_home);
 
         drawerLayout = findViewById(R.id.openhouseDrawer);
@@ -232,6 +272,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         refreshDynamicComponents();
+        refreshAiFriendHelpEntryState();
         if (!hasExplicitOpenHouseTarget(getIntent()) && routeFirstLaunchGateIfNeeded()) {
             return;
         }
@@ -270,6 +311,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (forwardExternalOperitIntentIfNeeded(intent)) {
+            return;
+        }
         if (handleOpenHouseIntent(intent)) {
             return;
         }
@@ -376,21 +420,21 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return;
         }
         LinearLayout parent = (LinearLayout) anchor.getParent();
-        if (parent.findViewWithTag("ai_friend_help_entry") != null) {
+        View existing = parent.findViewWithTag(AI_FRIEND_HELP_ENTRY_TAG);
+        if (existing != null) {
+            refreshAiFriendHelpEntryState();
             return;
         }
 
-        Button button = new Button(this);
-        button.setTag("ai_friend_help_entry");
-        button.setText(R.string.operit_ai_friend_help_nav_title);
-        button.setAllCaps(false);
-        button.setOnClickListener(v -> openAiFriendHelp());
+        aiFriendHelpNavContainer = createAiFriendHelpControlBlock(false);
+        aiFriendHelpNavContainer.setTag(AI_FRIEND_HELP_ENTRY_TAG);
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(52));
+            LinearLayout.LayoutParams.WRAP_CONTENT);
         params.setMargins(0, dp(8), 0, 0);
-        parent.addView(button, parent.indexOfChild(anchor) + 1, params);
+        parent.addView(aiFriendHelpNavContainer, parent.indexOfChild(anchor) + 1, params);
+        refreshAiFriendHelpEntryState();
     }
 
     private void refreshDynamicComponents() {
@@ -398,6 +442,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         dynamicComponents = dynamicRegistryResult.components;
         setFallbackNavigationVisible(dynamicRegistryResult.shouldShowFallbackNavigation());
         updateBuiltinNavigationLabels();
+        refreshAiFriendHelpEntryState();
         renderDynamicQuickNavigation();
         renderDynamicNavigation();
         updateHomePreferenceViews();
@@ -2296,6 +2341,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         LinearLayout panel = panel();
         addTitle(panel, "菜单总览", 19);
         addBody(panel, "这里保留主入口，具体内容请从左侧侧边栏进入：使用手册、OpenCode 控制、DeepSeek Key、权限获取、终端快捷键和高级设置。");
+        panel.addView(createAiFriendHelpControlBlock(true));
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
             compactButton("打开 " + getCcCodexTitle(),
@@ -2318,6 +2364,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addStatusRow(quick, "OpenCode 目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
         addStatusRow(quick, "运行环境", "AI 工具安装在 Ubuntu /root");
         contentView.addView(quick);
+        refreshAiFriendHelpEntryState();
     }
 
     private void renderManualPage() {
@@ -2695,14 +2742,350 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         openBuiltinComponentOrFallback(findSmallPhoneComponent(), PAGE_SMALLPHONE);
     }
 
+    private LinearLayout createAiFriendHelpControlBlock(boolean homeBlock) {
+        LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        block.setPadding(0, dp(4), 0, dp(2));
+
+        TextView statusView = new TextView(this);
+        statusView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        statusView.setTextSize(14);
+        statusView.setTypeface(statusView.getTypeface(), android.graphics.Typeface.BOLD);
+        block.addView(statusView, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        rowParams.setMargins(0, dp(8), 0, 0);
+
+        Button openButton = compactButton("", v -> openAiFriendHelp(), true);
+        row.addView(openButton, new LinearLayout.LayoutParams(0, dp(44), 1));
+
+        Button closeButton = compactButton(
+            getString(R.string.operit_ai_friend_help_action_close_background),
+            v -> requestCloseBackgroundAiFriendHelp(),
+            true);
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(dp(118), dp(44));
+        closeParams.setMargins(dp(8), 0, 0, 0);
+        row.addView(closeButton, closeParams);
+        block.addView(row, rowParams);
+
+        if (homeBlock) {
+            aiFriendHelpHomeStatusView = statusView;
+            aiFriendHelpHomeOpenButton = openButton;
+            aiFriendHelpHomeCloseButton = closeButton;
+        } else {
+            aiFriendHelpNavStatusView = statusView;
+            aiFriendHelpNavOpenButton = openButton;
+            aiFriendHelpNavCloseButton = closeButton;
+        }
+        return block;
+    }
+
+    private void refreshAiFriendHelpEntryState() {
+        OperitControlStateSnapshot snapshot = readAiFriendHelpState();
+        AiFriendHelpUiState displayState = getAiFriendHelpDisplayState(snapshot);
+        updateAiFriendHelpControlBlock(
+            aiFriendHelpNavStatusView,
+            aiFriendHelpNavOpenButton,
+            aiFriendHelpNavCloseButton,
+            displayState);
+        updateAiFriendHelpControlBlock(
+            aiFriendHelpHomeStatusView,
+            aiFriendHelpHomeOpenButton,
+            aiFriendHelpHomeCloseButton,
+            displayState);
+    }
+
+    private OperitControlStateSnapshot readAiFriendHelpState() {
+        try {
+            return OperitControlStateStore.read(getApplicationContext());
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read Operit control state", e);
+            return null;
+        }
+    }
+
+    private AiFriendHelpUiState getAiFriendHelpDisplayState(OperitControlStateSnapshot snapshot) {
+        OperitProcessState effectiveState = snapshot == null
+            ? OperitProcessState.NOT_RUNNING
+            : snapshot.getEffectiveState();
+        if (isMissingLiveOperitProcess(snapshot, effectiveState)) {
+            markAiFriendHelpStoppedAfterProcessLoss();
+            effectiveState = OperitProcessState.NOT_RUNNING;
+        }
+
+        if (effectiveState == OperitProcessState.NOT_RUNNING) {
+            aiFriendHelpShutdownRequestedAtMs = 0L;
+            return getPendingAiFriendHelpLaunchState();
+        }
+        if (effectiveState == OperitProcessState.STOPPING) {
+            aiFriendHelpLaunchRequestedAtMs = 0L;
+            aiFriendHelpLaunchFailureNotified = false;
+            return AiFriendHelpUiState.STOPPING;
+        }
+        if (aiFriendHelpShutdownRequestedAtMs <= 0L) {
+            clearAiFriendHelpLaunchPending();
+            return toAiFriendHelpUiState(effectiveState);
+        }
+        long elapsed = System.currentTimeMillis() - aiFriendHelpShutdownRequestedAtMs;
+        if (elapsed <= OPERIT_SHUTDOWN_PENDING_UI_MS) {
+            clearAiFriendHelpLaunchPending();
+            return AiFriendHelpUiState.STOPPING;
+        }
+        aiFriendHelpShutdownRequestedAtMs = 0L;
+        clearAiFriendHelpLaunchPending();
+        return toAiFriendHelpUiState(effectiveState);
+    }
+
+    private AiFriendHelpUiState getPendingAiFriendHelpLaunchState() {
+        if (aiFriendHelpLaunchRequestedAtMs <= 0L) {
+            aiFriendHelpLaunchFailureNotified = false;
+            return AiFriendHelpUiState.NOT_RUNNING;
+        }
+
+        long elapsed = System.currentTimeMillis() - aiFriendHelpLaunchRequestedAtMs;
+        if (elapsed <= OPERIT_LAUNCH_PROCESS_GRACE_MS
+            || (elapsed <= OPERIT_LAUNCH_PENDING_UI_MS && isOperitProcessAlive(-1))) {
+            return AiFriendHelpUiState.STARTING;
+        }
+
+        aiFriendHelpLaunchRequestedAtMs = 0L;
+        if (!aiFriendHelpLaunchFailureNotified) {
+            aiFriendHelpLaunchFailureNotified = true;
+            Toast.makeText(this, R.string.operit_ai_friend_help_launch_failed, Toast.LENGTH_LONG).show();
+        }
+        return AiFriendHelpUiState.NOT_RUNNING;
+    }
+
+    private AiFriendHelpUiState toAiFriendHelpUiState(OperitProcessState state) {
+        if (state == OperitProcessState.FOREGROUND) {
+            return AiFriendHelpUiState.FOREGROUND;
+        }
+        if (state == OperitProcessState.BACKGROUND) {
+            return AiFriendHelpUiState.BACKGROUND;
+        }
+        if (state == OperitProcessState.STOPPING) {
+            return AiFriendHelpUiState.STOPPING;
+        }
+        return AiFriendHelpUiState.NOT_RUNNING;
+    }
+
+    private void clearAiFriendHelpLaunchPending() {
+        aiFriendHelpLaunchRequestedAtMs = 0L;
+        aiFriendHelpLaunchFailureNotified = false;
+    }
+
+    private boolean isMissingLiveOperitProcess(
+        OperitControlStateSnapshot snapshot,
+        OperitProcessState effectiveState) {
+        if (snapshot == null || !effectiveState.isRunningLike()) {
+            return false;
+        }
+        if (snapshot.getPid() <= 0 && isBlank(snapshot.getProcessName())) {
+            return false;
+        }
+        return !isOperitProcessAlive(snapshot.getPid());
+    }
+
+    private boolean isOperitProcessAlive(int expectedPid) {
+        ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+        if (activityManager == null) {
+            return false;
+        }
+        List<ActivityManager.RunningAppProcessInfo> processes = activityManager.getRunningAppProcesses();
+        if (processes == null) {
+            return false;
+        }
+        String operitProcessName = OperitControlProtocol.operitProcessName(getPackageName());
+        for (ActivityManager.RunningAppProcessInfo process : processes) {
+            if (process == null || !operitProcessName.equals(process.processName)) {
+                continue;
+            }
+            if (expectedPid <= 0 || process.pid == expectedPid) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void markAiFriendHelpStoppedAfterProcessLoss() {
+        try {
+            OperitControlStateStore.markStopped(getApplicationContext());
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to mark Operit stopped after process loss", e);
+        }
+    }
+
+    private void updateAiFriendHelpControlBlock(
+        TextView statusView,
+        Button openButton,
+        Button closeButton,
+        AiFriendHelpUiState displayState) {
+        if (statusView == null || openButton == null || closeButton == null) {
+            return;
+        }
+        statusView.setText(getString(
+            R.string.operit_ai_friend_help_state_title,
+            getAiFriendHelpStateLabel(displayState)));
+
+        boolean starting = displayState == AiFriendHelpUiState.STARTING;
+        boolean stopping = displayState == AiFriendHelpUiState.STOPPING;
+        boolean background = displayState == AiFriendHelpUiState.BACKGROUND;
+        openButton.setText(getAiFriendHelpOpenActionLabel(displayState));
+        openButton.setEnabled(!starting && !stopping);
+        closeButton.setText(stopping
+            ? getString(R.string.operit_ai_friend_help_action_stopping)
+            : getString(R.string.operit_ai_friend_help_action_close_background));
+        closeButton.setVisibility(background || stopping ? View.VISIBLE : View.GONE);
+        closeButton.setEnabled(background && !stopping);
+    }
+
+    private String getAiFriendHelpStateLabel(AiFriendHelpUiState state) {
+        if (state == AiFriendHelpUiState.STARTING) {
+            return getString(R.string.operit_ai_friend_help_state_starting);
+        }
+        if (state == AiFriendHelpUiState.FOREGROUND) {
+            return getString(R.string.operit_ai_friend_help_state_foreground);
+        }
+        if (state == AiFriendHelpUiState.BACKGROUND) {
+            return getString(R.string.operit_ai_friend_help_state_background);
+        }
+        if (state == AiFriendHelpUiState.STOPPING) {
+            return getString(R.string.operit_ai_friend_help_state_stopping);
+        }
+        return getString(R.string.operit_ai_friend_help_state_not_running);
+    }
+
+    private String getAiFriendHelpOpenActionLabel(AiFriendHelpUiState state) {
+        if (state == AiFriendHelpUiState.NOT_RUNNING) {
+            return getString(R.string.operit_ai_friend_help_action_open);
+        }
+        if (state == AiFriendHelpUiState.STARTING) {
+            return getString(R.string.operit_ai_friend_help_action_starting);
+        }
+        if (state == AiFriendHelpUiState.STOPPING) {
+            return getString(R.string.operit_ai_friend_help_action_stopping);
+        }
+        return getString(R.string.operit_ai_friend_help_action_enter);
+    }
+
+    private void requestCloseBackgroundAiFriendHelp() {
+        clearAiFriendHelpLaunchPending();
+        OperitControlStateSnapshot snapshot = readAiFriendHelpState();
+        if (snapshot == null || !snapshot.isBackground()) {
+            refreshAiFriendHelpEntryState();
+            Toast.makeText(this, R.string.operit_ai_friend_help_not_background, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        aiFriendHelpShutdownRequestedAtMs = System.currentTimeMillis();
+        try {
+            sendBroadcast(OperitControlProtocol.createShutdownIntent(this));
+            Toast.makeText(this, R.string.operit_ai_friend_help_shutdown_requested, Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            aiFriendHelpShutdownRequestedAtMs = 0L;
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to request Operit shutdown", e);
+            Toast.makeText(this, R.string.operit_ai_friend_help_shutdown_failed, Toast.LENGTH_SHORT).show();
+        }
+        refreshAiFriendHelpEntryState();
+        scheduleAiFriendHelpStateRefresh();
+    }
+
+    private void scheduleAiFriendHelpStateRefresh() {
+        View anchor = aiFriendHelpNavContainer != null ? aiFriendHelpNavContainer : contentView;
+        if (anchor == null) {
+            return;
+        }
+        anchor.postDelayed(this::refreshAiFriendHelpEntryState, 750);
+        anchor.postDelayed(this::refreshAiFriendHelpEntryState, 2000);
+        anchor.postDelayed(this::refreshAiFriendHelpEntryState, OPERIT_SHUTDOWN_PENDING_UI_MS + 250);
+        anchor.postDelayed(this::refreshAiFriendHelpEntryState, OPERIT_LAUNCH_PENDING_UI_MS + 250);
+    }
+
     private void openAiFriendHelp() {
         if (drawerLayout != null) {
             drawerLayout.closeDrawer(GravityCompat.START);
         }
-        Intent intent = new Intent(this, OperitAssistantActivity.class);
-        intent.putExtra(OperitAssistantActivity.EXTRA_HOSTED_MODE, true);
-        intent.putExtra(OperitAssistantActivity.EXTRA_HELP_MODE, true);
-        ActivityUtils.startActivity(this, intent);
+        aiFriendHelpShutdownRequestedAtMs = 0L;
+        aiFriendHelpLaunchRequestedAtMs = System.currentTimeMillis();
+        aiFriendHelpLaunchFailureNotified = false;
+        refreshAiFriendHelpEntryState();
+        Intent intent = createHostedOperitIntent();
+        intent.putExtra(OPERIT_EXTRA_HOSTED_MODE, true);
+        intent.putExtra(OPERIT_EXTRA_HELP_MODE, true);
+        if (startHostedOperitActivity(intent)) {
+            refreshAiFriendHelpEntryState();
+            scheduleAiFriendHelpStateRefresh();
+        } else {
+            aiFriendHelpLaunchRequestedAtMs = 0L;
+            aiFriendHelpLaunchFailureNotified = true;
+            refreshAiFriendHelpEntryState();
+        }
+    }
+
+    private boolean forwardExternalOperitIntentIfNeeded(Intent sourceIntent) {
+        if (!isExternalOperitEntryIntent(sourceIntent)) {
+            return false;
+        }
+
+        Intent targetIntent = createHostedOperitIntent();
+        targetIntent.setAction(sourceIntent.getAction());
+        if (sourceIntent.getData() != null || sourceIntent.getType() != null) {
+            targetIntent.setDataAndType(sourceIntent.getData(), sourceIntent.getType());
+        }
+        if (sourceIntent.getExtras() != null) {
+            targetIntent.putExtras(sourceIntent.getExtras());
+        }
+        ClipData clipData = sourceIntent.getClipData();
+        if (clipData != null) {
+            targetIntent.setClipData(clipData);
+        }
+        targetIntent.addFlags(sourceIntent.getFlags() & OPERIT_FORWARD_GRANT_FLAGS);
+        targetIntent.putExtra(OPERIT_EXTRA_HOSTED_MODE, true);
+        return startHostedOperitActivity(targetIntent);
+    }
+
+    private Intent createHostedOperitIntent() {
+        Intent intent = new Intent();
+        intent.setClassName(getPackageName(), OPERIT_MAIN_ACTIVITY_CLASS);
+        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return intent;
+    }
+
+    private boolean startHostedOperitActivity(Intent intent) {
+        SmallPhoneOperitHost.install(getApplicationContext());
+        try {
+            com.termux.shared.errors.Error error = ActivityUtils.startActivity(this, intent, true, false);
+            if (error != null) {
+                Logger.logError(LOG_TAG, "Failed to start Operit hosted entry activity: " + error.getMessage());
+                Toast.makeText(this, R.string.operit_ai_friend_help_start_failed, Toast.LENGTH_LONG).show();
+                return false;
+            }
+            return true;
+        } catch (ActivityNotFoundException e) {
+            Logger.logError(LOG_TAG, "Operit hosted entry activity is not available: " + e.getMessage());
+            Toast.makeText(this, R.string.operit_ai_friend_help_start_failed, Toast.LENGTH_LONG).show();
+            return false;
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to start Operit hosted entry activity", e);
+            Toast.makeText(this, R.string.operit_ai_friend_help_start_failed, Toast.LENGTH_LONG).show();
+            return false;
+        }
+    }
+
+    private boolean isExternalOperitEntryIntent(Intent intent) {
+        if (intent == null) {
+            return false;
+        }
+        String action = intent.getAction();
+        return Intent.ACTION_VIEW.equals(action)
+            || Intent.ACTION_SEND.equals(action)
+            || Intent.ACTION_SEND_MULTIPLE.equals(action);
     }
 
     private void openMaintenanceLog(String stageSlug, String stageLabel) {
