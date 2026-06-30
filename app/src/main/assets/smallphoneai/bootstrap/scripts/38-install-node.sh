@@ -97,7 +97,7 @@ npm config set registry "${NPM_REGISTRY:-https://registry.npmjs.org/}"
 node -v
 npm -v
 
-PATH_LINE="export PATH=\"\$HOME/.local/node/bin:\$HOME/.opencode/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:/usr/local/bin:\$PATH\""
+PATH_LINE="export PATH=\"\$HOME/.local/node/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:/usr/local/bin:\$PATH\""
 for PROFILE_FILE in "$HOME/.profile" "$HOME/.bashrc"; do
   touch "$PROFILE_FILE"
   if ! grep -Fq "$PATH_LINE" "$PROFILE_FILE"; then

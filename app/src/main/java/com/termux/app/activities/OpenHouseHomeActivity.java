@@ -2,7 +2,6 @@ package com.termux.app.activities;
 
 import android.Manifest;
 import android.app.ActivityManager;
-import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -15,13 +14,11 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.PowerManager;
 import android.provider.Settings;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -41,7 +38,6 @@ import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.termux.R;
 import com.termux.app.ClaudeCodeUiSettings;
-import com.termux.app.OpenCodeSettings;
 import com.termux.app.OpenHouseAgreement;
 import com.termux.app.TermuxActivity;
 import com.termux.app.browser.ControlledBrowserCommandDispatcher;
@@ -50,9 +46,7 @@ import com.termux.app.browser.ControlledBrowserRpcFiles;
 import com.termux.app.browser.ControlledBrowserRuntime;
 import com.termux.app.browser.ControlledBrowserView;
 import com.termux.app.openhouse.OpenHouseClaudeCodeUiController;
-import com.termux.app.openhouse.OpenHouseDeepSeekController;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
-import com.termux.app.openhouse.OpenHouseOpenCodeController;
 import com.termux.app.openhouse.components.OpenHouseComponent;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
 import com.termux.app.operit.runtime.SmallPhoneOperitHost;
@@ -84,13 +78,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "openhouse_home";
     private static final String PREF_HOME_PAGE = "home_page";
     private static final String PAGE_HOME = "home";
-    private static final String PAGE_HERMES = "hermes";
     private static final String PAGE_AI = "ai";
     private static final String PAGE_SMALLPHONE = "smallphone";
     private static final String PAGE_CONTROLLED_BROWSER = ControlledBrowserContract.PAGE_CONTROLLED_BROWSER;
     private static final String PAGE_MANUAL = "manual";
-    private static final String PAGE_OPENCODE = "opencode";
-    private static final String PAGE_DEEPSEEK = "deepseek";
     private static final String PAGE_PERMISSIONS = "permissions";
     private static final String PAGE_ABOUT = "about";
     private static final String PAGE_TERMINAL_GUIDE = "terminal_guide";
@@ -107,8 +98,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String EXTRA_SERVICE_CONTROL_MODE = "openhouse_service_control_mode";
     private static final String SERVICE_CONTROL_MODE_COMPONENT = "component";
     private static final String SERVICE_CONTROL_MODE_ALL = "all";
-    private static final String HERMES_URL = "http://127.0.0.1:23084/";
-    private static final String HERMES_SERVICE_NAME = "hermes-webui";
     private static final String CC_CODEX_SERVICE_NAME = "cloudcli";
     private static final String SMALLPHONE_HOME_TARGET = "messages";
     private static final String MENU_OVERRIDES_RELATIVE_PATH = ".config/openhouseai/menu-overrides.json";
@@ -160,8 +149,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private String currentPage = PAGE_HOME;
     private List<OpenHouseComponent> dynamicComponents = Collections.emptyList();
     private OpenHouseComponentRegistry.LoadResult dynamicRegistryResult;
-    private int openCodePort = OpenCodeSettings.DEFAULT_OPENCODE_PORT;
-    private String lastOpenCodeUrl = OpenCodeSettings.getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
     private final String cloudCliUrl = ClaudeCodeUiSettings.getLoopbackUrl();
     private SmallPhoneHostController smallPhoneController;
     private View smallPhoneView;
@@ -172,12 +159,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private TextView cloudCliStatusView;
     private boolean cloudCliControlsVisible = false;
     private boolean cloudCliLoadFailed = false;
-    private LinearLayout hermesPageView;
-    private WebView hermesWebView;
-    private LinearLayout hermesFallbackView;
-    private TextView hermesStatusView;
-    private String renderedHermesUrl;
-    private boolean hermesLoadFailed = false;
     private ControlledBrowserView controlledBrowserView;
     private LinearLayout dynamicWebPageView;
     private WebView dynamicWebView;
@@ -249,10 +230,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             cloudCliWebView.destroy();
             cloudCliWebView = null;
         }
-        if (hermesWebView != null) {
-            hermesWebView.destroy();
-            hermesWebView = null;
-        }
         if (controlledBrowserView != null) {
             controlledBrowserView.setExternalNavigationHandler(null);
             if (controlledBrowserView.getParent() instanceof ViewGroup) {
@@ -279,9 +256,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_PERMISSIONS.equals(currentPage)) {
             renderPage();
         }
-        if (PAGE_HERMES.equals(currentPage) && hermesWebView != null) {
-            hermesWebView.onResume();
-        } else if (PAGE_SMALLPHONE.equals(currentPage)
+        if (PAGE_SMALLPHONE.equals(currentPage)
             && isCurrentDynamicWebComponent(findSmallPhoneComponent())
             && dynamicWebView != null) {
             dynamicWebView.onResume();
@@ -343,12 +318,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             && smallPhoneController.handleBackPressed()) {
             return;
         }
-        if (PAGE_HERMES.equals(currentPage)
-            && hermesWebView != null
-            && hermesWebView.canGoBack()) {
-            hermesWebView.goBack();
-            return;
-        }
         if (PAGE_AI.equals(currentPage)
             && cloudCliWebView != null
             && cloudCliWebView.canGoBack()) {
@@ -383,9 +352,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void bindNavigation() {
         findViewById(R.id.buttonNavHome).setOnClickListener(v -> selectPage(PAGE_HOME));
-        findViewById(R.id.buttonNavHermes).setOnClickListener(
-            v -> openBuiltinComponentOrFallback(findHermesComponent(), PAGE_HERMES));
-        findViewById(R.id.buttonNavHermesControl).setOnClickListener(v -> openHermesControl());
         findViewById(R.id.buttonNavAi).setOnClickListener(
             v -> openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI));
         findViewById(R.id.buttonNavAiControl).setOnClickListener(v -> openCcCodexControlOrToggle());
@@ -397,8 +363,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavControlledBrowserControl).setOnClickListener(v -> openComponentControl(findControlledBrowserComponent()));
         findViewById(R.id.buttonNavServiceControl).setOnClickListener(v -> openAllServiceControl());
         findViewById(R.id.buttonNavManual).setOnClickListener(v -> selectPage(PAGE_MANUAL));
-        findViewById(R.id.buttonNavOpenCode).setOnClickListener(v -> selectPage(PAGE_OPENCODE));
-        findViewById(R.id.buttonNavDeepSeek).setOnClickListener(v -> selectPage(PAGE_DEEPSEEK));
         findViewById(R.id.buttonNavPermissions).setOnClickListener(v -> selectPage(PAGE_PERMISSIONS));
         findViewById(R.id.buttonNavAbout).setOnClickListener(v -> selectPage(PAGE_ABOUT));
         findViewById(R.id.buttonNavTerminalGuide).setOnClickListener(v -> selectPage(PAGE_TERMINAL_GUIDE));
@@ -450,8 +414,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void updateBuiltinNavigationLabels() {
-        setBuiltinNavigationRowState(R.id.rowNavHermes, R.id.buttonNavHermes, R.id.buttonNavHermesControl,
-            findHermesComponent(), getHermesTitle());
         setBuiltinNavigationRowState(R.id.rowNavAi, R.id.buttonNavAi, R.id.buttonNavAiControl,
             findCcCodexComponent(), getCcCodexTitle());
         setBuiltinNavigationRowState(R.id.rowNavSmallPhone, R.id.buttonNavSmallPhone, R.id.buttonNavSmallPhoneControl,
@@ -485,15 +447,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         // when components.d is present. Dynamic registry entries only append below.
         int visibility = View.VISIBLE;
         int[] fallbackButtonIds = new int[] {
-            R.id.rowNavHermes,
             R.id.rowNavAi,
             R.id.rowNavSmallPhone,
             R.id.rowNavControlledBrowser,
             R.id.buttonNavHome,
             R.id.buttonNavServiceControl,
             R.id.buttonNavManual,
-            R.id.buttonNavOpenCode,
-            R.id.buttonNavDeepSeek,
             R.id.buttonNavPermissions,
             R.id.buttonNavAbout,
             R.id.buttonNavTerminalGuide,
@@ -641,10 +600,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
 
         switch (currentPage) {
-            case PAGE_HERMES:
-                setHeader(getHermesTitle(), getHermesSubtitle("默认 AI 伙伴"));
-                renderHermesPage();
-                break;
             case PAGE_AI:
                 setHeader(getCcCodexTitle(), getCcCodexSubtitle("Claude Code / Codex 网页工作台"));
                 renderAiPage();
@@ -661,16 +616,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 showScrollContent();
                 setHeader("使用手册", "离线基础说明和在线手册入口");
                 renderManualPage();
-                break;
-            case PAGE_OPENCODE:
-                showScrollContent();
-                setHeader("OpenCode 控制", "启动、停止、重启和自定义端口");
-                renderOpenCodePage();
-                break;
-            case PAGE_DEEPSEEK:
-                showScrollContent();
-                setHeader("DeepSeek Key", "一键替换 AI 软件配置");
-                renderDeepSeekPage();
                 break;
             case PAGE_PERMISSIONS:
                 showScrollContent();
@@ -699,7 +644,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 break;
             case PAGE_LOGS:
                 showScrollContent();
-                setHeader("日志", "阶段日志和 OpenCode 日志");
+                setHeader("日志", "安装、启动和维护日志");
                 renderLogsPage();
                 break;
             case PAGE_ADVANCED:
@@ -771,18 +716,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             openCcCodexControlOrToggle();
             return;
         }
-        if (PAGE_HERMES.equals(currentPage)) {
-            openHermesControl();
-            return;
-        }
         openAllServiceControl();
     }
 
     private void refreshCurrentTarget() {
-        if (PAGE_HERMES.equals(currentPage)) {
-            reloadHermesWebView();
-            return;
-        }
         if (PAGE_AI.equals(currentPage)) {
             reloadCloudCliWebView();
             return;
@@ -817,9 +754,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String getCurrentBrowserUrl() {
-        if (PAGE_HERMES.equals(currentPage)) {
-            return getHermesUrl();
-        }
         if (PAGE_AI.equals(currentPage)) {
             return getCcCodexUrl();
         }
@@ -840,12 +774,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 return component.url;
             }
             return null;
-        }
-        if (PAGE_OPENCODE.equals(currentPage)) {
-            return lastOpenCodeUrl;
-        }
-        if (PAGE_DEEPSEEK.equals(currentPage)) {
-            return getString(R.string.openhouse_deepseek_url);
         }
         if (isComponentPage(currentPage)) {
             OpenHouseComponent component = findDynamicComponent(extractComponentId(currentPage));
@@ -882,9 +810,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private OpenHouseComponent getCurrentControlComponent() {
-        if (PAGE_HERMES.equals(currentPage)) {
-            return findHermesComponent();
-        }
         if (PAGE_AI.equals(currentPage)) {
             return findCcCodexComponent();
         }
@@ -928,169 +853,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         if (embeddedContentView != null) {
             embeddedContentView.setVisibility(View.VISIBLE);
-        }
-    }
-
-    private void renderHermesPage() {
-        showEmbeddedContent();
-        if (embeddedContentView == null) {
-            return;
-        }
-        String hermesUrl = getHermesUrl();
-        if (hermesPageView == null || !hermesUrl.equals(renderedHermesUrl)) {
-            if (hermesWebView != null) {
-                hermesWebView.destroy();
-                hermesWebView = null;
-            }
-            hermesPageView = createHermesPageView();
-            renderedHermesUrl = hermesUrl;
-        }
-        attachEmbeddedView(hermesPageView);
-        if (hermesWebView != null) {
-            hermesWebView.onResume();
-            if (hermesWebView.getUrl() == null) {
-                reloadHermesWebView();
-            }
-        }
-    }
-
-    private LinearLayout createHermesPageView() {
-        String hermesUrl = getHermesUrl();
-        String hermesTitle = getHermesTitle();
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
-
-        hermesStatusView = new TextView(this);
-        hermesStatusView.setText(hermesTitle + " 地址：" + hermesUrl);
-        hermesStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
-        hermesStatusView.setTextSize(12);
-        hermesStatusView.setPadding(dp(12), dp(6), dp(12), dp(6));
-        hermesStatusView.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
-        page.addView(hermesStatusView, new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        FrameLayout browserHost = new FrameLayout(this);
-        hermesWebView = new WebView(this);
-        configureHermesWebView(hermesWebView);
-        browserHost.addView(hermesWebView, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT));
-
-        hermesFallbackView = createHermesFallbackView();
-        hermesFallbackView.setVisibility(View.GONE);
-        browserHost.addView(hermesFallbackView, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT));
-        page.addView(browserHost, new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0,
-            1));
-        return page;
-    }
-
-    private LinearLayout createHermesFallbackView() {
-        String hermesUrl = getHermesUrl();
-        String hermesTitle = getHermesTitle();
-        LinearLayout fallback = new LinearLayout(this);
-        fallback.setOrientation(LinearLayout.VERTICAL);
-        fallback.setGravity(Gravity.CENTER);
-        fallback.setPadding(dp(22), dp(22), dp(22), dp(22));
-        fallback.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
-
-        TextView title = new TextView(this);
-        title.setText(hermesTitle + " 未连接");
-        title.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
-        title.setTextSize(20);
-        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
-        fallback.addView(title);
-
-        TextView body = new TextView(this);
-        body.setText(hermesTitle + " 是默认首页。没有连接到 " + hermesUrl + " 时，可以先进入控制页启动或修复服务。");
-        body.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
-        body.setTextSize(14);
-        body.setGravity(Gravity.CENTER);
-        body.setLineSpacing(dp(2), 1.0f);
-        LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT);
-        bodyParams.setMargins(0, dp(10), 0, dp(6));
-        fallback.addView(body, bodyParams);
-
-        addButtonRow(fallback,
-            compactButton("服务控制", v -> openHermesControl(), true),
-            compactButton("刷新", v -> reloadHermesWebView(), true));
-        fallback.addView(button("进入安装引导", v -> openInstallGuide()));
-        return fallback;
-    }
-
-    private void configureHermesWebView(WebView webView) {
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        }
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                hermesLoadFailed = false;
-                setHermesFallbackVisible(false);
-                setHermesStatus("正在连接 " + getHermesTitle() + "：" + getHermesUrl());
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                if (!hermesLoadFailed) {
-                    setHermesFallbackVisible(false);
-                    setHermesStatus(getHermesTitle() + " 已连接：" + getHermesUrl());
-                }
-            }
-
-            @Override
-            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request != null && request.isForMainFrame()) {
-                    showHermesUnavailable();
-                }
-            }
-
-            @SuppressWarnings("deprecation")
-            @Override
-            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                showHermesUnavailable();
-            }
-        });
-    }
-
-    private void reloadHermesWebView() {
-        hermesLoadFailed = false;
-        setHermesFallbackVisible(false);
-        String hermesUrl = getHermesUrl();
-        setHermesStatus("正在刷新 " + getHermesTitle() + "：" + hermesUrl);
-        if (hermesWebView != null) {
-            hermesWebView.loadUrl(hermesUrl);
-        }
-    }
-
-    private void showHermesUnavailable() {
-        hermesLoadFailed = true;
-        setHermesStatus(getHermesTitle() + " 未连接：" + getHermesUrl());
-        setHermesFallbackVisible(true);
-    }
-
-    private void setHermesFallbackVisible(boolean visible) {
-        if (hermesFallbackView != null) {
-            hermesFallbackView.setVisibility(visible ? View.VISIBLE : View.GONE);
-        }
-    }
-
-    private void setHermesStatus(String text) {
-        if (hermesStatusView != null) {
-            hermesStatusView.setText(text);
         }
     }
 
@@ -1556,9 +1318,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void pauseCurrentEmbeddedPage() {
-        if (PAGE_HERMES.equals(currentPage) && hermesWebView != null) {
-            hermesWebView.onPause();
-        } else if (PAGE_SMALLPHONE.equals(currentPage)
+        if (PAGE_SMALLPHONE.equals(currentPage)
             && isCurrentDynamicWebComponent(findSmallPhoneComponent())
             && dynamicWebView != null) {
             dynamicWebView.onPause();
@@ -1573,15 +1333,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         } else if (isComponentPage(currentPage) && dynamicWebView != null) {
             dynamicWebView.onPause();
         }
-    }
-
-    private void openHermesControl() {
-        OpenHouseComponent hermesComponent = findHermesComponent();
-        if (hermesComponent != null && hermesComponent.hasControlEntry()) {
-            openComponentControl(hermesComponent);
-            return;
-        }
-        openAllServiceControl();
     }
 
     private void openComponent(OpenHouseComponent component) {
@@ -1677,9 +1428,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         switch (normalized) {
             case PAGE_HOME:
                 return PAGE_HOME;
-            case PAGE_HERMES:
-            case "hermes-webui":
-                return PAGE_HERMES;
             case PAGE_AI:
             case "cc-codex":
             case "cloudcli":
@@ -1691,10 +1439,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 return PAGE_CONTROLLED_BROWSER;
             case PAGE_MANUAL:
                 return PAGE_MANUAL;
-            case PAGE_OPENCODE:
-                return PAGE_OPENCODE;
-            case PAGE_DEEPSEEK:
-                return PAGE_DEEPSEEK;
             case PAGE_PERMISSIONS:
                 return PAGE_PERMISSIONS;
             case PAGE_ABOUT:
@@ -1743,9 +1487,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private OpenHouseComponent findBuiltinComponent(String homeTarget) {
         String normalized = normalizeId(homeTarget);
-        if (HERMES_SERVICE_NAME.equals(normalized) || PAGE_HERMES.equals(normalized)) {
-            return findHermesComponent();
-        }
         if (CC_CODEX_SERVICE_NAME.equals(normalized)
             || "cc-codex".equals(normalized)
             || "claude-code-ui".equals(normalized)
@@ -1760,18 +1501,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         if (PAGE_CONTROLLED_BROWSER.equals(normalized)) {
             return findControlledBrowserComponent();
-        }
-        return null;
-    }
-
-    private OpenHouseComponent findHermesComponent() {
-        for (OpenHouseComponent component : dynamicComponents) {
-            if (component == null) {
-                continue;
-            }
-            if (isHermesComponent(component)) {
-                return component;
-            }
         }
         return null;
     }
@@ -1816,27 +1545,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (component == null) {
             return false;
         }
-        return isHermesComponent(component)
-            || isCcCodexComponent(component)
+        return isCcCodexComponent(component)
             || isSmallPhoneComponent(component)
             || isControlledBrowserComponent(component)
             || isNativeBuiltinComponent(component);
-    }
-
-    private boolean isHermesComponent(OpenHouseComponent component) {
-        if (component == null) {
-            return false;
-        }
-        String id = normalizeId(component.id);
-        if (PAGE_HERMES.equals(id) || HERMES_SERVICE_NAME.equals(id)) {
-            return true;
-        }
-        for (String name : component.serviceNames) {
-            if (HERMES_SERVICE_NAME.equals(normalizeId(name))) {
-                return true;
-            }
-        }
-        return sameUrl(component.url, HERMES_URL);
     }
 
     private boolean isCcCodexComponent(OpenHouseComponent component) {
@@ -1893,25 +1605,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return false;
     }
 
-    private String getHermesTitle() {
-        OpenHouseComponent component = findHermesComponent();
-        return componentTitleOrDefault(component, "Hermes");
-    }
-
-    private String getHermesSubtitle(String fallback) {
-        return componentSubtitleOrDefault(findHermesComponent(), fallback);
-    }
-
-    private String getHermesUrl() {
-        OpenHouseComponent component = findHermesComponent();
-        if (component != null
-            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
-            && !isBlank(component.url)) {
-            return component.url;
-        }
-        return HERMES_URL;
-    }
-
     private String getCcCodexTitle() {
         OpenHouseComponent component = findCcCodexComponent();
         return componentTitleOrDefault(component, CC_CODEX_TITLE);
@@ -1937,6 +1630,16 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private String getSmallPhoneSubtitle(String fallback) {
         return componentSubtitleOrDefault(findSmallPhoneComponent(), fallback);
+    }
+
+    private String getSmallPhoneUrl() {
+        OpenHouseComponent component = findSmallPhoneComponent();
+        if (component != null
+            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+            && !isBlank(component.url)) {
+            return component.url;
+        }
+        return "http://127.0.0.1:22082/";
     }
 
     private String getControlledBrowserTitle() {
@@ -2064,7 +1767,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (isHomeCandidate(configured)) {
             return configured;
         }
-        configured = getOpenHouseHomePrefs().getString(PREF_HOME_PAGE, PAGE_HERMES);
+        configured = getOpenHouseHomePrefs().getString(PREF_HOME_PAGE, PAGE_AI);
         if (isHomeCandidate(configured)) {
             return configured;
         }
@@ -2072,14 +1775,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String firstVisibleHomePage() {
-        if (isComponentVisible(findHermesComponent())) {
-            return PAGE_HERMES;
+        if (isComponentVisible(findCcCodexComponent())) {
+            return PAGE_AI;
         }
         if (isComponentVisible(findSmallPhoneComponent())) {
             return PAGE_SMALLPHONE;
-        }
-        if (isComponentVisible(findCcCodexComponent())) {
-            return PAGE_AI;
         }
         if (isComponentVisible(findControlledBrowserComponent())) {
             return PAGE_CONTROLLED_BROWSER;
@@ -2208,9 +1908,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (isBlank(normalized)) {
             return null;
         }
-        if (HERMES_SERVICE_NAME.equals(normalized) || PAGE_HERMES.equals(normalized)) {
-            return isComponentVisible(findHermesComponent()) ? PAGE_HERMES : null;
-        }
         if (CC_CODEX_SERVICE_NAME.equals(normalized)
             || "cc-codex".equals(normalized)
             || "claude-code-ui".equals(normalized)
@@ -2247,9 +1944,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String pageToHomeTarget(String page) {
-        if (PAGE_HERMES.equals(page)) {
-            return HERMES_SERVICE_NAME;
-        }
         if (PAGE_AI.equals(page)) {
             return CC_CODEX_SERVICE_NAME;
         }
@@ -2269,8 +1963,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (isBlank(page)) {
             return false;
         }
-        if (PAGE_HERMES.equals(page)
-            || PAGE_SMALLPHONE.equals(page)
+        if (PAGE_SMALLPHONE.equals(page)
             || PAGE_AI.equals(page)
             || PAGE_CONTROLLED_BROWSER.equals(page)) {
             return isComponentVisible(findBuiltinComponent(page));
@@ -2295,9 +1988,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String getHomeDisplayTitle(String page) {
-        if (PAGE_HERMES.equals(page)) {
-            return getHermesTitle();
-        }
         if (PAGE_SMALLPHONE.equals(page)) {
             return getSmallPhoneTitle();
         }
@@ -2313,7 +2003,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 return component.title;
             }
         }
-        return getHermesTitle();
+        return getCcCodexTitle();
     }
 
     private String joinValues(List<String> values) {
@@ -2340,87 +2030,47 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void renderHomePage() {
         LinearLayout panel = panel();
         addTitle(panel, "菜单总览", 19);
-        addBody(panel, "这里保留主入口，具体内容请从左侧侧边栏进入：使用手册、OpenCode 控制、DeepSeek Key、权限获取、终端快捷键和高级设置。");
+        addBody(panel, "这里保留主入口：SmallPhone、CloudCLI、AI朋友 Help、service-manager、终端、文档、日志和维护中心。安装完成后，运行控制由 service-manager 负责。");
         panel.addView(createAiFriendHelpControlBlock(true));
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
             compactButton("打开 " + getCcCodexTitle(),
                 v -> openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI),
                 true));
-        panel.addView(button("打开 " + getHermesTitle(),
-            v -> openBuiltinComponentOrFallback(findHermesComponent(), PAGE_HERMES)));
-        panel.addView(button("打开 " + getSmallPhoneTitle(), v -> openSmallPhone()));
-        panel.addView(button("退出菜单，回到终端", v -> openTerminal(false)));
         addButtonRow(panel,
-            compactButton("OpenCode 控制", v -> selectPage(PAGE_OPENCODE), true),
-            compactButton("DeepSeek Key", v -> selectPage(PAGE_DEEPSEEK), true));
+            compactButton("打开 " + getSmallPhoneTitle(), v -> openSmallPhone(), true),
+            compactButton("运行控制", v -> openAllServiceControl(), true));
+        addButtonRow(panel,
+            compactButton("维护中心", v -> openMaintenanceCenter(), true),
+            compactButton("使用手册", v -> selectPage(PAGE_MANUAL), true));
+        panel.addView(button("退出菜单，回到终端", v -> openTerminal(false)));
         contentView.addView(panel);
 
         LinearLayout quick = panel();
         addTitle(quick, "快速状态", 17);
-        addStatusRow(quick, "OpenCode 默认地址", getOpenCodeUrl(openCodePort));
         addStatusRow(quick, getCcCodexTitle() + " 地址", getCcCodexUrl());
-        addStatusRow(quick, getHermesTitle() + " 地址", getHermesUrl());
-        addStatusRow(quick, "OpenCode 目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
+        addStatusRow(quick, getSmallPhoneTitle() + " 地址", getSmallPhoneUrl());
         addStatusRow(quick, "运行环境", "AI 工具安装在 Ubuntu /root");
+        addStatusRow(quick, "控制平面", "service-manager");
         contentView.addView(quick);
         refreshAiFriendHelpEntryState();
     }
 
     private void renderManualPage() {
         addManualSection("安装时建议阅读",
-            "第一次安装通常需要 10 分钟到半小时，期间会下载约 500M 文件，建议在 Wi-Fi 下进行。openhouse ai 会准备 Ubuntu、OpenCode、Codex、Claude Code 和 Reasonix。AI 能做什么，取决于你想让它做什么。");
-        addManualSection("为什么需要 DeepSeek Key",
-            "AI 运行通常需要模型 API。这里推荐 DeepSeek，是因为它相对实惠，适合作为第一次统一安装和配置引导。openhouse ai 不限制长期使用哪一个 API，后续可以让 AI 帮你接入自己的模型。");
+            "第一次安装通常需要 10 分钟到半小时，期间会下载较大的运行环境，建议在 Wi-Fi 下进行。openhouse ai 会准备 Ubuntu、Node、Codex、Claude Code、CloudCLI、service-manager、openhouse-connect 和 SmallPhone。");
+        addManualSection("首次安装之后",
+            "安装链路只负责把环境装好。安装完成后，service-manager 才是运行控制平面，用于查看、启动、停止和修复内置服务。");
         addManualSection("终端里的 AI 怎么用",
-            "以 Claude Code 为例，在 Ubuntu 终端输入 claude 再按回车即可使用；想继续上次对话，可以输入 claude --continue。记不住命令时，底部快捷键会准备 claude、reasonix、codex、oc 和 --continue。");
+            "以 Claude Code 为例，在 Ubuntu 终端输入 claude 再按回车即可使用；想继续上次对话，可以输入 claude --continue。Codex 可在 Ubuntu 终端中直接使用 codex。");
         addManualSection("Termux 和 Ubuntu",
-            "启动后看到的是 Termux 终端。openhouse ai 会在 Termux 里安装 Ubuntu proot，OpenCode、Codex、Claude Code、Reasonix 等 AI 软件安装在 Ubuntu 的 /root 环境。普通入口终端可以默认进入 Ubuntu，维护中心底部终端固定为 Termux。");
-        addManualSection("OpenCode Web",
-            "OpenCode 原生支持网页访问，并且模型接入范围广。新增项目时先使用 /root，不要把 4096 当成项目路径。启动、停止、重启、自定义端口和复制网址，请查看侧边栏里的“OpenCode 控制”。");
+            "启动后看到的是 Termux 终端。openhouse ai 会在 Termux 里安装 Ubuntu proot，Codex、Claude Code 和 CloudCLI 主要安装在 Ubuntu 的 /root 环境。普通入口终端可以默认进入 Ubuntu，维护中心底部终端固定为 Termux。");
+        addManualSection("CloudCLI 和 SmallPhone",
+            "CloudCLI 提供 Claude Code / Codex 网页工作台。SmallPhone 是本机页面和运行栈入口。两者的服务状态可从运行控制或维护中心查看。");
         addManualSection("底部快捷键",
-            "底部按键包含 ESC、TAB、CTRL、ALT、方向键、键盘、Termux、Ubuntu、exit、clear，以及第三排 AI 快捷键。exit 用于退出当前 shell；Ubuntu 用于进入 Ubuntu /root。按键支持自定义和多页，可以直接让 AI 帮你修改常用命令。");
-        addManualSection("更多 AI Agent",
-            "OpenClaw、Hermes 或其他 AI Agent 可以后续安装。配置好基础环境后，你可以让 OpenCode、Claude Code 或 Reasonix 帮你下载、安装和配置想用的软件。Codex 也已安装，但 DeepSeek 官方没有直接给出接入 Codex 的方式，因此当前不默认配置。");
-    }
-
-    private void renderOpenCodePage() {
-        LinearLayout panel = panel();
-        addTitle(panel, "OpenCode Web 控制", 19);
-        addBody(panel, "OpenCode 会在 Ubuntu 的 /root 目录启动。默认端口是 4096，也可以临时使用自定义端口启动。启动成功后会自动打开浏览器，并在本页显示可复制的网址。");
-        addStatusRow(panel, "当前端口", Integer.toString(openCodePort));
-        addStatusRow(panel, "可复制网址", lastOpenCodeUrl);
-        addButtonRow(panel,
-            compactButton("启动", v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.START, openCodePort), true),
-            compactButton("停止", v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.STOP, openCodePort), true));
-        addButtonRow(panel,
-            compactButton("重启", v -> runOpenCodeAction(OpenHouseMaintainerRunner.Action.RESTART, openCodePort), true),
-            compactButton("复制网址", v -> copyText(getString(R.string.openhouse_url_opencode_label), lastOpenCodeUrl), true));
-        addButtonRow(panel,
-            compactButton("自定义端口启动", v -> showCustomPortDialog(), true),
-            compactButton("打开浏览器", v -> openUrl(lastOpenCodeUrl), true));
-        contentView.addView(panel);
-
-        addManualSection("OpenCode Web 使用说明",
-            "打开浏览器网址后，如果新增项目或选择项目，先填写 /root。OpenCode 可以接入非常广泛的大模型 API；如果你没有配置 DeepSeek Key，也可以先启动 OpenCode Web，在网页里配置模型，再让 OpenCode 帮你配置其他 AI Agent。");
-    }
-
-    private void renderDeepSeekPage() {
-        LinearLayout panel = panel();
-        addTitle(panel, "一键替换 DeepSeek Key", 19);
-        addBody(panel, "Key 变化时，可以在这里粘贴新 Key，并选择要替换配置的 AI 软件。默认全选 OpenCode、Claude Code 和 Reasonix；不会把真实 Key 打印到日志或页面。");
-        addButtonRow(panel,
-            compactButton("打开 DeepSeek 平台", v -> openUrl(getString(R.string.openhouse_deepseek_url)), true),
-            compactButton("复制平台网址", v -> copyText("DeepSeek API Keys", getString(R.string.openhouse_deepseek_url)), true));
-        panel.addView(button("保存并替换配置", v -> showDeepSeekReplaceDialog()));
-        contentView.addView(panel);
-
-        addManualSection("替换后怎么生效",
-            "替换 Key 后，需要重启 Claude 或重新进入 Ubuntu 终端，正在运行的 AI 会话不会立即切换 Key。回到终端后，点击底部 exit，直到最低行看不到 root；然后点击 Ubuntu，就会在当前终端重新进入 Ubuntu 并加载新配置。也可以直接关闭软件后重新进入。");
-        addManualSection("为什么需要 DeepSeek Key",
-            "AI 运行需要模型 API。DeepSeek 比较实惠，适合作为首次安装的统一配置入口。本软件不限制你接入哪一个 API，长期使用的 API 可以后续让 AI 自行配置。");
-        addManualSection("DeepSeek Key 怎么拿",
-            "打开 DeepSeek 平台后，可以充值 1 元或 5 元；充值完成后点击 API Keys，再点击创建 API Key，名称可以任意填，比如 op。创建后复制 Key，回到这里粘贴并保存。");
+            "底部按键包含 ESC、TAB、CTRL、ALT、方向键、键盘、Termux、Ubuntu、exit、clear，以及常用 AI 快捷键。exit 用于退出当前 shell；Ubuntu 用于进入 Ubuntu /root。按键支持自定义和多页，可以直接让 AI 帮你修改常用命令。");
+        addManualSection("AI朋友 Help",
+            "AI朋友 Help 用于帮助新用户理解环境、检查问题和配置大模型。它可以显式进入，也可以在后台状态下从菜单关闭。");
     }
 
     private void renderPermissionsPage() {
@@ -2452,7 +2102,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void renderTerminalGuidePage() {
         LinearLayout panel = panel();
         addTitle(panel, "使用演示", 19);
-        addBody(panel, "使用演示会在终端上教你打开终端列表、使用底部快捷键、输入 claude、打开菜单，并在最后控制 OpenCode 启动。");
+        addBody(panel, "使用演示会在终端上教你打开终端列表、使用底部快捷键、输入 claude 或 codex、打开菜单，并查看运行控制。");
         addButtonRow(panel,
             compactButton("打开使用演示", v -> openTerminal(true), true),
             compactButton("直接回到终端", v -> openTerminal(false), true));
@@ -2463,7 +2113,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         LinearLayout panel = panel();
         addTitle(panel, "底部 Termux Toolbar", 19);
         addBody(panel, "第一排和第二排保留常用终端控制键：ESC、TAB、CTRL、ALT、方向键、键盘、Termux、Ubuntu、exit、clear。");
-        addBody(panel, "第三排是 AI 快捷键：claude、reasonix、codex、oc、--continue。第二页可以放完整命令，例如 claude --continue。");
+        addBody(panel, "第三排是 AI 快捷键：claude、codex、--continue。第二页可以放完整命令，例如 claude --continue。");
         addBody(panel, "按键支持自定义和多页。你可以让 AI 修改配置，例如：把第三排改成我的常用命令，或者新增一页专门放 Claude Code 的完整指令。");
         panel.addView(button("回到终端", v -> openTerminal(false)));
         contentView.addView(panel);
@@ -2484,8 +2134,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addTitle(panel, "日志", 19);
         addBody(panel, "阶段日志保存在维护日志目录。常用日志可从这里直接查看，完整过程请进入详细进度。");
         addButtonRow(panel,
-            compactButton("启动日志", v -> openMaintenanceLog("start", "启动 OpenCode"), true),
-            compactButton("重启日志", v -> openMaintenanceLog("restart", "重启 OpenCode"), true));
+            compactButton("启动日志", v -> openMaintenanceLog("start", "启动服务"), true),
+            compactButton("重启日志", v -> openMaintenanceLog("restart", "重启服务"), true));
         panel.addView(button("查看详细进度", v -> openMaintenanceCenter()));
         contentView.addView(panel);
     }
@@ -2493,11 +2143,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void renderAdvancedPage() {
         LinearLayout panel = panel();
         addTitle(panel, "高级设置", 19);
-        addStatusRow(panel, "OpenCode 默认端口", Integer.toString(OpenCodeSettings.DEFAULT_OPENCODE_PORT));
-        addStatusRow(panel, "OpenCode 启动目录", OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY);
         OpenHouseComponentRegistry.LoadResult registryResult = dynamicRegistryResult == null
             ? OpenHouseComponentRegistry.loadWithDiagnostics()
             : dynamicRegistryResult;
+        addStatusRow(panel, "默认首页", getHomeDisplayTitle(getConfiguredHomePage()));
+        addStatusRow(panel, "控制平面", "service-manager");
         addStatusRow(panel, "菜单注册", registryResult.toShortStatusText());
         addBody(panel, registryResult.toDiagnosticText());
         CheckBox hintToggle = checkbox("在终端显示半透明小字提示", TermuxActivity.isOpenHouseTerminalHintVisible(this));
@@ -2518,98 +2168,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         contentView.addView(section);
     }
 
-    private void showCustomPortDialog() {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER);
-        input.setHint("例如 4096 或 8766");
-        input.setText(Integer.toString(openCodePort));
-        input.setSelection(input.getText().length());
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("自定义端口启动 OpenCode")
-            .setMessage("端口仅影响本次控制页启动。启动成功后会打开浏览器，并显示可复制网址。")
-            .setView(input)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton("启动", null)
-            .create();
-
-        dialog.setOnShowListener(dialogInterface -> {
-            Button negativeButton = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            Button positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            if (negativeButton != null) {
-                negativeButton.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
-            }
-            if (positiveButton != null) {
-                positiveButton.setTextColor(ContextCompat.getColor(this, R.color.accent));
-                positiveButton.setOnClickListener(v -> {
-                    int port = parsePort(input.getText() == null ? "" : input.getText().toString());
-                    if (!OpenCodeSettings.isValidPort(port)) {
-                        Toast.makeText(this, "端口无效，请输入 1-65535。", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    openCodePort = port;
-                    lastOpenCodeUrl = getOpenCodeUrl(port);
-                    renderPage();
-                    runOpenCodeAction(OpenHouseMaintainerRunner.Action.START, port);
-                    dialog.dismiss();
-                });
-            }
-        });
-        dialog.show();
-    }
-
-    private void showDeepSeekReplaceDialog() {
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        int padding = dp(4);
-        form.setPadding(padding, padding, padding, 0);
-
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL);
-        input.setHint(getString(R.string.deepseek_key_config_hint));
-        form.addView(input);
-
-        CheckBox openCode = checkbox("OpenCode", true);
-        CheckBox claude = checkbox("Claude Code", true);
-        CheckBox reasonix = checkbox("Reasonix", true);
-        form.addView(openCode);
-        form.addView(claude);
-        form.addView(reasonix);
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("保存并替换配置")
-            .setMessage("默认全选。取消某项后，不会覆盖该软件当前配置。\n\n替换 Key 后，需要重启 Claude 或重新进入 Ubuntu 终端，正在运行的 AI 会话不会立即切换 Key。回到终端后，点击底部 exit，直到最低行看不到 root；然后点击 Ubuntu，就会在当前终端生效。也可以关闭软件后重新进入。")
-            .setView(form)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton("保存并替换配置", null)
-            .create();
-
-        dialog.setOnShowListener(dialogInterface -> {
-            Button negativeButton = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            Button positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            if (negativeButton != null) {
-                negativeButton.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
-            }
-            if (positiveButton != null) {
-                positiveButton.setTextColor(ContextCompat.getColor(this, R.color.accent));
-                positiveButton.setOnClickListener(v -> {
-                    String apiKey = input.getText() == null ? "" : input.getText().toString().trim();
-                    if (apiKey.isEmpty()) {
-                        Toast.makeText(this, R.string.deepseek_key_config_empty, Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    if (!openCode.isChecked() && !claude.isChecked() && !reasonix.isChecked()) {
-                        Toast.makeText(this, "请至少选择一个 AI 软件。", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    replaceDeepSeekKey(apiKey, openCode.isChecked(), claude.isChecked(), reasonix.isChecked());
-                    dialog.dismiss();
-                });
-            }
-        });
-        dialog.show();
-    }
-
     private CheckBox checkbox(String text, boolean checked) {
         CheckBox box = new CheckBox(this);
         box.setText(text);
@@ -2617,53 +2175,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         box.setTextSize(14);
         box.setChecked(checked);
         return box;
-    }
-
-    private void replaceDeepSeekKey(String apiKey, boolean openCode, boolean claude, boolean reasonix) {
-        Toast.makeText(this, "正在保存并替换 DeepSeek Key。", Toast.LENGTH_SHORT).show();
-        backgroundExecutor.execute(() -> {
-            OpenHouseDeepSeekController controller = OpenHouseDeepSeekController.getInstance(this);
-            OpenHouseDeepSeekController.SaveResult saveResult = controller.saveKey(apiKey);
-            if (!saveResult.isSuccess()) {
-                runOnUiThread(() -> Toast.makeText(this, saveResult.message, Toast.LENGTH_LONG).show());
-                return;
-            }
-
-            OpenHouseMaintainerRunner.Result result = controller.configureSavedKey(openCode, claude, reasonix);
-            runOnUiThread(() -> {
-                Toast.makeText(this,
-                    result.isSuccess() ? "DeepSeek Key 已按选择替换。" : "替换失败，请查看日志。",
-                    Toast.LENGTH_LONG).show();
-                renderPage();
-            });
-        });
-    }
-
-    private void runOpenCodeAction(OpenHouseMaintainerRunner.Action action, int port) {
-        Toast.makeText(this, getString(R.string.openhouse_opencode_action_running), Toast.LENGTH_SHORT).show();
-        backgroundExecutor.execute(() -> {
-            OpenHouseOpenCodeController controller = OpenHouseOpenCodeController.getInstance(this);
-            OpenHouseMaintainerRunner.Result result;
-            if (action == OpenHouseMaintainerRunner.Action.STOP) {
-                result = controller.stop(port);
-            } else if (action == OpenHouseMaintainerRunner.Action.RESTART) {
-                result = controller.restart(port);
-            } else {
-                result = controller.start(port);
-            }
-            runOnUiThread(() -> {
-                lastOpenCodeUrl = getOpenCodeUrl(port);
-                renderPage();
-                if (result.isSuccess()) {
-                    if (action == OpenHouseMaintainerRunner.Action.START || action == OpenHouseMaintainerRunner.Action.RESTART) {
-                        openUrl(lastOpenCodeUrl);
-                    }
-                    Toast.makeText(this, result.action.label + "完成", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(this, getString(R.string.openhouse_opencode_action_failed), Toast.LENGTH_LONG).show();
-                }
-            });
-        });
     }
 
     private void runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action action) {
@@ -2697,18 +2208,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                     Toast.LENGTH_LONG).show();
             });
         });
-    }
-
-    private int parsePort(String value) {
-        try {
-            return Integer.parseInt(value.trim());
-        } catch (Exception e) {
-            return -1;
-        }
-    }
-
-    private String getOpenCodeUrl(int port) {
-        return OpenCodeSettings.getRootProjectUrl(port);
     }
 
     private void openMaintenanceCenter() {

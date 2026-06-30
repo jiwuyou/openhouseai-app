@@ -5,7 +5,7 @@ import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.PowerManager;
 
-import com.termux.app.OpenCodeSettings;
+import com.termux.app.smallphone.SmallPhoneRuntime;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
@@ -23,15 +23,9 @@ public final class OpenHouseStatusRepository {
     private static final String ONBOARDING_PREFS_NAME = "openhouse_onboarding";
     private static final String KEY_CURRENT_STEP = "current_step";
     private static final String KEY_PERMISSIONS_SKIPPED = "permissions_skipped";
-    private static final String KEY_KEY_SKIPPED = "key_skipped";
-    private static final String KEY_CONFIGURATION_SKIPPED = "configuration_skipped";
-    private static final String KEY_KEY_SAVED = "key_saved";
-    private static final String KEY_DEEPSEEK_CONFIGURED = "deepseek_configured";
     private static final String KEY_LAUNCH_CONFIRMED = "launch_confirmed";
     private static final String KEY_OVERLAY_STEP = "step";
     private static final String KEY_OVERLAY_BATTERY_SKIPPED = "battery_skipped";
-    private static final String KEY_OVERLAY_DEEPSEEK_KEY_SKIPPED = "deepseek_key_skipped";
-    private static final String KEY_OVERLAY_DEEPSEEK_CONFIG_SKIPPED = "deepseek_config_skipped";
     private static final String KEY_OVERLAY_GUIDE_DISMISSED = "guide_dismissed";
 
     private final Context context;
@@ -42,36 +36,48 @@ public final class OpenHouseStatusRepository {
 
     public OpenHouseStatus loadStatus() {
         String diagnostic = "";
-        ShellCheckResult ubuntuCheck = runTermuxCommand("proot-distro login ubuntu -- true", 10);
+        boolean termuxReady = isTermuxReady();
+        ShellCheckResult ubuntuCheck = termuxReady
+            ? runTermuxCommand("proot-distro login ubuntu -- true", 10)
+            : new ShellCheckResult(127, "Termux bash is not installed yet.");
         if (!ubuntuCheck.isSuccess()) {
             diagnostic = ubuntuCheck.output;
         }
-        boolean entryUbuntuConfigured = runTermuxCommand("test \"$(tr -d '[:space:]' < \"$HOME/.openhouseai/entry-mode\" 2>/dev/null || true)\" = ubuntu && test -f \"$HOME/.openhouseai/entry.sh\" && grep -Fq '# OpenHouseAI startup entry' \"$HOME/.bashrc\"", 8).isSuccess();
-        boolean openCodeInstalled = runTermuxCommand("proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; (command -v opencode >/dev/null 2>&1 || test -x \"$HOME/.opencode/bin/opencode\") && test -f \"$HOME/openhouseai-links/docs-path.txt\" && test -f \"$HOME/openhouseai-links/workspace-path.txt\"'", 12).isSuccess();
-        boolean codexInstalled = runTermuxCommand("proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH\"; command -v codex >/dev/null 2>&1'", 12).isSuccess();
-        boolean claudeCodeInstalled = runTermuxCommand("proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH\"; command -v claude >/dev/null 2>&1'", 12).isSuccess();
-        boolean reasonixInstalled = runTermuxCommand("proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; command -v reasonix >/dev/null 2>&1'", 12).isSuccess();
-        boolean deepSeekConfigured = runTermuxCommand("proot-distro login ubuntu -- bash -lc 'test -s \"$HOME/.config/openhouseai/deepseek-api-key\" && test -f \"$HOME/.config/opencode/opencode.json\" && test -f \"$HOME/.reasonix/config.json\" && { grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.config/openhouseai/claude-code-env\" 2>/dev/null || grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.bashrc\"; }'", 12).isSuccess();
-        boolean openCodeReachable = runTermuxCommand("proot-distro login ubuntu -- bash -lc 'curl -fsS --max-time 3 http://127.0.0.1:" + OpenCodeSettings.DEFAULT_OPENCODE_PORT + "/ >/dev/null 2>&1'", 8).isSuccess();
-        boolean openCodeRunningInRoot = openCodeReachable && isOpenCodeRunningInRoot();
+        boolean ubuntuInstalled = ubuntuCheck.isSuccess();
+        boolean entryUbuntuConfigured = termuxReady && runTermuxCommand("test \"$(tr -d '[:space:]' < \"$HOME/.openhouseai/entry-mode\" 2>/dev/null || true)\" = ubuntu && test -f \"$HOME/.openhouseai/entry.sh\" && { grep -Fq '# OpenHouseAI startup entry' \"$HOME/.bashrc\" 2>/dev/null || grep -Fq '# SmallPhoneAI startup entry' \"$HOME/.bashrc\" 2>/dev/null; }", 8).isSuccess();
+        boolean nodeInstalled = ubuntuInstalled && runUbuntuCheck("command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && node -e \"process.exit(parseInt(process.versions.node.split('.')[0], 10) >= 24 ? 0 : 1)\"", 12);
+        boolean codexInstalled = ubuntuInstalled && runUbuntuCheck("command -v codex >/dev/null 2>&1", 12);
+        boolean claudeCodeInstalled = ubuntuInstalled && runUbuntuCheck("command -v claude >/dev/null 2>&1", 12);
+        boolean cloudCliInstalled = ubuntuInstalled && runUbuntuCheck("command -v cloudcli >/dev/null 2>&1 && test -s \"$HOME/.config/openhouseai/claude-code-ui-port\" && test -s \"$HOME/.config/openhouseai/claude-code-ui-url\"", 12);
+        boolean serviceManagerInstalled = ubuntuInstalled && runUbuntuCheck("command -v service-manager >/dev/null 2>&1 || test -x \"$HOME/smallphoneai-repos/service-manager/service-manager\" || test -x \"$HOME/smallphoneai-repos/service-manager/target/release/service-manager\" || test -x \"$HOME/smallphoneai-repos/service-manager/target/debug/service-manager\"", 12);
+        boolean openhouseConnectInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/openhouse-connect\" && { test -f \"$HOME/smallphoneai-repos/openhouse-connect/scripts/register-service.sh\" || test -f \"$HOME/smallphoneai-repos/openhouse-connect/package.json\" || test -f \"$HOME/smallphoneai-repos/openhouse-connect/Makefile\"; }", 12);
+        boolean smallPhoneRuntimeInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/smallphone-active\" && { test -d \"$HOME/smallphoneai-repos/smallphone-active/openhouse-components\" || test -d \"$HOME/smallphoneai-repos/smallphone-active/standalone-apps\" || test -f \"$HOME/smallphoneai-repos/smallphone-active/package.json\"; }", 12);
+        boolean registrySynced = termuxReady && isRegistrySynced();
+
+        SmallPhoneRuntime.Status runtimeStatus = new SmallPhoneRuntime(context).loadStatus();
+        boolean serviceManagerReachable = runtimeStatus.serviceManager.reachable;
+        boolean openhouseConnectReachable = runtimeStatus.ccConnect.reachable || runtimeStatus.ccConnectDisabled;
+        boolean smallPhoneReachable = runtimeStatus.smallPhone.reachable && runtimeStatus.smallPhoneCore.reachable;
 
         return new OpenHouseStatus(
+            termuxReady,
             isBatteryOptimizationIgnored(),
             isProductPrepared(),
-            ubuntuCheck.isSuccess(),
+            ubuntuInstalled,
             isOfficialDocsSynced(),
             entryUbuntuConfigured,
-            openCodeInstalled,
+            nodeInstalled,
             codexInstalled,
             claudeCodeInstalled,
-            reasonixInstalled,
-            deepSeekConfigured,
-            openCodeReachable,
-            hasSavedDeepSeekKey(),
+            cloudCliInstalled,
+            serviceManagerInstalled,
+            openhouseConnectInstalled,
+            smallPhoneRuntimeInstalled,
+            registrySynced,
+            serviceManagerReachable,
+            openhouseConnectReachable,
+            smallPhoneReachable,
             getOnboardingPrefs().getBoolean(KEY_LAUNCH_CONFIRMED, false),
-            openCodeRunningInRoot,
-            OpenCodeSettings.DEFAULT_OPENCODE_PORT,
-            OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY,
             diagnostic
         );
     }
@@ -91,38 +97,19 @@ public final class OpenHouseStatusRepository {
         OpenHouseOnboardingState.Step storedStep = readStoredStep(preferences);
         boolean permissionsSkipped = preferences.getBoolean(KEY_PERMISSIONS_SKIPPED, false)
             || preferences.getBoolean(KEY_OVERLAY_BATTERY_SKIPPED, false);
-        boolean keySkipped = preferences.getBoolean(KEY_KEY_SKIPPED, false)
-            || preferences.getBoolean(KEY_OVERLAY_DEEPSEEK_KEY_SKIPPED, false);
-        boolean configurationSkipped = preferences.getBoolean(KEY_CONFIGURATION_SKIPPED, false)
-            || preferences.getBoolean(KEY_OVERLAY_DEEPSEEK_CONFIG_SKIPPED, false);
-        boolean keySaved = hasSavedDeepSeekKey()
-            || (status != null && status.deepSeekKeySaved);
-        boolean deepSeekConfigured = preferences.getBoolean(KEY_DEEPSEEK_CONFIGURED, false)
-            || (status != null && status.deepSeekConfigured);
         boolean launchConfirmed = preferences.getBoolean(KEY_LAUNCH_CONFIRMED, false)
             || preferences.getBoolean(KEY_OVERLAY_GUIDE_DISMISSED, false)
             || (status != null && status.launchConfirmed);
-        if (deepSeekConfigured) {
-            keySaved = true;
-        }
 
         OpenHouseOnboardingState.Step effectiveStep = resolveEffectiveStep(
             storedStep,
             permissionsSkipped,
-            keySkipped,
-            configurationSkipped,
-            keySaved,
-            deepSeekConfigured,
             launchConfirmed,
             installState,
             status);
         return new OpenHouseOnboardingState(
             effectiveStep,
             permissionsSkipped,
-            keySkipped,
-            configurationSkipped,
-            keySaved,
-            deepSeekConfigured,
             launchConfirmed,
             installState,
             status);
@@ -154,77 +141,6 @@ public final class OpenHouseStatusRepository {
         return markPermissionsSkipped(true);
     }
 
-    public OpenHouseOnboardingState markDeepSeekKeySkipped(boolean skipped) {
-        SharedPreferences.Editor editor = getOnboardingPrefs().edit()
-            .putBoolean(KEY_KEY_SKIPPED, skipped)
-            .putBoolean(KEY_OVERLAY_DEEPSEEK_KEY_SKIPPED, skipped);
-        if (skipped) {
-            putStepAtLeastAfterInstallGate(
-                editor,
-                OpenHouseOnboardingState.Step.WAITING_INSTALL,
-                OpenHouseOnboardingState.Step.DEEPSEEK_CONFIGURATION);
-        }
-        editor.apply();
-        return loadOnboardingState();
-    }
-
-    public OpenHouseOnboardingState skipDeepSeekKey() {
-        return markDeepSeekKeySkipped(true);
-    }
-
-    public OpenHouseOnboardingState markDeepSeekConfigurationSkipped(boolean skipped) {
-        SharedPreferences.Editor editor = getOnboardingPrefs().edit()
-            .putBoolean(KEY_CONFIGURATION_SKIPPED, skipped)
-            .putBoolean(KEY_OVERLAY_DEEPSEEK_CONFIG_SKIPPED, skipped);
-        if (skipped) {
-            putStepAtLeastAfterInstallGate(
-                editor,
-                OpenHouseOnboardingState.Step.WAITING_INSTALL,
-                OpenHouseOnboardingState.Step.OPENCODE_LAUNCH);
-        }
-        editor.apply();
-        return loadOnboardingState();
-    }
-
-    public OpenHouseOnboardingState skipDeepSeekConfiguration() {
-        return markDeepSeekConfigurationSkipped(true);
-    }
-
-    public OpenHouseOnboardingState markDeepSeekKeySaved(boolean saved) {
-        SharedPreferences.Editor editor = getOnboardingPrefs().edit()
-            .putBoolean(KEY_KEY_SAVED, saved);
-        if (saved) {
-            editor.putBoolean(KEY_KEY_SKIPPED, false);
-            editor.putBoolean(KEY_CONFIGURATION_SKIPPED, false);
-            editor.putBoolean(KEY_OVERLAY_DEEPSEEK_KEY_SKIPPED, false);
-            editor.putBoolean(KEY_OVERLAY_DEEPSEEK_CONFIG_SKIPPED, false);
-            putStepAtLeastAfterInstallGate(
-                editor,
-                OpenHouseOnboardingState.Step.WAITING_INSTALL,
-                OpenHouseOnboardingState.Step.DEEPSEEK_CONFIGURATION);
-        }
-        editor.apply();
-        return loadOnboardingState();
-    }
-
-    public OpenHouseOnboardingState markDeepSeekConfigured(boolean configured) {
-        SharedPreferences.Editor editor = getOnboardingPrefs().edit()
-            .putBoolean(KEY_DEEPSEEK_CONFIGURED, configured);
-        if (configured) {
-            editor.putBoolean(KEY_KEY_SAVED, true);
-            editor.putBoolean(KEY_KEY_SKIPPED, false);
-            editor.putBoolean(KEY_CONFIGURATION_SKIPPED, false);
-            editor.putBoolean(KEY_OVERLAY_DEEPSEEK_KEY_SKIPPED, false);
-            editor.putBoolean(KEY_OVERLAY_DEEPSEEK_CONFIG_SKIPPED, false);
-            putStepAtLeastAfterInstallGate(
-                editor,
-                OpenHouseOnboardingState.Step.WAITING_INSTALL,
-                OpenHouseOnboardingState.Step.OPENCODE_LAUNCH);
-        }
-        editor.apply();
-        return loadOnboardingState();
-    }
-
     public OpenHouseOnboardingState markLaunchConfirmed(boolean confirmed) {
         SharedPreferences.Editor editor = getOnboardingPrefs().edit()
             .putBoolean(KEY_LAUNCH_CONFIRMED, confirmed);
@@ -232,7 +148,7 @@ public final class OpenHouseStatusRepository {
             putStepAtLeastAfterInstallGate(
                 editor,
                 OpenHouseOnboardingState.Step.WAITING_INSTALL,
-                OpenHouseOnboardingState.Step.OPENCODE_LAUNCH);
+                OpenHouseOnboardingState.Step.READY_TO_USE);
         }
         editor.apply();
         return loadOnboardingState();
@@ -240,30 +156,16 @@ public final class OpenHouseStatusRepository {
 
     public OpenHouseOnboardingState markOneClickInstallStarted() {
         getOnboardingPrefs().edit()
-            .putInt(KEY_CURRENT_STEP, OpenHouseOnboardingState.Step.READING_GUIDE.number)
-            .putString(KEY_OVERLAY_STEP, toOverlayStepName(OpenHouseOnboardingState.Step.READING_GUIDE))
+            .putInt(KEY_CURRENT_STEP, OpenHouseOnboardingState.Step.WAITING_INSTALL.number)
+            .putString(KEY_OVERLAY_STEP, toOverlayStepName(OpenHouseOnboardingState.Step.WAITING_INSTALL))
             .apply();
         return loadOnboardingState();
     }
 
     public OpenHouseOnboardingState markOneClickInstallCompleted() {
-        SharedPreferences preferences = getOnboardingPrefs();
-        boolean keySaved = hasSavedDeepSeekKey();
-        boolean keySkipped = preferences.getBoolean(KEY_KEY_SKIPPED, false)
-            || preferences.getBoolean(KEY_OVERLAY_DEEPSEEK_KEY_SKIPPED, false);
-        boolean configurationSkipped = preferences.getBoolean(KEY_CONFIGURATION_SKIPPED, false)
-            || preferences.getBoolean(KEY_OVERLAY_DEEPSEEK_CONFIG_SKIPPED, false);
-        boolean deepSeekConfigured = preferences.getBoolean(KEY_DEEPSEEK_CONFIGURED, false);
-        OpenHouseOnboardingState.Step nextStep = OpenHouseOnboardingState.Step.DEEPSEEK_KEY;
-        if (deepSeekConfigured || configurationSkipped) {
-            nextStep = OpenHouseOnboardingState.Step.OPENCODE_LAUNCH;
-        } else if (keySaved || keySkipped) {
-            nextStep = OpenHouseOnboardingState.Step.DEEPSEEK_CONFIGURATION;
-        }
-
-        preferences.edit()
-            .putInt(KEY_CURRENT_STEP, nextStep.number)
-            .putString(KEY_OVERLAY_STEP, toOverlayStepName(nextStep))
+        getOnboardingPrefs().edit()
+            .putInt(KEY_CURRENT_STEP, OpenHouseOnboardingState.Step.READY_TO_USE.number)
+            .putString(KEY_OVERLAY_STEP, toOverlayStepName(OpenHouseOnboardingState.Step.READY_TO_USE))
             .apply();
         return loadOnboardingState();
     }
@@ -273,21 +175,8 @@ public final class OpenHouseStatusRepository {
         return loadOnboardingState();
     }
 
-    public boolean hasSavedDeepSeekKey() {
-        File keyFile = getSavedDeepSeekKeyFile();
-        return keyFile.isFile() && keyFile.length() > 0L;
-    }
-
     public static File getOpenHouseStateDir() {
         return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".openhouseai");
-    }
-
-    public static File getSavedDeepSeekKeyFile() {
-        return new File(getOpenHouseStateDir(), "deepseek-api-key.saved");
-    }
-
-    public static File getDeepSeekKeyTempFile() {
-        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".maintainer-logs/deepseek-api-key.tmp");
     }
 
     private boolean isBatteryOptimizationIgnored() {
@@ -299,9 +188,11 @@ public final class OpenHouseStatusRepository {
     }
 
     private boolean isProductPrepared() {
-        File docsDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "openhouseai-docs");
+        File docsDir = firstExistingDirectory(
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "smallphoneai-docs"),
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "openhouseai-docs"));
         File workspaceDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "workspace");
-        return docsDir.isDirectory()
+        return docsDir != null
             && workspaceDir.isDirectory()
             && new File(docsDir, "README.md").isFile()
             && new File(docsDir, "ENVIRONMENT.md").isFile()
@@ -309,8 +200,14 @@ public final class OpenHouseStatusRepository {
     }
 
     private boolean isOfficialDocsSynced() {
-        File officialDocsDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "openhouseai-docs/official");
-        File agentNotesDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "openhouseai-docs/agent-notes");
+        File docsDir = firstExistingDirectory(
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "smallphoneai-docs"),
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "openhouseai-docs"));
+        if (docsDir == null) {
+            return false;
+        }
+        File officialDocsDir = new File(docsDir, "official");
+        File agentNotesDir = new File(docsDir, "agent-notes");
         return officialDocsDir.isDirectory()
             && agentNotesDir.isDirectory()
             && new File(officialDocsDir, "START_HERE.md").isFile()
@@ -318,12 +215,36 @@ public final class OpenHouseStatusRepository {
             && new File(officialDocsDir, "MODEL_API_SETUP.md").isFile();
     }
 
+    private boolean isRegistrySynced() {
+        File configDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/openhouseai");
+        File componentsDir = new File(configDir, "components.d");
+        File serviceSpecsDir = new File(configDir, "service-manager/services.d");
+        if (hasJsonFile(componentsDir) && hasJsonFile(serviceSpecsDir)) {
+            return true;
+        }
+
+        File registryState = new File(configDir, "registry-state.json");
+        File serviceManagerConfig = new File(configDir, "service-manager/config.json");
+        return serviceManagerConfig.isFile() && isRegistryStateSuccessful(registryState);
+    }
+
+    private boolean hasJsonFile(File dir) {
+        File[] files = dir == null ? null : dir.listFiles((file, name) ->
+            file.isFile() && name != null && name.endsWith(".json"));
+        return files != null && files.length > 0;
+    }
+
+    private boolean isRegistryStateSuccessful(File stateFile) {
+        if (stateFile == null || !stateFile.isFile()) {
+            return false;
+        }
+        String content = readTextFile(stateFile, 4096);
+        String compact = content == null ? "" : content.replace(" ", "");
+        return compact.contains("\"status\":\"success\"");
+    }
+
     private OpenHouseOnboardingState.Step resolveEffectiveStep(OpenHouseOnboardingState.Step storedStep,
                                                                boolean permissionsSkipped,
-                                                               boolean keySkipped,
-                                                               boolean configurationSkipped,
-                                                               boolean keySaved,
-                                                               boolean deepSeekConfigured,
                                                                boolean launchConfirmed,
                                                                OpenHouseInstallState installState,
                                                                OpenHouseStatus status) {
@@ -333,58 +254,21 @@ public final class OpenHouseStatusRepository {
         boolean installRunning = installState != null && installState.running;
         boolean installDone = isInstallDone(installState, status);
 
-        if (!installDone) {
-            if (keySaved
-                || keySkipped
-                || configurationSkipped
-                || deepSeekConfigured
-                || launchConfirmed
-                || effectiveStep.number >= OpenHouseOnboardingState.Step.WAITING_INSTALL.number) {
-                return OpenHouseOnboardingState.Step.WAITING_INSTALL;
-            }
-
-            if (installRunning && effectiveStep.number < OpenHouseOnboardingState.Step.READING_GUIDE.number) {
-                return OpenHouseOnboardingState.Step.READING_GUIDE;
-            }
-            if (installRunning) {
-                return effectiveStep;
-            }
-        }
-
         if (launchConfirmed) {
-            return OpenHouseOnboardingState.Step.OPENCODE_LAUNCH;
+            return OpenHouseOnboardingState.Step.READY_TO_USE;
         }
 
-        if (installState != null && installState.running) {
-            return effectiveStep.number < OpenHouseOnboardingState.Step.READING_GUIDE.number
-                ? OpenHouseOnboardingState.Step.READING_GUIDE
-                : effectiveStep;
+        if (installDone) {
+            return OpenHouseOnboardingState.Step.READY_TO_USE;
         }
+
+        if (installRunning
+            || effectiveStep.number >= OpenHouseOnboardingState.Step.WAITING_INSTALL.number) {
+            return OpenHouseOnboardingState.Step.WAITING_INSTALL;
+        }
+
         if (permissionsSkipped && effectiveStep.number < OpenHouseOnboardingState.Step.ONE_CLICK_INSTALL.number) {
             effectiveStep = OpenHouseOnboardingState.Step.ONE_CLICK_INSTALL;
-        }
-        if (installDone
-            && effectiveStep.number < OpenHouseOnboardingState.Step.DEEPSEEK_KEY.number) {
-            effectiveStep = OpenHouseOnboardingState.Step.DEEPSEEK_KEY;
-        }
-
-        if (installDone
-            && (deepSeekConfigured || configurationSkipped)
-            && effectiveStep.number < OpenHouseOnboardingState.Step.OPENCODE_LAUNCH.number) {
-            effectiveStep = OpenHouseOnboardingState.Step.OPENCODE_LAUNCH;
-        } else if (installDone
-            && (keySaved || keySkipped)
-            && !deepSeekConfigured
-            && !configurationSkipped
-            && effectiveStep.number < OpenHouseOnboardingState.Step.DEEPSEEK_CONFIGURATION.number) {
-            effectiveStep = OpenHouseOnboardingState.Step.DEEPSEEK_CONFIGURATION;
-        }
-
-        if (installDone
-            && status != null
-            && status.openCodeReachable
-            && effectiveStep.number < OpenHouseOnboardingState.Step.OPENCODE_LAUNCH.number) {
-            effectiveStep = OpenHouseOnboardingState.Step.OPENCODE_LAUNCH;
         }
         return effectiveStep;
     }
@@ -418,17 +302,17 @@ public final class OpenHouseStatusRepository {
 
     private boolean isOneClickInstallCompleted() {
         try {
-            return OpenHouseInstallController.getInstance(context).getState().completed;
+            OpenHouseStatus status = loadStatus();
+            return status.isDeploymentComplete()
+                || (OpenHouseInstallController.getInstance(context).getState().completed && status.isDeploymentComplete());
         } catch (Exception e) {
             return false;
         }
     }
 
     private boolean isInstallDone(OpenHouseInstallState installState, OpenHouseStatus status) {
-        if (installState != null && installState.completed) {
-            return true;
-        }
-        return status != null && status.isDeploymentComplete();
+        return (installState != null && installState.completed)
+            || (status != null && status.isDeploymentComplete());
     }
 
     private OpenHouseOnboardingState.Step readStoredStep(SharedPreferences preferences) {
@@ -440,16 +324,10 @@ public final class OpenHouseStatusRepository {
         String overlayStep = preferences.getString(KEY_OVERLAY_STEP, "");
         if ("INSTALL".equals(overlayStep)) {
             return OpenHouseOnboardingState.Step.ONE_CLICK_INSTALL;
-        } else if ("READING_GUIDE".equals(overlayStep)) {
-            return OpenHouseOnboardingState.Step.READING_GUIDE;
-        } else if ("DEEPSEEK_KEY".equals(overlayStep)) {
-            return OpenHouseOnboardingState.Step.DEEPSEEK_KEY;
         } else if ("WAITING_INSTALL".equals(overlayStep)) {
             return OpenHouseOnboardingState.Step.WAITING_INSTALL;
-        } else if ("CONFIGURE_DEEPSEEK".equals(overlayStep)) {
-            return OpenHouseOnboardingState.Step.DEEPSEEK_CONFIGURATION;
         } else if ("LAUNCH_CONFIG".equals(overlayStep)) {
-            return OpenHouseOnboardingState.Step.OPENCODE_LAUNCH;
+            return OpenHouseOnboardingState.Step.READY_TO_USE;
         }
         return OpenHouseOnboardingState.Step.PERMISSIONS;
     }
@@ -461,15 +339,9 @@ public final class OpenHouseStatusRepository {
         switch (step) {
             case ONE_CLICK_INSTALL:
                 return "INSTALL";
-            case READING_GUIDE:
-                return "READING_GUIDE";
-            case DEEPSEEK_KEY:
-                return "DEEPSEEK_KEY";
             case WAITING_INSTALL:
                 return "WAITING_INSTALL";
-            case DEEPSEEK_CONFIGURATION:
-                return "CONFIGURE_DEEPSEEK";
-            case OPENCODE_LAUNCH:
+            case READY_TO_USE:
                 return "LAUNCH_CONFIG";
             case PERMISSIONS:
             default:
@@ -481,15 +353,27 @@ public final class OpenHouseStatusRepository {
         return context.getSharedPreferences(ONBOARDING_PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    private boolean isOpenCodeRunningInRoot() {
-        String script = "set -euo pipefail; self=$$; while read -r pid comm args; do "
-            + "[ -n \"$pid\" ] || continue; [ \"$pid\" = \"$self\" ] && continue; "
-            + "case \"$comm\" in bash|sh|dash|ps|grep|awk|sed) continue ;; esac; "
-            + "case \" $args \" in *opencode*' web '*) ;; *) continue ;; esac; "
-            + "case \" $args \" in *' --port " + OpenCodeSettings.DEFAULT_OPENCODE_PORT + " '*|*' --port=" + OpenCodeSettings.DEFAULT_OPENCODE_PORT + " '*) ;; *) continue ;; esac; "
-            + "if tr '\\0' '\\n' < \"/proc/$pid/environ\" 2>/dev/null | grep -Fxq 'PWD=" + OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY + "'; then exit 0; fi; "
-            + "done < <(ps -eo pid=,comm=,args=); exit 1";
-        return runTermuxCommand("proot-distro login ubuntu -- bash -lc " + shellQuote(script), 8).isSuccess();
+    private boolean isTermuxReady() {
+        File prefixDir = new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH);
+        File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");
+        return prefixDir.isDirectory() && bash.isFile();
+    }
+
+    private File firstExistingDirectory(File... candidates) {
+        if (candidates == null) {
+            return null;
+        }
+        for (File candidate : candidates) {
+            if (candidate != null && candidate.isDirectory()) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private boolean runUbuntuCheck(String script, int timeoutSeconds) {
+        String path = "export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; ";
+        return runTermuxCommand("proot-distro login ubuntu -- bash -lc " + shellQuote(path + script), timeoutSeconds).isSuccess();
     }
 
     private ShellCheckResult runTermuxCommand(String command, int timeoutSeconds) {
@@ -560,6 +444,26 @@ public final class OpenHouseStatusRepository {
             return output.toString();
         } catch (Exception e) {
             return e.getMessage();
+        }
+    }
+
+    private String readTextFile(File file, int maxChars) {
+        if (file == null || !file.isFile()) {
+            return "";
+        }
+
+        try {
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new FileInputStream(file), StandardCharsets.UTF_8))) {
+                int next;
+                while ((next = reader.read()) != -1 && output.length() < maxChars) {
+                    output.append((char) next);
+                }
+            }
+            return output.toString();
+        } catch (Exception e) {
+            return "";
         }
     }
 

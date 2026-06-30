@@ -11,18 +11,17 @@
     <string name="openhouse_terminal_tutorial_base_keys_title">基础按键</string>
     <string name="openhouse_terminal_tutorial_base_keys_body">底部工具栏前两排是常用基础键：ESC、/、-、HOME、方向键、exit、ubuntu、TAB、CTRL、ALT 和键盘按钮。</string>
     <string name="openhouse_terminal_tutorial_ai_keys_title">AI 快捷键</string>
-    <string name="openhouse_terminal_tutorial_ai_keys_body" tools:ignore="TypographyDashes">第三排是 openhouse ai 默认 AI 快捷键：claude、reasonix、codex、oc 和 --continue。点击命令名会先输入命令和一个空格。</string>
+    <string name="openhouse_terminal_tutorial_ai_keys_body" tools:ignore="TypographyDashes">第三排是 openhouse ai 默认 AI 快捷键：claude、codex、cloudcli、smallphone 和 --continue。点击命令名会先输入命令或常用状态命令。</string>
     <string name="openhouse_terminal_tutorial_continue_title">继续对话</string>
-    <string name="openhouse_terminal_tutorial_continue_body" tools:ignore="TypographyDashes">要继续 Claude 会话，可以依次点击 claude 和 --continue，终端中会组成 claude --continue。其他 Agent 也可以用同样方式组合。</string>
+    <string name="openhouse_terminal_tutorial_continue_body" tools:ignore="TypographyDashes">要继续 Claude 会话，可以依次点击 claude 和 --continue，终端中会组成 claude --continue。Codex 也可以用同样方式组合。</string>
     <string name="openhouse_terminal_tutorial_full_commands_title">完整继续命令</string>
-    <string name="openhouse_terminal_tutorial_full_commands_body" tools:ignore="TypographyDashes">滑到下一页工具栏可直接输入完整继续命令：claude --continue、codex --continue、reasonix --continue 和 oc --continue。</string>
+    <string name="openhouse_terminal_tutorial_full_commands_body" tools:ignore="TypographyDashes">滑到下一页工具栏可直接输入常用命令：claude --continue、codex --continue、cloudcli --help 和 service-manager status smallphone-core。</string>
     <string name="openhouse_terminal_tutorial_custom_keys_title">自定义快捷键</string>
     <string name="openhouse_terminal_tutorial_custom_keys_body">检测到你已经在 termux.properties 中配置了 extra-keys。openhouse ai 没有覆盖这些自定义键，因此这里只显示你的自定义工具栏。</string>
     <string name="openhouse_terminal_tutorial_claude_title">直接使用 Claude</string>
-    <string name="openhouse_terminal_tutorial_claude_body" tools:ignore="TypographyDashes">在终端里输入 claude，然后按回车就可以使用。记不住也没关系，底部快捷键里的 claude 等同于手打 claude。</string>
+    <string name="openhouse_terminal_tutorial_claude_body" tools:ignore="TypographyDashes">常用 AI 命令主要在 Ubuntu 终端侧运行。先点 ubuntu 进入 Ubuntu，再输入 claude 或 codex，然后按回车使用。</string>
     <string name="openhouse_terminal_tutorial_menu_title">打开菜单</string>
     <string name="openhouse_terminal_tutorial_menu_body">右侧“菜单”进入 openhouse ai 菜单页，里面有使用手册、终端快捷键、维护与修复、日志和高级设置。</string>
-    <string name="openhouse_terminal_tutorial_opencode_title">OpenCode 控制</string>
-    <string name="openhouse_terminal_tutorial_opencode_body">最后演示启动 OpenCode。点击“启动 OpenCode”后，openhouse ai 会启动 OpenCode Web，并自动跳转到浏览器。</string>
-    <string name="openhouse_terminal_tutorial_launch_opencode">启动 OpenCode</string>
+    <string name="openhouse_terminal_tutorial_runtime_title">Termux 与 Ubuntu</string>
+    <string name="openhouse_terminal_tutorial_runtime_body">当前页默认是 Termux 终端，适合执行 Android 侧命令和维护脚本。点击 ubuntu 进入 Ubuntu 终端，日常使用 Claude Code、Codex、CloudCLI 和 SmallPhone 状态命令通常在 Ubuntu 侧完成；输入 exit 可回到 Termux。</string>
 </resources>

@@ -30,9 +30,7 @@ import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import com.termux.R;
-import com.termux.app.OpenCodeCdpBridge;
 import com.termux.app.OpenHouseAgreement;
-import com.termux.app.OpenCodeSettings;
 import com.termux.app.api.file.FileReceiverActivity;
 import com.termux.app.openhouse.OpenHouseOnboardingState;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
@@ -80,13 +78,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.viewpager.widget.ViewPager;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.util.Arrays;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
  * A terminal emulator activity.
@@ -239,9 +231,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final String PREF_QUICK_BUTTONS_VISIBLE = "quick_buttons_visible";
     private static final String PREF_QUICK_HANDLE_LEFT = "quick_handle_left";
     private static final String PREF_QUICK_HANDLE_TOP = "quick_handle_top";
-    private final ExecutorService mOpenCodeLaunchExecutor = Executors.newSingleThreadExecutor();
-    private volatile boolean mOpenCodeLaunchInFlight = false;
-
     @Override
     public void onCreate(Bundle savedInstanceState) {
         Logger.logDebug(LOG_TAG, "onCreate");
@@ -311,8 +300,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setTerminalListButtonView();
 
         setOpenHouseMenuButtonView();
-
-        setOpenCodeQuickLaunchButtonView();
 
         setQuickButtonsVisibilityHandleView();
 
@@ -438,7 +425,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mOpenHouseTerminalTutorial = null;
         }
 
-        mOpenCodeLaunchExecutor.shutdownNow();
     }
 
     @Override
@@ -872,15 +858,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         findViewById(R.id.terminal_list_button).setOnClickListener(v -> getDrawer().openDrawer(Gravity.LEFT));
     }
 
-    private void setOpenCodeQuickLaunchButtonView() {
-        View button = findViewById(R.id.opencode_quick_launch_button);
-        button.setOnClickListener(v -> launchOpenCodeOnDefaultPort());
-        button.setOnLongClickListener(v -> {
-            openMaintenanceCenterEntry();
-            return true;
-        });
-    }
-
     private void openOpenHouseMenuEntry() {
         if (!OpenHouseAgreement.hasAcceptedCurrentVersion(this)) {
             Intent intent = new Intent(this, OpenHouseAgreementActivity.class);
@@ -1003,11 +980,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private void applyQuickButtonsVisibility(boolean visible) {
         View terminalListButton = findViewById(R.id.terminal_list_button);
         View menuButton = findViewById(R.id.openhouse_menu_button);
-        View openCodeButton = findViewById(R.id.opencode_quick_launch_button);
         int visibility = visible ? View.VISIBLE : View.GONE;
         if (terminalListButton != null) terminalListButton.setVisibility(visibility);
         if (menuButton != null) menuButton.setVisibility(visibility);
-        if (openCodeButton != null) openCodeButton.setVisibility(visibility);
     }
 
     private void toggleQuickButtonsVisibility(SharedPreferences preferences) {
@@ -1060,154 +1035,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         intent.putExtra(OpenHouseAgreementActivity.EXTRA_OPEN_MAINTENANCE_AFTER_ACCEPT, true);
         ActivityUtils.startActivity(this, intent);
     }
-
-    private void launchOpenCodeOnDefaultPort() {
-        if (mOpenCodeLaunchInFlight) {
-            showToast(getString(R.string.quick_launch_busy), false);
-            return;
-        }
-
-        int port = OpenCodeSettings.DEFAULT_OPENCODE_PORT;
-        mOpenCodeLaunchInFlight = true;
-        showToast(getString(R.string.quick_launch_starting, port), false);
-        mOpenCodeLaunchExecutor.execute(() -> {
-            try {
-                if (isOpenCodeReachable(port) && isOpenCodeWorkingDirectoryRoot(port)) {
-                    openOpenCodeInBrowser(port);
-                    postToast(getString(R.string.quick_launch_ready, port), false);
-                    return;
-                }
-
-                ShellCheckResult installationCheck = runTermuxShellCommand(
-                    "proot-distro login ubuntu -- bash -lc 'set -euo pipefail; export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; command -v opencode >/dev/null 2>&1 || test -x \"$HOME/.opencode/bin/opencode\"'"
-                );
-                if (!installationCheck.isSuccess()) {
-                    postToast(getString(R.string.quick_launch_missing), true);
-                    return;
-                }
-
-                runTermuxShellCommand(
-                    "proot-distro login ubuntu -- bash -lc 'set -euo pipefail; pids=\"\"; while read -r pid comm args; do [ -n \"$pid\" ] || continue; case \"$comm\" in opencode*) ;; *) continue ;; esac; case \" $args \" in *\" web \"*\"--port " + port + "\"*) pids=\"$pids $pid\" ;; esac; done < <(ps -eo pid=,comm=,args=); if [ -n \"$pids\" ]; then kill $pids 2>/dev/null || true; sleep 1; kill -9 $pids 2>/dev/null || true; fi' && " +
-                        "mkdir -p \"$HOME/.maintainer-logs\" && " +
-                        "nohup proot-distro login ubuntu -- bash -lc 'set -euo pipefail; export HOME=/root PWD=/root; cd /root; export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; export BROWSER=/bin/true; exec opencode web --hostname 127.0.0.1 --port " + port + " --print-logs >\"$HOME/.opencode-web.log\" 2>&1' >>\"$HOME/.maintainer-logs/opencode-quick-launch.log\" 2>&1 < /dev/null &"
-                );
-
-                for (int attempt = 0; attempt < 10; attempt++) {
-                    if (isOpenCodeReachable(port)) {
-                        openOpenCodeInBrowser(port);
-                        postToast(getString(R.string.quick_launch_ready, port), false);
-                        return;
-                    }
-                    Thread.sleep(1000);
-                }
-
-                postToast(getString(R.string.quick_launch_failed), true);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } finally {
-                mOpenCodeLaunchInFlight = false;
-            }
-        });
-    }
-
-    public void launchOpenCodeFromTutorial() {
-        launchOpenCodeOnDefaultPort();
-    }
-
-    private boolean isOpenCodeReachable(int port) {
-        return runTermuxShellCommand(
-            "proot-distro login ubuntu -- bash -lc 'curl -fsS --max-time 3 http://127.0.0.1:" + port + "/ >/dev/null 2>&1'"
-        ).isSuccess();
-    }
-
-    private boolean isOpenCodeWorkingDirectoryRoot(int port) {
-        return runTermuxShellCommand(
-            "proot-distro login ubuntu -- bash -lc 'set -euo pipefail; while read -r pid comm args; do [ -n \"$pid\" ] || continue; case \"$comm\" in opencode*) ;; *) continue ;; esac; case \" $args \" in *\" web \"*\"--port " + port + "\"*) ;; *) continue ;; esac; tr \"\\0\" \"\\n\" < \"/proc/$pid/environ\" 2>/dev/null | grep -Fxq \"PWD=/root\"; exit $?; done < <(ps -eo pid=,comm=,args=); exit 1'"
-        ).isSuccess();
-    }
-
-    private void openOpenCodeInBrowser(int port) {
-        String url = OpenCodeSettings.getRootProjectUrl(port);
-        if (OpenCodeCdpBridge.isCdpActive() && OpenCodeCdpBridge.openTab(url)) {
-            postToast(getString(R.string.quick_launch_browser_tab), false);
-            return;
-        }
-
-        runOnUiThread(() -> {
-            try {
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-                showToast(getString(R.string.quick_launch_browser_fallback), false);
-            } catch (Exception e) {
-                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to open OpenCode browser URL", e);
-            }
-        });
-    }
-
-    private ShellCheckResult runTermuxShellCommand(String command) {
-        Process process = null;
-        try {
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash",
-                "-lc",
-                command
-            );
-            processBuilder.redirectErrorStream(true);
-            processBuilder.directory(getFilesDir());
-            Map<String, String> environment = processBuilder.environment();
-            environment.put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
-            environment.put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
-            environment.put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":/system/bin");
-            environment.put("LD_LIBRARY_PATH", TermuxConstants.TERMUX_LIB_PREFIX_DIR_PATH);
-            environment.put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
-            environment.put("LANG", "C.UTF-8");
-
-            process = processBuilder.start();
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (output.length() < 600) {
-                        if (output.length() > 0) output.append('\n');
-                        output.append(line);
-                    }
-                }
-            }
-
-            if (!process.waitFor(15, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-                return new ShellCheckResult(124, output.toString());
-            }
-
-            return new ShellCheckResult(process.exitValue(), output.toString());
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to run OpenCode quick launch command", e);
-            return new ShellCheckResult(1, e.getMessage());
-        } finally {
-            if (process != null) process.destroy();
-        }
-    }
-
-    private void postToast(String text, boolean longDuration) {
-        runOnUiThread(() -> showToast(text, longDuration));
-    }
-
-    private static final class ShellCheckResult {
-        final int exitCode;
-        final String output;
-
-        ShellCheckResult(int exitCode, String output) {
-            this.exitCode = exitCode;
-            this.output = output == null ? "" : output;
-        }
-
-        boolean isSuccess() {
-            return exitCode == 0;
-        }
-    }
-
-
-
-
 
     @SuppressLint("RtlHardcoded")
     @Override

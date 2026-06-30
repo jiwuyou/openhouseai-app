@@ -1,150 +1,139 @@
 package com.termux.app.openhouse;
 
-import com.termux.app.OpenCodeSettings;
-
 public final class OpenHouseStatus {
 
+    public final boolean termuxReady;
     public final boolean batteryOptimizationIgnored;
     public final boolean productPrepared;
     public final boolean ubuntuInstalled;
     public final boolean officialDocsSynced;
     public final boolean entryUbuntuConfigured;
-    public final boolean openCodeInstalled;
+    public final boolean nodeInstalled;
     public final boolean codexInstalled;
     public final boolean claudeCodeInstalled;
-    public final boolean reasonixInstalled;
-    public final boolean deepSeekConfigured;
-    public final boolean openCodeReachable;
-    public final boolean deepSeekKeySaved;
+    public final boolean cloudCliInstalled;
+    public final boolean serviceManagerInstalled;
+    public final boolean openhouseConnectInstalled;
+    public final boolean smallPhoneRuntimeInstalled;
+    public final boolean registrySynced;
+    public final boolean serviceManagerReachable;
+    public final boolean openhouseConnectReachable;
+    public final boolean smallPhoneReachable;
     public final boolean launchConfirmed;
-    public final boolean openCodeRunningInRoot;
-    public final int openCodePort;
-    public final String openCodeProjectDirectory;
     public final String diagnostic;
 
-    public OpenHouseStatus(boolean batteryOptimizationIgnored,
+    public OpenHouseStatus(boolean termuxReady,
+                           boolean batteryOptimizationIgnored,
                            boolean productPrepared,
                            boolean ubuntuInstalled,
                            boolean officialDocsSynced,
                            boolean entryUbuntuConfigured,
-                           boolean openCodeInstalled,
+                           boolean nodeInstalled,
                            boolean codexInstalled,
                            boolean claudeCodeInstalled,
-                           boolean reasonixInstalled,
-                           boolean deepSeekConfigured,
-                           boolean openCodeReachable,
-                           String diagnostic) {
-        this(
-            batteryOptimizationIgnored,
-            productPrepared,
-            ubuntuInstalled,
-            officialDocsSynced,
-            entryUbuntuConfigured,
-            openCodeInstalled,
-            codexInstalled,
-            claudeCodeInstalled,
-            reasonixInstalled,
-            deepSeekConfigured,
-            openCodeReachable,
-            false,
-            false,
-            false,
-            OpenCodeSettings.DEFAULT_OPENCODE_PORT,
-            OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY,
-            diagnostic
-        );
-    }
-
-    public OpenHouseStatus(boolean batteryOptimizationIgnored,
-                           boolean productPrepared,
-                           boolean ubuntuInstalled,
-                           boolean officialDocsSynced,
-                           boolean entryUbuntuConfigured,
-                           boolean openCodeInstalled,
-                           boolean codexInstalled,
-                           boolean claudeCodeInstalled,
-                           boolean reasonixInstalled,
-                           boolean deepSeekConfigured,
-                           boolean openCodeReachable,
-                           boolean deepSeekKeySaved,
+                           boolean cloudCliInstalled,
+                           boolean serviceManagerInstalled,
+                           boolean openhouseConnectInstalled,
+                           boolean smallPhoneRuntimeInstalled,
+                           boolean registrySynced,
+                           boolean serviceManagerReachable,
+                           boolean openhouseConnectReachable,
+                           boolean smallPhoneReachable,
                            boolean launchConfirmed,
-                           boolean openCodeRunningInRoot,
-                           int openCodePort,
-                           String openCodeProjectDirectory,
                            String diagnostic) {
+        this.termuxReady = termuxReady;
         this.batteryOptimizationIgnored = batteryOptimizationIgnored;
         this.productPrepared = productPrepared;
         this.ubuntuInstalled = ubuntuInstalled;
         this.officialDocsSynced = officialDocsSynced;
         this.entryUbuntuConfigured = entryUbuntuConfigured;
-        this.openCodeInstalled = openCodeInstalled;
+        this.nodeInstalled = nodeInstalled;
         this.codexInstalled = codexInstalled;
         this.claudeCodeInstalled = claudeCodeInstalled;
-        this.reasonixInstalled = reasonixInstalled;
-        this.deepSeekConfigured = deepSeekConfigured;
-        this.openCodeReachable = openCodeReachable;
-        this.deepSeekKeySaved = deepSeekKeySaved;
+        this.cloudCliInstalled = cloudCliInstalled;
+        this.serviceManagerInstalled = serviceManagerInstalled;
+        this.openhouseConnectInstalled = openhouseConnectInstalled;
+        this.smallPhoneRuntimeInstalled = smallPhoneRuntimeInstalled;
+        this.registrySynced = registrySynced;
+        this.serviceManagerReachable = serviceManagerReachable;
+        this.openhouseConnectReachable = openhouseConnectReachable;
+        this.smallPhoneReachable = smallPhoneReachable;
         this.launchConfirmed = launchConfirmed;
-        this.openCodeRunningInRoot = openCodeRunningInRoot;
-        this.openCodePort = OpenCodeSettings.isValidPort(openCodePort)
-            ? openCodePort
-            : OpenCodeSettings.DEFAULT_OPENCODE_PORT;
-        this.openCodeProjectDirectory = openCodeProjectDirectory == null || openCodeProjectDirectory.isEmpty()
-            ? OpenCodeSettings.DEFAULT_PROJECT_DIRECTORY
-            : openCodeProjectDirectory;
         this.diagnostic = diagnostic == null ? "" : diagnostic;
     }
 
     public static OpenHouseStatus checking() {
         return new OpenHouseStatus(false, false, false, false, false, false,
-            false, false, false, false, false, "");
+            false, false, false, false, false, false, false, false, false,
+            false, false, false, "");
     }
 
     public boolean isDeploymentComplete() {
-        return openCodeInstalled && codexInstalled && claudeCodeInstalled && reasonixInstalled;
+        return termuxReady
+            && productPrepared
+            && ubuntuInstalled
+            && officialDocsSynced
+            && entryUbuntuConfigured
+            && nodeInstalled
+            && codexInstalled
+            && claudeCodeInstalled
+            && cloudCliInstalled
+            && serviceManagerInstalled
+            && openhouseConnectInstalled
+            && smallPhoneRuntimeInstalled
+            && registrySynced
+            && serviceManagerReachable
+            && openhouseConnectReachable
+            && smallPhoneReachable;
     }
 
     public int getAgentReadyCount() {
         int count = 0;
-        if (openCodeInstalled) count++;
         if (codexInstalled) count++;
         if (claudeCodeInstalled) count++;
-        if (reasonixInstalled) count++;
+        if (cloudCliInstalled) count++;
         return count;
     }
 
     public int getProgressPercent() {
         int done = 0;
-        int total = 9;
+        int total = 16;
+        if (termuxReady) done++;
         if (productPrepared) done++;
         if (ubuntuInstalled) done++;
         if (officialDocsSynced) done++;
         if (entryUbuntuConfigured) done++;
-        if (openCodeInstalled) done++;
+        if (nodeInstalled) done++;
         if (codexInstalled) done++;
         if (claudeCodeInstalled) done++;
-        if (reasonixInstalled) done++;
-        if (deepSeekConfigured) done++;
+        if (cloudCliInstalled) done++;
+        if (serviceManagerInstalled) done++;
+        if (openhouseConnectInstalled) done++;
+        if (smallPhoneRuntimeInstalled) done++;
+        if (registrySynced) done++;
+        if (serviceManagerReachable) done++;
+        if (openhouseConnectReachable) done++;
+        if (smallPhoneReachable) done++;
         return Math.round((done * 100f) / total);
     }
 
     public String getNextStepLabel() {
+        if (!termuxReady) return "准备 Termux 基础环境";
         if (!productPrepared) return "准备本机目录";
         if (!ubuntuInstalled) return "准备 Linux 环境";
         if (!officialDocsSynced) return "同步使用文档";
         if (!entryUbuntuConfigured) return "设置启动方式";
-        if (!openCodeInstalled) return "安装 AI 工具：OpenCode";
+        if (!nodeInstalled) return "安装 Node.js";
         if (!codexInstalled) return "安装 AI 工具：Codex";
         if (!claudeCodeInstalled) return "安装 AI 工具：Claude Code";
-        if (!reasonixInstalled) return "安装 AI 工具：Reasonix";
-        if (!deepSeekConfigured && !deepSeekKeySaved) return "填写 DeepSeek Key";
-        if (!deepSeekConfigured) return "配置 DeepSeek Key";
-        if (!openCodeReachable) return "启动 OpenCode Web";
-        if (!launchConfirmed) return "确认 OpenCode 启动";
-        return "可以开始使用 AI";
-    }
-
-    public boolean isOpenCodeLaunchReady() {
-        return openCodeInstalled && (deepSeekConfigured || deepSeekKeySaved);
+        if (!cloudCliInstalled) return "安装 CloudCLI";
+        if (!serviceManagerInstalled) return "安装 service-manager";
+        if (!openhouseConnectInstalled) return "安装 openhouse-connect";
+        if (!smallPhoneRuntimeInstalled) return "安装 SmallPhone runtime";
+        if (!registrySynced) return "同步 service-manager 注册表";
+        if (!serviceManagerReachable) return "启动 service-manager";
+        if (!openhouseConnectReachable) return "启动 openhouse-connect";
+        if (!smallPhoneReachable) return "启动 SmallPhone";
+        return "核心 AI 运行栈已就绪";
     }
 }

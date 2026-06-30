@@ -4,9 +4,6 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
-import com.termux.R;
-import com.termux.app.OpenCodeDownloadSourceSettings;
-import com.termux.app.OpenCodeSettings;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
@@ -35,17 +32,13 @@ public final class OpenHouseInstallController {
     private static final String LOG_TAG = "OpenHouseInstall";
     private static final String MANIFEST_FULL_SLUG = "manifest_full";
     private static final String OFFICIAL_DOCS_ASSET_DIR = "openhouse/docs-public";
-    private static final String DEFAULT_BOOTSTRAP_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh";
-    private static final String REMOTE_SCHEDULE_HINT = "远程一键初始化会按全程约30分钟模拟进度";
     private static final int DEFAULT_LOCAL_MAINTENANCE_WEB_PORT = 38423;
+    private static final String DEFAULT_CLAUDE_CODE_UI_PORT = "23083";
     private static final long POLL_INTERVAL_MS = 2000L;
     private static final long STALE_RUNNING_MARKER_MS = 6 * 60 * 60 * 1000L;
     private static final int MAX_AUTO_RETRY_ATTEMPTS = 3;
     private static final long GENERAL_STUCK_NO_LOG_MS = 30L * 60L * 1000L;
-    private static final long OPENCODE_STUCK_NO_LOG_MS = 45L * 60L * 1000L;
     private static final long TOTAL_INSTALL_DURATION_MS = 30L * 60L * 1000L;
-    private static final long OPENCODE_STAGE_DURATION_MS = 12L * 60L * 1000L;
-    private static final double OPENCODE_STAGE_WEIGHT_PERCENT = 40.0d;
     private static final double FAST_STAGE_PROGRESS_RATIO = 0.90d;
     private static final double SLOW_STAGE_PROGRESS_RATIO = 1.0d - FAST_STAGE_PROGRESS_RATIO;
     private static final Pattern DONE_PATTERN = Pattern.compile("__TERMUX_MAINT_DONE__:manifest_full:(\\d+)");
@@ -60,20 +53,17 @@ public final class OpenHouseInstallController {
         Stage.UBUNTU_PACKAGES,
         Stage.CONFIGURE_ENTRY_UBUNTU,
         Stage.INSTALL_NODE,
-        Stage.INSTALL_OPENCODE,
         Stage.INSTALL_CODEX,
         Stage.INSTALL_CLAUDE_CODE,
         Stage.INSTALL_CLAUDE_CODE_UI,
-        Stage.INSTALL_REASONIX,
         Stage.RUNTIME_COMPONENTS,
-        Stage.INSTALL_HERMES,
         Stage.SYNC_OPENHOUSE_REGISTRY,
         Stage.START_SMALLPHONE
     };
     private static final long OTHER_STAGE_DURATION_MS =
-        (TOTAL_INSTALL_DURATION_MS - OPENCODE_STAGE_DURATION_MS) / (ONE_CLICK_STAGE_SEQUENCE.length - 1);
+        TOTAL_INSTALL_DURATION_MS / ONE_CLICK_STAGE_SEQUENCE.length;
     private static final double OTHER_STAGE_WEIGHT_PERCENT =
-        (100.0d - OPENCODE_STAGE_WEIGHT_PERCENT) / (ONE_CLICK_STAGE_SEQUENCE.length - 1);
+        100.0d / ONE_CLICK_STAGE_SEQUENCE.length;
 
     private static volatile OpenHouseInstallController instance;
 
@@ -555,7 +545,7 @@ public final class OpenHouseInstallController {
                 false,
                 100,
                 "初始化安装完成",
-                "Linux 环境和 AI 工具已安装完成，OpenCode 可在主页手动启动。",
+                "Ubuntu、Node.js、Codex、Claude Code、CloudCLI 和 SmallPhoneAI 运行栈已安装完成，service-manager 将负责运行期管理。",
                 MANIFEST_FULL_SLUG
             );
         }
@@ -707,7 +697,7 @@ public final class OpenHouseInstallController {
     }
 
     private long getStageDurationMs(Stage stage) {
-        return stage == Stage.INSTALL_OPENCODE ? OPENCODE_STAGE_DURATION_MS : OTHER_STAGE_DURATION_MS;
+        return OTHER_STAGE_DURATION_MS;
     }
 
     private int getStageStartPercent(Stage stage) {
@@ -730,7 +720,7 @@ public final class OpenHouseInstallController {
     }
 
     private double getStageWeightPercent(Stage stage) {
-        return stage == Stage.INSTALL_OPENCODE ? OPENCODE_STAGE_WEIGHT_PERCENT : OTHER_STAGE_WEIGHT_PERCENT;
+        return OTHER_STAGE_WEIGHT_PERCENT;
     }
 
     private Stage resolveMonotonicStage(Stage stage, StageMarkerInfo stageMarkerInfo, RunningMarker runningMarker) {
@@ -791,7 +781,7 @@ public final class OpenHouseInstallController {
 
         long nowMs = System.currentTimeMillis();
         Stage stage = runningMarker.stage == null ? Stage.PREPARE : runningMarker.stage;
-        long thresholdMs = stage == Stage.INSTALL_OPENCODE ? OPENCODE_STUCK_NO_LOG_MS : GENERAL_STUCK_NO_LOG_MS;
+        long thresholdMs = GENERAL_STUCK_NO_LOG_MS;
         long noLogMs = Math.max(0L, nowMs - logFile.lastModified());
         long stageStartedAtMs = runningMarker.stageStartedAtMs > 0L
             ? runningMarker.stageStartedAtMs
@@ -1037,64 +1027,24 @@ public final class OpenHouseInstallController {
         }
         bundledBody.append("log 'APK 内置 SmallPhoneAI 一键初始化已完成。'\n");
 
-        OpenCodeInstallSpec installSpec = resolveOpenCodeInstallSpec();
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("log '开始执行 SmallPhoneAI 一键初始化。'\n");
         scriptBody.append("log '安装过程中会准备 Linux 环境，安装 service-manager、openhouse-connect、SmallPhone 和 AI CLI。'\n");
-        scriptBody.append("run_remote_bootstrap(){\n");
-        scriptBody.append("  log '正在探测远程一键维护脚本。'\n");
-        scriptBody.append("  if ! command -v curl >/dev/null 2>&1; then log '缺少 curl，切换到 APK 内置阶段脚本。'; return 127; fi\n");
-        scriptBody.append("  if ! run_logged curl -fL --connect-timeout 10 --max-time 35 --retry 1 --retry-delay 2 ")
-            .append(shellQuote(DEFAULT_BOOTSTRAP_URL))
-            .append(" -o \"$HOME/openhouseai-bootstrap.sh\"; then return 21; fi\n");
-        scriptBody.append("  chmod +x \"$HOME/openhouseai-bootstrap.sh\"\n");
-        scriptBody.append("  log '").append(REMOTE_SCHEDULE_HINT).append("；OpenCode 阶段会在预计进度到达后进入 40%-80% 区间。'\n");
-        scriptBody.append("  run_logged env OPENHOUSEAI_PORT=")
-            .append(shellQuote(Integer.toString(OpenCodeSettings.DEFAULT_OPENCODE_PORT)))
-            .append(" OPENHOUSEAI_WEB_PORT=")
-            .append(shellQuote(Integer.toString(DEFAULT_LOCAL_MAINTENANCE_WEB_PORT)))
-            .append(" OPENCODE_INSTALL_URL=")
-            .append(shellQuote(installSpec.primaryUrl))
-            .append(" bash \"$HOME/openhouseai-bootstrap.sh\" full\n");
-        scriptBody.append("}\n");
-        scriptBody.append("use_remote_bootstrap=0\n");
-        scriptBody.append("case \"${SMALLPHONEAI_USE_REMOTE_BOOTSTRAP:-${OPENHOUSEAI_USE_REMOTE_BOOTSTRAP:-0}}\" in 1|true|TRUE|True|yes|YES|Yes|on|ON|On) use_remote_bootstrap=1 ;; esac\n");
-        scriptBody.append("if [ \"$use_remote_bootstrap\" = \"1\" ] && run_remote_bootstrap; then\n");
-        scriptBody.append("  log '远程一键初始化已完成。OpenCode 需要点击启动按钮后再启动。'\n");
-        scriptBody.append("else\n");
-        scriptBody.append("  remote_status=\"$?\"\n");
-        scriptBody.append("  if [ \"$use_remote_bootstrap\" = \"1\" ]; then\n");
-        scriptBody.append("    log \"远程一键维护不可用或执行失败（退出码：$remote_status），切换到 APK 内置阶段脚本。\"\n");
-        scriptBody.append("  else\n");
-        scriptBody.append("    log 'SmallPhoneAI 默认使用 APK 内置阶段脚本；如需旧远程脚本，请显式设置 SMALLPHONEAI_USE_REMOTE_BOOTSTRAP=1。'\n");
-        scriptBody.append("  fi\n");
-        scriptBody.append("  REMOTE_SCHEDULE_ACTIVE=0\n");
         scriptBody.append(bundledBody);
         if (!bundledBody.toString().endsWith("\n")) {
             scriptBody.append('\n');
         }
-        scriptBody.append("fi\n");
         scriptBody.append("log 'SmallPhoneAI 一键初始化已完成。'\n");
         return buildWrapperScript("一键初始化", MANIFEST_FULL_SLUG, scriptBody.toString());
     }
 
     private String buildAssetScriptBody(Stage stage) throws IOException {
-        OpenCodeInstallSpec installSpec = stage == Stage.INSTALL_OPENCODE
-            ? resolveOpenCodeInstallSpec()
-            : OpenCodeInstallSpec.defaultSpec(context);
         return loadAsset("maintainer/" + stage.assetName)
-            .replace("__PORT__", Integer.toString(OpenCodeSettings.DEFAULT_OPENCODE_PORT))
-            .replace("__CLAUDE_CODE_UI_PORT__", "23083")
-            .replace("__BOOTSTRAP_URL__", DEFAULT_BOOTSTRAP_URL)
+            .replace("__PORT__", DEFAULT_CLAUDE_CODE_UI_PORT)
+            .replace("__CLAUDE_CODE_UI_PORT__", DEFAULT_CLAUDE_CODE_UI_PORT)
             .replace("__REQUIRED_COMPONENT_TARGETS__", "")
             .replace("__LOCAL_MAINTENANCE_WEB_PORT__", Integer.toString(DEFAULT_LOCAL_MAINTENANCE_WEB_PORT))
-            .replace("__DEEPSEEK_KEY_FILE__", new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".maintainer-logs/deepseek-api-key.tmp").getAbsolutePath())
-            .replace("__BUNDLED_OFFICIAL_DOCS__", buildBundledAssetWriteSnippet(OFFICIAL_DOCS_ASSET_DIR, "OFFICIAL_DOC_DIR"))
-            .replace("__OPENCODE_INSTALL_PRIMARY_URL__", installSpec.primaryUrl)
-            .replace("__OPENCODE_INSTALL_PRIMARY_LABEL__", installSpec.primaryLabel)
-            .replace("__OPENCODE_INSTALL_SECONDARY_URL__", installSpec.secondaryUrl)
-            .replace("__OPENCODE_INSTALL_SECONDARY_LABEL__", installSpec.secondaryLabel)
-            .replace("__OPENCODE_INSTALL_ALLOW_FALLBACK__", installSpec.allowFallback ? "1" : "0");
+            .replace("__BUNDLED_OFFICIAL_DOCS__", buildBundledAssetWriteSnippet(OFFICIAL_DOCS_ASSET_DIR, "OFFICIAL_DOC_DIR"));
     }
 
     private OpenHouseBundledRuntimeSync.Result prepareBundledRuntimeAssets() throws IOException {
@@ -1210,41 +1160,6 @@ public final class OpenHouseInstallController {
         }
     }
 
-    private OpenCodeInstallSpec resolveOpenCodeInstallSpec() {
-        OpenCodeDownloadSourceSettings.Mode mode = OpenCodeDownloadSourceSettings.getMode(context);
-        String primarySourceId = getPreferredOpenCodeSourceId(mode);
-        String secondarySourceId = OpenCodeDownloadSourceSettings.SOURCE_OFFICIAL.equals(primarySourceId)
-            ? OpenCodeDownloadSourceSettings.SOURCE_MIRROR
-            : OpenCodeDownloadSourceSettings.SOURCE_OFFICIAL;
-        boolean allowFallback = mode == OpenCodeDownloadSourceSettings.Mode.AUTO;
-
-        return new OpenCodeInstallSpec(
-            getDownloadSourceLabel(primarySourceId),
-            OpenCodeDownloadSourceSettings.getInstallUrlForSource(primarySourceId),
-            getDownloadSourceLabel(secondarySourceId),
-            OpenCodeDownloadSourceSettings.getInstallUrlForSource(secondarySourceId),
-            allowFallback
-        );
-    }
-
-    private String getPreferredOpenCodeSourceId(OpenCodeDownloadSourceSettings.Mode mode) {
-        switch (mode) {
-            case OFFICIAL_ONLY:
-                return OpenCodeDownloadSourceSettings.SOURCE_OFFICIAL;
-            case MIRROR_ONLY:
-                return OpenCodeDownloadSourceSettings.SOURCE_MIRROR;
-            case AUTO:
-            default:
-                return OpenCodeDownloadSourceSettings.getLastSelectedSourceId(context);
-        }
-    }
-
-    private String getDownloadSourceLabel(String sourceId) {
-        return OpenCodeDownloadSourceSettings.SOURCE_MIRROR.equals(OpenCodeDownloadSourceSettings.normalizeSourceId(sourceId))
-            ? context.getString(R.string.download_source_label_mirror)
-            : context.getString(R.string.download_source_label_official);
-    }
-
     private String readLogTail(int charLimit) {
         File logFile = getManifestLogFile();
         if (!logFile.isFile()) {
@@ -1357,14 +1272,11 @@ public final class OpenHouseInstallController {
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh", "设置启动方式", "正在配置默认进入 Ubuntu。"),
         INSTALL_NODE("install_node", "install-node.sh", "安装 Node.js 24 LTS", "正在安装或检查 Node.js 24 LTS，后续 AI 工具会复用这一套 Node 运行时。"),
         RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装 SmallPhone 运行栈", "正在从 APK 内置 payload 安装 service-manager、cc-connect 和 SmallPhone。"),
-        INSTALL_HERMES("install_hermes", "install-hermes.sh", "安装 AI 伙伴：Hermes", "正在从 APK 内置 payload 安装 Hermes Agent / Hermes WebUI，并注册到 service-manager。"),
         SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh", "同步 OpenHouseAI 注册表", "正在把 Ubuntu mirror 同步到 Termux canonical，供 App、SmallPhone 和 AI 读取。"),
         START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动 SmallPhone", "正在启动 SmallPhone 入口和运行组件。"),
-        INSTALL_OPENCODE("install_opencode", "install-opencode.sh", "安装 AI 工具：OpenCode", "正在安装 OpenCode，预计耗时较长，请保持网络连接。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),
-        INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh", "安装 AI 工具：ClaudeCodeUI", "正在安装 ClaudeCodeUI / CloudCLI，并固定端口 23083。"),
-        INSTALL_REASONIX("install_reasonix", "install-reasonix.sh", "安装 AI 工具：Reasonix", "正在安装 Reasonix。");
+        INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh", "安装 AI 工具：ClaudeCodeUI", "正在安装 ClaudeCodeUI / CloudCLI，并固定端口 23083。");
 
         final String slug;
         final String assetName;
@@ -1388,31 +1300,4 @@ public final class OpenHouseInstallController {
         }
     }
 
-    private static final class OpenCodeInstallSpec {
-        final String primaryLabel;
-        final String primaryUrl;
-        final String secondaryLabel;
-        final String secondaryUrl;
-        final boolean allowFallback;
-
-        OpenCodeInstallSpec(String primaryLabel, String primaryUrl,
-                            String secondaryLabel, String secondaryUrl,
-                            boolean allowFallback) {
-            this.primaryLabel = primaryLabel;
-            this.primaryUrl = primaryUrl;
-            this.secondaryLabel = secondaryLabel;
-            this.secondaryUrl = secondaryUrl;
-            this.allowFallback = allowFallback;
-        }
-
-        static OpenCodeInstallSpec defaultSpec(Context context) {
-            return new OpenCodeInstallSpec(
-                context.getString(R.string.download_source_label_official),
-                OpenCodeDownloadSourceSettings.OFFICIAL_INSTALL_URL,
-                context.getString(R.string.download_source_label_mirror),
-                OpenCodeDownloadSourceSettings.MIRROR_INSTALL_URL,
-                false
-            );
-        }
-    }
 }

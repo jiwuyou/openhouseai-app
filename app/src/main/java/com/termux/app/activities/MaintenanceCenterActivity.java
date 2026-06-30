@@ -36,14 +36,9 @@ import androidx.core.widget.NestedScrollView;
 
 import com.termux.R;
 import com.termux.app.ClaudeCodeUiSettings;
-import com.termux.app.OpenCodeCdpBridge;
-import com.termux.app.OpenCodeDownloadSourceSettings;
-import com.termux.app.OpenCodeSettings;
 import com.termux.app.TermuxActivity;
-import com.termux.app.openhouse.OpenHouseDeepSeekController;
 import com.termux.app.openhouse.OpenHouseBundledRuntimeSync;
 import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
-import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
 import com.termux.app.openhouse.release.OpenHouseReleaseDownloader;
 import com.termux.app.openhouse.release.OpenHouseReleaseException;
@@ -118,7 +113,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final String OFFICIAL_DOCS_ASSET_DIR = "openhouse/docs-public";
     private static final String BUNDLED_MAINTENANCE_PLUGIN_ASSET = "openhouse/plugins/original/openhouse-manifest.json";
     private static final String PREFS_MAINTENANCE = "maintenance_center";
+    private static final String PREFS_ONBOARDING = "openhouse_onboarding";
     private static final String PREF_DISABLE_BATTERY_REQUIREMENT = "disable_battery_requirement";
+    private static final String PREF_ONBOARDING_STEP = "step";
+    private static final String PREF_ONBOARDING_CURRENT_STEP = "current_step";
+    private static final String PREF_ONBOARDING_GUIDE_DISMISSED = "guide_dismissed";
     private static final String PREF_MAINTENANCE_PLUGIN_MODE = "maintenance_plugin_mode";
     private static final String PREF_MAINTENANCE_SOURCE_URL = "maintenance_source_url";
     private static final String PREF_USER_PLUGIN_PATH = "maintenance_user_plugin_path";
@@ -126,7 +125,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final String PREF_USE_REMOTE_BOOTSTRAP = "maintenance_use_remote_bootstrap";
     private static final String DEFAULT_MAINTENANCE_MANIFEST_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/openhouseai-manifest.json";
     private static final String DEFAULT_BOOTSTRAP_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh";
-    private static final String DEEPSEEK_API_KEYS_URL = "https://platform.deepseek.com/api_keys";
     private static final String SERVICE_MANAGER_BASE_URL = "http://127.0.0.1:20087";
     private static final String DEFAULT_USER_PLUGIN_PATH = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openhouseai/plugins/user/openhouseai-manifest.json";
     private static final int DEFAULT_LOCAL_MAINTENANCE_WEB_PORT = 38423;
@@ -134,7 +132,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final int MAX_LOCAL_MAINTENANCE_WEB_PORT = 65535;
     private static final int MANIFEST_CONNECT_TIMEOUT_MS = 5000;
     private static final int MANIFEST_READ_TIMEOUT_MS = 9000;
-    private static final String PROBE_OPENCODE_SOURCE_SLUG = "probe_opencode_source";
     private static final int SOURCE_PROBE_CONNECT_TIMEOUT_MS = 3000;
     private static final int SOURCE_PROBE_READ_TIMEOUT_MS = 8000;
     private static final StageAction[] ONE_CLICK_STAGE_SEQUENCE = new StageAction[] {
@@ -145,14 +142,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageAction.UBUNTU_PACKAGES,
         StageAction.CONFIGURE_ENTRY_UBUNTU,
         StageAction.INSTALL_NODE,
-        StageAction.INSTALL_OPENCODE,
         StageAction.INSTALL_CODEX,
         StageAction.INSTALL_CLAUDE_CODE,
         StageAction.INSTALL_CLAUDE_CODE_UI,
-        StageAction.INSTALL_REASONIX,
         StageAction.RUNTIME_COMPONENTS,
-        StageAction.INSTALL_HERMES,
-        StageAction.SYNC_OPENHOUSE_REGISTRY
+        StageAction.SYNC_OPENHOUSE_REGISTRY,
+        StageAction.START_SMALLPHONE
     };
 
     private TextView statusHeadlineView;
@@ -162,7 +157,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private TextView helpBodyView;
     private TextView terminalStatusView;
     private TextView permissionRequirementHintView;
-    private TextView downloadSourceSummaryView;
     private TextView maintenanceSourceSummaryView;
     private TextView localMaintenanceWebSummaryView;
     private TextView releaseUpdateServerSummaryView;
@@ -179,9 +173,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private SwitchCompat permissionStorageButton;
     private Button permissionStartupButton;
     private Button returnHomeButton;
-    private Button configureDefaultPortButton;
-    private Button configureDownloadSourceButton;
-    private Button probeDownloadSourceButton;
     private Button configureMaintenanceSourceButton;
     private Button refreshMaintenanceSourceButton;
     private Button configureReleaseServerButton;
@@ -191,20 +182,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private Button stageManualModeButton;
     private Button stageOneClickModeButton;
     private Button startOneClickStagesButton;
-    private Button deepSeekKeyGuideButton;
-    private Button deepSeekKeyConfigButton;
-    private Button startButton;
-    private Button restartButton;
-    private Button customPortButton;
     private Button openMaintenanceWebButton;
     private Button stopMaintenanceWebButton;
     private Button configureMaintenanceWebPortButton;
     private Button viewFullLogButton;
-    private Button openBrowserButton;
     private TextView oneClickStageSummaryView;
     private TextView oneClickPrepareItemView;
     private TextView oneClickUbuntuPackagesItemView;
-    private TextView oneClickOpenCodeItemView;
     private TextView oneClickCodexItemView;
     private TextView oneClickClaudeCodeItemView;
     private TextView oneClickSkillItemView;
@@ -226,7 +210,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean commandInFlight;
     private boolean maintenanceSessionInitPosted;
     private String terminalFailureMessage;
-    private Boolean opencodeReachable;
     private boolean stageStatusCheckInFlight;
     private boolean stageStatusCheckQueued;
     private boolean oneClickStageMode;
@@ -242,6 +225,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean sharedInstallRunning;
     private boolean sharedInstallStarted;
     private boolean sharedInstallCompleted;
+    private boolean sharedInstallAutoStartRequested;
+    private boolean sharedInstallCompletionReturnedToOnboarding;
     private boolean releaseUpdateInFlight;
     private boolean serviceControlFocusPending;
     private String serviceControlComponentId;
@@ -324,7 +309,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         helpBodyView = findViewById(R.id.helpBody);
         terminalStatusView = findViewById(R.id.embeddedTerminalStatus);
         permissionRequirementHintView = findViewById(R.id.permissionRequirementHint);
-        downloadSourceSummaryView = findViewById(R.id.downloadSourceSummary);
         maintenanceSourceSummaryView = findViewById(R.id.maintenanceSourceSummary);
         localMaintenanceWebSummaryView = findViewById(R.id.localMaintenanceWebSummary);
         releaseUpdateServerSummaryView = findViewById(R.id.releaseUpdateServerSummary);
@@ -340,9 +324,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         permissionStorageButton = findViewById(R.id.buttonPermissionStorage);
         permissionStartupButton = findViewById(R.id.buttonPermissionStartup);
         disableBatteryRequirementSwitch = findViewById(R.id.switchDisableBatteryRequirement);
-        configureDefaultPortButton = findViewById(R.id.buttonConfigureDefaultPort);
-        configureDownloadSourceButton = findViewById(R.id.buttonConfigureDownloadSource);
-        probeDownloadSourceButton = findViewById(R.id.buttonProbeDownloadSource);
         configureMaintenanceSourceButton = findViewById(R.id.buttonConfigureMaintenanceSource);
         refreshMaintenanceSourceButton = findViewById(R.id.buttonRefreshMaintenanceSource);
         configureReleaseServerButton = findViewById(R.id.buttonConfigureReleaseServer);
@@ -352,20 +333,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         stageManualModeButton = findViewById(R.id.buttonStageManualMode);
         stageOneClickModeButton = findViewById(R.id.buttonStageOneClickMode);
         startOneClickStagesButton = findViewById(R.id.buttonStartOneClickStages);
-        deepSeekKeyGuideButton = findViewById(R.id.buttonDeepSeekKeyGuide);
-        deepSeekKeyConfigButton = findViewById(R.id.buttonDeepSeekKeyConfig);
-        startButton = findViewById(R.id.buttonStart);
-        restartButton = findViewById(R.id.buttonRestart);
-        customPortButton = findViewById(R.id.buttonStartCustomPort);
         openMaintenanceWebButton = findViewById(R.id.buttonOpenMaintenanceWeb);
         stopMaintenanceWebButton = findViewById(R.id.buttonStopMaintenanceWeb);
         configureMaintenanceWebPortButton = findViewById(R.id.buttonConfigureMaintenanceWebPort);
         viewFullLogButton = findViewById(R.id.buttonViewFullLog);
-        openBrowserButton = findViewById(R.id.buttonOpenBrowser);
         oneClickStageSummaryView = findViewById(R.id.oneClickStageSummary);
         oneClickPrepareItemView = findViewById(R.id.oneClickPrepareItem);
         oneClickUbuntuPackagesItemView = findViewById(R.id.oneClickUbuntuPackagesItem);
-        oneClickOpenCodeItemView = findViewById(R.id.oneClickOpenCodeItem);
         oneClickCodexItemView = findViewById(R.id.oneClickCodexItem);
         oneClickClaudeCodeItemView = findViewById(R.id.oneClickClaudeCodeItem);
         oneClickSkillItemView = findViewById(R.id.oneClickSkillItem);
@@ -394,15 +368,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         bindReleaseUpdateButtons();
         bindStageButtons();
         initializeStagePresentations();
-        configureDefaultPortButton.setVisibility(View.GONE);
-        configureDownloadSourceButton.setOnClickListener(v -> showDownloadSourceModeDialog());
-        probeDownloadSourceButton.setOnClickListener(v -> runOpenCodeSourceProbe(false));
         configureMaintenanceSourceButton.setOnClickListener(v -> showMaintenanceSourceDialog());
         refreshMaintenanceSourceButton.setOnClickListener(v -> refreshMaintenanceManifest(true));
-        findViewById(R.id.buttonCopyOpenCodeUrl).setOnClickListener(v ->
-            copyToClipboard(getString(R.string.button_copy_opencode_url), getOpenCodeUrl()));
-        findViewById(R.id.buttonCopyDeepSeekKeyUrl).setOnClickListener(v ->
-            copyToClipboard(getString(R.string.button_copy_deepseek_key_url), DEEPSEEK_API_KEYS_URL));
         viewFullLogButton.setOnClickListener(v -> openFullLog());
         updateLogButtonState();
         updateReleaseUpdateCard();
@@ -458,19 +425,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         bindStageButton(StageAction.UBUNTU_PACKAGES, R.id.buttonUbuntuPackages);
         bindStageButton(StageAction.CONFIGURE_ENTRY_UBUNTU, R.id.buttonConfigureEntryUbuntu);
         bindStageButton(StageAction.INSTALL_NODE, R.id.buttonInstallNode);
-        bindStageButton(StageAction.INSTALL_OPENCODE, R.id.buttonInstallOpenCode);
         bindStageButton(StageAction.INSTALL_CODEX, R.id.buttonInstallCodex);
         bindStageButton(StageAction.INSTALL_CLAUDE_CODE, R.id.buttonInstallClaudeCode);
         bindStageButton(StageAction.INSTALL_CLAUDE_CODE_UI, R.id.buttonInstallClaudeCodeUi);
-        bindStageButton(StageAction.INSTALL_REASONIX, R.id.buttonInstallReasonix);
-        bindStageButton(StageAction.START, R.id.buttonStart);
-        bindStageButton(StageAction.RESTART, R.id.buttonRestart);
-        bindStageButton(StageAction.REQUEST_DEEPSEEK_KEY, R.id.buttonDeepSeekKeyGuide);
-        stageButtons.put(StageAction.CONFIGURE_DEEPSEEK, deepSeekKeyConfigButton);
-        deepSeekKeyConfigButton.setOnClickListener(v -> showDeepSeekKeyConfigDialog());
+        bindStageButton(StageAction.START_SMALLPHONE, R.id.buttonStartSmallPhone);
         bindStageButton(StageAction.RESTART_ENTRY_TERMINAL, R.id.buttonRestartEntryTerminal);
-        customPortButton.setOnClickListener(v -> showCustomPortDialog());
-        openBrowserButton.setOnClickListener(v -> openBrowser());
         openMaintenanceWebButton.setOnClickListener(v -> startLocalMaintenanceWeb());
         stopMaintenanceWebButton.setOnClickListener(v -> stopLocalMaintenanceWeb());
         configureMaintenanceWebPortButton.setOnClickListener(v -> showLocalMaintenanceWebPortDialog());
@@ -2018,7 +1977,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             sharedInstallCompleted = false;
             setSharedInstallText(
                 "详细进度：等待主界面安装状态",
-                "从主界面启动安装后，这里会显示同一个安装过程。"
+                "后台权限处理完成后，点击开始安装即可。首次安装会准备 Ubuntu、Node、Codex、Claude Code、CloudCLI 和 SmallPhone 运行栈；不需要现在填写模型或 API Key。"
             );
             refreshSharedInstallLogTail(false);
             mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
@@ -2033,7 +1992,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         String phaseLabel = readStringInstallState(state, "phaseLabel");
         String detailText = readStringInstallState(state, "detailText");
         String currentStage = readStringInstallState(state, "currentStageSlug");
-        boolean openCodeInstallPhase = isOpenCodeInstallPhase(currentStage, phaseLabel);
+        boolean coreAiInstallPhase = isCoreAiInstallPhase(currentStage, phaseLabel);
 
         sharedInstallRunning = running;
         sharedInstallCompleted = completed;
@@ -2056,10 +2015,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         if (!isBlank(phaseLabel)) {
             progress.append(" · ").append(phaseLabel.trim());
         }
-        if (openCodeInstallPhase) {
-            progress.append(" · ").append(getString(R.string.openhouse_install_phase_opencode_hint));
+        if (coreAiInstallPhase) {
+            progress.append(" · 核心 AI 工具");
         } else if (running || (!completed && !failed)) {
-            progress.append(" · ").append(getString(R.string.openhouse_install_phase_total_hint));
+            progress.append(" · 首次安装会下载 Ubuntu、Node、Codex、Claude Code、CloudCLI 和运行栈");
         }
 
         StringBuilder detail = new StringBuilder();
@@ -2068,13 +2027,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         } else if (running) {
             detail.append("主界面安装正在运行，本页只观察同一个安装过程。");
         } else if (completed) {
-            detail.append("安装已完成。可留在本页查看日志，或返回终端主界面。");
+            detail.append("安装已完成。service-manager 会作为安装完成后的控制平面管理后台服务；可返回主界面打开 SmallPhone、CloudCLI、Codex、Claude Code 或 AI朋友 Help。");
         } else if (failed) {
             detail.append("安装失败。请查看下方共享日志或维护终端输出。");
         } else {
-            detail.append("从主界面启动安装后，这里会显示同一个安装过程。");
+            detail.append("后台权限处理完成后，点击开始安装即可；安装期间只需要等待。");
         }
-        appendSharedInstallEstimate(detail, openCodeInstallPhase, running, completed, failed);
+        appendSharedInstallEstimate(detail, coreAiInstallPhase, running, completed, failed);
         if (!isBlank(currentStage)) {
             detail.append('\n').append("阶段：").append(currentStage.trim());
         }
@@ -2082,6 +2041,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         setSharedInstallText(progress.toString(), detail.toString());
         refreshSharedInstallLogTail(running || completed || failed);
         updateExecutionModeViews();
+        maybeReturnToOnboardingAfterSharedInstallCompleted(completed);
+        maybeAutoStartSharedInstallFromOnboarding();
         if (running) {
             scheduleSharedInstallProgressRefresh();
         } else {
@@ -2089,11 +2050,86 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
     }
 
+    private void maybeReturnToOnboardingAfterSharedInstallCompleted(boolean completed) {
+        if (!completed
+            || sharedInstallCompletionReturnedToOnboarding
+            || !shouldReturnToOnboarding()
+            || isFinishing()
+            || isDestroyed()) {
+            return;
+        }
+
+        sharedInstallCompletionReturnedToOnboarding = true;
+        markOnboardingReadyToUse();
+        Toast.makeText(this, "安装已完成，正在返回使用说明。", Toast.LENGTH_SHORT).show();
+        mainHandler.postDelayed(this::returnToHome, 350L);
+    }
+
+    private void markOnboardingReadyToUse() {
+        getSharedPreferences(PREFS_ONBOARDING, MODE_PRIVATE)
+            .edit()
+            .putString(PREF_ONBOARDING_STEP, "LAUNCH_CONFIG")
+            .putInt(PREF_ONBOARDING_CURRENT_STEP, 4)
+            .putBoolean(PREF_ONBOARDING_GUIDE_DISMISSED, false)
+            .apply();
+    }
+
+    private void maybeAutoStartSharedInstallFromOnboarding() {
+        if (sharedInstallAutoStartRequested
+            || sharedInstallController == null
+            || sharedInstallStarted
+            || sharedInstallRunning
+            || sharedInstallCompleted
+            || commandInFlight
+            || oneClickStagesInFlight
+            || oneClickRemoteProbeInFlight
+            || !isOnboardingWaitingForInstall()) {
+            return;
+        }
+
+        sharedInstallAutoStartRequested = true;
+        setSharedInstallText(
+            "详细进度：正在启动安装任务",
+            "安装引导已进入等待安装阶段，正在启动同一个一键初始化任务。首次安装不需要填写模型或 API Key。"
+        );
+        refreshSharedInstallLogTail(true);
+
+        backgroundExecutor.execute(() -> {
+            boolean started = false;
+            try {
+                Method method = findMethod(sharedInstallController.getClass(), "startOneClickInstall");
+                if (method == null) {
+                    throw new NoSuchMethodException("OpenHouseInstallController.startOneClickInstall()");
+                }
+                Object value = method.invoke(sharedInstallController);
+                started = value instanceof Boolean && (Boolean) value;
+            } catch (Throwable throwable) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to auto-start shared install from onboarding state", throwable);
+            }
+
+            boolean finalStarted = started;
+            runOnUiThread(() -> {
+                if (!finalStarted) {
+                    Toast.makeText(this, "安装控制器已检查状态，请查看详细进度。", Toast.LENGTH_SHORT).show();
+                }
+                refreshSharedInstallState();
+                updateExecutionModeViews();
+            });
+        });
+    }
+
+    private boolean isOnboardingWaitingForInstall() {
+        SharedPreferences preferences = getSharedPreferences(PREFS_ONBOARDING, MODE_PRIVATE);
+        String step = preferences.getString(PREF_ONBOARDING_STEP, "");
+        int currentStep = preferences.getInt(PREF_ONBOARDING_CURRENT_STEP, 0);
+        return "WAITING_INSTALL".equals(step) || currentStep == 3;
+    }
+
     private void showSharedInstallControllerUnavailable() {
         sharedInstallRunning = false;
         setSharedInstallText(
             "详细进度：等待主界面安装状态",
-            "共享安装控制器尚未接入；接入后这里会显示主界面启动的同一个安装过程。"
+            "共享安装控制器尚未接入；接入后这里会显示主界面启动的同一个安装过程。首次安装不要求模型或 API Key。"
         );
         if (sharedInstallLogView != null) {
             sharedInstallLogView.setText("暂无共享安装日志。");
@@ -2246,31 +2282,36 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         return value == null || value.trim().isEmpty();
     }
 
-    private boolean isOpenCodeInstallPhase(String currentStage, String phaseLabel) {
-        return "install_opencode".equals(currentStage)
-            || (phaseLabel != null && (phaseLabel.contains("OpenCode") || phaseLabel.contains("opencode")));
+    private boolean isCoreAiInstallPhase(String currentStage, String phaseLabel) {
+        return "install_codex".equals(currentStage)
+            || "install_claude_code".equals(currentStage)
+            || "install_claude_code_ui".equals(currentStage)
+            || (phaseLabel != null && (
+                phaseLabel.contains("Codex")
+                    || phaseLabel.contains("Claude")
+                    || phaseLabel.contains("CloudCLI")
+                    || phaseLabel.contains("ClaudeCodeUI")
+            ));
     }
 
-    private void appendSharedInstallEstimate(StringBuilder detail, boolean openCodeInstallPhase,
+    private void appendSharedInstallEstimate(StringBuilder detail, boolean coreAiInstallPhase,
                                              boolean running, boolean completed, boolean failed) {
         if (detail == null) {
             return;
         }
         String existingDetail = detail.toString();
-        if (existingDetail.contains("当前是 OpenCode 安装阶段")
-            || (existingDetail.contains("全程预计约30分钟") && !openCodeInstallPhase)) {
+        if (existingDetail.contains("当前是核心 AI 工具安装阶段")
+            || existingDetail.contains("安装完成后由 service-manager 管理后台服务")) {
             return;
         }
 
         String estimate = null;
-        if (openCodeInstallPhase) {
-            estimate = getString(R.string.openhouse_install_estimate_opencode);
+        if (coreAiInstallPhase) {
+            estimate = "当前是核心 AI 工具安装阶段，会安装 Codex、Claude Code 或 CloudCLI。";
         } else if (running) {
-            estimate = getString(R.string.openhouse_install_estimate_total)
-                + " "
-                + getString(R.string.openhouse_install_estimate_tail);
+            estimate = "安装阶段只需要等待，不需要填写模型或 API Key；安装完成后由 service-manager 管理后台服务。";
         } else if (!completed && !failed) {
-            estimate = getString(R.string.openhouse_install_estimate_total);
+            estimate = "权限处理后点击开始安装，随后等待核心环境安装完成。";
         }
 
         if (estimate == null) {
@@ -2363,52 +2404,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 updateOneClickStageActionItem(row, displayNumber++, stageAction, nextStageAction);
                 oneClickStageItemsContainer.addView(row);
 
-                if (stageAction == StageAction.INSTALL_REASONIX) {
-                    TextView deepSeekGuideRow = createOneClickStageItemView(false);
-                    updateOneClickClickableStageItem(
-                        deepSeekGuideRow,
-                        displayNumber++,
-                        StageAction.REQUEST_DEEPSEEK_KEY,
-                        v -> showDeepSeekKeyGuideDialog()
-                    );
-                    oneClickStageItemsContainer.addView(deepSeekGuideRow);
-
-                    TextView deepSeekConfigRow = createOneClickStageItemView(false);
-                    updateOneClickClickableStageItem(
-                        deepSeekConfigRow,
-                        displayNumber++,
-                        StageAction.CONFIGURE_DEEPSEEK,
-                        v -> showDeepSeekKeyConfigDialog()
-                    );
-                    oneClickStageItemsContainer.addView(deepSeekConfigRow);
-
-                    TextView restartEntryRow = createOneClickStageItemView(false);
-                    updateOneClickClickableStageItem(
-                        restartEntryRow,
-                        displayNumber++,
-                        StageAction.RESTART_ENTRY_TERMINAL,
-                        v -> showRestartEntryTerminalDialog()
-                    );
-                    oneClickStageItemsContainer.addView(restartEntryRow);
-                }
             }
-            TextView startOpenCodeRow = createOneClickStageItemView(false);
-            updateOneClickClickableStageItem(
-                startOpenCodeRow,
-                displayNumber++,
-                StageAction.START,
-                v -> runStage(StageAction.START)
-            );
-            oneClickStageItemsContainer.addView(startOpenCodeRow);
-
-            TextView restartOpenCodeRow = createOneClickStageItemView(false);
-            updateOneClickClickableStageItem(
-                restartOpenCodeRow,
-                displayNumber++,
-                StageAction.RESTART,
-                v -> runStage(StageAction.RESTART)
-            );
-            oneClickStageItemsContainer.addView(restartOpenCodeRow);
             return;
         }
 
@@ -2418,7 +2414,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         TextView[] itemViews = new TextView[] {
             oneClickPrepareItemView,
             oneClickUbuntuPackagesItemView,
-            oneClickOpenCodeItemView,
             oneClickCodexItemView,
             oneClickClaudeCodeItemView,
             oneClickSkillItemView,
@@ -2456,7 +2451,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         TextView[] legacyViews = new TextView[] {
             oneClickPrepareItemView,
             oneClickUbuntuPackagesItemView,
-            oneClickOpenCodeItemView,
             oneClickCodexItemView,
             oneClickClaudeCodeItemView,
             oneClickSkillItemView,
@@ -2581,7 +2575,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         List<StageAction> sequence = new ArrayList<>();
         for (StageFlowGroup group : getStageFlowGroups()) {
             for (StageAction stageAction : group.stageActions) {
-                if (!sequence.contains(stageAction)) {
+                if (isCoreOneClickStage(stageAction) && !sequence.contains(stageAction)) {
                     sequence.add(stageAction);
                 }
             }
@@ -2590,11 +2584,34 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             sequence.addAll(Arrays.asList(ONE_CLICK_STAGE_SEQUENCE));
         }
         ensureStageAfter(sequence, StageAction.INSTALL_NODE, StageAction.CONFIGURE_ENTRY_UBUNTU);
+        ensureStageAfter(sequence, StageAction.INSTALL_CODEX, StageAction.INSTALL_NODE);
+        ensureStageAfter(sequence, StageAction.INSTALL_CLAUDE_CODE, StageAction.INSTALL_NODE);
         ensureStageAfter(sequence, StageAction.INSTALL_CLAUDE_CODE_UI, StageAction.INSTALL_CLAUDE_CODE);
-        ensureStageAfter(sequence, StageAction.RUNTIME_COMPONENTS, StageAction.INSTALL_REASONIX);
-        ensureStageAfter(sequence, StageAction.INSTALL_HERMES, StageAction.RUNTIME_COMPONENTS);
-        ensureStageAfter(sequence, StageAction.SYNC_OPENHOUSE_REGISTRY, StageAction.INSTALL_HERMES);
+        ensureStageAfter(sequence, StageAction.RUNTIME_COMPONENTS, StageAction.INSTALL_CLAUDE_CODE_UI);
+        ensureStageAfter(sequence, StageAction.SYNC_OPENHOUSE_REGISTRY, StageAction.RUNTIME_COMPONENTS);
+        ensureStageAfter(sequence, StageAction.START_SMALLPHONE, StageAction.SYNC_OPENHOUSE_REGISTRY);
         return sequence;
+    }
+
+    private boolean isCoreOneClickStage(StageAction stageAction) {
+        switch (stageAction) {
+            case PREPARE:
+            case TERMUX_PACKAGES:
+            case INSTALL_UBUNTU:
+            case SYNC_OFFICIAL_DOCS:
+            case UBUNTU_PACKAGES:
+            case CONFIGURE_ENTRY_UBUNTU:
+            case INSTALL_NODE:
+            case INSTALL_CODEX:
+            case INSTALL_CLAUDE_CODE:
+            case INSTALL_CLAUDE_CODE_UI:
+            case RUNTIME_COMPONENTS:
+            case SYNC_OPENHOUSE_REGISTRY:
+            case START_SMALLPHONE:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void ensureStageAfter(List<StageAction> sequence, StageAction stageAction, StageAction dependency) {
@@ -2644,20 +2661,18 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             getString(R.string.one_click_auto_agents_title),
             getString(R.string.one_click_auto_agents_detail),
             new StageAction[] {
-                StageAction.INSTALL_OPENCODE,
                 StageAction.INSTALL_CODEX,
                 StageAction.INSTALL_CLAUDE_CODE,
-                StageAction.INSTALL_CLAUDE_CODE_UI,
-                StageAction.INSTALL_REASONIX
+                StageAction.INSTALL_CLAUDE_CODE_UI
             }
         ));
         groups.add(new StageFlowGroup(
-            "安装 SmallPhone 运行组件",
-            "安装运行栈、Hermes，并同步 OpenHouseAI registry。",
+            getString(R.string.one_click_auto_runtime_title),
+            getString(R.string.one_click_auto_runtime_detail),
             new StageAction[] {
                 StageAction.RUNTIME_COMPONENTS,
-                StageAction.INSTALL_HERMES,
-                StageAction.SYNC_OPENHOUSE_REGISTRY
+                StageAction.SYNC_OPENHOUSE_REGISTRY,
+                StageAction.START_SMALLPHONE
             }
         ));
         return groups;
@@ -2855,33 +2870,22 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 return getString(R.string.button_configure_entry_ubuntu);
             case INSTALL_NODE:
                 return getString(R.string.button_install_node);
-            case INSTALL_OPENCODE:
-                return getString(R.string.button_install_opencode);
             case INSTALL_CODEX:
                 return getString(R.string.button_install_codex);
             case INSTALL_CLAUDE_CODE:
                 return getString(R.string.button_install_claude_code);
             case INSTALL_CLAUDE_CODE_UI:
                 return getString(R.string.button_install_claude_code_ui);
-            case INSTALL_REASONIX:
-                return getString(R.string.button_install_reasonix);
             case RUNTIME_COMPONENTS:
                 return "安装运行组件";
-            case INSTALL_HERMES:
-                return "安装 Hermes";
             case SYNC_OPENHOUSE_REGISTRY:
                 return "同步 OpenHouseAI registry";
-            case REQUEST_DEEPSEEK_KEY:
-                return getString(R.string.button_deepseek_key_guide);
-            case CONFIGURE_DEEPSEEK:
-                return getString(R.string.button_configure_deepseek_key);
+            case START_SMALLPHONE:
+                return getString(R.string.button_start_smallphone);
             case RESTART_ENTRY_TERMINAL:
                 return getString(R.string.button_restart_entry_terminal);
-            case RESTART:
-                return getString(R.string.button_restart);
-            case START:
             default:
-                return getString(R.string.button_start);
+                return getString(R.string.button_start_smallphone);
         }
     }
 
@@ -3007,11 +3011,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             return;
         }
 
-        if (stageAction == StageAction.REQUEST_DEEPSEEK_KEY) {
-            showDeepSeekKeyGuideDialog();
-            return;
-        }
-
         if (stageAction == StageAction.RESTART_ENTRY_TERMINAL) {
             showRestartEntryTerminalDialog();
             return;
@@ -3032,12 +3031,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             pendingStageAction = stageAction;
             currentStageView.setText("刷新状态后执行：" + stageAction.label(this));
             requestStageStatusRefresh();
-            return;
-        }
-
-        boolean usesRemoteManifestStage = activeManifest != null && activeManifest.stages.containsKey(stageAction.slug);
-        if (!usesRemoteManifestStage && stageAction == StageAction.INSTALL_OPENCODE && shouldProbeOpenCodeSourceBeforeInstall()) {
-            runOpenCodeSourceProbe(true);
             return;
         }
 
@@ -3084,12 +3077,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             ? activeManifest.stages.get(stageAction.slug)
             : null;
         if (manifestStage != null) {
-            OpenCodeInstallSpec installSpec = stageAction == StageAction.INSTALL_OPENCODE
-                ? resolveOpenCodeInstallSpec()
-                : OpenCodeInstallSpec.defaultSpec(this);
             String fallbackScriptBody = oneClickStagesInFlight
                 ? null
-                : buildAssetScriptBody(stageAction, stageAction.assetName, getDefaultOpenCodePort(), installSpec);
+                : buildAssetScriptBody(stageAction, stageAction.assetName);
             return buildRemoteBootstrapExecutionCommand(
                 manifestStage.title,
                 stageAction.slug,
@@ -3098,10 +3088,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             );
         }
 
-        OpenCodeInstallSpec installSpec = stageAction == StageAction.INSTALL_OPENCODE
-            ? resolveOpenCodeInstallSpec()
-            : OpenCodeInstallSpec.defaultSpec(this);
-        return buildAssetExecutionCommand(stageAction, stageAction.label(this), stageAction.slug, stageAction.assetName, getDefaultOpenCodePort(), installSpec);
+        return buildAssetExecutionCommand(stageAction, stageAction.label(this), stageAction.slug, stageAction.assetName);
     }
 
     private boolean shouldUseRemoteStage(StageAction stageAction) {
@@ -3396,10 +3383,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         scriptBody.append("  chmod +x \"$HOME/openhouseai-bootstrap.sh\"\n");
         scriptBody.append("  log \"正在执行远程维护动作：").append(action.toDisplayString()).append("\"\n");
         StageAction bootstrapStageAction = StageAction.fromSlug(stageSlug);
-        OpenCodeInstallSpec remoteOpenCodeInstallSpec = resolveOpenCodeInstallSpec();
-        scriptBody.append("  run_logged env OPENHOUSEAI_PORT=").append(shellQuote(Integer.toString(getDefaultOpenCodePort())))
-            .append(" OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())))
-            .append(" OPENCODE_INSTALL_URL=").append(shellQuote(remoteOpenCodeInstallSpec.primaryUrl));
+        scriptBody.append("  run_logged env OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())));
         if (bootstrapStageAction != null && bootstrapStageAction.requiredComponentTargets != null) {
             scriptBody.append(" OPENHOUSEAI_REQUIRED_COMPONENT_TARGETS=")
                 .append(shellQuote(bootstrapStageAction.requiredComponentTargets));
@@ -3455,9 +3439,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         scriptBody.append("if [ ! -f \"$bootstrap\" ]; then log '未找到 APK 内置 SmallPhoneAI bootstrap，请重新安装或修复应用。'; exit 1; fi\n");
         scriptBody.append("if [ -d \"$payload_dir\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"$payload_dir\" SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT=\"$payload_dir\"; fi\n");
         scriptBody.append("log \"正在执行 APK 内置维护动作：").append(action.toDisplayString()).append("\"\n");
-        scriptBody.append("run_logged env OPENHOUSEAI_PORT=").append(shellQuote(Integer.toString(getDefaultOpenCodePort())))
-            .append(" OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())))
-            .append(" OPENCODE_INSTALL_URL=").append(shellQuote(resolveOpenCodeInstallSpec().primaryUrl))
+        scriptBody.append("run_logged env OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())))
             .append(" SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle")
             .append(" SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE=0")
             .append(" SMALLPHONEAI_COMPONENTS_AUTO_CLONE=0");
@@ -3532,9 +3514,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             .show();
     }
 
-    private String buildAssetExecutionCommand(StageAction stageAction, String stageLabel, String stageSlug, String assetName, int port, OpenCodeInstallSpec installSpec) throws IOException {
+    private String buildAssetExecutionCommand(StageAction stageAction, String stageLabel, String stageSlug, String assetName) throws IOException {
         syncBundledRuntimeAssets();
-        String scriptBody = buildAssetScriptBody(stageAction, assetName, port, installSpec);
+        String scriptBody = buildAssetScriptBody(stageAction, assetName);
         String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody);
         String tempScriptPath = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs/run-" + stageSlug + ".sh";
 
@@ -3551,32 +3533,22 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         return builder.toString();
     }
 
-    private String buildAssetScriptBody(StageAction stageAction, String assetName, int port, OpenCodeInstallSpec installSpec) throws IOException {
+    private String buildAssetScriptBody(StageAction stageAction, String assetName) throws IOException {
         return loadAsset(assetName)
-            .replace("__PORT__", Integer.toString(port))
             .replace("__CLAUDE_CODE_UI_PORT__", Integer.toString(ClaudeCodeUiSettings.DEFAULT_PORT))
             .replace("__BOOTSTRAP_URL__", getBootstrapUrlForLocalMaintenance())
             .replace("__REQUIRED_COMPONENT_TARGETS__", stageAction.requiredComponentTargets == null ? "" : stageAction.requiredComponentTargets)
             .replace("__LOCAL_MAINTENANCE_WEB_PORT__", Integer.toString(getLocalMaintenanceWebPort()))
-            .replace("__DEEPSEEK_KEY_FILE__", OpenHouseStatusRepository.getDeepSeekKeyTempFile().getAbsolutePath())
-            .replace("__BUNDLED_OFFICIAL_DOCS__", buildBundledAssetWriteSnippet(OFFICIAL_DOCS_ASSET_DIR, "OFFICIAL_DOC_DIR"))
-            .replace("__OPENCODE_INSTALL_PRIMARY_URL__", installSpec.primaryUrl)
-            .replace("__OPENCODE_INSTALL_PRIMARY_LABEL__", installSpec.primaryLabel)
-            .replace("__OPENCODE_INSTALL_SECONDARY_URL__", installSpec.secondaryUrl)
-            .replace("__OPENCODE_INSTALL_SECONDARY_LABEL__", installSpec.secondaryLabel)
-            .replace("__OPENCODE_INSTALL_ALLOW_FALLBACK__", installSpec.allowFallback ? "1" : "0");
+            .replace("__BUNDLED_OFFICIAL_DOCS__", buildBundledAssetWriteSnippet(OFFICIAL_DOCS_ASSET_DIR, "OFFICIAL_DOC_DIR"));
     }
 
     private String buildFullInstallFallbackScript() throws IOException {
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("log '远程一键维护不可用，开始执行 APK 内置一键安装流程。'\n");
         for (StageAction stageAction : ONE_CLICK_STAGE_SEQUENCE) {
-            OpenCodeInstallSpec installSpec = stageAction == StageAction.INSTALL_OPENCODE
-                ? resolveOpenCodeInstallSpec()
-                : OpenCodeInstallSpec.defaultSpec(this);
             scriptBody.append("log ").append(shellQuote("内置阶段开始：" + stageAction.label(this))).append('\n');
             scriptBody.append("run_environment_probe\n");
-            scriptBody.append(buildAssetScriptBody(stageAction, stageAction.assetName, getDefaultOpenCodePort(), installSpec));
+            scriptBody.append(buildAssetScriptBody(stageAction, stageAction.assetName));
             if (scriptBody.charAt(scriptBody.length() - 1) != '\n') {
                 scriptBody.append('\n');
             }
@@ -3588,7 +3560,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private String buildPostRemoteOneClickScript() throws IOException {
         StringBuilder scriptBody = new StringBuilder();
-        scriptBody.append("log '远程一键安装完成。OpenCode 需要点击启动按钮后再启动。'\n");
+        scriptBody.append("log '远程一键安装完成。安装完成后由 service-manager 管理 SmallPhone、CloudCLI 和桥接服务。'\n");
         return scriptBody.toString();
     }
 
@@ -3597,210 +3569,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             return OpenHouseBundledRuntimeSync.sync(this);
         } catch (IOException e) {
             throw new IOException("APK 内置 bootstrap/scripts/payload 同步失败：" + e.getMessage(), e);
-        }
-    }
-
-    private void showDeepSeekKeyGuideDialog() {
-        new AlertDialog.Builder(this)
-            .setTitle(R.string.deepseek_key_guide_title)
-            .setMessage(R.string.deepseek_key_guide_message)
-            .setPositiveButton(R.string.deepseek_key_guide_open_button,
-                (dialog, which) -> openUrl(DEEPSEEK_API_KEYS_URL, "DeepSeek API Keys"))
-            .setNegativeButton(android.R.string.ok, null)
-            .show();
-    }
-
-    private void showDeepSeekKeyConfigDialog() {
-        if (isMaintenanceActionBlocked()) {
-            showMaintenanceActionBlockedToast();
-            return;
-        }
-
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL);
-        input.setHint(getString(R.string.deepseek_key_config_hint));
-
-        new AlertDialog.Builder(this)
-            .setTitle(R.string.deepseek_key_config_title)
-            .setMessage(R.string.deepseek_key_config_message)
-            .setView(input)
-            .setNeutralButton(R.string.deepseek_key_guide_open_button,
-                (dialog, which) -> openUrl(DEEPSEEK_API_KEYS_URL, "DeepSeek API Keys"))
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.deepseek_key_config_save_button, (dialog, which) -> {
-                String apiKey = input.getText() == null ? "" : input.getText().toString().trim();
-                if (apiKey.isEmpty()) {
-                    Toast.makeText(this, R.string.deepseek_key_config_empty, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                runDeepSeekKeyConfig(apiKey);
-            })
-            .show();
-    }
-
-    private void runDeepSeekKeyConfig(String apiKey) {
-        if (isMaintenanceActionBlocked()) {
-            showMaintenanceActionBlockedToast();
-            return;
-        }
-
-        try {
-            OpenHouseDeepSeekController.SaveResult saveResult =
-                OpenHouseDeepSeekController.getInstance(this).prepareKeyForTerminalConfiguration(apiKey);
-            if (!saveResult.isSuccess()) {
-                Toast.makeText(this, saveResult.message, Toast.LENGTH_SHORT).show();
-                refreshStatus();
-                return;
-            }
-            String command = buildAssetExecutionCommand(
-                StageAction.CONFIGURE_DEEPSEEK,
-                StageAction.CONFIGURE_DEEPSEEK.label(this),
-                StageAction.CONFIGURE_DEEPSEEK.slug,
-                StageAction.CONFIGURE_DEEPSEEK.assetName,
-                getDefaultOpenCodePort(),
-                OpenCodeInstallSpec.defaultSpec(this)
-            );
-
-            ensureMaintenanceSession();
-            if (maintenanceSession == null || maintenanceSession.getTerminalSession() == null
-                || !maintenanceSession.getTerminalSession().isRunning()) {
-                Toast.makeText(this, R.string.status_terminal_failed, Toast.LENGTH_SHORT).show();
-                refreshStatus();
-                return;
-            }
-
-            currentStageSlug = StageAction.CONFIGURE_DEEPSEEK.slug;
-            currentStageLabel = StageAction.CONFIGURE_DEEPSEEK.label(this);
-            commandInFlight = true;
-            lastHandledMarker = null;
-            scheduleTerminalCompletionPoll();
-            terminalStatusView.setText(R.string.embedded_terminal_status_busy);
-            liveLogView.setText(getString(R.string.result_placeholder));
-            updateLogButtonState();
-            refreshStatus();
-            updateExecutionModeViews();
-
-            maintenanceSession.getTerminalSession().write(command);
-            if (!command.endsWith("\n")) {
-                maintenanceSession.getTerminalSession().write("\n");
-            }
-        } catch (IOException e) {
-            commandInFlight = false;
-            liveLogView.setText(getString(R.string.full_log_error, e.getMessage()));
-            refreshStatus();
-            updateExecutionModeViews();
-        }
-    }
-
-    private void showCustomPortDialog() {
-        if (isMaintenanceActionBlocked()) {
-            showMaintenanceActionBlockedToast();
-            return;
-        }
-
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER);
-        input.setHint(getString(R.string.custom_port_dialog_hint));
-        input.setText(Integer.toString(getDefaultOpenCodePort()));
-        input.setSelection(input.getText().length());
-
-        new AlertDialog.Builder(this)
-            .setTitle(R.string.custom_port_dialog_title)
-            .setView(input)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                String value = input.getText() == null ? "" : input.getText().toString().trim();
-                int port;
-                try {
-                    port = Integer.parseInt(value);
-                } catch (NumberFormatException e) {
-                    Toast.makeText(this, R.string.custom_port_invalid, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                if (port < 1 || port > 65535) {
-                    Toast.makeText(this, R.string.custom_port_invalid, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                runCustomPortStart(port);
-            })
-            .show();
-    }
-
-    private void showDownloadSourceModeDialog() {
-        if (isMaintenanceActionBlocked()) {
-            showMaintenanceActionBlockedToast();
-            return;
-        }
-
-        OpenCodeDownloadSourceSettings.Mode[] modes = OpenCodeDownloadSourceSettings.Mode.values();
-        String[] labels = new String[] {
-            getString(R.string.download_source_mode_auto),
-            getString(R.string.download_source_mode_official_only),
-            getString(R.string.download_source_mode_mirror_only)
-        };
-
-        int checkedItem = OpenCodeDownloadSourceSettings.getMode(this).ordinal();
-        new AlertDialog.Builder(this)
-            .setTitle(R.string.button_configure_download_source)
-            .setSingleChoiceItems(labels, checkedItem, (dialog, which) -> {
-                OpenCodeDownloadSourceSettings.Mode selectedMode = modes[which];
-                OpenCodeDownloadSourceSettings.setMode(this, selectedMode);
-                Toast.makeText(this, getString(R.string.download_source_mode_saved, getDownloadSourceModeLabel(selectedMode)), Toast.LENGTH_SHORT).show();
-                refreshStatus();
-                dialog.dismiss();
-            })
-            .setNegativeButton(android.R.string.cancel, null)
-            .show();
-    }
-
-    private void runCustomPortStart(int port) {
-        if (isMaintenanceActionBlocked()) {
-            showMaintenanceActionBlockedToast();
-            return;
-        }
-
-        if (isBatteryRequirementBlocking()) {
-            currentStageView.setText(getString(R.string.permission_requirement_state_required));
-            Toast.makeText(this, R.string.permission_battery_required_toast, Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        ensureMaintenanceSession();
-        if (maintenanceSession == null || maintenanceSession.getTerminalSession() == null
-            || !maintenanceSession.getTerminalSession().isRunning()) {
-            Toast.makeText(this, R.string.status_terminal_failed, Toast.LENGTH_SHORT).show();
-            refreshStatus();
-            return;
-        }
-
-        currentStageSlug = "start_port_" + port;
-        currentStageLabel = getString(R.string.custom_port_stage_label, port);
-        commandInFlight = true;
-        lastHandledMarker = null;
-        scheduleTerminalCompletionPoll();
-        terminalStatusView.setText(R.string.embedded_terminal_status_busy);
-        liveLogView.setText(getString(R.string.result_placeholder));
-        updateLogButtonState();
-        refreshStatus();
-
-        try {
-            String command = buildAssetExecutionCommand(
-                StageAction.START,
-                currentStageLabel,
-                currentStageSlug,
-                "start-opencode.sh",
-                port,
-                OpenCodeInstallSpec.defaultSpec(this)
-            );
-            maintenanceSession.getTerminalSession().write(command);
-            if (!command.endsWith("\n")) {
-                maintenanceSession.getTerminalSession().write("\n");
-            }
-        } catch (IOException e) {
-            commandInFlight = false;
-            terminalStatusView.setText(R.string.embedded_terminal_status_ready);
-            liveLogView.setText(getString(R.string.full_log_error, e.getMessage()));
-            refreshStatus();
         }
     }
 
@@ -3851,28 +3619,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         ActivityUtils.startActivity(this, intent);
     }
 
-    private void openBrowser() {
-        openUrl(getOpenCodeUrl(), "OpenCode browser URL");
-    }
-
-    private void copyToClipboard(String label, String text) {
-        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        if (clipboard == null) {
-            return;
-        }
-        clipboard.setPrimaryClip(ClipData.newPlainText(label, text));
-        Toast.makeText(this, getString(R.string.clipboard_copy_toast, label), Toast.LENGTH_SHORT).show();
-    }
-
     private void openUrl(String url, String label) {
         backgroundExecutor.execute(() -> {
-            boolean openedViaCdp = OpenCodeCdpBridge.isCdpActive() && OpenCodeCdpBridge.openTab(url);
             runOnUiThread(() -> {
-                if (openedViaCdp) {
-                    Toast.makeText(this, R.string.quick_launch_browser_tab, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                     Toast.makeText(this, R.string.quick_launch_browser_fallback, Toast.LENGTH_SHORT).show();
@@ -3890,7 +3639,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             && maintenanceSession.getTerminalSession().isRunning();
         String stageOverview = getStageOverviewText();
         String permissionOverview = getPermissionOverviewText();
-        String downloadSourceStatus = getDownloadSourceStatusText();
         OpenHouseComponentRegistry.LoadResult registryResult = OpenHouseComponentRegistry.loadWithDiagnostics();
 
         if (commandInFlight) {
@@ -3909,10 +3657,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             body.append("维护终端：").append(getString(R.string.status_terminal_starting)).append('\n');
         }
         body.append("阶段执行：").append(commandInFlight ? "进行中" : "空闲").append('\n');
-        body.append("OpenCode 端点：").append(getOpenCodeStatusText()).append('\n');
-        body.append(getString(R.string.default_port_label, getDefaultOpenCodePort())).append('\n');
-        body.append(getString(R.string.default_browser_label, getOpenCodeUrl())).append('\n');
-        body.append(downloadSourceStatus).append('\n');
+        body.append("运行控制：安装完成后由 service-manager 管理后台服务，地址 ").append(SERVICE_MANAGER_BASE_URL).append('\n');
+        body.append("核心入口：SmallPhone、CloudCLI、Codex、Claude Code、AI朋友 Help").append('\n');
         body.append(permissionOverview).append('\n');
         body.append("产品文档：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/openhouseai-docs").append('\n');
         body.append("工作区：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/workspace").append('\n');
@@ -3920,17 +3666,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         body.append("阶段校验：").append(stageOverview);
         statusBodyView.setText(body.toString());
         updateCurrentStageSummary();
-        updateOpenBrowserButtonState();
         updatePermissionButtons();
-        updateDownloadSourceCard();
         updateLocalMaintenanceWebCard();
-    }
-
-    private String getOpenCodeStatusText() {
-        if (opencodeReachable == null) {
-            return "检测中";
-        }
-        return opencodeReachable ? "可访问" : "不可访问";
     }
 
     private String getPermissionOverviewText() {
@@ -4009,33 +3746,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         permissionStartupButton.setAlpha(permissionStartupButton.isEnabled() ? 1.0f : 0.78f);
     }
 
-    private void updateDownloadSourceCard() {
-        OpenCodeDownloadSourceSettings.Mode mode = OpenCodeDownloadSourceSettings.getMode(this);
-        String currentSourceLabel = getDownloadSourceLabel(getPreferredOpenCodeSourceId());
-        String summary = getDownloadSourceSummaryText(mode);
-
-        if (downloadSourceSummaryView != null) {
-            downloadSourceSummaryView.setText(
-                getString(R.string.download_source_strategy_line, getDownloadSourceModeLabel(mode))
-                    + "\n"
-                    + getString(R.string.download_source_current_line, currentSourceLabel)
-                    + "\n"
-                    + summary
-            );
-        }
-
-        if (configureDownloadSourceButton != null) {
-            configureDownloadSourceButton.setText(getString(R.string.button_configure_download_source_with_value, getDownloadSourceModeLabel(mode)));
-            configureDownloadSourceButton.setEnabled(!isMaintenanceActionBlocked());
-            configureDownloadSourceButton.setAlpha(configureDownloadSourceButton.isEnabled() ? 1.0f : 0.78f);
-        }
-
-        if (probeDownloadSourceButton != null) {
-            probeDownloadSourceButton.setEnabled(!isMaintenanceActionBlocked());
-            probeDownloadSourceButton.setAlpha(probeDownloadSourceButton.isEnabled() ? 1.0f : 0.78f);
-        }
-    }
-
     private void updateLocalMaintenanceWebCard() {
         int port = getLocalMaintenanceWebPort();
         if (localMaintenanceWebSummaryView != null) {
@@ -4058,101 +3768,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             stopMaintenanceWebButton.setEnabled(!isMaintenanceActionBlocked());
             stopMaintenanceWebButton.setAlpha(stopMaintenanceWebButton.isEnabled() ? 1.0f : 0.78f);
         }
-    }
-
-    private String getDownloadSourceStatusText() {
-        return getString(R.string.download_source_strategy_line, getDownloadSourceModeLabel(OpenCodeDownloadSourceSettings.getMode(this)))
-            + "；"
-            + getString(R.string.download_source_current_line, getDownloadSourceLabel(getPreferredOpenCodeSourceId()));
-    }
-
-    private String getDownloadSourceSummaryText(OpenCodeDownloadSourceSettings.Mode mode) {
-        if (PROBE_OPENCODE_SOURCE_SLUG.equals(currentStageSlug) && commandInFlight) {
-            return getString(R.string.download_source_summary_running);
-        }
-
-        switch (mode) {
-            case OFFICIAL_ONLY:
-                return getString(R.string.download_source_summary_manual_official);
-            case MIRROR_ONLY:
-                return getString(R.string.download_source_summary_manual_mirror);
-            case AUTO:
-            default:
-                String summary = OpenCodeDownloadSourceSettings.getLastProbeSummary(this);
-                if (summary == null || summary.trim().isEmpty()) {
-                    return getString(R.string.download_source_summary_pending);
-                }
-                return summary;
-        }
-    }
-
-    private String getDownloadSourceModeLabel(OpenCodeDownloadSourceSettings.Mode mode) {
-        switch (mode) {
-            case OFFICIAL_ONLY:
-                return getString(R.string.download_source_mode_official_only);
-            case MIRROR_ONLY:
-                return getString(R.string.download_source_mode_mirror_only);
-            case AUTO:
-            default:
-                return getString(R.string.download_source_mode_auto);
-        }
-    }
-
-    private String getDownloadSourceLabel(String sourceId) {
-        return OpenCodeDownloadSourceSettings.SOURCE_MIRROR.equals(OpenCodeDownloadSourceSettings.normalizeSourceId(sourceId))
-            ? getString(R.string.download_source_label_mirror)
-            : getString(R.string.download_source_label_official);
-    }
-
-    private String getPreferredOpenCodeSourceId() {
-        OpenCodeDownloadSourceSettings.Mode mode = OpenCodeDownloadSourceSettings.getMode(this);
-        switch (mode) {
-            case OFFICIAL_ONLY:
-                return OpenCodeDownloadSourceSettings.SOURCE_OFFICIAL;
-            case MIRROR_ONLY:
-                return OpenCodeDownloadSourceSettings.SOURCE_MIRROR;
-            case AUTO:
-            default:
-                return OpenCodeDownloadSourceSettings.getLastSelectedSourceId(this);
-        }
-    }
-
-    private boolean shouldProbeOpenCodeSourceBeforeInstall() {
-        return false;
-    }
-
-    private void runOpenCodeSourceProbe(boolean continueWithInstall) {
-        if (isMaintenanceActionBlocked()) {
-            showMaintenanceActionBlockedToast();
-            return;
-        }
-
-        currentStageSlug = PROBE_OPENCODE_SOURCE_SLUG;
-        currentStageLabel = getString(R.string.download_source_probe_stage_label);
-        commandInFlight = true;
-        lastHandledMarker = null;
-        pendingStageAction = null;
-        terminalStatusView.setText(R.string.embedded_terminal_status_busy);
-        liveLogView.setText(R.string.download_source_summary_running);
-        updateLogButtonState();
-        refreshStatus();
-
-        backgroundExecutor.execute(() -> {
-            OpenCodeSourceProbeResult result = probeOpenCodeSource();
-            runOnUiThread(() -> {
-                commandInFlight = false;
-                terminalStatusView.setText(R.string.embedded_terminal_status_ready);
-                refreshLiveLog();
-                refreshStatus();
-                requestStageStatusRefresh();
-                Toast.makeText(this,
-                    result.success ? R.string.download_source_probe_success_toast : R.string.download_source_probe_failed_toast,
-                    Toast.LENGTH_SHORT).show();
-                if (continueWithInstall) {
-                    runStage(StageAction.INSTALL_OPENCODE, true);
-                }
-            });
-        });
     }
 
     private boolean isBatteryRequirementEnabled() {
@@ -4255,7 +3870,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         int blockedCount = 0;
         int runningCount = 0;
         int checkingCount = 0;
-        for (StagePresentation presentation : stagePresentations.values()) {
+        List<StageAction> coreStages = getOneClickStageSequence();
+        for (StageAction stageAction : coreStages) {
+            StagePresentation presentation = stagePresentations.get(stageAction);
             if (presentation == null) continue;
             switch (presentation.state) {
                 case COMPLETE:
@@ -4279,12 +3896,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             }
         }
 
-        if (checkingCount == StageAction.values().length) {
+        if (!coreStages.isEmpty() && checkingCount == coreStages.size()) {
             return "检测中";
         }
 
         StringBuilder builder = new StringBuilder();
-        builder.append("已完成 ").append(completeCount).append('/').append(StageAction.values().length);
+        builder.append("核心阶段已完成 ").append(completeCount).append('/').append(coreStages.size());
         if (runningCount > 0) builder.append("，执行中 ").append(runningCount);
         if (blockedCount > 0) builder.append("，待前置 ").append(blockedCount);
         if (failedCount > 0) builder.append("，需修复 ").append(failedCount);
@@ -4322,27 +3939,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         currentStageView.setText(getString(R.string.current_stage_placeholder));
     }
 
-    private void updateOpenBrowserButtonState() {
-        if (openBrowserButton == null) return;
-        int backgroundColor;
-        int textColor;
-        if (Boolean.TRUE.equals(opencodeReachable)) {
-            backgroundColor = ContextCompat.getColor(this, R.color.stageComplete);
-            textColor = ContextCompat.getColor(this, R.color.stageOnDark);
-            openBrowserButton.setEnabled(true);
-        } else if (Boolean.FALSE.equals(opencodeReachable)) {
-            backgroundColor = ContextCompat.getColor(this, R.color.stageBlocked);
-            textColor = ContextCompat.getColor(this, R.color.stageBlockedText);
-            openBrowserButton.setEnabled(false);
-        } else {
-            backgroundColor = ContextCompat.getColor(this, R.color.stageChecking);
-            textColor = ContextCompat.getColor(this, R.color.stageCheckingText);
-            openBrowserButton.setEnabled(false);
-        }
-        openBrowserButton.setBackgroundTintList(ColorStateList.valueOf(backgroundColor));
-        openBrowserButton.setTextColor(textColor);
-    }
-
     private void requestStageStatusRefresh() {
         if (backgroundExecutor.isShutdown()) return;
         if (stageStatusCheckInFlight) {
@@ -4356,7 +3952,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 stageStatusCheckInFlight = false;
                 if (isFinishing() || isDestroyed()) return;
-                opencodeReachable = snapshot.opencodeReachable;
                 for (Map.Entry<StageAction, StagePresentation> entry : snapshot.presentations.entrySet()) {
                     stagePresentations.put(entry.getKey(), entry.getValue());
                 }
@@ -4390,11 +3985,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         updatePermissionButtons();
         boolean batteryRequirementBlocking = isBatteryRequirementBlocking();
 
-        if (configureDefaultPortButton != null) {
-            configureDefaultPortButton.setVisibility(View.GONE);
-        }
-
-        updateDownloadSourceCard();
         updateMaintenanceSourceCard();
         updateLocalMaintenanceWebCard();
         updateExecutionModeViews();
@@ -4414,10 +4004,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             button.setAlpha(button.isEnabled() ? 1.0f : 0.78f);
         }
 
-        if (customPortButton != null) {
-            customPortButton.setEnabled(!isMaintenanceActionBlocked() && !batteryRequirementBlocking);
-            customPortButton.setAlpha(customPortButton.isEnabled() ? 1.0f : 0.78f);
-        }
     }
 
     private StageCheckSnapshot inspectStageStatuses() {
@@ -4430,17 +4016,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         Integer ubuntuPackagesExitCode = readLastExitCode(StageAction.UBUNTU_PACKAGES);
         Integer configureEntryUbuntuExitCode = readLastExitCode(StageAction.CONFIGURE_ENTRY_UBUNTU);
         Integer installNodeExitCode = readLastExitCode(StageAction.INSTALL_NODE);
-        Integer installOpenCodeExitCode = readLastExitCode(StageAction.INSTALL_OPENCODE);
         Integer installCodexExitCode = readLastExitCode(StageAction.INSTALL_CODEX);
         Integer installClaudeCodeExitCode = readLastExitCode(StageAction.INSTALL_CLAUDE_CODE);
         Integer installClaudeCodeUiExitCode = readLastExitCode(StageAction.INSTALL_CLAUDE_CODE_UI);
-        Integer installReasonixExitCode = readLastExitCode(StageAction.INSTALL_REASONIX);
         Integer runtimeComponentsExitCode = readLastExitCode(StageAction.RUNTIME_COMPONENTS);
-        Integer installHermesExitCode = readLastExitCode(StageAction.INSTALL_HERMES);
         Integer syncOpenHouseRegistryExitCode = readLastExitCode(StageAction.SYNC_OPENHOUSE_REGISTRY);
-        Integer configureDeepSeekExitCode = readLastExitCode(StageAction.CONFIGURE_DEEPSEEK);
-        Integer startExitCode = readLastExitCode(StageAction.START);
-        Integer restartExitCode = readLastExitCode(StageAction.RESTART);
+        Integer startSmallPhoneExitCode = readLastExitCode(StageAction.START_SMALLPHONE);
 
         boolean prepareComplete = isPrepareStageComplete() || isLastExitSuccess(prepareExitCode);
         boolean termuxPackagesComplete = isTermuxPackagesStageComplete() || isLastExitSuccess(termuxPackagesExitCode);
@@ -4449,19 +4030,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean ubuntuPackagesComplete = officialDocsSynced && (isUbuntuPackagesStageComplete() || isLastExitSuccess(ubuntuPackagesExitCode));
         boolean entryUbuntuConfigured = ubuntuPackagesComplete && (isEntryUbuntuConfigured() || isLastExitSuccess(configureEntryUbuntuExitCode));
         boolean nodeInstalled = entryUbuntuConfigured && (isNodeInstalled() || isLastExitSuccess(installNodeExitCode));
-        boolean openCodeInstalled = nodeInstalled && (isOpenCodeInstalled() || isLastExitSuccess(installOpenCodeExitCode));
-        boolean codexInstalled = openCodeInstalled && (isCodexInstalled() || isLastExitSuccess(installCodexExitCode));
-        boolean claudeCodeInstalled = openCodeInstalled && (isClaudeCodeInstalled() || isLastExitSuccess(installClaudeCodeExitCode));
+        boolean codexInstalled = nodeInstalled && (isCodexInstalled() || isLastExitSuccess(installCodexExitCode));
+        boolean claudeCodeInstalled = nodeInstalled && (isClaudeCodeInstalled() || isLastExitSuccess(installClaudeCodeExitCode));
         boolean claudeCodeUiInstalled = claudeCodeInstalled && (isClaudeCodeUiInstalled() || isLastExitSuccess(installClaudeCodeUiExitCode));
-        boolean reasonixInstalled = claudeCodeUiInstalled && (isReasonixInstalled() || isLastExitSuccess(installReasonixExitCode));
-        boolean runtimeComponentsInstalled = reasonixInstalled && (isRuntimeComponentsInstalled() || isLastExitSuccess(runtimeComponentsExitCode));
-        boolean hermesInstalled = runtimeComponentsInstalled && (isHermesInstalled() || isLastExitSuccess(installHermesExitCode));
-        boolean openHouseRegistrySynced = hermesInstalled && (isOpenHouseRegistrySynced() || isLastExitSuccess(syncOpenHouseRegistryExitCode));
-        boolean deepSeekConfigured = ubuntuInstalled && reasonixInstalled && (isDeepSeekConfigured() || isLastExitSuccess(configureDeepSeekExitCode));
-        boolean openCodeReachableNow = openCodeInstalled && isOpenCodeWebReachable();
-        boolean startStageComplete = openCodeReachableNow || isLastExitSuccess(startExitCode);
-
-        snapshot.opencodeReachable = openCodeReachableNow;
+        boolean runtimeComponentsInstalled = claudeCodeUiInstalled && (isRuntimeComponentsInstalled() || isLastExitSuccess(runtimeComponentsExitCode));
+        boolean openHouseRegistrySynced = runtimeComponentsInstalled && (isOpenHouseRegistrySynced() || isLastExitSuccess(syncOpenHouseRegistryExitCode));
+        boolean smallPhoneStarted = openHouseRegistrySynced && (isSmallPhoneStackReachable() || isLastExitSuccess(startSmallPhoneExitCode));
 
         snapshot.presentations.put(
             StageAction.PREPARE,
@@ -4537,21 +4111,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         );
 
         snapshot.presentations.put(
-            StageAction.INSTALL_OPENCODE,
-            openCodeInstalled
-                ? StagePresentation.complete(this, getString(R.string.stage_detail_install_opencode_complete))
-                : (!nodeInstalled
-                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_opencode_blocked))
-                    : failedOrReady(installOpenCodeExitCode,
-                        getString(R.string.stage_detail_install_opencode_failed),
-                        getString(R.string.stage_detail_install_opencode_ready)))
-        );
-
-        snapshot.presentations.put(
             StageAction.INSTALL_CODEX,
             codexInstalled
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_install_codex_complete))
-                : (!openCodeInstalled
+                : (!nodeInstalled
                     ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_codex_blocked))
                     : failedOrReady(installCodexExitCode,
                         getString(R.string.stage_detail_install_codex_failed),
@@ -4562,7 +4125,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             StageAction.INSTALL_CLAUDE_CODE,
             claudeCodeInstalled
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_install_claude_code_complete))
-                : (!openCodeInstalled
+                : (!nodeInstalled
                     ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_claude_code_blocked))
                     : failedOrReady(installClaudeCodeExitCode,
                         getString(R.string.stage_detail_install_claude_code_failed),
@@ -4581,92 +4144,41 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         );
 
         snapshot.presentations.put(
-            StageAction.INSTALL_REASONIX,
-            reasonixInstalled
-                ? StagePresentation.complete(this, getString(R.string.stage_detail_install_reasonix_complete))
-                : (!claudeCodeUiInstalled
-                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_reasonix_blocked))
-                    : failedOrReady(installReasonixExitCode,
-                        getString(R.string.stage_detail_install_reasonix_failed),
-                        getString(R.string.stage_detail_install_reasonix_ready)))
-        );
-
-        snapshot.presentations.put(
             StageAction.RUNTIME_COMPONENTS,
             runtimeComponentsInstalled
                 ? StagePresentation.complete(this, "service-manager、openhouse-connect 与 SmallPhone 已安装或已完成。")
-                : (!reasonixInstalled
-                    ? StagePresentation.blocked(this, "请先完成 AI 工具安装阶段。")
+                : (!claudeCodeUiInstalled
+                    ? StagePresentation.blocked(this, "请先完成 Codex、Claude Code 和 CloudCLI 安装阶段。")
                     : failedOrReady(runtimeComponentsExitCode,
                         "运行组件安装失败，请查看该阶段日志。",
                         "准备安装 service-manager、openhouse-connect 与 SmallPhone。"))
         );
 
         snapshot.presentations.put(
-            StageAction.INSTALL_HERMES,
-            hermesInstalled
-                ? StagePresentation.complete(this, "Hermes WebUI 注册文件和 AI 能力文档已就绪。")
-                : (!runtimeComponentsInstalled
-                    ? StagePresentation.blocked(this, "请先安装 SmallPhone 运行组件。")
-                    : failedOrReady(installHermesExitCode,
-                        "Hermes 安装失败，请查看该阶段日志。",
-                        "准备从 APK 内置 payload 安装 Hermes Agent 和 Hermes WebUI。"))
-        );
-
-        snapshot.presentations.put(
             StageAction.SYNC_OPENHOUSE_REGISTRY,
             openHouseRegistrySynced
                 ? StagePresentation.complete(this, "OpenHouseAI registry 已同步到 Termux canonical。")
-                : (!hermesInstalled
-                    ? StagePresentation.blocked(this, "请先完成 Hermes 安装注册。")
+                : (!runtimeComponentsInstalled
+                    ? StagePresentation.blocked(this, "请先安装 service-manager、openhouse-connect 与 SmallPhone 运行组件。")
                     : failedOrReady(syncOpenHouseRegistryExitCode,
                         "OpenHouseAI registry 同步失败，请查看该阶段日志。",
-                        "准备同步 components.d、service-manager/services.d 和 AI docs。"))
+                        "准备同步 components.d、service-manager/services.d 和 AI docs，安装完成后交给 service-manager 管理。"))
         );
 
         snapshot.presentations.put(
-            StageAction.REQUEST_DEEPSEEK_KEY,
-            deepSeekConfigured
-                ? StagePresentation.complete(this, getString(R.string.stage_detail_deepseek_key_guide_complete))
-                : StagePresentation.ready(this, getString(R.string.stage_detail_deepseek_key_guide_ready))
-        );
-
-        snapshot.presentations.put(
-            StageAction.CONFIGURE_DEEPSEEK,
-            deepSeekConfigured
-                ? StagePresentation.complete(this, getString(R.string.stage_detail_configure_deepseek_complete))
-                : (!ubuntuInstalled
-                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_configure_deepseek_blocked))
-                    : failedOrReady(configureDeepSeekExitCode,
-                        getString(R.string.stage_detail_configure_deepseek_failed),
-                        getString(R.string.stage_detail_configure_deepseek_ready)))
+            StageAction.START_SMALLPHONE,
+            smallPhoneStarted
+                ? StagePresentation.complete(this, getString(R.string.stage_detail_start_smallphone_complete))
+                : (!openHouseRegistrySynced
+                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_start_smallphone_blocked))
+                    : failedOrReady(startSmallPhoneExitCode,
+                        getString(R.string.stage_detail_start_smallphone_failed),
+                        getString(R.string.stage_detail_start_smallphone_ready)))
         );
 
         snapshot.presentations.put(
             StageAction.RESTART_ENTRY_TERMINAL,
             StagePresentation.ready(this, getString(R.string.stage_detail_restart_entry_terminal_ready))
-        );
-
-        snapshot.presentations.put(
-            StageAction.START,
-            startStageComplete
-                ? StagePresentation.complete(this, getString(R.string.stage_detail_start_complete))
-                : (!openCodeInstalled
-                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_start_blocked))
-                    : failedOrReady(startExitCode,
-                        getString(R.string.stage_detail_start_failed),
-                        getString(R.string.stage_detail_start_ready)))
-        );
-
-        snapshot.presentations.put(
-            StageAction.RESTART,
-            !openCodeInstalled
-                ? StagePresentation.blocked(this, getString(R.string.stage_detail_restart_blocked))
-                : failedOrReady(restartExitCode,
-                    getString(R.string.stage_detail_restart_failed),
-                    openCodeReachableNow
-                        ? getString(R.string.stage_detail_restart_ready_running)
-                        : getString(R.string.stage_detail_restart_ready_stopped))
         );
 
         return snapshot;
@@ -4744,12 +4256,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             && new File(officialDocsDir, "MODEL_API_SETUP.md").isFile();
     }
 
-    private boolean isOpenCodeInstalled() {
-        return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:$PATH\"; (command -v opencode >/dev/null 2>&1 || test -x \"$HOME/.opencode/bin/opencode\") && test -f \"$HOME/openhouseai-links/docs-path.txt\" && test -f \"$HOME/openhouseai-links/workspace-path.txt\"'"
-        ).isSuccess();
-    }
-
     private boolean isNodeInstalled() {
         return runTermuxCommand(
             "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && test \"$(node -p \"process.versions.node.split(\\\".\\\")[0]\" 2>/dev/null || printf 0)\" -ge 24'"
@@ -4770,13 +4276,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private boolean isClaudeCodeUiInstalled() {
         return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; command -v cloudcli >/dev/null 2>&1 && test \"$(cat \"$HOME/.config/openhouseai/claude-code-ui-port\" 2>/dev/null || true)\" = \"" + ClaudeCodeUiSettings.DEFAULT_PORT + "\"'"
-        ).isSuccess();
-    }
-
-    private boolean isReasonixInstalled() {
-        return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; command -v reasonix >/dev/null 2>&1'"
+            "proot-distro login ubuntu -- bash -lc 'export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; command -v cloudcli >/dev/null 2>&1 && test \"$(cat \"$HOME/.config/openhouseai/claude-code-ui-port\" 2>/dev/null || true)\" = \"" + ClaudeCodeUiSettings.DEFAULT_PORT + "\"'"
         ).isSuccess();
     }
 
@@ -4786,28 +4286,43 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         ).isSuccess();
     }
 
-    private boolean isHermesInstalled() {
-        return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'test -x \"$HOME/smallphoneai-repos/hermes/hermes-agent/venv/bin/python\" && test -f \"$HOME/smallphoneai-repos/hermes/hermes-webui/bootstrap.py\" && test -f \"$HOME/.config/openhouseai/components.d/hermes-webui.json\" && test -f \"$HOME/.config/openhouseai/service-manager/services.d/hermes-webui.json\" && test -f \"$HOME/.config/openhouseai/ai-docs/hermes-webui/capabilities.json\"'"
-        ).isSuccess();
-    }
-
     private boolean isOpenHouseRegistrySynced() {
         File termuxConfigDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/openhouseai");
-        return new File(termuxConfigDir, "components.d/hermes-webui.json").isFile()
-            && new File(termuxConfigDir, "service-manager/services.d/hermes-webui.json").isFile()
-            && new File(termuxConfigDir, "ai-docs/hermes-webui/capabilities.json").isFile();
+        File registryStateFile = new File(termuxConfigDir, "registry-state.json");
+        return isRegistryStateSuccess(registryStateFile)
+            || (new File(termuxConfigDir, "components.d").isDirectory()
+                && new File(termuxConfigDir, "service-manager/services.d").isDirectory()
+                && new File(termuxConfigDir, "ai-docs").isDirectory());
+    }
+
+    private boolean isRegistryStateSuccess(File registryStateFile) {
+        if (!registryStateFile.isFile()) return false;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+            new java.io.FileInputStream(registryStateFile), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String normalized = line.replace(" ", "");
+                if (normalized.contains("\"status\":\"success\"")) {
+                    return true;
+                }
+            }
+        } catch (IOException e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read OpenHouseAI registry state", e);
+        }
+        return false;
+    }
+
+    private boolean isSmallPhoneStackReachable() {
+        return runTermuxCommand(
+            "curl -fsS --max-time 2 http://127.0.0.1:20087/api/v1/health >/dev/null 2>&1"
+                + " && curl -fsS --max-time 2 http://127.0.0.1:22082/ >/dev/null 2>&1"
+                + " && curl -fsS --max-time 2 http://127.0.0.1:22000/ >/dev/null 2>&1"
+        ).isSuccess();
     }
 
     private boolean isEntryUbuntuConfigured() {
         return runTermuxCommand(
             "test \"$(tr -d '[:space:]' < \"$HOME/.openhouseai/entry-mode\" 2>/dev/null || true)\" = ubuntu && test -f \"$HOME/.openhouseai/entry.sh\" && grep -Fq '# OpenHouseAI startup entry' \"$HOME/.bashrc\""
-        ).isSuccess();
-    }
-
-    private boolean isDeepSeekConfigured() {
-        return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'test -s \"$HOME/.config/openhouseai/deepseek-api-key\" && test -f \"$HOME/.config/opencode/opencode.json\" && test -f \"$HOME/.reasonix/config.json\" && { grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.config/openhouseai/claude-code-env\" 2>/dev/null || grep -Fq \"ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\" \"$HOME/.bashrc\"; }'"
         ).isSuccess();
     }
 
@@ -4877,39 +4392,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read maintenance stage log for verification", e);
             return null;
         }
-    }
-
-    private boolean isOpenCodeWebReachable() {
-        return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'curl -fsS --max-time 3 http://127.0.0.1:" + getDefaultOpenCodePort() + "/ >/dev/null 2>&1'"
-        ).isSuccess();
-    }
-
-    private OpenCodeInstallSpec resolveOpenCodeInstallSpec() {
-        OpenCodeDownloadSourceSettings.Mode mode = OpenCodeDownloadSourceSettings.getMode(this);
-        String primarySourceId = getPreferredOpenCodeSourceId();
-        String secondarySourceId = OpenCodeDownloadSourceSettings.SOURCE_OFFICIAL.equals(primarySourceId)
-            ? OpenCodeDownloadSourceSettings.SOURCE_MIRROR
-            : OpenCodeDownloadSourceSettings.SOURCE_OFFICIAL;
-        boolean allowFallback = mode == OpenCodeDownloadSourceSettings.Mode.AUTO;
-
-        return new OpenCodeInstallSpec(
-            primarySourceId,
-            getDownloadSourceLabel(primarySourceId),
-            OpenCodeDownloadSourceSettings.getInstallUrlForSource(primarySourceId),
-            secondarySourceId,
-            getDownloadSourceLabel(secondarySourceId),
-            OpenCodeDownloadSourceSettings.getInstallUrlForSource(secondarySourceId),
-            allowFallback
-        );
-    }
-
-    private int getDefaultOpenCodePort() {
-        return OpenCodeSettings.DEFAULT_OPENCODE_PORT;
-    }
-
-    private String getOpenCodeUrl() {
-        return OpenCodeSettings.getRootProjectUrl(OpenCodeSettings.DEFAULT_OPENCODE_PORT);
     }
 
     private int getLocalMaintenanceWebPort() {
@@ -5146,75 +4628,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         return measureSource("bootstrap", activeManifest.bootstrapUrl).success;
     }
 
-    private OpenCodeSourceProbeResult probeOpenCodeSource() {
-        long probeAt = System.currentTimeMillis();
-        SourceMeasurement official = measureSource(
-            OpenCodeDownloadSourceSettings.SOURCE_OFFICIAL,
-            OpenCodeDownloadSourceSettings.OFFICIAL_INSTALL_URL
-        );
-        SourceMeasurement mirror = measureSource(
-            OpenCodeDownloadSourceSettings.SOURCE_MIRROR,
-            OpenCodeDownloadSourceSettings.MIRROR_INSTALL_URL
-        );
-
-        String selectedSourceId = OpenCodeDownloadSourceSettings.SOURCE_OFFICIAL;
-        boolean success = false;
-        if (official.success && mirror.success) {
-            selectedSourceId = official.score <= mirror.score ? official.sourceId : mirror.sourceId;
-            success = true;
-        } else if (official.success) {
-            selectedSourceId = official.sourceId;
-            success = true;
-        } else if (mirror.success) {
-            selectedSourceId = mirror.sourceId;
-            success = true;
-        }
-
-        String summary;
-        if (success) {
-            summary = getDownloadSourceLabel(selectedSourceId) + " 首包更快，已优先使用。";
-        } else {
-            summary = "探测失败，将在安装时先尝试官方源。";
-        }
-
-        OpenCodeDownloadSourceSettings.setLastProbeResult(this, selectedSourceId, summary, success ? probeAt : 0L);
-
-        StringBuilder log = new StringBuilder();
-        log.append("==> ").append(getString(R.string.download_source_probe_stage_label)).append('\n');
-        log.append("策略：").append(getDownloadSourceModeLabel(OpenCodeDownloadSourceSettings.getMode(this))).append('\n');
-        appendSourceMeasurementLog(log, official);
-        appendSourceMeasurementLog(log, mirror);
-        log.append("结论：").append(summary).append('\n');
-        log.append("__TERMUX_MAINT_DONE__:").append(PROBE_OPENCODE_SOURCE_SLUG).append(':').append(success ? 0 : 1).append('\n');
-
-        try {
-            MaintainerLogStore.writeLog(this, PROBE_OPENCODE_SOURCE_SLUG, log.toString());
-        } catch (IOException e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to write OpenCode source probe log", e);
-        }
-
-        return new OpenCodeSourceProbeResult(success);
-    }
-
-    private void appendSourceMeasurementLog(StringBuilder log, SourceMeasurement measurement) {
-        log.append(getDownloadSourceLabel(measurement.sourceId))
-            .append("：")
-            .append(measurement.url)
-            .append('\n');
-        if (measurement.success) {
-            log.append("HTTP ").append(measurement.httpCode)
-                .append("，首包 ")
-                .append(formatMillis(measurement.startTransferMs))
-                .append("，总耗时 ")
-                .append(formatMillis(measurement.totalMs))
-                .append("，评分 ")
-                .append(String.format(Locale.US, "%.2f", measurement.score))
-                .append('\n');
-        } else {
-            log.append("失败：").append(measurement.errorMessage).append('\n');
-        }
-    }
-
     private String formatMillis(long millis) {
         return String.format(Locale.US, "%.2fs", millis / 1000.0d);
     }
@@ -5256,14 +4669,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
     }
 
-    private static final class OpenCodeSourceProbeResult {
-        final boolean success;
-
-        OpenCodeSourceProbeResult(boolean success) {
-            this.success = success;
-        }
-    }
-
     private static final class SourceMeasurement {
         final String sourceId;
         final String url;
@@ -5291,40 +4696,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         static SourceMeasurement failure(String sourceId, String url, int httpCode, String errorMessage) {
             return new SourceMeasurement(sourceId, url, false, httpCode, 0L, 0L, Double.MAX_VALUE, errorMessage == null ? "unknown error" : errorMessage);
-        }
-    }
-
-    private static final class OpenCodeInstallSpec {
-        final String primarySourceId;
-        final String primaryLabel;
-        final String primaryUrl;
-        final String secondarySourceId;
-        final String secondaryLabel;
-        final String secondaryUrl;
-        final boolean allowFallback;
-
-        OpenCodeInstallSpec(String primarySourceId, String primaryLabel, String primaryUrl,
-                            String secondarySourceId, String secondaryLabel, String secondaryUrl,
-                            boolean allowFallback) {
-            this.primarySourceId = primarySourceId;
-            this.primaryLabel = primaryLabel;
-            this.primaryUrl = primaryUrl;
-            this.secondarySourceId = secondarySourceId;
-            this.secondaryLabel = secondaryLabel;
-            this.secondaryUrl = secondaryUrl;
-            this.allowFallback = allowFallback;
-        }
-
-        static OpenCodeInstallSpec defaultSpec(MaintenanceCenterActivity activity) {
-            return new OpenCodeInstallSpec(
-                OpenCodeDownloadSourceSettings.SOURCE_OFFICIAL,
-                activity.getString(R.string.download_source_label_official),
-                OpenCodeDownloadSourceSettings.OFFICIAL_INSTALL_URL,
-                OpenCodeDownloadSourceSettings.SOURCE_MIRROR,
-                activity.getString(R.string.download_source_label_mirror),
-                OpenCodeDownloadSourceSettings.MIRROR_INSTALL_URL,
-                false
-            );
         }
     }
 
@@ -5466,7 +4837,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private static final class StageCheckSnapshot {
         final EnumMap<StageAction, StagePresentation> presentations = new EnumMap<>(StageAction.class);
-        Boolean opencodeReachable;
     }
 
     private enum PluginSourceMode {
@@ -5896,19 +5266,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh"),
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh"),
         INSTALL_NODE("install_node", "install-node.sh"),
-        INSTALL_OPENCODE("install_opencode", "install-opencode.sh"),
         INSTALL_CODEX("install_codex", "install-codex.sh"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh"),
         INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh"),
-        INSTALL_REASONIX("install_reasonix", "install-reasonix.sh"),
         RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh"),
-        INSTALL_HERMES("install_hermes", "install-hermes.sh"),
         SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh"),
-        REQUEST_DEEPSEEK_KEY("request_deepseek_key", null),
-        CONFIGURE_DEEPSEEK("configure_deepseek", "configure-deepseek-key.sh"),
-        RESTART_ENTRY_TERMINAL("restart_entry_terminal", null),
-        START("start", "start-opencode.sh"),
-        RESTART("restart", "restart-opencode.sh");
+        START_SMALLPHONE("start_smallphone", "start-smallphone.sh"),
+        RESTART_ENTRY_TERMINAL("restart_entry_terminal", null);
 
         final String slug;
         final String assetName;
@@ -5930,23 +5294,18 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         boolean shouldRefreshBeforeRun() {
             return this == SYNC_OFFICIAL_DOCS
-                || this == INSTALL_OPENCODE
                 || this == INSTALL_NODE
                 || this == CONFIGURE_ENTRY_UBUNTU
                 || this == INSTALL_CODEX
                 || this == INSTALL_CLAUDE_CODE
                 || this == INSTALL_CLAUDE_CODE_UI
-                || this == INSTALL_REASONIX
                 || this == RUNTIME_COMPONENTS
-                || this == INSTALL_HERMES
                 || this == SYNC_OPENHOUSE_REGISTRY
-                || this == START
-                || this == RESTART;
+                || this == START_SMALLPHONE;
         }
 
         boolean isUiOnly() {
-            return this == REQUEST_DEEPSEEK_KEY
-                || this == RESTART_ENTRY_TERMINAL;
+            return this == RESTART_ENTRY_TERMINAL;
         }
 
         static StageAction fromSlug(String slug) {

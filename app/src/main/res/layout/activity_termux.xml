@@ -136,30 +136,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
-            android:layout_above="@id/opencode_quick_launch_button"
+            android:layout_above="@id/terminal_toolbar_view_pager"
             android:layout_marginEnd="18dp"
-            android:layout_marginBottom="14dp"
+            android:layout_marginBottom="72dp"
             android:contentDescription="@string/openhouse_action_menu"
             android:text="@string/openhouse_action_menu"
             android:textColor="@color/stageOnDark"
             android:visibility="gone"
             app:backgroundTint="@color/stageComplete" />
-
-        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
-            android:id="@+id/opencode_quick_launch_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
-            android:layout_above="@id/terminal_toolbar_view_pager"
-            android:layout_marginEnd="18dp"
-            android:layout_marginBottom="72dp"
-            android:contentDescription="@string/action_launch_opencode_default"
-            android:text="@string/action_launch_opencode_short"
-            android:textColor="@color/stageReadyText"
-            android:visibility="gone"
-            app:backgroundTint="@color/stageReady"
-            app:icon="@drawable/ic_opencode_launch"
-            app:iconTint="@color/stageReadyText" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/quick_buttons_visibility_handle"

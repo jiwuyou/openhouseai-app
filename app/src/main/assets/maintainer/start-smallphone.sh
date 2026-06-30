@@ -53,7 +53,6 @@ default_path() {
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path /root/projects/service-manager service-manager)}"
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path /root/cc-connect-fresh openhouse-connect)}"
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path /root/projects/smallphone/smallphone-active smallphone-active)}"
-hermes_dir="${SMALLPHONEAI_HERMES_DIR:-$repo_root/hermes}"
 bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
 sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
@@ -252,7 +251,6 @@ fi
 
 register_if_present "cc-connect/openhouse-connect" "$cc_connect_dir"
 register_if_present "SmallPhone" "$smallphone_dir"
-register_if_present "Hermes" "$hermes_dir"
 
 if ! command -v curl >/dev/null 2>&1; then
   warn "缺少 curl，无法调用 service-manager。"

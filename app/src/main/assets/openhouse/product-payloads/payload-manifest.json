@@ -11,20 +11,14 @@
     {
       "id": "openhouse-connect",
       "archive": "openhouse-connect.tar",
-      "sha256": "17adb055f3f11ad43274679cf49b2c3e5875904131553f4f7be4f3e3211e448c",
-      "size": 39075840
+      "sha256": "eb110208972a8763a9fc5297c6fb0ed7e12e870fb3b55c882f6cfac33ab3cdbb",
+      "size": 21729280
     },
     {
       "id": "smallphone",
       "archive": "smallphone.tar",
       "sha256": "dd250243e08b3222f79b7e12419bc829fafb2426394eb1e83b70d7ed771ac99f",
       "size": 1914880
-    },
-    {
-      "id": "hermes",
-      "archive": "hermes.tgz",
-      "sha256": "61f9b382066ef9fa538a1bf408a1a6ef57307cba9913cc5d890120d31c475e4d",
-      "size": 132941652
     }
   ]
 }

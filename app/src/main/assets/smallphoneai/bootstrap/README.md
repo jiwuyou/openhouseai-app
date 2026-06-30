@@ -35,23 +35,23 @@ bash bootstrap.sh sync-docs
 bash bootstrap.sh ubuntu-packages
 bash bootstrap.sh entry-ubuntu
 bash bootstrap.sh node
-bash bootstrap.sh opencode
 bash bootstrap.sh codex
 bash bootstrap.sh claude-code
 bash bootstrap.sh claude-code-ui
-bash bootstrap.sh reasonix
-bash bootstrap.sh hermes
 bash bootstrap.sh registry-sync
+bash bootstrap.sh sync-core-stack
 ```
 
 `install`/`full` is idempotent and runs:
 
 ```text
 env-check -> prepare -> termux-packages -> ubuntu -> sync-docs ->
-ubuntu-packages -> entry-ubuntu -> node -> opencode -> codex ->
-claude-code -> claude-code-ui -> reasonix -> components -> hermes ->
-registry-sync -> start -> status
+ubuntu-packages -> entry-ubuntu -> node -> codex -> claude-code ->
+claude-code-ui -> components -> registry-sync -> start -> status
 ```
+
+Retired external tools are no longer bundled as built-in installer
+stages or optional APK asset scripts.
 
 `components` enters Ubuntu/proot by default, installs child repos from
 APK-bundled payloads, and then delegates to child repo contracts:
@@ -59,7 +59,6 @@ APK-bundled payloads, and then delegates to child repo contracts:
 - `service-manager`
 - `cc-connect` / `openhouse-connect`
 - `SmallPhone`
-- `Hermes Agent` / `Hermes WebUI`
 - `smallphone-likegirl` control test, through the SmallPhone standalone app
   service registration
 
@@ -70,7 +69,6 @@ The required APK asset archives are:
 | service-manager | `openhouse/product-payloads/service-manager.tar` | `$HOME/smallphoneai-repos/service-manager` |
 | cc-connect/openhouse-connect | `openhouse/product-payloads/openhouse-connect.tar` | `$HOME/smallphoneai-repos/openhouse-connect` |
 | SmallPhone | `openhouse/product-payloads/smallphone.tar` | `$HOME/smallphoneai-repos/smallphone-active` |
-| Hermes Agent + WebUI | `openhouse/product-payloads/hermes.tgz` | `$HOME/smallphoneai-repos/hermes` |
 
 The Android host or Gradle asset-copy step must extract/copy those payloads to
 `$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads` before
@@ -108,7 +106,6 @@ Default readiness ports:
 | cc-connect management | `tcp://127.0.0.1:21020` |
 | cc-connect webhook/callback | `tcp://127.0.0.1:21040` |
 | service-manager | `http://127.0.0.1:20087/` |
-| Hermes WebUI | `http://127.0.0.1:23084/` |
 
 OpenHouseAI component manifests live under `components.d/*.json` and use the
 four-layer schema: `shellMenu`, `smallphoneApp`, `serviceManager`, and `ai`.

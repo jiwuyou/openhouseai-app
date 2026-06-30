@@ -29,7 +29,7 @@ fi
 
 log "正在 Ubuntu 内安装或检查 ClaudeCodeUI / CloudCLI。"
 run_ubuntu_logged bash -lc 'set -euo pipefail
-export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
 
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
   echo "Node.js 尚未安装，请先执行 Node.js 安装阶段。" >&2
@@ -43,10 +43,15 @@ if [ "${major:-0}" -lt 24 ]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-if command -v apt >/dev/null 2>&1; then
+if command -v apt-get >/dev/null 2>&1; then
   dpkg --configure -a
-  apt -f install -y
-  apt install -y python3 make g++ build-essential
+  apt-get update
+  apt-get -f install -y
+  if ! apt-get install -y python3 make g++ build-essential; then
+    echo "Ubuntu apt install failed; refreshing package indexes and retrying with --fix-missing." >&2
+    apt-get update
+    apt-get install -y --fix-missing python3 make g++ build-essential
+  fi
 fi
 
 mkdir -p "$HOME/.npm-global/bin" "$HOME/.cloudcli" "$HOME/.config/openhouseai" "$HOME/workspace"
@@ -183,7 +188,7 @@ else
   done
 fi
 
-export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
 export WORKSPACES_ROOT="${WORKSPACES_ROOT:-$HOME}"
 export DATABASE_PATH="${DATABASE_PATH:-$HOME/.cloudcli/openhouse-auth.db}"
 patch_cloudcli_workspace_policy
@@ -194,7 +199,7 @@ cloudcli version || cloudcli --version || true
 printf "%s\n" "23083" > "$HOME/.config/openhouseai/claude-code-ui-port"
 printf "%s\n" "http://127.0.0.1:23083" > "$HOME/.config/openhouseai/claude-code-ui-url"
 
-PATH_LINE="export PATH=\"\$HOME/.local/node/bin:\$HOME/.opencode/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:/usr/local/bin:\$PATH\""
+PATH_LINE="export PATH=\"\$HOME/.local/node/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:/usr/local/bin:\$PATH\""
 for PROFILE_FILE in "$HOME/.profile" "$HOME/.bashrc"; do
   touch "$PROFILE_FILE"
   if ! grep -Fq "$PATH_LINE" "$PROFILE_FILE"; then

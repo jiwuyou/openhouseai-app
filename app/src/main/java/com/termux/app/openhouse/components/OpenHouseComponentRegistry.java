@@ -33,10 +33,9 @@ public final class OpenHouseComponentRegistry {
     private static final String MENU_OVERRIDES_FILE = "menu-overrides.json";
     private static final String REGISTRY_STATE_FILE = "registry-state.json";
     private static final String CONTROL_ENTRY_TYPE_SERVICE_CONTROL = "service-control";
-    private static final String DEFAULT_HERMES_URL = "http://127.0.0.1:23084/";
     private static final String DEFAULT_CLOUDCLI_URL = "http://127.0.0.1:23083/";
     private static final String DEFAULT_SMALLPHONE_URL = "http://127.0.0.1:22082/";
-    private static final String DEFAULT_HOME_TARGET = "hermes-webui";
+    private static final String DEFAULT_HOME_TARGET = "cloudcli";
 
     private OpenHouseComponentRegistry() {
     }
@@ -195,7 +194,7 @@ public final class OpenHouseComponentRegistry {
         boolean home = readBoolean(firstPresentValue(
             menuLayer, smallphoneApp, root, "home"), false);
 
-        return new OpenHouseComponent(
+        OpenHouseComponent component = new OpenHouseComponent(
             id,
             title,
             subtitle,
@@ -212,40 +211,62 @@ public final class OpenHouseComponentRegistry {
             "extension",
             controlFields == null ? Collections.emptyList() : controlFields.serviceNames,
             controlFields == null ? Collections.emptyList() : controlFields.serviceRefs);
+        return isRetiredDefaultUiComponent(component) ? null : component;
+    }
+
+    private static boolean isRetiredDefaultUiComponent(OpenHouseComponent component) {
+        if (component == null) {
+            return false;
+        }
+        if (isRetiredDefaultUiId(component.id) || isRetiredDefaultUiId(component.nativePage)) {
+            return true;
+        }
+        for (String serviceName : component.serviceNames) {
+            if (isRetiredDefaultUiId(serviceName)) {
+                return true;
+            }
+        }
+        for (String serviceRef : component.serviceRefs) {
+            if (isRetiredDefaultUiServiceRef(serviceRef)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isRetiredDefaultUiId(String value) {
+        String normalized = normalizeId(value);
+        return "hermes".equals(normalized)
+            || "hermes-webui".equals(normalized)
+            || "opencode".equals(normalized)
+            || "reasonix".equals(normalized)
+            || "deepseek".equals(normalized);
+    }
+
+    private static boolean isRetiredDefaultUiServiceRef(String value) {
+        String normalized = normalizeId(value);
+        return normalized.endsWith("/hermes")
+            || normalized.endsWith("/hermes-webui")
+            || normalized.endsWith("/opencode")
+            || normalized.endsWith("/reasonix")
+            || normalized.endsWith("/deepseek");
     }
 
     private static List<OpenHouseComponent> createBuiltinComponents() {
         List<OpenHouseComponent> components = new ArrayList<>();
         components.add(createComponent(
-            "hermes-webui",
-            "Hermes",
-            "默认 AI 伙伴",
-            "ai",
-            20,
-            OpenHouseComponent.EntryType.WEBVIEW,
-            DEFAULT_HERMES_URL,
-            null,
-            "控制",
-            true,
-            true,
-            true,
-            true,
-            "builtin",
-            Collections.singletonList("hermes-webui"),
-            Collections.singletonList("service-manager://services/hermes-webui")));
-        components.add(createComponent(
             "cloudcli",
             "CC/Codex",
             "Claude Code / Codex 网页工作台",
             "ai",
-            30,
+            20,
             OpenHouseComponent.EntryType.WEBVIEW,
             DEFAULT_CLOUDCLI_URL,
             null,
             "控制",
             true,
             true,
-            false,
+            true,
             true,
             "builtin",
             Collections.singletonList("cloudcli"),
@@ -255,7 +276,7 @@ public final class OpenHouseComponentRegistry {
             "SmallPhone",
             "小手机页面和运行栈修复",
             "smallphone",
-            40,
+            30,
             OpenHouseComponent.EntryType.WEBVIEW,
             DEFAULT_SMALLPHONE_URL,
             null,

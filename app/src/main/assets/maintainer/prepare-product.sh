@@ -732,20 +732,25 @@ cat > "$DOC_DIR/README.md" <<'EOF'
 正式说明会由“同步官方文档”阶段写入 `official/`：
 - `official/ENVIRONMENT.md`
 - `official/MODEL_API_SETUP.md`
+- `official/OPTIONAL_EXTERNAL_TOOLS.md`
 EOF
 
 cat > "$DOC_DIR/ENVIRONMENT.md" <<'EOF'
 # 运行环境说明
 
-OpenHouseAI 运行在 Android Termux 中，并通过 `proot-distro` 提供 Ubuntu。OpenCode、Codex CLI、Claude Code 和 Reasonix 安装在 Ubuntu 内。
+OpenHouseAI 运行在 Android Termux 中，并通过 `proot-distro` 提供 Ubuntu。默认核心能力是 Codex CLI、Claude Code、CloudCLI、service-manager、cc-connect/openhouse-connect 和 SmallPhone。
+
+外部可选工具不作为内置组件打包进 APK，也不是首次安装默认阶段。如需自行下载、配置或迁移旧工具，请参考产品手册 `official/OPTIONAL_EXTERNAL_TOOLS.md`。
 
 工作区路径：`/data/data/com.termux/files/home/workspace`
 EOF
 
 cat > "$DOC_DIR/MODEL_API_SETUP.md" <<'EOF'
-# Codex、Claude Code 和 Reasonix 登录/API 配置
+# Codex、Claude Code 和 CloudCLI 登录/API 配置
 
 正式配置说明会由“同步官方文档”阶段写入 `official/MODEL_API_SETUP.md`。
+
+外部可选工具不内置不进 APK；相关下载和配置说明见 `official/OPTIONAL_EXTERNAL_TOOLS.md`。
 
 不要把 API key 写入 git 仓库、共享文档、APK 资源、日志或截图。
 EOF

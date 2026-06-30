@@ -37,15 +37,15 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
             "['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','KEYBOARD']";
     private static final String OPENHOUSE_EXTRA_KEYS_PAGE_ONE =
         "[" + OPENHOUSE_BASE_EXTRA_KEYS_ROWS + ", " +
-            "[{key: 'claude ', display: 'claude'}, {key: 'reasonix ', display: 'reasonix'}, " +
-            "{key: 'codex ', display: 'codex'}, {key: 'oc ', display: 'oc'}, " +
+            "[{key: 'claude ', display: 'claude'}, {key: 'codex ', display: 'codex'}, " +
+            "{key: 'cloudcli ', display: 'cloudcli'}, {key: 'service-manager status smallphone-core', display: 'smallphone'}, " +
             "{key: '--continue', display: '--continue'}]]";
     private static final String OPENHOUSE_EXTRA_KEYS_PAGE_TWO =
         "[" + OPENHOUSE_BASE_EXTRA_KEYS_ROWS + ", " +
             "[{key: 'claude --continue', display: 'claude\\n--continue'}, " +
             "{key: 'codex --continue', display: 'codex\\n--continue'}, " +
-            "{key: 'reasonix --continue', display: 'reasonix\\n--continue'}, " +
-            "{key: 'oc --continue', display: 'oc\\n--continue'}]]";
+            "{key: 'cloudcli --help', display: 'cloudcli\\n--help'}, " +
+            "{key: 'service-manager status smallphone-core', display: 'smallphone\\nstatus'}]]";
     private static final String[] OPENHOUSE_DEFAULT_EXTRA_KEYS = new String[] {
         OPENHOUSE_EXTRA_KEYS_PAGE_ONE,
         OPENHOUSE_EXTRA_KEYS_PAGE_TWO
@@ -122,9 +122,9 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
             && normalized.contains("proot-distrospaceloginspaceubuntuenter")
             && normalized.contains("'tab','ctrl','alt','left','down','right','keyboard'")
             && !normalized.contains("claude")
-            && !normalized.contains("reasonix")
             && !normalized.contains("codex")
-            && !normalized.contains("'oc");
+            && !normalized.contains("cloudcli")
+            && !normalized.contains("smallphone");
     }
 
     public ExtraKeysInfo getExtraKeysInfo() {

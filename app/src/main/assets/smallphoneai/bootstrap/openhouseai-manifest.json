@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "version": "2026.06.11.1",
+  "version": "2026.06.30.1",
   "title": "SmallPhoneAI 维护器",
   "sourceName": "SmallPhoneAI APK 维护源",
-  "updatedAt": "2026-06-11",
+  "updatedAt": "2026-06-30",
   "bootstrapUrl": "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh",
   "bootstrapUrlRole": "optional_update_only",
   "defaultOneClickAction": "install",
@@ -43,12 +43,6 @@
         "title": "SmallPhone",
         "apkAssetPath": "openhouse/product-payloads/smallphone.tar",
         "targetDir": "$HOME/smallphoneai-repos/smallphone-active"
-      },
-      {
-        "id": "hermes",
-        "title": "Hermes Agent + WebUI",
-        "apkAssetPath": "openhouse/product-payloads/hermes.tgz",
-        "targetDir": "$HOME/smallphoneai-repos/hermes"
       }
     ]
   },
@@ -56,22 +50,22 @@
     {
       "title": "准备手机环境",
       "description": "准备 Termux、Ubuntu、文档路径和基础依赖。",
-      "stages": ["env_check", "prepare", "termux_packages", "install_ubuntu", "sync_official_docs", "ubuntu_packages"]
+      "stages": ["env_check", "prepare", "termux_packages", "install_ubuntu", "sync_official_docs", "ubuntu_packages", "entry_ubuntu"]
     },
     {
-      "title": "安装 Agent CLI",
-      "description": "安装或检查 OpenCode、Codex、Claude Code 和 Reasonix。",
-      "stages": ["entry_ubuntu", "install_opencode", "install_codex", "install_claude_code", "install_reasonix"]
+      "title": "安装核心 AI 工具",
+      "description": "安装或检查 Node.js、Codex、Claude Code 和 CloudCLI。",
+      "stages": ["install_node", "install_codex", "install_claude_code", "install_claude_code_ui"]
     },
     {
       "title": "安装 SmallPhone 运行组件",
       "description": "从 APK-bundled payloads 安装 service-manager、cc-connect/openhouse-connect、SmallPhone，并调用各自 install/check/register-service 入口。",
-      "stages": ["runtime_components", "install_hermes"]
+      "stages": ["runtime_components", "sync_openhouse_registry"]
     },
     {
       "title": "启动 SmallPhone",
       "description": "启动 service-manager，通过 group:local-stack 启动已注册服务，并读取最终健康状态。",
-      "stages": ["start"]
+      "stages": ["start_smallphone"]
     }
   ],
   "sections": [
@@ -85,7 +79,7 @@
           "id": "install",
           "type": "button",
           "label": "安装 SmallPhoneAI",
-          "description": "完整准备环境、安装 Agent CLI、安装运行组件、启动 SmallPhone，并输出最终健康状态。",
+          "description": "完整准备环境，安装 Node.js、Codex、Claude Code、CloudCLI、核心运行组件，启动 SmallPhone，并输出最终健康状态。",
           "action": {
             "type": "bootstrap",
             "args": ["install"],
@@ -101,7 +95,7 @@
           "action": { "type": "bootstrap", "args": ["status"], "output": "json" }
         },
         {
-          "id": "start",
+          "id": "start_smallphone",
           "type": "button",
           "label": "启动 SmallPhone",
           "description": "启动 service-manager，请求启动 group:local-stack，并输出最终健康状态。",
@@ -141,15 +135,15 @@
     {
       "id": "agent_cli_repair",
       "type": "actions",
-      "title": "AI 工具补装与修复",
-      "description": "单独补装或检查 OpenCode、Codex、Claude Code、Reasonix。",
+      "title": "核心 AI 工具补装与修复",
+      "description": "单独补装或检查 Node.js、Codex、Claude Code、CloudCLI。",
       "items": [
         {
-          "id": "install_opencode",
+          "id": "install_node",
           "type": "button",
-          "label": "安装 OpenCode",
-          "description": "在 Ubuntu 内安装或检查 OpenCode。",
-          "action": { "type": "bootstrap", "args": ["opencode"] }
+          "label": "安装 Node.js",
+          "description": "在 Ubuntu 内安装或检查 Node.js 24 LTS 和 npm。",
+          "action": { "type": "bootstrap", "args": ["node"] }
         },
         {
           "id": "install_codex",
@@ -166,11 +160,11 @@
           "action": { "type": "bootstrap", "args": ["claude-code"] }
         },
         {
-          "id": "install_reasonix",
+          "id": "install_claude_code_ui",
           "type": "button",
-          "label": "安装 Reasonix",
-          "description": "在 Ubuntu 内安装 DeepSeek-native Reasonix。",
-          "action": { "type": "bootstrap", "args": ["reasonix"] }
+          "label": "安装 CloudCLI",
+          "description": "在 Ubuntu 内安装或检查 ClaudeCodeUI / CloudCLI。",
+          "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
         }
       ]
     }
@@ -219,10 +213,10 @@
       "action": { "type": "bootstrap", "args": ["entry-ubuntu"] }
     },
     {
-      "id": "install_opencode",
-      "title": "安装 OpenCode",
-      "description": "通过 npm 安装或检查 opencode-ai。",
-      "action": { "type": "bootstrap", "args": ["opencode"] }
+      "id": "install_node",
+      "title": "安装 Node.js",
+      "description": "安装或检查核心 AI 工具共用的 Node.js 24 LTS 和 npm。",
+      "action": { "type": "bootstrap", "args": ["node"] }
     },
     {
       "id": "install_codex",
@@ -237,10 +231,10 @@
       "action": { "type": "bootstrap", "args": ["claude-code"] }
     },
     {
-      "id": "install_reasonix",
-      "title": "安装 Reasonix",
-      "description": "通过 npm 安装或检查 reasonix。",
-      "action": { "type": "bootstrap", "args": ["reasonix"] }
+      "id": "install_claude_code_ui",
+      "title": "安装 CloudCLI",
+      "description": "通过 npm 安装或检查 ClaudeCodeUI / CloudCLI。",
+      "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
     },
     {
       "id": "runtime_components",
@@ -249,13 +243,13 @@
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {
-      "id": "install_hermes",
-      "title": "安装 Hermes",
-      "description": "从 APK-bundled payload 安装、检查并注册 Hermes Agent 和 Hermes WebUI。",
-      "action": { "type": "bootstrap", "args": ["hermes"] }
+      "id": "sync_openhouse_registry",
+      "title": "同步 OpenHouseAI registry",
+      "description": "同步组件注册清单和 service-manager 服务配置。",
+      "action": { "type": "bootstrap", "args": ["registry-sync"] }
     },
     {
-      "id": "start",
+      "id": "start_smallphone",
       "title": "启动 SmallPhone",
       "description": "启动 service-manager，通过 group:local-stack 启动 SmallPhone 运行栈，并输出最终健康状态。",
       "action": {

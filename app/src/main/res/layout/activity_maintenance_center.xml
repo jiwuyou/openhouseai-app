@@ -353,11 +353,6 @@
                         android:layout_height="wrap_content" />
 
                     <Button
-                        android:id="@+id/buttonInstallOpenCode"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-
-                    <Button
                         android:id="@+id/buttonInstallCodex"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content" />
@@ -373,42 +368,12 @@
                         android:layout_height="wrap_content" />
 
                     <Button
-                        android:id="@+id/buttonInstallReasonix"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-
-                    <Button
-                        android:id="@+id/buttonDeepSeekKeyGuide"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-
-                    <Button
-                        android:id="@+id/buttonDeepSeekKeyConfig"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-
-                    <Button
                         android:id="@+id/buttonRestartEntryTerminal"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content" />
 
                     <Button
-                        android:id="@+id/buttonStart"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-
-                    <Button
-                        android:id="@+id/buttonRestart"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-
-                    <Button
-                        android:id="@+id/buttonStartCustomPort"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-
-                    <Button
-                        android:id="@+id/buttonOpenBrowser"
+                        android:id="@+id/buttonStartSmallPhone"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content" />
                 </LinearLayout>
@@ -420,11 +385,6 @@
 
                 <TextView
                     android:id="@+id/oneClickUbuntuPackagesItem"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <TextView
-                    android:id="@+id/oneClickOpenCodeItem"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
 
@@ -445,16 +405,6 @@
 
                 <TextView
                     android:id="@+id/oneClickStartItem"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/buttonCopyOpenCodeUrl"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/buttonCopyDeepSeekKeyUrl"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
 
@@ -511,26 +461,6 @@
 
                 <TextView
                     android:id="@+id/statusBody"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/buttonConfigureDefaultPort"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <TextView
-                    android:id="@+id/downloadSourceSummary"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/buttonConfigureDownloadSource"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/buttonProbeDownloadSource"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
 

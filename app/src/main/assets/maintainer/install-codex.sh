@@ -23,7 +23,7 @@ npm install -g @openai/codex
 export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
 command -v codex
 codex --version || true
-PATH_LINE="export PATH=\"\$HOME/.local/node/bin:\$HOME/.opencode/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:\$PATH\""
+PATH_LINE="export PATH=\"\$HOME/.local/node/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:\$PATH\""
 for PROFILE_FILE in "$HOME/.profile" "$HOME/.bashrc"; do
   touch "$PROFILE_FILE"
   if ! grep -Fq "$PATH_LINE" "$PROFILE_FILE"; then

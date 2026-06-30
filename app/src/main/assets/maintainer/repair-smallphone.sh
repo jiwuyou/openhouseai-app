@@ -53,7 +53,6 @@ default_path() {
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path /root/projects/service-manager service-manager)}"
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path /root/cc-connect-fresh openhouse-connect)}"
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path /root/projects/smallphone/smallphone-active smallphone-active)}"
-hermes_dir="${SMALLPHONEAI_HERMES_DIR:-$repo_root/hermes}"
 bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
 sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
@@ -269,7 +268,6 @@ else
   run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "1"
 fi
 run_component "SmallPhone" "$smallphone_dir" "1"
-run_component "Hermes" "$hermes_dir" "0"
 
 if [ "$failures" -ne 0 ]; then
   warn "组件修复存在 $failures 个失败项，继续尝试启动已可用的注册项。"

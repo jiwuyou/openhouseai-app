@@ -4,7 +4,7 @@
     <string name="openhouse_onboarding_activity_title">AI 软件安装引导</string>
     <string name="openhouse_home_subtitle">菜单总览</string>
     <string name="openhouse_drawer_title">openhouse ai</string>
-    <string name="openhouse_drawer_subtitle">本机 AI 编程环境</string>
+    <string name="openhouse_drawer_subtitle">SmallPhone / CloudCLI 控制面</string>
     <string name="openhouse_action_menu">菜单</string>
     <string name="openhouse_action_copy">复制</string>
     <string name="openhouse_action_open_browser">浏览器打开</string>
@@ -14,19 +14,16 @@
     <string name="openhouse_action_close">关闭</string>
     <string name="openhouse_action_advanced_short">高级</string>
     <string name="openhouse_action_set_current_home">设当前页为首页</string>
-    <string name="openhouse_home_status_default">当前首页：Hermes</string>
+    <string name="openhouse_home_status_default">当前首页：CC/Codex</string>
     <string name="openhouse_section_frequent">常用</string>
     <string name="openhouse_section_all">全部</string>
     <string name="openhouse_section_maintenance">维护</string>
     <string name="openhouse_nav_home">菜单总览</string>
-    <string name="openhouse_nav_hermes">Hermes</string>
     <string name="openhouse_nav_ai">CC/Codex</string>
     <string name="openhouse_nav_smallphone">SmallPhone</string>
     <string name="openhouse_nav_controlled_browser">受控浏览器</string>
     <string name="openhouse_nav_service_control">运行控制</string>
     <string name="openhouse_nav_manual">使用手册</string>
-    <string name="openhouse_nav_opencode">OpenCode 控制</string>
-    <string name="openhouse_nav_deepseek">DeepSeek Key</string>
     <string name="openhouse_nav_permissions">权限获取</string>
     <string name="openhouse_nav_about">软件说明</string>
     <string name="openhouse_nav_terminal_guide">终端教学</string>
@@ -43,17 +40,11 @@
     <string name="openhouse_status_checking">正在检查本机状态…</string>
     <string name="openhouse_status_unknown">尚未完成检查</string>
     <string name="openhouse_clipboard_copied">已复制：%1$s</string>
-    <string name="openhouse_url_opencode_label">OpenCode 地址</string>
     <string name="openhouse_url_manual">https://jiwuyou.github.io/openhouseai-docs/</string>
-    <string name="openhouse_deepseek_url">https://platform.deepseek.com/api_keys</string>
-    <string name="openhouse_opencode_action_running">OpenCode 操作执行中，请稍候。</string>
-    <string name="openhouse_opencode_action_failed">OpenCode 操作失败，请查看日志。</string>
     <string name="openhouse_cloudcli_action_running">CC/Codex 操作执行中，请稍候。</string>
     <string name="openhouse_cloudcli_action_failed">CC/Codex 操作失败，请查看日志。</string>
     <string name="openhouse_browser_unavailable">没有可用浏览器，地址已复制。</string>
     <string name="openhouse_install_phase_total_hint">全程约30分钟</string>
-    <string name="openhouse_install_phase_opencode_hint">OpenCode 约12分钟</string>
-    <string name="openhouse_install_estimate_total" formatted="false">全程预计约30分钟；OpenCode 安装约占40%、通常约12分钟，其他阶段按剩余时间均分。</string>
+    <string name="openhouse_install_estimate_total" formatted="false">全程预计约30分钟；会准备 Ubuntu、Node、Codex、Claude Code、CloudCLI、service-manager、openhouse-connect 和 SmallPhone。</string>
     <string name="openhouse_install_estimate_tail" formatted="false">阶段末尾约10%会慢速增加，属于收尾等待。</string>
-    <string name="openhouse_install_estimate_opencode" formatted="false">当前是 OpenCode 安装阶段，通常耗时较长，预计约12分钟；阶段末尾约10%会慢速增加，请保持应用运行。</string>
 </resources>

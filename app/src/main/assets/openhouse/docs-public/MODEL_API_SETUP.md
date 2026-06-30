@@ -1,6 +1,6 @@
-# Codex、Claude Code 和 Reasonix 登录/API 配置
+# Codex、Claude Code 和 CloudCLI 登录/API 配置
 
-本文件说明安装完成后，如何让 Codex CLI、Claude Code 和 Reasonix 连接大模型服务。
+本文件说明安装完成后，如何让 Codex CLI、Claude Code 和 CloudCLI 连接大模型服务。
 
 不要把 API key 写入 git 仓库、共享文档、APK 资源、日志或截图。优先使用工具自带登录流程，或只在本机 shell 配置环境变量。
 
@@ -133,42 +133,11 @@ source ~/.bashrc
 claude
 ```
 
-## OpenCode 使用 DeepSeek
+## CloudCLI
 
-DeepSeek API Key 获取地址：
+CloudCLI / ClaudeCodeUI 是安装完成后的网页工作台入口，运行期由 service-manager 管理。首次安装不会要求填写模型或 API key。
 
-```text
-https://platform.deepseek.com/api_keys
-```
-
-在 OpenCode 网页启动后：
-
-1. 在 OpenCode 输入框执行 `/connect`。
-2. 选择 `DeepSeek`。
-3. 粘贴 DeepSeek API Key。
-4. 再执行 `/models`，选择要使用的 DeepSeek 模型。
-
-如果还没有 API Key，先打开 DeepSeek 控制台，登录后创建 API Key。不要把 API Key 粘贴到聊天内容、日志、截图或仓库中。
-
-## Reasonix 使用 DeepSeek
-
-维护中心的“填写 DeepSeek Key 并配置”会写入：
-
-```text
-~/.reasonix/config.json
-```
-
-配置中的关键字段是：
-
-```json
-{
-  "lang": "zh-CN",
-  "apiKey": "你的 DeepSeek API Key",
-  "model": "deepseek-v4-pro"
-}
-```
-
-不要手动把真实 API Key 写进文档、截图或仓库。
+如果 CloudCLI 页面要求登录或连接模型，按页面提示完成。不要把 API Key 粘贴到聊天内容、日志、截图或仓库中。
 
 ## 配置检查
 
@@ -177,10 +146,8 @@ https://platform.deepseek.com/api_keys
 ```bash
 command -v codex
 command -v claude
-command -v reasonix
 codex --version
 claude --version
-reasonix --version
 ```
 
 检查环境变量是否存在：
@@ -196,7 +163,7 @@ printenv ANTHROPIC_API_KEY
 
 ### 命令不存在
 
-重新执行维护中心里的 `下载 Codex CLI`、`下载 Claude Code` 或 `下载 Reasonix` 阶段。
+重新执行维护中心里的 `下载 Codex CLI`、`下载 Claude Code` 或 `下载 CloudCLI` 阶段。
 
 ### API key 配置后仍不可用
 
@@ -219,7 +186,6 @@ source ~/.bashrc
 ```bash
 codex --help
 claude --help
-reasonix --help
 ```
 
 以当前安装版本的帮助信息为准。

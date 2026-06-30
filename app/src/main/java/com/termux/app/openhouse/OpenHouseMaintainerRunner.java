@@ -38,6 +38,10 @@ public final class OpenHouseMaintainerRunner {
         File outputFile = null;
         Process process = null;
         try {
+            if (!action.isAvailable()) {
+                return new Result(action, 127, action.label + "已从 APK 内置入口中移除，请参考产品手册作为外部可选工具安装。");
+            }
+
             File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");
             if (!bash.isFile()) {
                 return new Result(action, 127, "Termux bash is not installed yet.");
@@ -50,8 +54,7 @@ public final class OpenHouseMaintainerRunner {
             OpenHouseBundledRuntimeSync.Result runtimeSync = OpenHouseBundledRuntimeSync.sync(context);
 
             String assetBody = loadAsset("maintainer/" + action.assetName)
-                .replace("__PORT__", Integer.toString(port))
-                .replace("__DEEPSEEK_KEY_FILE__", OpenHouseStatusRepository.getDeepSeekKeyTempFile().getAbsolutePath());
+                .replace("__PORT__", Integer.toString(port));
             String wrapper = buildWrapperScript(action.label, action.slug, assetBody);
             tempScript = new File(logDir, "run-" + action.slug + ".sh");
             try (FileOutputStream outputStream = new FileOutputStream(tempScript, false)) {
@@ -73,7 +76,6 @@ public final class OpenHouseMaintainerRunner {
             environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
             environment.put("SMALLPHONEAI_NO_AUTO_UBUNTU", "1");
             environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
-            environment.put("OPENHOUSEAI_DEEPSEEK_KEY_FILE", OpenHouseStatusRepository.getDeepSeekKeyTempFile().getAbsolutePath());
             environment.put("SMALLPHONEAI_BOOTSTRAP", runtimeSync.bootstrapFile.getAbsolutePath());
             environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_DIR", runtimeSync.payloadDir.getAbsolutePath());
             File manifest = new File(runtimeSync.payloadDir, "manifest.json");
@@ -201,9 +203,6 @@ public final class OpenHouseMaintainerRunner {
     }
 
     public enum Action {
-        START("start", "启动 OpenCode", "start-opencode.sh", 75),
-        STOP("stop", "停止 OpenCode", "stop-opencode.sh", 30),
-        RESTART("restart", "重启 OpenCode", "restart-opencode.sh", 75),
         INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "安装 ClaudeCodeUI / CloudCLI", "install-claude-code-ui.sh", 600),
         START_CLAUDE_CODE_UI("start_claude_code_ui", "启动 ClaudeCodeUI / CloudCLI", "start-claude-code-ui.sh", 75),
         STOP_CLAUDE_CODE_UI("stop_claude_code_ui", "停止 ClaudeCodeUI / CloudCLI", "stop-claude-code-ui.sh", 30),
@@ -211,8 +210,7 @@ public final class OpenHouseMaintainerRunner {
         START_SMALLPHONE("start_smallphone", "启动 SmallPhoneAI 运行栈", "start-smallphone.sh", 150),
         REPAIR_CONTROL_PLANE("repair_control_plane", "修复控制中枢", "repair-control-plane.sh", 150),
         REPAIR_SMALLPHONE("repair_smallphone", "修复 SmallPhoneAI 运行栈", "repair-smallphone.sh", 600),
-        POST_APK_UPDATE("post_apk_update", "APK 更新后同步核心运行栈", "post-apk-update.sh", 900),
-        CONFIGURE_DEEPSEEK("configure_deepseek", "配置 DeepSeek Key", "configure-deepseek-key.sh", 75);
+        POST_APK_UPDATE("post_apk_update", "APK 更新后同步核心运行栈", "post-apk-update.sh", 900);
 
         public final String slug;
         public final String label;
@@ -224,6 +222,10 @@ public final class OpenHouseMaintainerRunner {
             this.label = label;
             this.assetName = assetName;
             this.timeoutSeconds = timeoutSeconds;
+        }
+
+        boolean isAvailable() {
+            return assetName != null && !assetName.isEmpty();
         }
     }
 

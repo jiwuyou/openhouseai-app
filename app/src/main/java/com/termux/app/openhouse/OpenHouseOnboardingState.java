@@ -2,17 +2,13 @@ package com.termux.app.openhouse;
 
 public final class OpenHouseOnboardingState {
 
-    public static final int TOTAL_STEPS = 7;
+    public static final int TOTAL_STEPS = 4;
 
     public final Step step;
     public final int currentStep;
     public final String currentStepSlug;
     public final String currentStepLabel;
     public final boolean permissionsSkipped;
-    public final boolean keySkipped;
-    public final boolean configurationSkipped;
-    public final boolean keySaved;
-    public final boolean deepSeekConfigured;
     public final boolean launchConfirmed;
     public final boolean oneClickInstallRunning;
     public final boolean oneClickInstallCompleted;
@@ -21,17 +17,10 @@ public final class OpenHouseOnboardingState {
     public final String installPhaseLabel;
     public final String installDetailText;
     public final String installStageSlug;
-    public final boolean openCodeInstalled;
-    public final boolean openCodeReachable;
-    public final boolean openCodeRunningInRoot;
     public final boolean launchAllowed;
 
     public OpenHouseOnboardingState(Step step,
                                     boolean permissionsSkipped,
-                                    boolean keySkipped,
-                                    boolean configurationSkipped,
-                                    boolean keySaved,
-                                    boolean deepSeekConfigured,
                                     boolean launchConfirmed,
                                     OpenHouseInstallState installState,
                                     OpenHouseStatus status) {
@@ -40,10 +29,6 @@ public final class OpenHouseOnboardingState {
         this.currentStepSlug = this.step.slug;
         this.currentStepLabel = this.step.label;
         this.permissionsSkipped = permissionsSkipped;
-        this.keySkipped = keySkipped;
-        this.configurationSkipped = configurationSkipped;
-        this.keySaved = keySaved;
-        this.deepSeekConfigured = deepSeekConfigured;
         this.launchConfirmed = launchConfirmed;
 
         OpenHouseInstallState resolvedInstallState = installState == null
@@ -57,12 +42,9 @@ public final class OpenHouseOnboardingState {
         this.installDetailText = resolvedInstallState.detailText;
         this.installStageSlug = resolvedInstallState.currentStageSlug;
 
-        this.openCodeInstalled = status != null && status.openCodeInstalled;
-        this.openCodeReachable = status != null && status.openCodeReachable;
-        this.openCodeRunningInRoot = status != null && status.openCodeRunningInRoot;
-        boolean launchConfigurationSatisfied = deepSeekConfigured || keySkipped || configurationSkipped;
-        boolean launchInstallSatisfied = status == null ? oneClickInstallCompleted : openCodeInstalled;
-        this.launchAllowed = launchConfigurationSatisfied && launchInstallSatisfied;
+        boolean launchInstallSatisfied = oneClickInstallCompleted
+            || (status != null && status.isDeploymentComplete());
+        this.launchAllowed = launchInstallSatisfied;
     }
 
     public Step getStep() {
@@ -85,22 +67,6 @@ public final class OpenHouseOnboardingState {
         return permissionsSkipped;
     }
 
-    public boolean isKeySkipped() {
-        return keySkipped;
-    }
-
-    public boolean isConfigurationSkipped() {
-        return configurationSkipped;
-    }
-
-    public boolean isKeySaved() {
-        return keySaved;
-    }
-
-    public boolean isDeepSeekConfigured() {
-        return deepSeekConfigured;
-    }
-
     public boolean isLaunchConfirmed() {
         return launchConfirmed;
     }
@@ -109,22 +75,15 @@ public final class OpenHouseOnboardingState {
         return launchAllowed;
     }
 
-    public boolean canConfigureDeepSeek() {
-        return keySaved && !keySkipped && !deepSeekConfigured;
-    }
-
     public boolean isComplete() {
-        return launchConfirmed || step.number >= Step.OPENCODE_LAUNCH.number;
+        return launchConfirmed || step.number >= Step.READY_TO_USE.number;
     }
 
     public enum Step {
         PERMISSIONS(1, "permissions", "权限确认"),
         ONE_CLICK_INSTALL(2, "one_click_install", "一键初始化"),
-        READING_GUIDE(3, "reading_guide", "建议阅读"),
-        DEEPSEEK_KEY(4, "deepseek_key", "保存 DeepSeek Key"),
-        WAITING_INSTALL(5, "waiting_install", "等待安装完成"),
-        DEEPSEEK_CONFIGURATION(6, "deepseek_configuration", "配置 DeepSeek"),
-        OPENCODE_LAUNCH(7, "opencode_launch", "启动配置");
+        WAITING_INSTALL(3, "waiting_install", "等待安装完成"),
+        READY_TO_USE(4, "ready_to_use", "使用说明");
 
         public final int number;
         public final String slug;
@@ -142,6 +101,12 @@ public final class OpenHouseOnboardingState {
                     return step;
                 }
             }
+            if (number >= 3 && number < 7) {
+                return WAITING_INSTALL;
+            }
+            if (number >= 7) {
+                return READY_TO_USE;
+            }
             return PERMISSIONS;
         }
 
@@ -153,6 +118,9 @@ public final class OpenHouseOnboardingState {
                 if (step.slug.equals(slug)) {
                     return step;
                 }
+            }
+            if ("reading_guide".equals(slug)) {
+                return WAITING_INSTALL;
             }
             return PERMISSIONS;
         }

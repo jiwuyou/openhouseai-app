@@ -19,7 +19,6 @@ public final class OpenHouseTerminalTutorial {
     private static final int SHORT_AI_KEYS_PAGE = 0;
     private static final int FULL_AI_COMMANDS_PAGE = 1;
     private static final int ACTION_NONE = 0;
-    private static final int ACTION_LAUNCH_OPENCODE = 1;
 
     private final TermuxActivity mActivity;
     private final List<Step> mSteps = new ArrayList<>();
@@ -109,11 +108,11 @@ public final class OpenHouseTerminalTutorial {
             ACTION_NONE
         ));
         mSteps.add(new Step(
-            R.string.openhouse_terminal_tutorial_opencode_title,
-            R.string.openhouse_terminal_tutorial_opencode_body,
-            NO_TOOLBAR_PAGE,
+            R.string.openhouse_terminal_tutorial_runtime_title,
+            R.string.openhouse_terminal_tutorial_runtime_body,
+            FULL_AI_COMMANDS_PAGE,
             false,
-            ACTION_LAUNCH_OPENCODE
+            ACTION_NONE
         ));
     }
 
@@ -129,17 +128,14 @@ public final class OpenHouseTerminalTutorial {
             .setTitle(step.titleRes)
             .setMessage(step.bodyRes)
             .setNegativeButton(R.string.openhouse_terminal_tutorial_skip, null)
-            .setPositiveButton(step.action == ACTION_LAUNCH_OPENCODE ? R.string.openhouse_terminal_tutorial_launch_opencode : isLastStep() ? R.string.openhouse_terminal_tutorial_start_using : R.string.openhouse_terminal_tutorial_next, null)
+            .setPositiveButton(isLastStep() ? R.string.openhouse_terminal_tutorial_start_using : R.string.openhouse_terminal_tutorial_next, null)
             .create();
         mDialog.setCanceledOnTouchOutside(false);
         mDialog.setOnCancelListener(dialog -> finishTutorial());
         mDialog.setOnShowListener(dialog -> {
             mDialog.getButton(DialogInterface.BUTTON_NEGATIVE).setOnClickListener(v -> finishTutorial());
             mDialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
-                if (step.action == ACTION_LAUNCH_OPENCODE) {
-                    mActivity.launchOpenCodeFromTutorial();
-                    finishTutorial();
-                } else if (isLastStep()) {
+                if (isLastStep()) {
                     finishTutorial();
                 } else {
                     showStep(mStepIndex + 1);
