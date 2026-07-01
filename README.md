@@ -1,25 +1,32 @@
 # OpenHouseAI Termux App
 
-OpenHouseAI Termux App 是一个 Termux fork，维护中心只负责在 Android 上准备 Ubuntu，并安装 OpenCode、Codex CLI 和 Claude Code。
+OpenHouseAI Termux App 是一个 Termux fork，用来把 Android 手机准备成面向人机协作的移动端 AI 运行平台。它让用户和 AI 可以共同使用终端、文件、服务、模型工具和插件能力。
 
 This repository is based on [`termux/termux-app`](https://github.com/termux/termux-app). It is not an official Termux release. The upstream Termux README is kept below for build, install, signing, and compatibility details.
 
 OpenHouseAI 文档：
 
 - [OpenHouseAI 概览](docs/OPENHOUSEAI.md)
+- [架构设计](docs/ARCHITECTURE.md)
+- [运行分层](docs/RUNTIME_LAYERING.md)
+- [Operit 定位](docs/OPERIT_ROLE.md)
+- [Operit 插件兼容路线](docs/OPERIT_PLUGIN_COMPATIBILITY.md)
+- [APK 内置用户与 AI 文档](app/src/main/assets/openhouse/docs-public/START_HERE.md)
 - [开源说明](docs/OPENHOUSEAI_OPEN_SOURCE.md)
 - [安全说明](SECURITY_OPENHOUSEAI.md)
 
 ## 当前范围
 
-- 维护中心 UI，包含权限区、分步执行和阶段一键执行。
-- 支持 APK 内置、本地用户文件和 GitHub raw 在线维护清单。
-- Ubuntu proot bootstrap。
-- OpenCode 安装。
-- Codex CLI 安装。
-- Claude Code 安装。
+- Android App 入口、权限引导、安装引导、状态展示和维护中心。
+- Termux 宿主层、终端底座、Ubuntu 启停和救援控制面。
+- Ubuntu proot runtime，承载 Codex、Claude Code、CloudCLI、MCP、agent 和开发工具链。
+- service-manager 作为安装完成后的控制平面。
+- SmallPhone 作为主交互入口。
+- Operit 作为配置、诊断、插件 UI、小白辅助和工具箱入口。
 
-OpenHouseAI 不安装上述范围之外的运行时服务、站点、组件或文档构建流程。
+OpenCode、Reasonix、Hermes 等退役外部工具不是 APK 默认核心能力。
+
+OpenHouseAI 的文档和安装链路应区分“当前默认核心”和“可选外部工具”，避免把退役能力重新打入 APK。
 
 ## Quick Build
 

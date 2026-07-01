@@ -50,5 +50,5 @@ adb install -r app/build/outputs/apk/debug/termux-app_apt-android-7-debug_univer
 6. 打开维护中心。
 7. 确认一键阶段只包含 OpenHouseAI 范围。
 8. 确认在线维护源可加载。
-9. 确认 OpenCode、Codex CLI 和 Claude Code 阶段存在。
+9. 确认 Codex CLI、Claude Code、CloudCLI、service-manager 和 SmallPhone runtime 阶段存在。
 10. 仅在明确需要公开时上传 APK。
