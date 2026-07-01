@@ -277,6 +277,27 @@ payload_dir_needs_refresh() {
         && ! grep -Fq 'Offline/local dependency installation is disabled' "$source/scripts/install.sh" \
         || return 0
       ;;
+    pi-web)
+      [ -f "$source/runtime/pi-web/server.js" ] || return 0
+      [ -f "$source/bin/openhouse-pi-web-start" ] || return 0
+      [ -f "$source/scripts/install.sh" ] || return 0
+      [ -f "$source/scripts/check.sh" ] || return 0
+
+      if [ -d "$source/packages" ]; then
+        for artifact in "$source"/packages/agegr-pi-web*; do
+          [ -e "$artifact" ] && return 0
+        done
+      fi
+
+      if grep -Eq 'npm[[:space:]]+install|npm[[:space:]]+root[[:space:]]+-g|agegr-pi-web|\.tgz' \
+        "$source/scripts/install.sh" "$source/scripts/check.sh" 2>/dev/null; then
+        return 0
+      fi
+
+      grep -Fq 'OPENHOUSE_PI_WEB_RUNTIME_DIR' "$source/bin/openhouse-pi-web-start" \
+        && grep -Fq 'exec node server.js' "$source/bin/openhouse-pi-web-start" \
+        || return 0
+      ;;
   esac
 
   return 1

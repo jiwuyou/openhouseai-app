@@ -158,13 +158,13 @@ pi-web 组件入口应使用 WebView：
 2. 安装 Node.js、Codex CLI、Claude Code、CloudCLI。
 3. 安装 service-manager 和必要连接组件。
 4. 安装或同步 pi。
-5. 安装或同步 pi-web。
+5. 解压并校验 APK 内置的 pi-web 完整 runtime。
 6. 同步默认扩展，例如 `multi-platform-search.ts`。
 7. 注册 `pi-agent` 和 `pi-web`。
 8. 注册 pi-web 主菜单/侧边栏入口。
 9. 启动 `pi-agent` 和 `pi-web`。
 
-pi 和 pi-web 的项目包可以随 APK 分发，用于固定默认版本和减少现场同步成本；但 npm 依赖解析、缺失依赖安装和 registry 访问仍可能需要网络。文档和产品文案不能把该流程描述成完全离线安装或网络可选安装。
+pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动；不要通过 `npm install -g` 安装 pi-web tgz，也不要把 pi-web 首装描述为需要 npm registry。Codex、Claude Code、CloudCLI、Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络，因此文档和产品文案也不能把整个首次安装描述成完全离线或网络可选安装。
 
 首次安装阶段不要求用户配置默认模型或 API key。安装完成后，用户再按需登录 Codex、Claude Code、CloudCLI 或配置 pi 使用的模型。
 

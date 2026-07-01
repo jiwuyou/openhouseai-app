@@ -20,8 +20,8 @@
   },
   "runtimePayloads": {
     "firstRunSource": "apk_bundled_packages",
-    "networkRole": "required_for_npm_dependencies",
-    "description": "APK 内置运行组件包；pi/pi-web 安装会优先使用内置 npm tgz，但依赖解析仍可能访问 npm registry。",
+    "networkRole": "required_for_base_tools_not_pi_web_runtime",
+    "description": "APK 内置运行组件包；pi-web 首装使用 APK 内置完整 runtime，只做解压、校验、注册和启动，不通过 npm install 安装 pi-web。",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
     "installRoot": "$HOME/smallphoneai-repos",
@@ -72,7 +72,7 @@
     },
     {
       "title": "安装本机 Agent 运行组件",
-      "description": "从 APK 内置运行组件包安装 service-manager、cc-connect/openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web；pi/pi-web 依赖解析可能需要访问 npm registry。",
+      "description": "从 APK 内置运行组件包安装 service-manager、cc-connect/openhouse-connect、SmallPhone 兼容组件和 Pi Agent，并解压校验 pi-web 完整 runtime；其它基础工具阶段仍可能需要网络。",
       "stages": ["runtime_components", "sync_openhouse_registry"]
     },
     {
@@ -92,7 +92,7 @@
           "id": "install",
           "type": "button",
           "label": "安装 SmallPhoneAI",
-          "description": "完整准备环境，安装 Node.js、Codex、Claude Code、CloudCLI、Pi Agent/pi-web 和核心运行组件；pi/pi-web 依赖解析可能需要 npm registry，并输出最终健康状态。",
+          "description": "完整准备环境，安装 Node.js、Codex、Claude Code、CloudCLI、Pi Agent 和核心运行组件，解压内置 pi-web runtime，并输出最终健康状态；基础工具阶段仍可能需要网络。",
           "action": {
             "type": "bootstrap",
             "args": ["install"],
@@ -252,7 +252,7 @@
     {
       "id": "runtime_components",
       "title": "安装本机 Agent 运行组件",
-      "description": "从 APK 内置运行组件包安装、检查并注册 service-manager、cc-connect/openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web；pi/pi-web 依赖解析可能需要 npm registry。",
+      "description": "从 APK 内置运行组件包安装、检查并注册 service-manager、cc-connect/openhouse-connect、SmallPhone 兼容组件和 Pi Agent，并解压校验 pi-web 完整 runtime；其它基础工具阶段仍可能需要网络。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {

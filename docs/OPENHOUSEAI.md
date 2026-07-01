@@ -54,7 +54,7 @@ docs/
 
 首次安装链路负责准备 Termux、Ubuntu、Node.js、Codex、Claude Code、CloudCLI、service-manager、OpenHouse Connect、pi、pi-web 和默认 pi 扩展。安装链路完成后，service-manager 才成为运行期控制平面。
 
-pi 和 pi-web 的默认项目包可以随 APK 提供，但 npm 依赖解析、缺失依赖安装和 registry 访问仍可能需要网络。产品文案应明确这是“APK 内置包 + npm 依赖安装”的流程，而不是完全离线流程。
+pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Codex、Claude Code、CloudCLI、Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络，所以整个首次安装不能被描述成完全离线流程。
 
 这意味着：
 

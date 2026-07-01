@@ -1,52 +1,140 @@
-select_fastest_termux_main_repo() {
-  local candidates="
-https://packages-cf.termux.dev/apt/termux-main
+repo_log() {
+  printf '[OpenHouseAI] %s\n' "$*" >&2
+}
+
+termux_main_repo_override() {
+  printf '%s\n' "${OPENHOUSEAI_TERMUX_MAIN_REPO:-${SMALLPHONEAI_TERMUX_MAIN_REPO:-}}"
+}
+
+termux_main_repo_candidates() {
+  cat <<'EOF'
 https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main
 https://mirrors.ustc.edu.cn/termux/apt/termux-main
-https://mirror.sunred.org/termux/termux-main
-"
-  local repo best_repo best_time repo_time probe_url metrics http_code
-  best_repo=""
-  best_time=""
+https://mirrors.bfsu.edu.cn/termux/apt/termux-main
+https://mirrors.nju.edu.cn/termux/apt/termux-main
+https://packages-cf.termux.dev/apt/termux-main
+https://packages.termux.dev/apt/termux-main
+EOF
+}
 
-  for repo in $candidates; do
-    probe_url="$repo/dists/stable/InRelease"
-    metrics="$(curl -fsSL --connect-timeout 5 --max-time 12 -o /dev/null -w '%{time_total} %{http_code}' "$probe_url" 2>/dev/null || true)"
-    repo_time="${metrics%% *}"
-    http_code="${metrics##* }"
-    if [ "$http_code" = "200" ] && [ -n "$repo_time" ]; then
-      printf '[OpenHouseAI] Termux 镜像测速：%s %ss\n' "$repo" "$repo_time" >&2
-      if [ -z "$best_time" ] || awk "BEGIN{exit !($repo_time < $best_time)}"; then
-        best_time="$repo_time"
+default_termux_main_repo() {
+  termux_main_repo_candidates | awk 'NF { print; exit }'
+}
+
+termux_apt_arch() {
+  local machine
+  if command -v dpkg >/dev/null 2>&1; then
+    dpkg --print-architecture 2>/dev/null && return 0
+  fi
+
+  machine="$(uname -m 2>/dev/null || true)"
+  case "$machine" in
+    aarch64|arm64) printf '%s\n' 'aarch64' ;;
+    armv7*|armv8l|armhf) printf '%s\n' 'arm' ;;
+    x86_64|amd64) printf '%s\n' 'x86_64' ;;
+    i?86) printf '%s\n' 'i686' ;;
+    *) printf '%s\n' 'aarch64' ;;
+  esac
+}
+
+probe_termux_repo_url() {
+  local repo="$1"
+  local path="$2"
+  local probe_url metrics http_code bytes total speed
+  probe_url="$repo/$path"
+  metrics="$(curl -fsSL --connect-timeout 6 --max-time 24 --speed-time 8 --speed-limit 4096 \
+    -r 0-524287 -o /dev/null -w '%{http_code} %{size_download} %{time_total} %{speed_download}' \
+    "$probe_url" 2>/dev/null || true)"
+  http_code="$(printf '%s' "$metrics" | awk '{print $1}')"
+  bytes="$(printf '%s' "$metrics" | awk '{print $2}')"
+  total="$(printf '%s' "$metrics" | awk '{print $3}')"
+  speed="$(printf '%s' "$metrics" | awk '{print $4}')"
+
+  if { [ "$http_code" = "200" ] || [ "$http_code" = "206" ]; } && [ -n "$bytes" ] && [ -n "$total" ] && [ -n "$speed" ]; then
+    repo_log "Termux 镜像吞吐探测：$repo/$path ${speed}B/s（$bytes bytes, ${total}s）"
+    printf '%s\n' "$speed"
+    return 0
+  fi
+
+  return 1
+}
+
+probe_termux_repo_throughput() {
+  local repo="$1"
+  local arch speed
+  arch="$(termux_apt_arch)"
+
+  if speed="$(probe_termux_repo_url "$repo" "dists/stable/main/binary-$arch/Packages")"; then
+    printf '%s\n' "$speed"
+    return 0
+  fi
+
+  if speed="$(probe_termux_repo_url "$repo" "dists/stable/main/binary-$arch/Packages.xz")"; then
+    printf '%s\n' "$speed"
+    return 0
+  fi
+
+  if curl -fsSL --connect-timeout 5 --max-time 10 -o /dev/null "$repo/dists/stable/InRelease" 2>/dev/null; then
+    repo_log "Termux 镜像仅通过可用性兜底探测：$repo（未获得 Packages 吞吐）"
+    printf '%s\n' "1"
+    return 0
+  fi
+
+  repo_log "Termux 镜像不可用：$repo"
+  return 1
+}
+
+select_stable_termux_main_repo() {
+  local repo best_repo best_speed speed min_speed override
+  override="$(termux_main_repo_override)"
+  if [ -n "$override" ]; then
+    repo_log "使用指定 Termux main 镜像源：$override"
+    printf '%s\n' "$override"
+    return 0
+  fi
+
+  best_repo=""
+  best_speed="0"
+  min_speed="${OPENHOUSEAI_TERMUX_MIN_REPO_SPEED_BPS:-${SMALLPHONEAI_TERMUX_MIN_REPO_SPEED_BPS:-65536}}"
+
+  if ! command -v curl >/dev/null 2>&1; then
+    repo="$(default_termux_main_repo)"
+    repo_log "curl 不可用，无法做镜像吞吐探测，使用默认 Termux main 镜像源：$repo"
+    printf '%s\n' "$repo"
+    return 0
+  fi
+
+  for repo in $(termux_main_repo_candidates); do
+    if speed="$(probe_termux_repo_throughput "$repo")"; then
+      if awk "BEGIN { exit !($speed >= $min_speed) }"; then
+        repo_log "选择 Termux main 镜像源：$repo（固定优先级内吞吐达标，最低 ${min_speed}B/s）"
+        printf '%s\n' "$repo"
+        return 0
+      fi
+      if awk "BEGIN { exit !($speed > $best_speed) }"; then
+        best_speed="$speed"
         best_repo="$repo"
       fi
-    else
-      printf '[OpenHouseAI] Termux 镜像不可用：%s\n' "$repo" >&2
     fi
   done
 
   if [ -n "$best_repo" ]; then
-    printf '[OpenHouseAI] 选择最快 Termux main 镜像源：%s\n' "$best_repo" >&2
+    repo_log "没有镜像达到最低吞吐 ${min_speed}B/s，使用当前实测最优源：$best_repo（${best_speed}B/s）"
     printf '%s\n' "$best_repo"
   else
-    printf '[OpenHouseAI] Termux 镜像测速失败，回退到 packages-cf.termux.dev\n' >&2
-    printf '%s\n' "https://packages-cf.termux.dev/apt/termux-main"
+    repo="$(default_termux_main_repo)"
+    repo_log "Termux 镜像吞吐探测全部失败，使用默认源：$repo"
+    printf '%s\n' "$repo"
   fi
 }
 
-configure_termux_main_repo() {
+write_termux_main_repo() {
+  local repo_url="$1"
   local sources_file="${PREFIX:-/data/data/com.termux/files/usr}/etc/apt/sources.list"
-  local repo_url="${OPENHOUSEAI_TERMUX_MAIN_REPO:-}"
 
   if [ ! -d "$(dirname "$sources_file")" ]; then
     log "未找到 apt 源目录，跳过 Termux 镜像源配置：$(dirname "$sources_file")"
     return 0
-  fi
-
-  if [ -z "$repo_url" ]; then
-    repo_url="$(select_fastest_termux_main_repo)"
-  else
-    log "使用指定 Termux main 镜像源：$repo_url"
   fi
 
   if [ -f "$sources_file" ] && grep -Fq "$repo_url" "$sources_file"; then
@@ -59,22 +147,113 @@ configure_termux_main_repo() {
   printf 'deb %s stable main\n' "$repo_url" > "$sources_file"
 }
 
-configure_termux_main_repo
+run_with_optional_timeout() {
+  local timeout_seconds="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_seconds" "$@"
+  else
+    "$@"
+  fi
+}
 
-log "正在执行 apt update"
-run_logged apt update
+run_termux_apt_update() {
+  local timeout_seconds="${OPENHOUSEAI_TERMUX_APT_UPDATE_TIMEOUT_SECONDS:-${SMALLPHONEAI_TERMUX_APT_UPDATE_TIMEOUT_SECONDS:-300}}"
+  run_logged run_with_optional_timeout "$timeout_seconds" apt \
+    -o Acquire::Retries=2 \
+    -o Acquire::http::Timeout=30 \
+    -o Acquire::https::Timeout=30 \
+    update
+}
 
-log "正在执行 apt install -y proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates"
-run_logged apt install -y proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates
+run_termux_apt_install() {
+  local timeout_seconds="${OPENHOUSEAI_TERMUX_APT_INSTALL_TIMEOUT_SECONDS:-${SMALLPHONEAI_TERMUX_APT_INSTALL_TIMEOUT_SECONDS:-1800}}"
+  run_logged run_with_optional_timeout "$timeout_seconds" apt \
+    -o Acquire::Retries=2 \
+    -o Acquire::http::Timeout=30 \
+    -o Acquire::https::Timeout=30 \
+    install -y "$@"
+}
 
-if ! curl --version >/dev/null 2>&1; then
-  log "curl 仍不可用，尝试完整升级 Termux 依赖。"
-  run_logged apt upgrade -y
-  run_logged apt install -y curl libcurl libngtcp2 libnghttp2 openssl ca-certificates
+repair_termux_package_state() {
+  local timeout_seconds="${OPENHOUSEAI_TERMUX_APT_REPAIR_TIMEOUT_SECONDS:-${SMALLPHONEAI_TERMUX_APT_REPAIR_TIMEOUT_SECONDS:-300}}"
+  if command -v dpkg >/dev/null 2>&1; then
+    log "尝试修复 dpkg 半配置状态。"
+    run_with_optional_timeout "$timeout_seconds" dpkg --configure -a || true
+  fi
+  if command -v apt >/dev/null 2>&1; then
+    run_with_optional_timeout "$timeout_seconds" apt \
+      -o Acquire::Retries=1 \
+      -o Acquire::http::Timeout=20 \
+      -o Acquire::https::Timeout=20 \
+      -f install -y || true
+  fi
+}
+
+termux_repo_retry_order() {
+  local selected="$1"
+  local override repo
+  override="$(termux_main_repo_override)"
+  if [ -n "$override" ]; then
+    printf '%s\n' "$override"
+    return 0
+  fi
+
+  printf '%s\n' "$selected"
+  for repo in $(termux_main_repo_candidates); do
+    [ "$repo" = "$selected" ] && continue
+    printf '%s\n' "$repo"
+  done
+}
+
+install_termux_base_packages() {
+  local selected_repo repo status
+  selected_repo="$(select_stable_termux_main_repo)"
+
+  for repo in $(termux_repo_retry_order "$selected_repo"); do
+    write_termux_main_repo "$repo"
+
+    log "正在执行 apt update（源：$repo）"
+    if run_termux_apt_update; then
+      :
+    else
+      status="$?"
+      log "apt update 失败或超时（退出码：$status，源：$repo），准备尝试下一个镜像源。"
+      repair_termux_package_state
+      continue
+    fi
+
+    log "正在执行 apt install -y proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates（源：$repo）"
+    if run_termux_apt_install proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates; then
+      return 0
+    fi
+
+    status="$?"
+    log "apt install 失败或超时（退出码：$status，源：$repo），准备修复状态并尝试下一个镜像源。"
+    repair_termux_package_state
+  done
+
+  return 1
+}
+
+if ! command -v apt >/dev/null 2>&1; then
+  log "缺少 apt，无法安装 Termux 基础包。"
+  exit 1
+fi
+
+if ! install_termux_base_packages; then
+  log "Termux 基础包安装失败：所有候选镜像源均未成功。"
+  exit 1
 fi
 
 if ! curl --version >/dev/null 2>&1; then
-  log "curl 修复失败，请手动执行：apt upgrade -y && apt install -y curl libcurl libngtcp2 libnghttp2 openssl ca-certificates"
+  log "curl 仍不可用，尝试完整升级 Termux 依赖。"
+  repair_termux_package_state
+  run_termux_apt_install curl libcurl libngtcp2 libnghttp2 openssl ca-certificates || true
+fi
+
+if ! curl --version >/dev/null 2>&1; then
+  log "curl 修复失败，请手动执行：apt update && apt install -y curl libcurl libngtcp2 openssl ca-certificates"
   exit 1
 fi
 

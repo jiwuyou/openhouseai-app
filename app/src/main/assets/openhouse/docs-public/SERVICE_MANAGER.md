@@ -41,21 +41,23 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 
 这个目录也可以通过 service-manager 配置里的 `service_registry_dir` 覆盖。`services.d/*.json` 会在 `service-manager serve` 启动时加载，并按稳定服务名 upsert 到服务列表。
 
-一个运行在 Termux Ubuntu 内的 pi-web 服务示例：
+一个使用 APK 内置 standalone runtime 的 pi-web 服务示例：
 
 ```json
 {
   "name": "pi-web",
   "description": "pi-web 本地 AI 工作台",
-  "provider": "proot-distro",
-  "command": ["npm", "start"],
-  "working_dir": "/root/deploy-pi-projects/pi-web",
+  "provider": "process",
+  "command": ["openhouse-pi-web-start"],
+  "working_dir": "/root/.local/share/openhouseai/pi-web",
   "env": {
+    "OPENHOUSE_PI_WEB_RUNTIME_DIR": "/root/.local/share/openhouseai/pi-web",
+    "HOSTNAME": "127.0.0.1",
+    "PI_WEB_HOST": "127.0.0.1",
     "PORT": "30141",
-    "PI_CODING_AGENT_DIR": "/root/.pi"
-  },
-  "runtime": {
-    "distro": "ubuntu"
+    "PI_WEB_PORT": "30141",
+    "PI_CODING_AGENT_DIR": "/root/.pi",
+    "PATH": "/root/.local/node/bin:/root/.local/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin:/system/bin:/system/xbin:/data/data/com.termux/files/usr/bin"
   },
   "restart": {
     "mode": "always",
@@ -77,9 +79,10 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 字段原则：
 
 - `name` 是服务 ID，只使用字母、数字、`.`、`_`、`-`。
-- `provider: "proot-distro"` 表示命令实际在 Ubuntu proot 中运行。
+- `provider: "process"` 表示 service-manager 直接启动本地前台进程；需要进入 Ubuntu/proot 的服务才使用对应 provider。
 - `command` 是结构化 argv 数组，不是 shell 字符串。
-- 被管理命令必须是前台长进程；如果使用包装脚本，脚本最后要 `exec` 到真实服务。
+- 被管理命令必须是前台长进程；如果使用包装脚本，脚本最后要 `exec` 到真实服务，例如 `openhouse-pi-web-start` 最终 `exec node server.js`。
+- `PATH` 必须包含 wrapper 所在目录和运行时依赖目录，pi-web 默认需要 `/root/.local/bin` 和 `/root/.local/node/bin`。
 - `tags` 里用 `group:<name>` 表示服务分组，例如 `group:local-stack`。
 
 写入 `services.d` 文件后，需要让 service-manager 重新加载注册目录。service-manager 只在启动时加载 `services.d/*.json`，因此默认做法是回到 bootstrap 重新启动控制平面：

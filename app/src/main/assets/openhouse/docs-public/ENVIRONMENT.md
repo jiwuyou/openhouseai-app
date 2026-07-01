@@ -40,11 +40,13 @@ Node.js 24 LTS 是单独可见阶段，排在 Codex CLI、Claude Code 和 Claude
 8. 安装 Codex CLI。
 9. 安装 Claude Code。
 10. 安装 ClaudeCodeUI / CloudCLI。
-11. 安装 service-manager、openhouse-connect、pi 和 pi-web。
+11. 安装 service-manager、openhouse-connect 和 pi，并解压校验 APK 内置 pi-web 完整 runtime。
 12. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
 13. 启动 `pi-agent` 和 `pi-web`。
 
 默认进入 Ubuntu 必须在安装 Node.js 24 LTS、Codex CLI、Claude Code 和 ClaudeCodeUI / CloudCLI 之前完成。
+
+pi-web 首装使用 APK 内置完整 runtime，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Node.js、Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI、Ubuntu 基础包和其它缺失依赖阶段仍可能需要网络。
 
 Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubuntu cloud image 镜像源，选择当前可达且较快的 rootfs URL，再执行 `proot-distro install -n ubuntu <rootfs-url>`。如需指定源，可在执行前设置 `OPENHOUSEAI_UBUNTU_ROOTFS_URL`。
 

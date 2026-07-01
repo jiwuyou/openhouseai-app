@@ -32,6 +32,6 @@ OpenHouseAI 是一个装在手机里的 AI 工作台。它不是单纯的聊天�
 
 pi 是默认主 agent，pi-web 是默认主 UI。`pi-agent` 和 `pi-web` 由 service-manager 管理，默认本地入口是 `http://127.0.0.1:30141/`。
 
-pi 和 pi-web 的默认项目包可以随 APK 提供，但 npm 依赖解析、缺失依赖安装和 registry 访问仍可能需要网络。首次安装不应被理解为完全离线流程。
+pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Codex、Claude Code、CloudCLI、Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络，所以首次安装不应被理解为完全离线流程。
 
 Operit、OpenCode、Reasonix、Hermes 等退役或外部工具不是 APK 默认核心能力。只有用户明确要求这些外部工具时，才阅读历史说明或 `OPTIONAL_EXTERNAL_TOOLS.md`。

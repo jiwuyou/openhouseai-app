@@ -82,9 +82,11 @@ During first install, Android App and Termux coordinate:
 1. prepare Termux paths and packages
 2. install Ubuntu rootfs through `proot-distro`
 3. install Ubuntu packages and Node runtime
-4. install Codex, Claude Code, CloudCLI, service-manager assets, pi, and pi-web
+4. install Codex, Claude Code, CloudCLI, service-manager assets, pi, and the bundled pi-web runtime
 5. sync pi extensions, service definitions, and component registry
 6. start `pi-agent` and `pi-web` through service-manager
+
+The pi-web first install path uses the complete runtime bundled in the APK. It should extract, verify, register, and start that runtime instead of installing pi-web through `npm install -g` from a tgz package. Other first-install stages, including Node.js, Codex, Claude Code, CloudCLI, Ubuntu packages, and missing dependencies, may still require network access.
 
 After first install succeeds, service-manager becomes the control plane for runtime services:
 

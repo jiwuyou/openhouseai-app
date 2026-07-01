@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "generatedAt": "2026-07-01",
-  "description": "OpenHouseAI runtime packages bundled inside the APK. pi/pi-web install may still require network access to the npm registry for dependency resolution.",
+  "description": "OpenHouseAI runtime packages bundled inside the APK. pi-web first install uses the bundled complete runtime package and does not run npm install for pi-web; Node.js, Codex, Claude Code, CloudCLI and other stages may still require network access.",
   "components": [
     {
       "id": "service-manager",
@@ -38,8 +38,8 @@
       "id": "pi-web",
       "archive": "pi-web.tar",
       "targetDir": "pi-web",
-      "sha256": "2422cddc5e8ec44aa7f096937d9f84f88ca60d0c86f4a0e26eda4c6ba3a4968e",
-      "size": 5089280
+      "sha256": "35b81d64f001ceac6b559b40daab16fd381a11980f626073d1a2903b519a7b73",
+      "size": 123340800
     }
   ]
 }

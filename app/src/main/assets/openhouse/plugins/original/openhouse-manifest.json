@@ -29,7 +29,7 @@
     },
     {
       "title": "注册并启动核心运行栈",
-      "description": "安装 service-manager、openhouse-connect、pi 和 pi-web，注册服务并启动核心服务；pi/pi-web 依赖解析可能需要访问 npm registry。",
+      "description": "安装 service-manager、openhouse-connect 和 pi，解压校验 APK 内置 pi-web runtime，注册服务并启动核心服务；其它基础工具阶段仍可能需要网络。",
       "stages": ["runtime_components", "sync_openhouse_registry", "start_smallphone"]
     }
   ],
@@ -72,7 +72,7 @@
           "id": "runtime_components",
           "type": "button",
           "label": "安装运行组件",
-          "description": "安装 service-manager、openhouse-connect、pi 和 pi-web；npm 依赖安装可能需要网络。",
+          "description": "安装 service-manager、openhouse-connect 和 pi，并解压校验 APK 内置 pi-web runtime；其它基础工具阶段仍可能需要网络。",
           "action": { "type": "bootstrap", "args": ["runtime-components"] }
         },
         {
@@ -156,7 +156,7 @@
     {
       "id": "runtime_components",
       "title": "安装运行组件",
-      "description": "安装 service-manager、openhouse-connect、pi 和 pi-web；npm 依赖安装可能需要网络。",
+      "description": "安装 service-manager、openhouse-connect 和 pi，并解压校验 APK 内置 pi-web runtime；其它基础工具阶段仍可能需要网络。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {

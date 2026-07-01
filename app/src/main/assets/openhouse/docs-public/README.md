@@ -34,6 +34,6 @@ OpenHouseAI 是一个面向人机协作的移动端 AI 运行平台。它基于 
 
 pi 是默认主 agent，pi-web 是默认主 UI。service-manager 负责管理 `pi-agent` 和 `pi-web`。默认 pi 插件目录是 `/root/.pi/extensions` 和 `/root/.pi/agent/extensions`，默认搜索插件是 `multi-platform-search.ts`。
 
-pi 和 pi-web 的默认项目包可以随 APK 提供，但 npm 依赖解析、缺失依赖安装和 registry 访问仍可能需要网络。文档中不要把首次安装描述成完全离线或网络可选。
+pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Codex、Claude Code、CloudCLI、Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络；文档中不要把整个首次安装描述成完全离线或网络可选。
 
 Operit、OpenCode、Reasonix、Hermes 等退役或外部工具不是 APK 默认核心能力；只有用户明确需要时，才参考历史说明或 `OPTIONAL_EXTERNAL_TOOLS.md`。

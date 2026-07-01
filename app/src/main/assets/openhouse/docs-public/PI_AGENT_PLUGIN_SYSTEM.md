@@ -93,7 +93,7 @@ $HOME/.config/openhouseai/components.d/pi-web.json
 
 ## 安装网络要求
 
-pi 和 pi-web 的项目包可以随 APK 分发，用于固定默认版本和减少现场同步成本；但 npm 依赖解析、缺失依赖安装和 registry 访问仍可能需要网络。不要把首次安装描述成完全离线安装或网络可选安装。
+pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动；不要通过 `npm install -g` 安装 pi-web tgz，也不要把 pi-web 首装描述为需要 npm registry。Codex、Claude Code、CloudCLI、Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络，因此也不要把整个首次安装描述成完全离线安装或网络可选安装。
 
 ## 救援助手
 
