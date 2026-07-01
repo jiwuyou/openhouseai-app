@@ -7,7 +7,7 @@ OpenHouseAI 是一个装在手机里的 AI 工作台。它不是单纯的聊天�
 1. `PRODUCT_OVERVIEW.md`
    - 先了解这个产品是什么，以及为什么强调人和 AI 共同使用软件。
 2. `USER_SCENARIOS.md`
-   - 了解人机陪伴、智能操作系统、人生管理、知识库和人机编程等场景。
+   - 了解日常协作、智能操作系统、人生管理、知识库和人机编程等场景。
 3. `ENVIRONMENT.md`
    - 确认当前 Android、Termux、Ubuntu 和默认安装范围。
 4. `MODEL_API_SETUP.md`

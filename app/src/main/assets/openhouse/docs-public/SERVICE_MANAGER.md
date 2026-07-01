@@ -30,6 +30,160 @@ service-manager 负责：
 
 具体服务 ID 以 `service-manager list` 或 `/api/v1/services` 返回结果为准。
 
+## 注册服务到 service-manager
+
+service-manager 自身由首次安装链路或 bootstrap 安装、启动。普通后台服务不要自己长期 `nohup` 或从 Android UI 直接拉起，而是注册为 service-manager 的 `ServiceSpec`。
+
+OpenHouseAI 默认读取这个注册目录：
+
+```text
+$HOME/.config/openhouseai/service-manager/services.d/*.json
+```
+
+这个目录也可以通过 service-manager 配置里的 `service_registry_dir` 覆盖。`services.d/*.json` 会在 `service-manager serve` 启动时加载，并按稳定服务名 upsert 到服务列表。
+
+一个运行在 Termux Ubuntu 内的服务示例：
+
+```json
+{
+  "name": "my-agent",
+  "description": "本机 agent 服务",
+  "provider": "proot-distro",
+  "command": ["node", "server.js"],
+  "working_dir": "/root/my-agent",
+  "env": {
+    "PORT": "23100"
+  },
+  "runtime": {
+    "distro": "ubuntu"
+  },
+  "restart": {
+    "mode": "always",
+    "max_retries": 0
+  },
+  "health": [
+    {
+      "type": "http",
+      "url": "http://127.0.0.1:23100/health",
+      "interval": "30s",
+      "timeout": "5s"
+    }
+  ],
+  "enabled": true,
+  "tags": ["openhouseai", "agent", "group:local-stack"]
+}
+```
+
+字段原则：
+
+- `name` 是服务 ID，只使用字母、数字、`.`、`_`、`-`。
+- `provider: "proot-distro"` 表示命令实际在 Ubuntu proot 中运行。
+- `command` 是结构化 argv 数组，不是 shell 字符串。
+- 被管理命令必须是前台长进程；如果使用包装脚本，脚本最后要 `exec` 到真实服务。
+- `tags` 里用 `group:<name>` 表示服务分组，例如 `group:local-stack`。
+
+写入 `services.d` 文件后，需要让 service-manager 重新加载注册目录。service-manager 只在启动时加载 `services.d/*.json`，因此默认做法是回到 bootstrap 重新启动控制平面：
+
+```bash
+cd "$HOME/.smallphoneai-bootstrap"
+bash bootstrap.sh start
+```
+
+如果不希望重启控制平面，也可以直接通过 API 注册或更新服务：
+
+```bash
+curl -q -fsS --max-time 10 \
+  -X POST \
+  -K /tmp/openhouse-sm-curl.cfg \
+  -H "Content-Type: application/json" \
+  -d @/path/to/my-agent.json \
+  "$SM_URL/api/v1/services"
+```
+
+注册后验证：
+
+```bash
+service-manager list
+service-manager status my-agent
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/my-agent/status"
+```
+
+## 注册到主菜单和侧边栏
+
+OpenHouseAI 主菜单/侧边栏读取组件注册目录：
+
+```text
+$HOME/.config/openhouseai/components.d/*.json
+```
+
+组件注册只描述入口、标题、分区和 service-manager 绑定关系。不要在组件注册里写 `command`、`shell`、`script` 或 `args`；这些执行细节必须放在 service-manager 的 `ServiceSpec` 中。
+
+一个同时提供打开入口和控制入口的组件示例：
+
+```json
+{
+  "id": "my-agent",
+  "enabled": true,
+  "shellMenu": {
+    "title": "我的 Agent",
+    "subtitle": "本机 agent 工作台",
+    "section": "ai",
+    "order": 80,
+    "visible": true,
+    "favorite": true,
+    "entry": {
+      "type": "webview",
+      "url": "http://127.0.0.1:23100/"
+    },
+    "controlEntry": {
+      "type": "service-control",
+      "title": "控制",
+      "serviceRefs": ["service-manager://services/my-agent"]
+    }
+  },
+  "smallphoneApp": {},
+  "serviceManager": {
+    "services": [
+      {
+        "name": "my-agent",
+        "serviceRef": "service-manager://services/my-agent"
+      }
+    ]
+  },
+  "ai": {}
+}
+```
+
+标准组件清单使用四层结构：`shellMenu`、`smallphoneApp`、`serviceManager`、`ai`。即使某一层暂时不用，也保留为空对象，方便通过 registry API 校验和同步。
+
+侧边栏行为：
+
+- `entry.type: "webview"` 会在 OpenHouseAI 内打开本地 Web 页面。
+- `controlEntry.type: "service-control"` 会显示服务控制入口。
+- 同时有 `entry` 和 `controlEntry` 时，侧边栏会显示打开按钮和控制按钮。
+- 只有 `controlEntry`、没有 `entry` 时，会显示控制型入口。
+- `favorite: true` 或 `home: true` 会让入口进入更靠前的快捷区域。
+
+`serviceRefs` 支持：
+
+```text
+service-manager://services/<serviceId>
+service-manager://actions/<serviceId>.start
+service-manager://actions/<serviceId>.stop
+service-manager://actions/<serviceId>.restart
+service-manager://actions/<serviceId>.repair
+```
+
+主菜单在进入或回到页面时会重新读取 `components.d`。如果新入口没有出现，先检查：
+
+```bash
+ls -la "$HOME/.config/openhouseai/components.d"
+service-manager list
+service-manager status my-agent
+```
+
+再回到 OpenHouseAI 主菜单，或重新打开主菜单页面触发刷新。
+
 ## 默认地址和配置
 
 默认 API：

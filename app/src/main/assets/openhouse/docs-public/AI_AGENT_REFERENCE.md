@@ -29,6 +29,10 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 9. 高风险操作必须先向用户确认，包括清数据、删除目录、重装系统、覆盖配置、停止大量服务、杀不明确的进程。
 10. 遇到问题先诊断，再修复；先最小修复，再重启；最后才考虑重装。
 
+注册新后台能力时，先写 service-manager `ServiceSpec`，再写 OpenHouseAI `components.d/*.json`
+侧边栏入口。组件注册只允许描述 UI 入口和 service-manager 引用，不能包含 `command`、
+`shell`、`script` 或 `args`。
+
 ## 运行环境判断
 
 先判断自己在哪一层，再执行任务。
