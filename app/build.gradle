@@ -39,9 +39,6 @@ android {
 
         implementation project(":terminal-view")
         implementation project(":termux-shared")
-        implementation(project(":operit-feature")) {
-            exclude group: "org.bouncycastle", module: "bcprov-jdk18on"
-        }
     }
 
     defaultConfig {

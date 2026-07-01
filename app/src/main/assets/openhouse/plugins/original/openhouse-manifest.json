@@ -29,7 +29,7 @@
     },
     {
       "title": "注册并启动核心运行栈",
-      "description": "安装 service-manager、openhouse-connect 和 SmallPhone runtime，注册服务并启动核心服务。",
+      "description": "安装 service-manager、openhouse-connect、pi 和 pi-web，注册服务并启动核心服务；pi/pi-web 依赖解析可能需要访问 npm registry。",
       "stages": ["runtime_components", "sync_openhouse_registry", "start_smallphone"]
     }
   ],
@@ -72,21 +72,21 @@
           "id": "runtime_components",
           "type": "button",
           "label": "安装运行组件",
-          "description": "安装 service-manager、openhouse-connect 和 SmallPhone runtime。",
+          "description": "安装 service-manager、openhouse-connect、pi 和 pi-web；npm 依赖安装可能需要网络。",
           "action": { "type": "bootstrap", "args": ["runtime-components"] }
         },
         {
           "id": "sync_openhouse_registry",
           "type": "button",
           "label": "同步服务注册",
-          "description": "同步 service-manager 服务定义和 OpenHouseAI 组件注册。",
+          "description": "同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。",
           "action": { "type": "bootstrap", "args": ["registry-sync"] }
         },
         {
           "id": "start_smallphone",
           "type": "button",
           "label": "启动核心服务",
-          "description": "启动 service-manager 管理的 SmallPhone 和 CloudCLI 相关服务。",
+          "description": "启动 service-manager 管理的 pi、pi-web 和 CloudCLI 相关服务。",
           "action": { "type": "bootstrap", "args": ["start"] }
         }
       ]
@@ -156,19 +156,19 @@
     {
       "id": "runtime_components",
       "title": "安装运行组件",
-      "description": "安装 service-manager、openhouse-connect 和 SmallPhone runtime。",
+      "description": "安装 service-manager、openhouse-connect、pi 和 pi-web；npm 依赖安装可能需要网络。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {
       "id": "sync_openhouse_registry",
       "title": "同步服务注册",
-      "description": "同步 service-manager 服务定义和 OpenHouseAI 组件注册。",
+      "description": "同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。",
       "action": { "type": "bootstrap", "args": ["registry-sync"] }
     },
     {
       "id": "start_smallphone",
       "title": "启动核心服务",
-      "description": "启动安装完成后的核心服务，由 service-manager 管理运行期生命周期。",
+      "description": "启动安装完成后的 pi、pi-web 和连接服务，由 service-manager 管理运行期生命周期。",
       "action": { "type": "bootstrap", "args": ["start"] }
     }
   ]

@@ -12,9 +12,9 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 | --- | --- | --- |
 | Android App | 入口、权限、状态、显式开关 | 观察状态，请求用户确认，进入维护/控制页面 |
 | Termux | Android 宿主、底座、救援层 | 修复 Termux/Ubuntu，调用 Android 桥，检查安装链路 |
-| Ubuntu in Termux | 核心 Linux 工作区 | 开发、Codex、Claude Code、CloudCLI、MCP、项目命令 |
+| Ubuntu in Termux | 核心 Linux 工作区 | pi、pi-web、开发、Codex、Claude Code、CloudCLI、MCP、项目命令 |
 | service-manager | 安装完成后的控制平面 | 管理后台服务的启动、停止、状态、日志和修复 |
-| Operit / AI朋友 Help | 配置、工具 UI、辅助入口 | 帮助用户配置模型和使用工具，不作为核心 agent 内核 |
+| pi / pi-web | 默认主 agent 和默认主 UI | 调用插件、展示工具、承载用户和 AI 的主要工作台 |
 
 ## 强制规则
 
@@ -32,6 +32,42 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 注册新后台能力时，先写 service-manager `ServiceSpec`，再写 OpenHouseAI `components.d/*.json`
 侧边栏入口。组件注册只允许描述 UI 入口和 service-manager 引用，不能包含 `command`、
 `shell`、`script` 或 `args`。
+
+默认主 agent 是 pi，默认主 UI 是 pi-web。不要把 Operit 当作默认 agent、默认 UI 或默认插件体系。
+
+Termux 侧救援助手是后置预留能力。本轮不安装、不常驻、不进入首次安装关键路径。
+
+## pi 插件规则
+
+默认 pi 运行目录：
+
+```text
+PI_CODING_AGENT_DIR=/root/.pi
+```
+
+默认扩展目录：
+
+```text
+/root/.pi/extensions
+/root/.pi/agent/extensions
+```
+
+默认搜索插件：
+
+```text
+multi-platform-search.ts
+```
+
+默认工具名：
+
+```text
+multi_platform_search
+web_search
+search_web
+search
+```
+
+旧 pi-web 会话可能不会自动刷新工具列表。安装或更新扩展后，如果工具不可见，先新建 pi-web 会话再判断。
 
 ## 运行环境判断
 
@@ -63,7 +99,7 @@ proot-distro login ubuntu -- true
 | --- | --- | --- |
 | 编程、构建、测试、运行项目 | Ubuntu | 工具链和用户项目在 Ubuntu 内 |
 | Codex CLI、Claude Code、CloudCLI | Ubuntu | AI CLI 默认安装在 Ubuntu 内 |
-| MCP server、agent server | Ubuntu | 应由 service-manager 管理为长期服务 |
+| pi、pi-web、MCP server、agent server | Ubuntu | 应由 service-manager 管理为长期服务 |
 | 检查 proot-distro、安装 Ubuntu | Termux | Ubuntu 不存在或不可用时仍需要修复入口 |
 | Android intent、App 私有目录、wake lock、权限桥 | Termux / Android App | 这些能力贴近 Android 沙箱 |
 | 修复 Termux prefix | Termux / Android App | 这是 Ubuntu 的下层底座 |
@@ -76,7 +112,7 @@ proot-distro login ubuntu -- true
 遇到报错、卡住、白屏、无响应、无法回复、安装不过去时，按以下顺序执行。
 
 1. 确认用户当前看到的页面、步骤、按钮和错误文案。
-2. 确认当前前台组件或入口：主菜单、首次引导、维护中心、AI朋友 Help、SmallPhone、终端。
+2. 确认当前前台组件或入口：主菜单、首次引导、维护中心、pi-web、终端。
 3. 读取安装/维护日志：
 
 ```bash
@@ -101,8 +137,7 @@ service-manager status 2>/dev/null || true
 6. 检查核心端口：
 
 ```bash
-curl -fsS --max-time 2 http://127.0.0.1:22082/ >/dev/null && echo smallphone-frontend-ok
-curl -fsS --max-time 2 http://127.0.0.1:22000/ >/dev/null && echo smallphone-core-ok
+curl -fsS --max-time 2 http://127.0.0.1:30141/ >/dev/null && echo pi-web-ok
 ```
 
 7. 检查 Ubuntu 可用性：
@@ -128,9 +163,9 @@ proot-distro login ubuntu -- true
 8. 安装 Codex CLI。
 9. 安装 Claude Code。
 10. 安装 ClaudeCodeUI / CloudCLI。
-11. 安装 service-manager、openhouse-connect 和 SmallPhone runtime。
-12. 同步 service-manager 服务定义和 OpenHouseAI 组件注册。
-13. 启动核心服务。
+11. 安装 service-manager、openhouse-connect、pi 和 pi-web。
+12. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
+13. 启动 `pi-agent` 和 `pi-web`。
 
 首次安装完成后，service-manager 成为运行期控制平面。首次安装时不要要求用户配置默认模型或 API key。
 

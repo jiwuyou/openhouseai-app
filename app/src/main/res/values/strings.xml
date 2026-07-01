@@ -242,7 +242,7 @@
     <string name="donate_preference_title">Donate</string>
 
     <string name="maintenance_center_title">维护中心</string>
-    <string name="maintenance_center_subtitle">按阶段完成 Ubuntu、Codex、Claude Code、CloudCLI 和 SmallPhone 运行栈安装。安装完成后由 service-manager 管理后台服务。</string>
+    <string name="maintenance_center_subtitle">按阶段完成 Ubuntu、Codex、Claude Code、CloudCLI、pi 和 pi-web 安装。安装完成后由 service-manager 管理后台服务。</string>
     <string name="maintenance_center_instruction">请先完成权限获取。后台权限处理后，点击开始安装并等待完成；首次安装不要求填写模型或 API Key。页面底部保留真实终端，便于查看原始输入输出。</string>
     <string name="agreement_screen_title">使用说明与免责声明</string>
     <string name="agreement_screen_subtitle">进入维护中心前，请先阅读并同意以下内容。协议同意状态仅保存在应用私有存储中，不会同步到 Termux 或 Ubuntu 目录。</string>
@@ -250,7 +250,7 @@
     <string name="agreement_human_readable_title">人话版</string>
     <string name="agreement_human_readable_content"><![CDATA[欢迎使用 openhouse ai。
 
-openhouse ai 是一个开源的本地工具。它运行在你自己的设备上，用来帮助准备和维护本地环境，例如安装 Ubuntu、安装 Codex、Claude Code、CloudCLI 与 SmallPhone 运行栈、同步文档、查看日志，以及执行一些本地维护操作。
+openhouse ai 是一个开源的本地工具。它运行在你自己的设备上，用来帮助准备和维护本地环境，例如安装 Ubuntu、安装 Codex、Claude Code、CloudCLI、pi 与 pi-web、同步文档、查看日志，以及执行一些本地维护操作。
 
 请先明确以下几点：
 
@@ -393,9 +393,9 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="button_stage_one_click_mode">阶段一键执行</string>
     <string name="button_start_one_click_stages">开始执行阶段\n安装 Ubuntu、Node、Codex、Claude Code、CloudCLI 和运行栈</string>
     <string name="button_stop_one_click_stages">停止一键执行</string>
-    <string name="one_click_stage_summary_idle">权限已经单独处理后，再点这里。系统按真实下载依赖排序：先准备 Ubuntu 和文档，再设置默认进入 Ubuntu，随后安装 Node、Codex、Claude Code、CloudCLI、service-manager、openhouse-connect 和 SmallPhone。安装期间只需要等待，不需要配置模型或 Key。</string>
+    <string name="one_click_stage_summary_idle">权限已经单独处理后，再点这里。系统按真实下载依赖排序：先准备 Ubuntu 和文档，再设置默认进入 Ubuntu，随后安装 Node、Codex、Claude Code、CloudCLI、service-manager、openhouse-connect、pi 和 pi-web。安装期间只需要等待，不需要配置模型或 Key。</string>
     <string name="one_click_stage_summary_running">阶段一键执行中：%1$s</string>
-    <string name="one_click_stage_summary_complete">阶段一键执行已完成，Codex、Claude Code、CloudCLI 和 SmallPhone 运行栈已就绪；后续后台服务由 service-manager 管理。</string>
+    <string name="one_click_stage_summary_complete">阶段一键执行已完成，Codex、Claude Code、CloudCLI、pi 和 pi-web 已就绪；后续后台服务由 service-manager 管理。</string>
     <string name="one_click_stage_summary_waiting">阶段一键执行已暂停：%1$s</string>
     <string name="one_click_stage_toast_complete">阶段一键执行已完成</string>
     <string name="one_click_stage_toast_stopped">阶段一键执行已停止</string>
@@ -421,10 +421,10 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="one_click_auto_node_title">安装 Node.js 24 LTS</string>
     <string name="one_click_auto_node_detail">在 Ubuntu 内安装统一 Node.js 24 LTS 运行时，后续 AI 工具共用</string>
     <string name="one_click_auto_agents_detail">在 Ubuntu 内安装 Codex、Claude Code 和 ClaudeCodeUI / CloudCLI</string>
-    <string name="one_click_auto_runtime_title">安装并启动 SmallPhone 运行栈</string>
-    <string name="one_click_auto_runtime_detail">安装 service-manager、openhouse-connect 和 SmallPhone，随后同步 registry 并启动本机服务</string>
-    <string name="one_click_auto_start_title">启动 SmallPhone</string>
-    <string name="one_click_auto_start_detail">安装完成后启动 service-manager，并交给它管理 SmallPhone、CloudCLI 和桥接服务</string>
+    <string name="one_click_auto_runtime_title">安装并启动 pi / pi-web</string>
+    <string name="one_click_auto_runtime_detail">安装 service-manager、openhouse-connect、pi 和 pi-web，随后同步 registry 并启动本机服务</string>
+    <string name="one_click_auto_start_title">启动核心服务</string>
+    <string name="one_click_auto_start_detail">安装完成后启动 service-manager，并交给它管理 pi、pi-web、CloudCLI 和桥接服务</string>
     <string name="one_click_auto_item_text">%1$d · %2$s · %3$s\n%4$s</string>
     <string name="actions_title">阶段操作</string>
     <string name="actions_legend">颜色说明：绿色表示已完成，青色表示可执行，橙色表示执行中，灰棕表示等待前置，褐色表示需要修复。</string>
@@ -438,11 +438,11 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="button_install_codex">下载 Codex CLI</string>
     <string name="button_install_claude_code">下载 Claude Code</string>
     <string name="button_install_claude_code_ui">下载 CloudCLI / ClaudeCodeUI</string>
-    <string name="button_start_smallphone">启动 SmallPhone 运行栈</string>
+    <string name="button_start_smallphone">启动核心服务</string>
     <string name="button_view_full_log">查看完整日志</string>
     <string name="button_refresh_log">刷新日志</string>
     <string name="quick_usage_title">快速使用</string>
-    <string name="quick_usage_body">1. 安装完成后，service-manager 会管理 SmallPhone、CloudCLI 和桥接服务。\n\n2. 进入 SmallPhone 可以打开 CloudCLI；也可以进入 Ubuntu 终端手动运行 codex 或 claude。\n\n3. AI朋友 Help 用来检查环境、修复问题，并在你需要时辅助配置模型和工具。</string>
+    <string name="quick_usage_body">1. 安装完成后，service-manager 会管理 Pi Agent、Pi Web、CloudCLI 和桥接服务。\n\n2. 进入 Pi Web 工作台可以使用默认 AI 工作台；也可以进入 Ubuntu 终端手动运行 codex 或 claude。\n\n3. 模型和 API Key 不需要在首次安装时填写，安装完成后再按需在 Pi Web、CloudCLI、Codex 或 Claude Code 中配置。</string>
     <string name="clipboard_copy_toast">%1$s 已复制</string>
     <string name="current_stage_title">当前阶段</string>
     <string name="current_stage_placeholder">当前没有运行中的阶段。</string>
@@ -464,7 +464,7 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="entry_terminal_restart_started">入口终端已重新创建</string>
     <string name="entry_terminal_restart_failed">入口终端重启失败</string>
     <string name="help_title">说明</string>
-    <string name="help_body">1. 建议先完成“权限获取”中的系统权限，然后点击阶段一键执行并等待安装完成。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “准备本地目录”会创建 openhouse ai 文档目录、工作区和 Termux 配置。\n\n4. “下载 Termux 基础包”会安装 proot-distro、curl 和证书依赖。\n\n5. “下载 Ubuntu rootfs”会先测速 Ubuntu rootfs 镜像源，再安装 Ubuntu 并注入环境探测命令。\n\n6. “同步官方文档”会把 app 内置的 openhouse ai 文档同步到 ~/openhouseai-docs/official。\n\n7. “下载 Ubuntu 基础包”会在 Ubuntu 内安装 curl、证书、git、procps、ripgrep 和 unzip。\n\n8. “启动后直接进入 Ubuntu”会在安装 AI 工具前设置默认终端入口。\n\n9. “安装 Node.js 24 LTS”会安装统一 Node 运行时；随后安装 Codex CLI、Claude Code、CloudCLI / ClaudeCodeUI。\n\n10. 最后会安装 service-manager、openhouse-connect 和 SmallPhone，刷新 registry，并启动 SmallPhone 运行栈。安装完成后，service-manager 才是后台服务控制平面。\n\n11. 首次安装不要求填写模型或 API Key；AI朋友 Help 可在安装完成后用于环境检查、修复和辅助配置。</string>
+    <string name="help_body">1. 建议先完成“权限获取”中的系统权限，然后点击阶段一键执行并等待安装完成。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “准备本地目录”会创建 openhouse ai 文档目录、工作区和 Termux 配置。\n\n4. “下载 Termux 基础包”会安装 proot-distro、curl 和证书依赖。\n\n5. “下载 Ubuntu rootfs”会先测速 Ubuntu rootfs 镜像源，再安装 Ubuntu 并注入环境探测命令。\n\n6. “同步官方文档”会把 app 内置的 openhouse ai 文档同步到 ~/openhouseai-docs/official。\n\n7. “下载 Ubuntu 基础包”会在 Ubuntu 内安装 curl、证书、git、procps、ripgrep 和 unzip。\n\n8. “启动后直接进入 Ubuntu”会在安装 AI 工具前设置默认终端入口。\n\n9. “安装 Node.js 24 LTS”会安装统一 Node 运行时；随后安装 Codex CLI、Claude Code、CloudCLI / ClaudeCodeUI。\n\n10. 最后会安装 service-manager、openhouse-connect、pi 和 pi-web，刷新 registry，并启动 Pi Web 工作台。安装完成后，service-manager 才是后台服务控制平面。\n\n11. 首次安装不要求填写模型或 API Key；需要使用模型时，再通过 Pi Web、CloudCLI、Codex 或 Claude Code 的配置流程处理。</string>
     <string name="permission_overview_label">系统权限：%1$d/3 已开启</string>
     <string name="permission_badge_open">去开启</string>
     <string name="permission_badge_enabled">已开启</string>
@@ -495,20 +495,20 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="quick_launch_missing">AI 工具入口尚未安装，请先到维护中心完成核心运行栈安装</string>
     <string name="quick_launch_browser_tab">已通过 9222 调试端口打开浏览器标签</string>
     <string name="quick_launch_browser_fallback">9222 未就绪，已回退到系统打开方式</string>
-    <string name="smallphone_host_title">SmallPhoneAI</string>
-    <string name="smallphone_host_status_checking">正在检查 SmallPhone 运行栈</string>
-    <string name="smallphone_host_status_ready">SmallPhone 已就绪</string>
+    <string name="smallphone_host_title">Pi Web 工作台</string>
+    <string name="smallphone_host_status_checking">正在检查 Pi Web 工作台</string>
+    <string name="smallphone_host_status_ready">Pi Web 工作台已就绪</string>
     <string name="smallphone_host_status_recovery">需要维护或修复</string>
     <string name="smallphone_host_status_loading">正在加载页面</string>
     <string name="smallphone_host_status_open">浏览器已打开</string>
     <string name="smallphone_host_checking_title">正在检查本机服务</string>
-    <string name="smallphone_host_checking_detail">启动前会确认 service-manager、SmallPhone、SmallPhone Core API 和 cc-connect 状态。</string>
+    <string name="smallphone_host_checking_detail">启动前会确认 service-manager、pi、pi-web 和连接服务状态。</string>
     <string name="smallphone_host_refresh">重新检查</string>
     <string name="smallphone_host_refresh_short">检查</string>
-    <string name="smallphone_host_open_smallphone">打开 SmallPhone</string>
-    <string name="smallphone_host_start">启动 SmallPhone</string>
+    <string name="smallphone_host_open_smallphone">打开 Pi Web</string>
+    <string name="smallphone_host_start">启动 Pi Web</string>
     <string name="smallphone_host_repair">修复运行栈</string>
-    <string name="smallphone_host_menu">SmallPhoneAI 菜单</string>
+    <string name="smallphone_host_menu">OpenHouseAI 菜单</string>
     <string name="smallphone_host_menu_short">菜单</string>
     <string name="smallphone_host_maintenance">维护中心</string>
     <string name="smallphone_host_maintenance_short">维护</string>
@@ -516,11 +516,11 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="smallphone_host_terminal_short">终端</string>
     <string name="smallphone_host_open_external">用系统浏览器打开</string>
     <string name="smallphone_host_health_title">运行栈健康状态</string>
-    <string name="smallphone_host_starting">正在启动 SmallPhone 运行栈</string>
-    <string name="smallphone_host_repairing">正在修复 SmallPhone 运行栈</string>
-    <string name="smallphone_host_action_busy">已有 SmallPhone 维护动作正在执行</string>
-    <string name="smallphone_host_action_done">SmallPhone 运行栈已就绪</string>
-    <string name="smallphone_host_action_failed">SmallPhone 运行栈仍未就绪，请查看维护中心日志</string>
+    <string name="smallphone_host_starting">正在启动 Pi Web 工作台</string>
+    <string name="smallphone_host_repairing">正在修复 Pi Web 工作台</string>
+    <string name="smallphone_host_action_busy">已有 Pi Web 维护动作正在执行</string>
+    <string name="smallphone_host_action_done">Pi Web 工作台已就绪</string>
+    <string name="smallphone_host_action_failed">Pi Web 工作台仍未就绪，请查看维护中心日志</string>
     <string name="smallphone_host_action_failed_detail">维护动作没有返回可显示的错误信息，请查看维护中心日志。</string>
     <string name="smallphone_host_browser_error">浏览器加载失败：%1$s</string>
     <string name="smallphone_browser_back">‹</string>
@@ -589,9 +589,9 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="stage_detail_install_claude_code_ui_failed">ClaudeCodeUI / CloudCLI 未装好，请查看日志</string>
     <string name="stage_detail_install_claude_code_ui_blocked">先完成“下载 Claude Code”</string>
     <string name="stage_detail_restart_entry_terminal_ready">关闭并重建从应用首页进入的普通终端会话，让默认进入 Ubuntu 立即生效</string>
-    <string name="stage_detail_start_smallphone_ready">启动 service-manager，并通过它拉起 SmallPhone、CloudCLI 和桥接服务</string>
-    <string name="stage_detail_start_smallphone_complete">SmallPhone 运行栈已启动，后台服务由 service-manager 管理</string>
-    <string name="stage_detail_start_smallphone_failed">SmallPhone 运行栈启动失败，请查看日志</string>
+    <string name="stage_detail_start_smallphone_ready">启动 service-manager，并通过它拉起 pi、pi-web、CloudCLI 和桥接服务</string>
+    <string name="stage_detail_start_smallphone_complete">核心服务已启动，后台服务由 service-manager 管理</string>
+    <string name="stage_detail_start_smallphone_failed">核心服务启动失败，请查看日志</string>
     <string name="stage_detail_start_smallphone_blocked">先完成“同步 OpenHouseAI registry”</string>
     <string name="stage_detail_start_ready">核心运行栈已安装，可启动本机服务</string>
     <string name="stage_detail_start_complete">本机服务正在运行</string>

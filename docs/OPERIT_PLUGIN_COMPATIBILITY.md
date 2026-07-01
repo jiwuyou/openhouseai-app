@@ -1,203 +1,62 @@
-# Operit Plugin Compatibility
+# Operit Plugin Compatibility Archive
 
-本文档说明如何在 Termux 上的 Ubuntu 侧兼容 Operit 插件体系。目标是复用 Operit 的工具能力模型，而不是把 Operit Android 宿主完整搬到 Ubuntu。
+本文档是历史兼容性记录。OpenHouseAI 当前默认插件体系是 pi extensions，不是 Operit plugin compatibility runtime。
 
-## Compatibility Goal
+## Current Plugin Direction
 
-OpenHouseAI can support an Operit-compatible tool runtime in Ubuntu so that Codex, Claude Code, CloudCLI, SmallPhone, Operit, and the future openhouse-agent can share plugin/tool capabilities.
-
-The target is:
+默认插件目录：
 
 ```text
-Operit package/tool format
-  -> Ubuntu compatibility runtime
-    -> service-manager managed process
-      -> MCP/API/tool calls available to agents and UI
+/root/.pi/extensions
+/root/.pi/agent/extensions
 ```
 
-This is a compatibility layer, not a second Operit app.
-
-## Operit Plugin Layers
-
-Operit plugin behavior can be separated into two layers.
-
-Tool capability layer:
-
-- package metadata
-- enabled/imported package state
-- `use_package`
-- `packageName:toolName`
-- JavaScript tool execution
-- MCP tool forwarding
-- environment variable requirements
-- state/condition-based tool availability
-- resource files used by tools
-
-Android host layer:
-
-- Activity lifecycle
-- Compose/View UI hooks
-- chat view hooks
-- toolbox UI modules
-- input menu hooks
-- Android permission prompts
-- Android-specific JS/runtime bridge
-- app-local navigation and process assumptions
-
-The Ubuntu compatibility runtime should focus on the tool capability layer. The Android host layer should stay in Android/Operit.
-
-## Supported Long-Term Shape
-
-The Ubuntu side can provide:
+默认搜索插件：
 
 ```text
-list_packages
-enable_package
-disable_package
-use_package
-list_tools
-call_tool(packageName:toolName, params)
-read_package_metadata
-check_package_env
+multi-platform-search.ts
 ```
 
-It can expose these through:
-
-- MCP server
-- local HTTP API
-- Unix socket where available
-- service-manager action/status bridge
-
-The preferred control path is:
+默认 agent/UI：
 
 ```text
-Android Operit UI / SmallPhone / AI agent
-  -> service-manager
-    -> operit-compat runtime in Ubuntu
-      -> JS tool, MCP tool, or native command adapter
+pi
+pi-web
 ```
 
-## What Can Be Compatible
-
-Compatible targets:
-
-- old-style Operit JavaScript packages
-- package metadata and tool declarations
-- required environment variables
-- `use_package` activation semantics
-- `packageName:toolName` naming convention
-- MCP-backed tools
-- `.toolpkg` subpackage metadata and tool resources where they do not require Android UI hooks
-- command tools targeting Termux, Ubuntu, Android bridge, or service-manager
-
-For `.toolpkg`, the container should not automatically become a callable package. The compatibility runtime should identify callable subpackages and expose those as tools, matching the Operit concept that the container can hold multiple package units.
-
-## What Should Not Be Moved to Ubuntu
-
-Do not move these into the Ubuntu compatibility runtime:
-
-- Operit Android Activity shell
-- Compose UI plugin rendering
-- chat view hooks
-- input menu hooks
-- Android permission dialogs
-- Android lifecycle callbacks
-- WebView/Activity-specific state
-- direct Android UI navigation
-- persistent daemon startup from plugin UI code
-
-These remain Android host responsibilities. Ubuntu may preserve their metadata for display, but it should not try to execute them as Linux plugin behavior.
-
-## Relationship With MCP
-
-MCP is the best bridge between Operit-compatible tools and other agents.
-
-Recommended direction:
+默认服务：
 
 ```text
-Operit-compatible package runtime
-  -> exposes package tools as MCP tools
-
-Codex / Claude Code / openhouse-agent
-  -> call those tools through MCP
-
-Operit Android UI
-  -> can also call them through service-manager or MCP bridge
+pi-agent
+pi-web
 ```
 
-This avoids making Claude Code or Codex understand Android-only Operit internals. They only need a stable tool protocol.
+详见 `PI_AGENT_PLUGIN_SYSTEM.md`。
 
-## Relationship With service-manager
+## Historical Scope
 
-The compatibility runtime itself should be managed by service-manager:
+早期讨论过在 Ubuntu 侧兼容 Operit 包和工具格式。这个方向现在不是默认实现目标。本仓库默认文档、安装链路、侧边栏入口和 AI 操作参考都应以 pi extensions 为准。
 
-- start
-- stop
-- restart
-- health
-- logs
-- package registry sync
-- repair actions
+如果未来用户明确要求研究 Operit package compatibility，应作为可选兼容层重新立项，并满足以下边界：
 
-Plugin tools that start long-running services should declare service-manager actions instead of launching daemons directly.
+- 不替代 pi extensions。
+- 不进入 APK 默认安装链路。
+- 不注册默认主菜单入口。
+- 不绕过 service-manager 启动长期进程。
+- 不把 Android UI hook 当作 Ubuntu 可执行插件代码。
+- 不要求 Codex、Claude Code、CloudCLI 或 pi 直接理解 Android-only internals。
 
-## Runtime Targets for Terminal Packages
+## Migration Rule
 
-Terminal-related packages should not collapse into one generic shell. They should expose distinct targets:
+发现旧文档、代码或配置仍引用 Operit 插件兼容路线时，应先判断它是否只是历史说明。
 
-| Package Type | Intended Target |
-| --- | --- |
-| Termux terminal package | Host maintenance, Android-adjacent commands, Ubuntu lifecycle |
-| Ubuntu terminal package | Development commands, Codex/Claude Code/CloudCLI, projects, MCP tools |
-| Custom terminal package | User-declared environment, working directory, command wrapper, risk policy |
+如果它影响默认产品行为，应迁移到：
 
-This distinction matters because Termux and Ubuntu have different filesystems, package managers, environment variables, and failure modes.
+```text
+pi extension
+  -> pi tool registration
+  -> pi-web tool display
+  -> service-manager managed service when long-running
+```
 
-## Implementation Phases
-
-Phase 1: Protocol compatibility
-
-- define package registry storage
-- implement package listing and enable/disable state
-- implement `use_package`
-- implement `packageName:toolName` lookup
-- return normalized tool results
-
-Phase 2: JavaScript package execution
-
-- run JS tools in a Node-based runtime
-- validate required environment variables
-- restrict filesystem and command access through declared tool permissions
-- capture logs and errors
-
-Phase 3: MCP bridge
-
-- expose compatible package tools as MCP tools
-- allow Codex, Claude Code, and openhouse-agent to call them
-- route lifecycle through service-manager
-
-Phase 4: `.toolpkg` metadata and subpackages
-
-- parse container metadata
-- expose callable subpackages
-- ignore or preserve Android UI hook metadata without executing it in Ubuntu
-
-Phase 5: Android UI integration
-
-- Operit Android UI displays packages, status, env requirements, and diagnostics
-- package execution still goes through the Ubuntu compatibility runtime where appropriate
-
-## Safety Rules
-
-- Do not execute package code directly from Android UI.
-- Do not let a plugin start persistent processes outside service-manager.
-- Do not treat Android UI hooks as Ubuntu-executable plugin code.
-- Do not give packages unrestricted access to Termux home by default.
-- Do not hide whether a tool runs in Termux, Ubuntu, Android, or service-manager.
-- High-risk tools should require explicit user confirmation or a higher trust level.
-
-## Current vs Future
-
-Current OpenHouseAI integration already has a hosted Operit skeleton and runtime bridge concepts. Full Ubuntu-side Operit plugin compatibility is a future architecture direction unless the implementation document for that runtime says otherwise.
-
-Until that runtime exists, documentation and UI should describe this as a planned compatibility layer, not as a completed feature.
+旧 pi-web 会话可能不会自动看到新插件。更新扩展后，新建会话是最稳的刷新方式。

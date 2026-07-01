@@ -16,9 +16,10 @@ OpenHouseAI 是一个面向人机协作的移动端 AI 运行平台。它基于 
 
 - `ENVIRONMENT.md`：Android、Termux、Ubuntu、路径和默认安装范围。
 - `MODEL_API_SETUP.md`：Codex、Claude Code 和 CloudCLI 的登录/API 配置。
+- `PI_AGENT_PLUGIN_SYSTEM.md`：pi、pi-web、插件目录和默认搜索插件。
 - `OPTIONAL_EXTERNAL_TOOLS.md`：退役外部工具的可选外部安装参考。
 
-架构设计文档位于仓库级 `docs/` 目录，主要入口是 `docs/ARCHITECTURE.md`、`docs/RUNTIME_LAYERING.md`、`docs/OPERIT_ROLE.md` 和 `docs/OPERIT_PLUGIN_COMPATIBILITY.md`。
+架构设计文档位于仓库级 `docs/` 目录，主要入口是 `docs/ARCHITECTURE.md`、`docs/RUNTIME_LAYERING.md` 和 `docs/PI_AGENT_PLUGIN_SYSTEM.md`。
 
 ### 3. AI 可以参考的操作手册
 
@@ -29,6 +30,10 @@ OpenHouseAI 是一个面向人机协作的移动端 AI 运行平台。它基于 
 
 ## 默认核心
 
-默认核心能力是 Termux、Termux 上的 Ubuntu、service-manager、SmallPhone、Operit、Codex、Claude Code 和 CloudCLI。
+默认核心能力是 Termux、Termux 上的 Ubuntu、service-manager、pi、pi-web、Codex、Claude Code 和 CloudCLI。
 
-OpenCode、Reasonix、Hermes 等退役外部工具不是 APK 默认核心能力；只有用户明确需要时，才参考 `OPTIONAL_EXTERNAL_TOOLS.md`。
+pi 是默认主 agent，pi-web 是默认主 UI。service-manager 负责管理 `pi-agent` 和 `pi-web`。默认 pi 插件目录是 `/root/.pi/extensions` 和 `/root/.pi/agent/extensions`，默认搜索插件是 `multi-platform-search.ts`。
+
+pi 和 pi-web 的默认项目包可以随 APK 提供，但 npm 依赖解析、缺失依赖安装和 registry 访问仍可能需要网络。文档中不要把首次安装描述成完全离线或网络可选。
+
+Operit、OpenCode、Reasonix、Hermes 等退役或外部工具不是 APK 默认核心能力；只有用户明确需要时，才参考历史说明或 `OPTIONAL_EXTERNAL_TOOLS.md`。

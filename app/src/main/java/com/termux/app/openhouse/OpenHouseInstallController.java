@@ -293,7 +293,7 @@ public final class OpenHouseInstallController {
                 false,
                 100,
                 "初始化安装完成",
-                "已检测到 Linux 环境和 AI 工具安装完成，无需再次执行初始化。",
+                "已检测到 Linux 环境、AI 工具和 Pi Agent 工作台安装完成，无需再次执行初始化。",
                 MANIFEST_FULL_SLUG
             );
             clearRunningMarker();
@@ -545,7 +545,7 @@ public final class OpenHouseInstallController {
                 false,
                 100,
                 "初始化安装完成",
-                "Ubuntu、Node.js、Codex、Claude Code、CloudCLI 和 SmallPhoneAI 运行栈已安装完成，service-manager 将负责运行期管理。",
+                "Ubuntu、Node.js、Codex、Claude Code、CloudCLI、Pi Agent 工作台和 SmallPhoneAI 运行栈已安装完成，service-manager 将负责运行期管理。",
                 MANIFEST_FULL_SLUG
             );
         }
@@ -1029,7 +1029,7 @@ public final class OpenHouseInstallController {
 
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("log '开始执行 SmallPhoneAI 一键初始化。'\n");
-        scriptBody.append("log '安装过程中会准备 Linux 环境，安装 service-manager、openhouse-connect、SmallPhone 和 AI CLI。'\n");
+        scriptBody.append("log '安装过程中会准备 Linux 环境，安装 service-manager、openhouse-connect、SmallPhone、Pi Agent、pi-web 和 AI CLI。'\n");
         scriptBody.append(bundledBody);
         if (!bundledBody.toString().endsWith("\n")) {
             scriptBody.append('\n');
@@ -1271,9 +1271,9 @@ public final class OpenHouseInstallController {
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh", "安装 Linux 基础工具", "正在安装 curl、git 等基础工具。"),
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh", "设置启动方式", "正在配置默认进入 Ubuntu。"),
         INSTALL_NODE("install_node", "install-node.sh", "安装 Node.js 24 LTS", "正在安装或检查 Node.js 24 LTS，后续 AI 工具会复用这一套 Node 运行时。"),
-        RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装 SmallPhone 运行栈", "正在从 APK 内置 payload 安装 service-manager、cc-connect 和 SmallPhone。"),
+        RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装本机 Agent 运行栈", "正在从 APK 内置组件包安装 service-manager、cc-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web；pi/pi-web 依赖解析可能访问 npm registry。"),
         SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh", "同步 OpenHouseAI 注册表", "正在把 Ubuntu mirror 同步到 Termux canonical，供 App、SmallPhone 和 AI 读取。"),
-        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动 SmallPhone", "正在启动 SmallPhone 入口和运行组件。"),
+        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动本机 Agent 工作台", "正在启动 pi-web、SmallPhone 入口和运行组件。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),
         INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh", "安装 AI 工具：ClaudeCodeUI", "正在安装 ClaudeCodeUI / CloudCLI，并固定端口 23083。");

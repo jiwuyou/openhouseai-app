@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "version": "2026.06.30.1",
+  "version": "2026.07.01.1",
   "title": "SmallPhoneAI 维护器",
   "sourceName": "SmallPhoneAI APK 维护源",
-  "updatedAt": "2026-06-30",
+  "updatedAt": "2026-07-01",
   "bootstrapUrl": "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh",
   "bootstrapUrlRole": "optional_update_only",
   "defaultOneClickAction": "install",
@@ -19,8 +19,9 @@
     }
   },
   "runtimePayloads": {
-    "firstRunSource": "apk_bundled",
-    "networkRole": "optional_update_only",
+    "firstRunSource": "apk_bundled_packages",
+    "networkRole": "required_for_npm_dependencies",
+    "description": "APK 内置运行组件包；pi/pi-web 安装会优先使用内置 npm tgz，但依赖解析仍可能访问 npm registry。",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
     "installRoot": "$HOME/smallphoneai-repos",
@@ -43,6 +44,18 @@
         "title": "SmallPhone",
         "apkAssetPath": "openhouse/product-payloads/smallphone.tar",
         "targetDir": "$HOME/smallphoneai-repos/smallphone-active"
+      },
+      {
+        "id": "pi-agent",
+        "title": "Pi Agent runtime",
+        "apkAssetPath": "openhouse/product-payloads/pi-agent.tar",
+        "targetDir": "$HOME/smallphoneai-repos/pi-agent"
+      },
+      {
+        "id": "pi-web",
+        "title": "Pi Web",
+        "apkAssetPath": "openhouse/product-payloads/pi-web.tar",
+        "targetDir": "$HOME/smallphoneai-repos/pi-web"
       }
     ]
   },
@@ -58,13 +71,13 @@
       "stages": ["install_node", "install_codex", "install_claude_code", "install_claude_code_ui"]
     },
     {
-      "title": "安装 SmallPhone 运行组件",
-      "description": "从 APK-bundled payloads 安装 service-manager、cc-connect/openhouse-connect、SmallPhone，并调用各自 install/check/register-service 入口。",
+      "title": "安装本机 Agent 运行组件",
+      "description": "从 APK 内置运行组件包安装 service-manager、cc-connect/openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web；pi/pi-web 依赖解析可能需要访问 npm registry。",
       "stages": ["runtime_components", "sync_openhouse_registry"]
     },
     {
-      "title": "启动 SmallPhone",
-      "description": "启动 service-manager，通过 group:local-stack 启动已注册服务，并读取最终健康状态。",
+      "title": "启动本机 Agent 工作台",
+      "description": "启动 service-manager，通过 group:local-stack 启动 pi-web、SmallPhone 兼容入口和已注册服务，并读取最终健康状态。",
       "stages": ["start_smallphone"]
     }
   ],
@@ -72,14 +85,14 @@
     {
       "id": "smallphone_runtime",
       "type": "actions",
-      "title": "SmallPhone 运行栈",
+      "title": "本机 Agent 运行栈",
       "description": "面向 App Shell 的安装、检查、启动和修复入口；所有动作可重复执行。",
       "items": [
         {
           "id": "install",
           "type": "button",
           "label": "安装 SmallPhoneAI",
-          "description": "完整准备环境，安装 Node.js、Codex、Claude Code、CloudCLI、核心运行组件，启动 SmallPhone，并输出最终健康状态。",
+          "description": "完整准备环境，安装 Node.js、Codex、Claude Code、CloudCLI、Pi Agent/pi-web 和核心运行组件；pi/pi-web 依赖解析可能需要 npm registry，并输出最终健康状态。",
           "action": {
             "type": "bootstrap",
             "args": ["install"],
@@ -97,7 +110,7 @@
         {
           "id": "start_smallphone",
           "type": "button",
-          "label": "启动 SmallPhone",
+          "label": "启动本机 Agent 工作台",
           "description": "启动 service-manager，请求启动 group:local-stack，并输出最终健康状态。",
           "action": {
             "type": "bootstrap",
@@ -109,7 +122,7 @@
         {
           "id": "repair",
           "type": "button",
-          "label": "修复 SmallPhone",
+          "label": "修复本机 Agent 运行栈",
           "description": "重新执行运行组件 install/check/register-service，然后启动并输出状态。",
           "action": {
             "type": "bootstrap",
@@ -122,7 +135,7 @@
           "id": "sync_core_stack",
           "type": "button",
           "label": "同步核心运行栈",
-          "description": "APK 更新后同步内置 service-manager、openhouse-connect、SmallPhone 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
+          "description": "APK 更新后同步内置 service-manager、openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
           "action": {
             "type": "bootstrap",
             "args": ["sync-core-stack"],
@@ -238,8 +251,8 @@
     },
     {
       "id": "runtime_components",
-      "title": "安装运行组件",
-      "description": "从 APK-bundled payloads 安装、检查并注册 service-manager、cc-connect/openhouse-connect、SmallPhone。",
+      "title": "安装本机 Agent 运行组件",
+      "description": "从 APK 内置运行组件包安装、检查并注册 service-manager、cc-connect/openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web；pi/pi-web 依赖解析可能需要 npm registry。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {
@@ -250,8 +263,8 @@
     },
     {
       "id": "start_smallphone",
-      "title": "启动 SmallPhone",
-      "description": "启动 service-manager，通过 group:local-stack 启动 SmallPhone 运行栈，并输出最终健康状态。",
+      "title": "启动本机 Agent 工作台",
+      "description": "启动 service-manager，通过 group:local-stack 启动 pi-web、SmallPhone 运行栈，并输出最终健康状态。",
       "action": {
         "type": "bootstrap",
         "args": ["start"],

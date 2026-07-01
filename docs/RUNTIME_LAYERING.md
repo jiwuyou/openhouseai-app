@@ -21,12 +21,12 @@ Layer 3: Ubuntu in Termux
   - primary Linux runtime
   - development workspace
   - Codex, Claude Code, CloudCLI
-  - MCP and openhouse-agent services
+  - pi, pi-web, MCP, and agent services
 
 Layer 4: service-manager
   - post-install control plane
   - service status, lifecycle, logs, repair, registry
-  - shared API for Android UI, SmallPhone, Operit, and AI agents
+  - shared API for Android UI, pi-web, pi, and AI agents
 ```
 
 The layers are not equal. Android App and Termux are host layers. Ubuntu is the workbench. service-manager is the normal control plane after installation.
@@ -39,7 +39,7 @@ The Android App owns user-facing product lifecycle:
 - install progress UI
 - permission guidance
 - main menu and entry points
-- AI朋友 Help hosted entry
+- pi-web hosted entry
 - maintenance and recovery UI
 - APK-bundled docs and assets
 - explicit "open", "return", "close", and status controls
@@ -81,6 +81,8 @@ Ubuntu is the primary AI and development runtime. It should own:
 - Codex
 - Claude Code
 - CloudCLI
+- pi
+- pi-web
 - Node.js, Python, Rust, Git, build tools
 - MCP servers
 - service-manager runtime services
@@ -102,7 +104,7 @@ service-manager is the control plane after the first install is complete. It sho
 - repair actions
 - component registry sync
 
-Android UI, SmallPhone, Operit, Codex, Claude Code, and future openhouse-agent should prefer service-manager APIs for managed services.
+Android UI, pi-web, pi, Codex, Claude Code, and future OpenHouseAI agents should prefer service-manager APIs for managed services.
 
 The first install chain creates service-manager. After that, service-manager manages the normal service lifecycle. If service-manager itself is unavailable, control falls back to Termux and Android recovery.
 
@@ -118,7 +120,8 @@ Use these defaults:
 | Repair `dpkg` or packages inside Ubuntu | Ubuntu, launched from Termux if needed |
 | Run Codex or Claude Code | Ubuntu |
 | Run project build/test commands | Ubuntu |
-| Start or stop SmallPhone runtime | service-manager |
+| Start or stop pi-web | service-manager |
+| Start or stop pi-agent | service-manager |
 | Start or stop MCP servers | service-manager |
 | Read managed service logs | service-manager |
 | Recover from service-manager unreachable | Termux first, then Ubuntu diagnostics |
@@ -138,7 +141,7 @@ Termux terminal:
 Ubuntu terminal:
 
 - is the everyday developer terminal
-- runs Codex, Claude Code, CloudCLI, projects, package managers, and MCP tools
+- runs pi, pi-web, Codex, Claude Code, CloudCLI, projects, package managers, and MCP tools
 - is the primary place where the long-term agent core should execute
 
 Custom terminal profiles can exist, but they should declare which layer they target and what environment variables, working directory, and permissions they assume.
@@ -151,7 +154,8 @@ Persistent processes should follow this ownership:
 Android foreground/background UI -> Android App
 Termux host helper/supervisor     -> Termux
 Ubuntu service processes          -> service-manager
-Agent core                        -> Ubuntu service managed by service-manager
+pi-agent                          -> Ubuntu service managed by service-manager
+pi-web                            -> Ubuntu service managed by service-manager
 MCP servers                       -> Ubuntu service managed by service-manager
 ```
 
@@ -165,7 +169,7 @@ When something fails, diagnose from the lowest layer that can still run:
 2. Termux prefix, shell, packages, `proot-distro`
 3. Ubuntu rootfs, package state, process tree
 4. service-manager health and logs
-5. individual services such as SmallPhone, CloudCLI, MCP servers, openhouse-agent
+5. individual services such as pi-agent, pi-web, CloudCLI, and MCP servers
 
 Do not default to clearing app data or deleting Termux home. Those actions can destroy Ubuntu rootfs, user projects, credentials, and service configuration.
 
@@ -174,7 +178,7 @@ Do not default to clearing app data or deleting Termux home. Those actions can d
 Avoid high-frequency one-shot Ubuntu commands through repeated proot login. For tools that the UI or AI calls often, prefer:
 
 ```text
-Android/Operit/SmallPhone
+Android App / pi-web / pi
   -> service-manager API
     -> long-running Ubuntu service
 ```

@@ -16,14 +16,13 @@ service-manager 负责：
 当前核心服务通常包括：
 
 - `service-manager`
-- `smallphone-core`
-- `smallphone-frontend-beta`
+- `pi-agent`
+- `pi-web`
 - `cloudcli`
 - `cc-connect` / `openhouse-connect`
 
 未来可继续注册：
 
-- `openhouse-agent`
 - MCP server
 - 插件服务
 - 用户自定义后台服务
@@ -42,17 +41,18 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 
 这个目录也可以通过 service-manager 配置里的 `service_registry_dir` 覆盖。`services.d/*.json` 会在 `service-manager serve` 启动时加载，并按稳定服务名 upsert 到服务列表。
 
-一个运行在 Termux Ubuntu 内的服务示例：
+一个运行在 Termux Ubuntu 内的 pi-web 服务示例：
 
 ```json
 {
-  "name": "my-agent",
-  "description": "本机 agent 服务",
+  "name": "pi-web",
+  "description": "pi-web 本地 AI 工作台",
   "provider": "proot-distro",
-  "command": ["node", "server.js"],
-  "working_dir": "/root/my-agent",
+  "command": ["npm", "start"],
+  "working_dir": "/root/deploy-pi-projects/pi-web",
   "env": {
-    "PORT": "23100"
+    "PORT": "30141",
+    "PI_CODING_AGENT_DIR": "/root/.pi"
   },
   "runtime": {
     "distro": "ubuntu"
@@ -64,13 +64,13 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
   "health": [
     {
       "type": "http",
-      "url": "http://127.0.0.1:23100/health",
+      "url": "http://127.0.0.1:30141/",
       "interval": "30s",
       "timeout": "5s"
     }
   ],
   "enabled": true,
-  "tags": ["openhouseai", "agent", "group:local-stack"]
+  "tags": ["openhouseai", "pi", "ui", "group:local-stack"]
 }
 ```
 
@@ -104,8 +104,8 @@ curl -q -fsS --max-time 10 \
 
 ```bash
 service-manager list
-service-manager status my-agent
-curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/my-agent/status"
+service-manager status pi-web
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/status"
 ```
 
 ## 注册到主菜单和侧边栏
@@ -118,35 +118,42 @@ $HOME/.config/openhouseai/components.d/*.json
 
 组件注册只描述入口、标题、分区和 service-manager 绑定关系。不要在组件注册里写 `command`、`shell`、`script` 或 `args`；这些执行细节必须放在 service-manager 的 `ServiceSpec` 中。
 
-一个同时提供打开入口和控制入口的组件示例：
+一个同时提供 pi-web 打开入口和控制入口的组件示例：
 
 ```json
 {
-  "id": "my-agent",
+  "id": "pi-web",
   "enabled": true,
   "shellMenu": {
-    "title": "我的 Agent",
-    "subtitle": "本机 agent 工作台",
+    "title": "AI 工作台",
+    "subtitle": "pi-web 本地工作台",
     "section": "ai",
     "order": 80,
     "visible": true,
     "favorite": true,
     "entry": {
       "type": "webview",
-      "url": "http://127.0.0.1:23100/"
+      "url": "http://127.0.0.1:30141/"
     },
     "controlEntry": {
       "type": "service-control",
       "title": "控制",
-      "serviceRefs": ["service-manager://services/my-agent"]
+      "serviceRefs": [
+        "service-manager://services/pi-agent",
+        "service-manager://services/pi-web"
+      ]
     }
   },
   "smallphoneApp": {},
   "serviceManager": {
     "services": [
       {
-        "name": "my-agent",
-        "serviceRef": "service-manager://services/my-agent"
+        "name": "pi-agent",
+        "serviceRef": "service-manager://services/pi-agent"
+      },
+      {
+        "name": "pi-web",
+        "serviceRef": "service-manager://services/pi-web"
       }
     ]
   },
@@ -179,7 +186,7 @@ service-manager://actions/<serviceId>.repair
 ```bash
 ls -la "$HOME/.config/openhouseai/components.d"
 service-manager list
-service-manager status my-agent
+service-manager status pi-web
 ```
 
 再回到 OpenHouseAI 主菜单，或重新打开主菜单页面触发刷新。
@@ -213,7 +220,7 @@ $HOME/.smallphoneai/logs/service-manager.log
 
 ## 状态检查
 
-优先使用 bootstrap 状态，因为它会同时检查 service-manager、SmallPhone、cc-connect 和端口：
+优先使用 bootstrap 状态，因为它会同时检查 service-manager、pi-web、pi-agent、cc-connect 和端口：
 
 ```bash
 cd "$HOME/.smallphoneai-bootstrap"
@@ -235,7 +242,7 @@ service-manager list
 查看某个服务状态：
 
 ```bash
-service-manager status smallphone-core
+service-manager status pi-web
 ```
 
 如果本地 CLI 不可用，使用 API。
@@ -265,22 +272,22 @@ curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services
 查看服务状态：
 
 ```bash
-curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/smallphone-core/status"
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/status"
 ```
 
 查看服务日志：
 
 ```bash
-curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/smallphone-core/logs?limit=120"
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/logs?limit=120"
 ```
 
 启动、停止、重启或修复服务：
 
 ```bash
-curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/smallphone-core/start"
-curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/smallphone-core/stop"
-curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/smallphone-core/restart"
-curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/smallphone-core/repair"
+curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/start"
+curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/stop"
+curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/restart"
+curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/repair"
 ```
 
 启动本地运行栈：
@@ -305,7 +312,7 @@ cd "$HOME/.smallphoneai-bootstrap"
 bash bootstrap.sh repair
 ```
 
-不要直接绕过 service-manager 启动 SmallPhone、CloudCLI、cc-connect、MCP server 或 agent server 的长期进程。
+不要直接绕过 service-manager 启动 pi、pi-web、CloudCLI、cc-connect、MCP server 或 agent server 的长期进程。
 
 ## 显式关闭
 
@@ -314,7 +321,7 @@ bash bootstrap.sh repair
 推荐顺序：
 
 1. 列出服务，确认服务 ID。
-2. 停止上层入口，例如 SmallPhone frontend、CloudCLI、AI agent、MCP 服务。
+2. 停止上层入口，例如 pi-web、CloudCLI、pi-agent、MCP 服务。
 3. 停止桥接服务，例如 cc-connect。
 4. 保留或停止 service-manager 取决于用户要求：
    - 用户只要求关闭 AI/后台任务：可以保留 service-manager，方便再次启动。
@@ -325,8 +332,8 @@ bash bootstrap.sh repair
 
 ```bash
 curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/cloudcli/stop"
-curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/smallphone-frontend-beta/stop"
-curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/smallphone-core/stop"
+curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/stop"
+curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-agent/stop"
 ```
 
 如果某个服务 ID 不存在，不要猜测；先重新读取服务列表。

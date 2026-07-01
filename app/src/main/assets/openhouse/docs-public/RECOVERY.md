@@ -30,7 +30,7 @@
 
 | 现象 | 优先判断 | 修复入口 |
 | --- | --- | --- |
-| SmallPhone 或 CloudCLI 不可访问 | service-manager 或服务未启动 | `bash bootstrap.sh start` 或 service-manager API |
+| pi-web、pi-agent 或 CloudCLI 不可访问 | service-manager 或服务未启动 | `bash bootstrap.sh start` 或 service-manager API |
 | service-manager 不可访问 | 控制平面未启动或 token/config 问题 | `bash bootstrap.sh repair` |
 | Ubuntu 命令失败 | proot/Ubuntu rootfs/apt 状态异常 | Termux 外层修 Ubuntu |
 | Termux 命令缺失 | prefix 或 Termux 包状态异常 | Termux 修复包状态 |
@@ -63,7 +63,7 @@ curl -fsS --max-time 2 http://127.0.0.1:20087/api/v1/health
 
 ## 恢复 service-manager 和运行栈
 
-如果 Ubuntu 可用，但 service-manager 或 SmallPhone 不可用，先尝试启动：
+如果 Ubuntu 可用，但 service-manager、pi-agent 或 pi-web 不可用，先尝试启动：
 
 ```bash
 cd "$HOME/.smallphoneai-bootstrap"
@@ -186,8 +186,8 @@ pgrep -af 'apt|dpkg' || true
 执行顺序：
 
 1. 通过 service-manager 停止相关服务。
-2. 确认 SmallPhone、CloudCLI、cc-connect、agent、MCP 服务都停止。
-3. 停止 Operit / AI朋友 Help 的后台任务和 WebView。
+2. 确认 pi-web、CloudCLI、cc-connect、pi-agent、MCP 服务都停止。
+3. 关闭 Android App 中打开的 pi-web WebView 页面。
 4. 检查残留进程。
 5. 只杀明确属于本产品且无法正常停止的进程。
 

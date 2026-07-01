@@ -1977,7 +1977,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             sharedInstallCompleted = false;
             setSharedInstallText(
                 "详细进度：等待主界面安装状态",
-                "后台权限处理完成后，点击开始安装即可。首次安装会准备 Ubuntu、Node、Codex、Claude Code、CloudCLI 和 SmallPhone 运行栈；不需要现在填写模型或 API Key。"
+                "后台权限处理完成后，点击开始安装即可。首次安装会准备 Ubuntu、Node、Codex、Claude Code、CloudCLI、pi 和 pi-web；不需要现在填写模型或 API Key。"
             );
             refreshSharedInstallLogTail(false);
             mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
@@ -2027,7 +2027,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         } else if (running) {
             detail.append("主界面安装正在运行，本页只观察同一个安装过程。");
         } else if (completed) {
-            detail.append("安装已完成。service-manager 会作为安装完成后的控制平面管理后台服务；可返回主界面打开 SmallPhone、CloudCLI、Codex、Claude Code 或 AI朋友 Help。");
+            detail.append("安装已完成。service-manager 会作为安装完成后的控制平面管理后台服务；可返回主界面打开 Pi Web 工作台、CloudCLI、Codex 或 Claude Code。");
         } else if (failed) {
             detail.append("安装失败。请查看下方共享日志或维护终端输出。");
         } else {
@@ -3436,7 +3436,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("bootstrap=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n");
         scriptBody.append("payload_dir=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n");
-        scriptBody.append("if [ ! -f \"$bootstrap\" ]; then log '未找到 APK 内置 SmallPhoneAI bootstrap，请重新安装或修复应用。'; exit 1; fi\n");
+        scriptBody.append("if [ ! -f \"$bootstrap\" ]; then log '未找到 APK 内置 OpenHouseAI bootstrap，请重新安装或修复应用。'; exit 1; fi\n");
         scriptBody.append("if [ -d \"$payload_dir\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"$payload_dir\" SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT=\"$payload_dir\"; fi\n");
         scriptBody.append("log \"正在执行 APK 内置维护动作：").append(action.toDisplayString()).append("\"\n");
         scriptBody.append("run_logged env OPENHOUSEAI_WEB_PORT=").append(shellQuote(Integer.toString(getLocalMaintenanceWebPort())))
@@ -3560,7 +3560,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private String buildPostRemoteOneClickScript() throws IOException {
         StringBuilder scriptBody = new StringBuilder();
-        scriptBody.append("log '远程一键安装完成。安装完成后由 service-manager 管理 SmallPhone、CloudCLI 和桥接服务。'\n");
+        scriptBody.append("log '远程一键安装完成。安装完成后由 service-manager 管理 pi、pi-web、CloudCLI 和桥接服务。'\n");
         return scriptBody.toString();
     }
 
@@ -3658,7 +3658,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
         body.append("阶段执行：").append(commandInFlight ? "进行中" : "空闲").append('\n');
         body.append("运行控制：安装完成后由 service-manager 管理后台服务，地址 ").append(SERVICE_MANAGER_BASE_URL).append('\n');
-        body.append("核心入口：SmallPhone、CloudCLI、Codex、Claude Code、AI朋友 Help").append('\n');
+        body.append("核心入口：Pi Web 工作台、CloudCLI、Codex、Claude Code").append('\n');
         body.append(permissionOverview).append('\n');
         body.append("产品文档：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/openhouseai-docs").append('\n');
         body.append("工作区：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/workspace").append('\n');
@@ -4146,12 +4146,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.RUNTIME_COMPONENTS,
             runtimeComponentsInstalled
-                ? StagePresentation.complete(this, "service-manager、openhouse-connect 与 SmallPhone 已安装或已完成。")
+                ? StagePresentation.complete(this, "service-manager、openhouse-connect、pi 与 pi-web 已安装或已完成。")
                 : (!claudeCodeUiInstalled
                     ? StagePresentation.blocked(this, "请先完成 Codex、Claude Code 和 CloudCLI 安装阶段。")
                     : failedOrReady(runtimeComponentsExitCode,
                         "运行组件安装失败，请查看该阶段日志。",
-                        "准备安装 service-manager、openhouse-connect 与 SmallPhone。"))
+                        "准备安装 service-manager、openhouse-connect、pi 与 pi-web。"))
         );
 
         snapshot.presentations.put(
@@ -4159,7 +4159,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             openHouseRegistrySynced
                 ? StagePresentation.complete(this, "OpenHouseAI registry 已同步到 Termux canonical。")
                 : (!runtimeComponentsInstalled
-                    ? StagePresentation.blocked(this, "请先安装 service-manager、openhouse-connect 与 SmallPhone 运行组件。")
+                    ? StagePresentation.blocked(this, "请先安装 service-manager、openhouse-connect、pi 与 pi-web 运行组件。")
                     : failedOrReady(syncOpenHouseRegistryExitCode,
                         "OpenHouseAI registry 同步失败，请查看该阶段日志。",
                         "准备同步 components.d、service-manager/services.d 和 AI docs，安装完成后交给 service-manager 管理。"))

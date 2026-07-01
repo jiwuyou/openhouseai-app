@@ -6,7 +6,8 @@ OpenHouseAI 运行在 Android 手机上，结构如下：
 - Termux 提供终端环境和包管理。
 - Ubuntu 通过 `proot-distro` 安装在 Termux 内。
 - Node.js 24 LTS、Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 安装在 Ubuntu 内。
-- 安装完成后，service-manager 负责管理 openhouse-connect、SmallPhone runtime 和核心后台服务。
+- pi 和 pi-web 安装在 Ubuntu 内。
+- 安装完成后，service-manager 负责管理 openhouse-connect、`pi-agent`、`pi-web` 和核心后台服务。
 
 ## 安装范围
 
@@ -19,7 +20,9 @@ OpenHouseAI 只负责安装和检测：
 - ClaudeCodeUI / CloudCLI
 - service-manager
 - openhouse-connect
-- SmallPhone runtime
+- pi
+- pi-web
+- 默认 pi 扩展，例如 `multi-platform-search.ts`
 
 Node.js 24 LTS 是单独可见阶段，排在 Codex CLI、Claude Code 和 ClaudeCodeUI / CloudCLI 之前。后续阶段只检查并使用该 Node.js runtime，不再各自隐式安装系统 Node.js。
 
@@ -37,9 +40,9 @@ Node.js 24 LTS 是单独可见阶段，排在 Codex CLI、Claude Code 和 Claude
 8. 安装 Codex CLI。
 9. 安装 Claude Code。
 10. 安装 ClaudeCodeUI / CloudCLI。
-11. 安装 service-manager、openhouse-connect 和 SmallPhone runtime。
-12. 同步 service-manager 服务定义和 OpenHouseAI 组件注册。
-13. 启动核心服务。
+11. 安装 service-manager、openhouse-connect、pi 和 pi-web。
+12. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
+13. 启动 `pi-agent` 和 `pi-web`。
 
 默认进入 Ubuntu 必须在安装 Node.js 24 LTS、Codex CLI、Claude Code 和 ClaudeCodeUI / CloudCLI 之前完成。
 
@@ -52,6 +55,9 @@ Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubunt
 - 官方文档：`/data/data/com.termux/files/home/openhouseai-docs/official`
 - Agent 笔记：`/data/data/com.termux/files/home/openhouseai-docs/agent-notes`
 - 启动入口配置：`/data/data/com.termux/files/home/.openhouseai`
+- pi 默认目录：`/root/.pi`
+- pi 扩展目录：`/root/.pi/extensions`
+- pi CLI 扩展目录：`/root/.pi/agent/extensions`
 
 Ubuntu 中如果存在以下短路径，优先使用短路径：
 
@@ -70,3 +76,7 @@ Ubuntu 中如果存在以下短路径，优先使用短路径：
 - Ubuntu：`~/bin/openhouseai-env-probe`
 
 如果 Agent 不确定当前运行在哪里，应先读取本文件，再执行用户任务。
+
+## 后置能力
+
+Termux 侧救援助手是未来预留能力。本轮不默认安装、不常驻、不进入首次安装关键路径。主 agent 安装完成后，后续可以再由主 agent 或维护入口安装配置救援助手。

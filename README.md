@@ -9,8 +9,8 @@ OpenHouseAI 文档：
 - [OpenHouseAI 概览](docs/OPENHOUSEAI.md)
 - [架构设计](docs/ARCHITECTURE.md)
 - [运行分层](docs/RUNTIME_LAYERING.md)
-- [Operit 定位](docs/OPERIT_ROLE.md)
-- [Operit 插件兼容路线](docs/OPERIT_PLUGIN_COMPATIBILITY.md)
+- [pi agent 与插件体系](docs/PI_AGENT_PLUGIN_SYSTEM.md)
+- [Operit 历史移除说明](docs/OPERIT_ROLE.md)
 - [APK 内置用户与 AI 文档](app/src/main/assets/openhouse/docs-public/START_HERE.md)
 - [开源说明](docs/OPENHOUSEAI_OPEN_SOURCE.md)
 - [安全说明](SECURITY_OPENHOUSEAI.md)
@@ -19,12 +19,15 @@ OpenHouseAI 文档：
 
 - Android App 入口、权限引导、安装引导、状态展示和维护中心。
 - Termux 宿主层、终端底座、Ubuntu 启停和救援控制面。
-- Ubuntu proot runtime，承载 Codex、Claude Code、CloudCLI、MCP、agent 和开发工具链。
+- Ubuntu proot runtime，承载 pi、pi-web、Codex、Claude Code、CloudCLI、MCP、agent 和开发工具链。
 - service-manager 作为安装完成后的控制平面。
-- SmallPhone 作为主交互入口。
-- Operit 作为配置、诊断、插件 UI、小白辅助和工具箱入口。
+- pi 作为默认主 agent 和插件体系。
+- pi-web 作为默认主 UI，默认本地入口是 `http://127.0.0.1:30141/`。
+- 默认搜索插件 `multi-platform-search.ts` 通过 pi 插件目录加载。
 
-OpenCode、Reasonix、Hermes 等退役外部工具不是 APK 默认核心能力。
+pi 和 pi-web 的安装包随 APK 提供，但它们的 npm 依赖解析和安装可能仍需要访问 npm registry；首次安装不应被描述为完全离线流程。
+
+Operit、OpenCode、Reasonix、Hermes 等退役或外部工具不是 APK 默认核心能力。
 
 OpenHouseAI 的文档和安装链路应区分“当前默认核心”和“可选外部工具”，避免把退役能力重新打入 APK。
 

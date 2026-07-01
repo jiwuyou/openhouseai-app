@@ -120,16 +120,6 @@
                 <data android:scheme="https" />
             </intent-filter>
             <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data
-                    android:host="github-oauth-callback"
-                    android:scheme="operit" />
-            </intent-filter>
-            <intent-filter>
                 <action android:name="android.intent.action.SEND" />
 
                 <category android:name="android.intent.category.DEFAULT" />
@@ -148,12 +138,6 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity>
-
-        <activity
-            android:name=".app.activities.OperitAssistantActivity"
-            android:exported="false"
-            android:label="@string/operit_assistant_title"
-            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
 
         <activity
             android:name="live.pw.renderX.LatexView"
@@ -306,7 +290,7 @@
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
+                android:resource="@xml/openhouse_release_file_paths" />
         </provider>
 
 

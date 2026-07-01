@@ -19,7 +19,6 @@ import com.termux.shared.termux.shell.am.TermuxAmSocketServer;
 import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.app.openhouse.release.OpenHousePostUpdateSync;
-import com.termux.app.operit.init.OperitHostBootstrap;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -35,7 +34,6 @@ public class TermuxApplication extends Application {
         Context context = getApplicationContext();
 
         configureProcessScopedWebViewDataDirectory(context);
-        OperitHostBootstrap.installHostBridge(context);
 
         // Set crash handler for the app
         TermuxCrashUtils.setDefaultCrashHandler(this);

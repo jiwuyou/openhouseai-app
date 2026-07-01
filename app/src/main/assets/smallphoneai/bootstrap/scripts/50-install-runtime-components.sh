@@ -137,7 +137,7 @@ validate_component_targets() {
     [ -n "$item" ] || continue
     target="$(normalize_target "$item")"
     case "$target" in
-      service-manager|cc-connect|smallphone)
+      service-manager|cc-connect|smallphone|pi-agent|pi-web)
         ;;
       *)
         warn "未知组件目标：$item"
@@ -929,6 +929,8 @@ run_component() {
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path openhouse-connect)}"
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path smallphone-active)}"
+pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path pi-agent)}}"
+pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path pi-web)}}"
 service_manager_bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
 service_manager_url="${SERVICE_MANAGER_URL:-http://$service_manager_bind}"
 
@@ -945,7 +947,7 @@ fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"
 else
-  log "本次处理默认组件：service-manager、cc-connect/openhouse-connect、SmallPhone。"
+  log "本次处理默认组件：service-manager、cc-connect/openhouse-connect、pi-agent、pi-web；SmallPhone 作为兼容组件尝试安装。"
 fi
 
 validate_component_targets
@@ -958,7 +960,13 @@ if should_run_component "cc-connect"; then
   run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "${SMALLPHONEAI_CC_CONNECT_GIT_URL:-https://github.com/jiwuyou/openhouse-connect-fresh.git}" "1" "openhouse-connect"
 fi
 if should_run_component "smallphone"; then
-  run_component "SmallPhone" "$smallphone_dir" "${SMALLPHONEAI_SMALLPHONE_GIT_URL:-https://github.com/jiwuyou/wuxian-smallphone.git}" "1" "smallphone"
+  run_component "SmallPhone compatibility service" "$smallphone_dir" "${SMALLPHONEAI_SMALLPHONE_GIT_URL:-https://github.com/jiwuyou/wuxian-smallphone.git}" "0" "smallphone"
+fi
+if should_run_component "pi-agent"; then
+  run_component "pi-agent" "$pi_agent_dir" "${OPENHOUSE_PI_AGENT_GIT_URL:-}" "1" "pi-agent"
+fi
+if should_run_component "pi-web"; then
+  run_component "pi-web" "$pi_web_dir" "${OPENHOUSE_PI_WEB_GIT_URL:-}" "1" "pi-web"
 fi
 
 if [ -n "${SERVICE_MANAGER_TOKEN:-}" ]; then

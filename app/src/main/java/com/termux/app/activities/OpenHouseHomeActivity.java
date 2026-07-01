@@ -1,7 +1,6 @@
 package com.termux.app.activities;
 
 import android.Manifest;
-import android.app.ActivityManager;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -49,16 +48,11 @@ import com.termux.app.openhouse.OpenHouseClaudeCodeUiController;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
 import com.termux.app.openhouse.components.OpenHouseComponent;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
-import com.termux.app.operit.runtime.SmallPhoneOperitHost;
 import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.app.smallphone.SmallPhoneHostController;
 import com.termux.shared.activity.ActivityUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
-import com.ai.assistance.operit.host.control.OperitControlProtocol;
-import com.ai.assistance.operit.host.control.OperitControlStateSnapshot;
-import com.ai.assistance.operit.host.control.OperitControlStateStore;
-import com.ai.assistance.operit.host.control.OperitProcessState;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -78,6 +72,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "openhouse_home";
     private static final String PREF_HOME_PAGE = "home_page";
     private static final String PAGE_HOME = "home";
+    private static final String PAGE_PI_WEB = "pi-web";
     private static final String PAGE_AI = "ai";
     private static final String PAGE_SMALLPHONE = "smallphone";
     private static final String PAGE_CONTROLLED_BROWSER = ControlledBrowserContract.PAGE_CONTROLLED_BROWSER;
@@ -102,26 +97,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String SMALLPHONE_HOME_TARGET = "messages";
     private static final String MENU_OVERRIDES_RELATIVE_PATH = ".config/openhouseai/menu-overrides.json";
     private static final String CC_CODEX_TITLE = "CC/Codex";
-    private static final String OPERIT_MAIN_ACTIVITY_CLASS = "com.ai.assistance.operit.ui.main.MainActivity";
-    private static final String OPERIT_EXTRA_HOSTED_MODE = "com.ai.assistance.operit.extra.HOSTED_MODE";
-    private static final String OPERIT_EXTRA_HELP_MODE = "com.ai.assistance.operit.extra.HELP_MODE";
-    private static final String AI_FRIEND_HELP_ENTRY_TAG = "ai_friend_help_entry";
-    private static final long OPERIT_SHUTDOWN_PENDING_UI_MS = 5000L;
-    private static final long OPERIT_LAUNCH_PENDING_UI_MS = 7000L;
-    private static final long OPERIT_LAUNCH_PROCESS_GRACE_MS = 1500L;
-    private static final int OPERIT_FORWARD_GRANT_FLAGS =
-        Intent.FLAG_GRANT_READ_URI_PERMISSION
-            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-            | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION;
-
-    private enum AiFriendHelpUiState {
-        NOT_RUNNING,
-        STARTING,
-        FOREGROUND,
-        BACKGROUND,
-        STOPPING
-    }
+    private static final String PI_WEB_TITLE = "Pi Agent 工作台";
+    private static final String PI_WEB_DEFAULT_URL = "http://127.0.0.1:30141/";
+    private static final String PI_WEB_ENTRY_TAG = "pi_web_entry";
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -139,13 +117,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private Button refreshCurrentButton;
     private TextView pageTitleView;
     private TextView pageSubtitleView;
-    private LinearLayout aiFriendHelpNavContainer;
-    private TextView aiFriendHelpNavStatusView;
-    private Button aiFriendHelpNavOpenButton;
-    private Button aiFriendHelpNavCloseButton;
-    private TextView aiFriendHelpHomeStatusView;
-    private Button aiFriendHelpHomeOpenButton;
-    private Button aiFriendHelpHomeCloseButton;
+    private LinearLayout piWorkbenchNavContainer;
     private String currentPage = PAGE_HOME;
     private List<OpenHouseComponent> dynamicComponents = Collections.emptyList();
     private OpenHouseComponentRegistry.LoadResult dynamicRegistryResult;
@@ -159,6 +131,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private TextView cloudCliStatusView;
     private boolean cloudCliControlsVisible = false;
     private boolean cloudCliLoadFailed = false;
+    private LinearLayout piWebPageView;
+    private WebView piWebView;
+    private LinearLayout piWebFallbackView;
+    private TextView piWebStatusView;
+    private boolean piWebLoadFailed = false;
     private ControlledBrowserView controlledBrowserView;
     private LinearLayout dynamicWebPageView;
     private WebView dynamicWebView;
@@ -168,17 +145,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private boolean dynamicWebLoadFailed = false;
     private boolean firstLaunchGateForwarded;
     private String renderedCloudCliUrl;
-    private long aiFriendHelpShutdownRequestedAtMs = 0L;
-    private long aiFriendHelpLaunchRequestedAtMs = 0L;
-    private boolean aiFriendHelpLaunchFailureNotified = false;
+    private String renderedPiWebUrl;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (forwardExternalOperitIntentIfNeeded(getIntent())) {
-            finish();
-            return;
-        }
         setContentView(R.layout.activity_openhouse_home);
 
         drawerLayout = findViewById(R.id.openhouseDrawer);
@@ -230,6 +201,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             cloudCliWebView.destroy();
             cloudCliWebView = null;
         }
+        if (piWebView != null) {
+            piWebView.destroy();
+            piWebView = null;
+        }
         if (controlledBrowserView != null) {
             controlledBrowserView.setExternalNavigationHandler(null);
             if (controlledBrowserView.getParent() instanceof ViewGroup) {
@@ -249,7 +224,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         refreshDynamicComponents();
-        refreshAiFriendHelpEntryState();
         if (!hasExplicitOpenHouseTarget(getIntent()) && routeFirstLaunchGateIfNeeded()) {
             return;
         }
@@ -262,6 +236,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             dynamicWebView.onResume();
         } else if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
             smallPhoneController.onResume(false);
+        } else if (PAGE_PI_WEB.equals(currentPage) && piWebView != null) {
+            piWebView.onResume();
         } else if (PAGE_AI.equals(currentPage) && cloudCliWebView != null) {
             cloudCliWebView.onResume();
         } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
@@ -286,9 +262,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        if (forwardExternalOperitIntentIfNeeded(intent)) {
-            return;
-        }
         if (handleOpenHouseIntent(intent)) {
             return;
         }
@@ -316,6 +289,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_SMALLPHONE.equals(currentPage)
             && smallPhoneController != null
             && smallPhoneController.handleBackPressed()) {
+            return;
+        }
+        if (PAGE_PI_WEB.equals(currentPage)
+            && piWebView != null
+            && piWebView.canGoBack()) {
+            piWebView.goBack();
             return;
         }
         if (PAGE_AI.equals(currentPage)
@@ -371,34 +350,32 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavLogs).setOnClickListener(v -> selectPage(PAGE_LOGS));
         findViewById(R.id.buttonNavAdvanced).setOnClickListener(v -> selectPage(PAGE_ADVANCED));
         findViewById(R.id.buttonNavTerminal).setOnClickListener(v -> openTerminal(false));
-        addAiFriendHelpDrawerEntry();
+        addPiWorkbenchDrawerEntry();
         if (setCurrentHomeButton != null) {
             setCurrentHomeButton.setOnClickListener(v -> setCurrentPageAsHome());
         }
         updateHomePreferenceViews();
     }
 
-    private void addAiFriendHelpDrawerEntry() {
+    private void addPiWorkbenchDrawerEntry() {
         View anchor = findViewById(R.id.buttonNavServiceControl);
         if (anchor == null || !(anchor.getParent() instanceof LinearLayout)) {
             return;
         }
         LinearLayout parent = (LinearLayout) anchor.getParent();
-        View existing = parent.findViewWithTag(AI_FRIEND_HELP_ENTRY_TAG);
+        View existing = parent.findViewWithTag(PI_WEB_ENTRY_TAG);
         if (existing != null) {
-            refreshAiFriendHelpEntryState();
             return;
         }
 
-        aiFriendHelpNavContainer = createAiFriendHelpControlBlock(false);
-        aiFriendHelpNavContainer.setTag(AI_FRIEND_HELP_ENTRY_TAG);
+        piWorkbenchNavContainer = createPiWorkbenchControlBlock();
+        piWorkbenchNavContainer.setTag(PI_WEB_ENTRY_TAG);
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT);
         params.setMargins(0, dp(8), 0, 0);
-        parent.addView(aiFriendHelpNavContainer, parent.indexOfChild(anchor) + 1, params);
-        refreshAiFriendHelpEntryState();
+        parent.addView(piWorkbenchNavContainer, parent.indexOfChild(anchor) + 1, params);
     }
 
     private void refreshDynamicComponents() {
@@ -406,7 +383,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         dynamicComponents = dynamicRegistryResult.components;
         setFallbackNavigationVisible(dynamicRegistryResult.shouldShowFallbackNavigation());
         updateBuiltinNavigationLabels();
-        refreshAiFriendHelpEntryState();
         renderDynamicQuickNavigation();
         renderDynamicNavigation();
         updateHomePreferenceViews();
@@ -600,6 +576,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
 
         switch (currentPage) {
+            case PAGE_PI_WEB:
+                setHeader(getPiWebTitle(), getPiWebSubtitle("Pi Agent / 插件工作台"));
+                renderPiWebPage();
+                break;
             case PAGE_AI:
                 setHeader(getCcCodexTitle(), getCcCodexSubtitle("Claude Code / Codex 网页工作台"));
                 renderAiPage();
@@ -716,10 +696,18 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             openCcCodexControlOrToggle();
             return;
         }
+        if (PAGE_PI_WEB.equals(currentPage)) {
+            openPiWebControlOrAll();
+            return;
+        }
         openAllServiceControl();
     }
 
     private void refreshCurrentTarget() {
+        if (PAGE_PI_WEB.equals(currentPage)) {
+            reloadPiWebView();
+            return;
+        }
         if (PAGE_AI.equals(currentPage)) {
             reloadCloudCliWebView();
             return;
@@ -754,6 +742,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String getCurrentBrowserUrl() {
+        if (PAGE_PI_WEB.equals(currentPage)) {
+            return getPiWebUrl();
+        }
         if (PAGE_AI.equals(currentPage)) {
             return getCcCodexUrl();
         }
@@ -810,6 +801,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private OpenHouseComponent getCurrentControlComponent() {
+        if (PAGE_PI_WEB.equals(currentPage)) {
+            return findPiWebComponent();
+        }
         if (PAGE_AI.equals(currentPage)) {
             return findCcCodexComponent();
         }
@@ -899,6 +893,174 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         attachEmbeddedView(smallPhoneView);
         smallPhoneController.onResume(true);
+    }
+
+    private void renderPiWebPage() {
+        showEmbeddedContent();
+        if (embeddedContentView == null) {
+            return;
+        }
+        String piWebUrl = getPiWebUrl();
+        if (piWebPageView == null || !piWebUrl.equals(renderedPiWebUrl)) {
+            if (piWebView != null) {
+                piWebView.destroy();
+                piWebView = null;
+            }
+            piWebPageView = createPiWebPageView();
+            renderedPiWebUrl = piWebUrl;
+        }
+        attachEmbeddedView(piWebPageView);
+        if (piWebView != null) {
+            piWebView.onResume();
+            if (piWebView.getUrl() == null) {
+                reloadPiWebView();
+            }
+        }
+    }
+
+    private LinearLayout createPiWebPageView() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
+        piWebStatusView = new TextView(this);
+        piWebStatusView.setText(getPiWebTitle() + " 地址：" + getPiWebUrl());
+        piWebStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        piWebStatusView.setTextSize(12);
+        piWebStatusView.setPadding(dp(12), dp(6), dp(12), dp(6));
+        piWebStatusView.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
+        page.addView(piWebStatusView, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        FrameLayout browserHost = new FrameLayout(this);
+        piWebView = new WebView(this);
+        configurePiWebView(piWebView);
+        browserHost.addView(piWebView, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+
+        piWebFallbackView = createPiWebFallbackView();
+        piWebFallbackView.setVisibility(View.GONE);
+        browserHost.addView(piWebFallbackView, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+        page.addView(browserHost, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1));
+        return page;
+    }
+
+    private LinearLayout createPiWebFallbackView() {
+        LinearLayout fallback = new LinearLayout(this);
+        fallback.setOrientation(LinearLayout.VERTICAL);
+        fallback.setGravity(Gravity.CENTER);
+        fallback.setPadding(dp(22), dp(22), dp(22), dp(22));
+        fallback.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
+        TextView title = new TextView(this);
+        title.setText(getPiWebTitle() + " 未连接");
+        title.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        title.setTextSize(20);
+        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
+        fallback.addView(title);
+
+        TextView body = new TextView(this);
+        body.setText("没有连接到 " + getPiWebUrl() + "。可以先进入运行控制启动或修复 pi-web，然后回到本页刷新。");
+        body.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        body.setTextSize(14);
+        body.setGravity(Gravity.CENTER);
+        body.setLineSpacing(dp(2), 1.0f);
+        LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        bodyParams.setMargins(0, dp(10), 0, dp(6));
+        fallback.addView(body, bodyParams);
+
+        addButtonRow(fallback,
+            compactButton("运行控制", v -> openPiWebControlOrAll(), true),
+            compactButton("刷新", v -> reloadPiWebView(), true));
+        fallback.addView(button("复制地址", v -> copyText(getPiWebTitle(), getPiWebUrl())));
+        return fallback;
+    }
+
+    private void configurePiWebView(WebView webView) {
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                piWebLoadFailed = false;
+                setPiWebFallbackVisible(false);
+                setPiWebStatus("正在连接 " + getPiWebTitle() + "：" + getPiWebUrl());
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (!piWebLoadFailed) {
+                    setPiWebFallbackVisible(false);
+                    setPiWebStatus(getPiWebTitle() + " 已连接：" + url);
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request != null && request.isForMainFrame()) {
+                    showPiWebUnavailable();
+                }
+            }
+
+            @SuppressWarnings("deprecation")
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                showPiWebUnavailable();
+            }
+        });
+    }
+
+    private void openPiWebControlOrAll() {
+        OpenHouseComponent component = findPiWebComponent();
+        if (component != null && component.hasControlEntry()) {
+            openComponentControl(component);
+            return;
+        }
+        openAllServiceControl();
+    }
+
+    private void reloadPiWebView() {
+        piWebLoadFailed = false;
+        setPiWebFallbackVisible(false);
+        String piWebUrl = getPiWebUrl();
+        setPiWebStatus("正在刷新 " + getPiWebTitle() + "：" + piWebUrl);
+        if (piWebView != null) {
+            piWebView.loadUrl(piWebUrl);
+        }
+    }
+
+    private void showPiWebUnavailable() {
+        piWebLoadFailed = true;
+        setPiWebStatus(getPiWebTitle() + " 未连接：" + getPiWebUrl());
+        setPiWebFallbackVisible(true);
+    }
+
+    private void setPiWebFallbackVisible(boolean visible) {
+        if (piWebFallbackView != null) {
+            piWebFallbackView.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void setPiWebStatus(String text) {
+        if (piWebStatusView != null) {
+            piWebStatusView.setText(text);
+        }
     }
 
     private void renderAiPage() {
@@ -1324,6 +1486,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             dynamicWebView.onPause();
         } else if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
             smallPhoneController.onPause();
+        } else if (PAGE_PI_WEB.equals(currentPage) && piWebView != null) {
+            piWebView.onPause();
         } else if (PAGE_AI.equals(currentPage) && cloudCliWebView != null) {
             cloudCliWebView.onPause();
         } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
@@ -1428,6 +1592,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         switch (normalized) {
             case PAGE_HOME:
                 return PAGE_HOME;
+            case PAGE_PI_WEB:
+            case "pi-agent":
+            case "pi":
+            case "piweb":
+                return PAGE_PI_WEB;
             case PAGE_AI:
             case "cc-codex":
             case "cloudcli":
@@ -1487,6 +1656,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private OpenHouseComponent findBuiltinComponent(String homeTarget) {
         String normalized = normalizeId(homeTarget);
+        if (PAGE_PI_WEB.equals(normalized)
+            || "pi-agent".equals(normalized)
+            || "pi".equals(normalized)
+            || "piweb".equals(normalized)) {
+            return findPiWebComponent();
+        }
         if (CC_CODEX_SERVICE_NAME.equals(normalized)
             || "cc-codex".equals(normalized)
             || "claude-code-ui".equals(normalized)
@@ -1541,6 +1716,18 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return null;
     }
 
+    private OpenHouseComponent findPiWebComponent() {
+        for (OpenHouseComponent component : dynamicComponents) {
+            if (component == null) {
+                continue;
+            }
+            if (isPiWebComponent(component)) {
+                return component;
+            }
+        }
+        return null;
+    }
+
     private boolean isBuiltinNavigationComponent(OpenHouseComponent component) {
         if (component == null) {
             return false;
@@ -1548,6 +1735,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return isCcCodexComponent(component)
             || isSmallPhoneComponent(component)
             || isControlledBrowserComponent(component)
+            || isPiWebComponent(component)
             || isNativeBuiltinComponent(component);
     }
 
@@ -1605,6 +1793,29 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return false;
     }
 
+    private boolean isPiWebComponent(OpenHouseComponent component) {
+        if (component == null) {
+            return false;
+        }
+        String id = normalizeId(component.id);
+        if ("pi-web".equals(id)
+            || "piweb".equals(id)
+            || "pi-agent".equals(id)
+            || "pi".equals(id)) {
+            return true;
+        }
+        if (sameUrl(component.url, PI_WEB_DEFAULT_URL)) {
+            return true;
+        }
+        for (String name : component.serviceNames) {
+            String normalizedName = normalizeId(name);
+            if ("pi-web".equals(normalizedName) || "pi-agent".equals(normalizedName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private String getCcCodexTitle() {
         OpenHouseComponent component = findCcCodexComponent();
         return componentTitleOrDefault(component, CC_CODEX_TITLE);
@@ -1640,6 +1851,24 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return component.url;
         }
         return "http://127.0.0.1:22082/";
+    }
+
+    private String getPiWebTitle() {
+        return componentTitleOrDefault(findPiWebComponent(), PI_WEB_TITLE);
+    }
+
+    private String getPiWebSubtitle(String fallback) {
+        return componentSubtitleOrDefault(findPiWebComponent(), fallback);
+    }
+
+    private String getPiWebUrl() {
+        OpenHouseComponent component = findPiWebComponent();
+        if (component != null
+            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+            && !isBlank(component.url)) {
+            return component.url;
+        }
+        return PI_WEB_DEFAULT_URL;
     }
 
     private String getControlledBrowserTitle() {
@@ -1767,7 +1996,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (isHomeCandidate(configured)) {
             return configured;
         }
-        configured = getOpenHouseHomePrefs().getString(PREF_HOME_PAGE, PAGE_AI);
+        configured = getOpenHouseHomePrefs().getString(PREF_HOME_PAGE, null);
         if (isHomeCandidate(configured)) {
             return configured;
         }
@@ -1775,6 +2004,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String firstVisibleHomePage() {
+        if (isHomeCandidate(PAGE_PI_WEB)) {
+            return PAGE_PI_WEB;
+        }
         if (isComponentVisible(findCcCodexComponent())) {
             return PAGE_AI;
         }
@@ -1908,6 +2140,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (isBlank(normalized)) {
             return null;
         }
+        if (PAGE_PI_WEB.equals(normalized)
+            || "pi-agent".equals(normalized)
+            || "pi".equals(normalized)
+            || "piweb".equals(normalized)) {
+            return PAGE_PI_WEB;
+        }
         if (CC_CODEX_SERVICE_NAME.equals(normalized)
             || "cc-codex".equals(normalized)
             || "claude-code-ui".equals(normalized)
@@ -1944,6 +2182,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String pageToHomeTarget(String page) {
+        if (PAGE_PI_WEB.equals(page)) {
+            return PAGE_PI_WEB;
+        }
         if (PAGE_AI.equals(page)) {
             return CC_CODEX_SERVICE_NAME;
         }
@@ -1962,6 +2203,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private boolean isHomeCandidate(String page) {
         if (isBlank(page)) {
             return false;
+        }
+        if (PAGE_PI_WEB.equals(page)) {
+            OpenHouseComponent component = findPiWebComponent();
+            return component == null || isComponentVisible(component);
         }
         if (PAGE_SMALLPHONE.equals(page)
             || PAGE_AI.equals(page)
@@ -1988,6 +2233,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String getHomeDisplayTitle(String page) {
+        if (PAGE_PI_WEB.equals(page)) {
+            return getPiWebTitle();
+        }
         if (PAGE_SMALLPHONE.equals(page)) {
             return getSmallPhoneTitle();
         }
@@ -2003,7 +2251,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 return component.title;
             }
         }
-        return getCcCodexTitle();
+        return getPiWebTitle();
     }
 
     private String joinValues(List<String> values) {
@@ -2030,8 +2278,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void renderHomePage() {
         LinearLayout panel = panel();
         addTitle(panel, "菜单总览", 19);
-        addBody(panel, "这里保留主入口：SmallPhone、CloudCLI、AI朋友 Help、service-manager、终端、文档、日志和维护中心。安装完成后，运行控制由 service-manager 负责。");
-        panel.addView(createAiFriendHelpControlBlock(true));
+        addBody(panel, "这里保留主入口：Pi Agent 工作台、SmallPhone、CloudCLI、service-manager、终端、文档、日志和维护中心。安装完成后，运行控制由 service-manager 负责。");
+        panel.addView(createPiWorkbenchControlBlock());
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
             compactButton("打开 " + getCcCodexTitle(),
@@ -2050,10 +2298,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addTitle(quick, "快速状态", 17);
         addStatusRow(quick, getCcCodexTitle() + " 地址", getCcCodexUrl());
         addStatusRow(quick, getSmallPhoneTitle() + " 地址", getSmallPhoneUrl());
+        addStatusRow(quick, PI_WEB_TITLE + " 地址", getPiWebUrl());
         addStatusRow(quick, "运行环境", "AI 工具安装在 Ubuntu /root");
         addStatusRow(quick, "控制平面", "service-manager");
         contentView.addView(quick);
-        refreshAiFriendHelpEntryState();
     }
 
     private void renderManualPage() {
@@ -2067,10 +2315,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             "启动后看到的是 Termux 终端。openhouse ai 会在 Termux 里安装 Ubuntu proot，Codex、Claude Code 和 CloudCLI 主要安装在 Ubuntu 的 /root 环境。普通入口终端可以默认进入 Ubuntu，维护中心底部终端固定为 Termux。");
         addManualSection("CloudCLI 和 SmallPhone",
             "CloudCLI 提供 Claude Code / Codex 网页工作台。SmallPhone 是本机页面和运行栈入口。两者的服务状态可从运行控制或维护中心查看。");
+        addManualSection("Pi Agent 工作台",
+            "Pi Agent 工作台是后续默认 agent 和插件体系入口。完成安装后，它会由 service-manager 管理，默认地址为 " + PI_WEB_DEFAULT_URL + "。");
         addManualSection("底部快捷键",
             "底部按键包含 ESC、TAB、CTRL、ALT、方向键、键盘、Termux、Ubuntu、exit、clear，以及常用 AI 快捷键。exit 用于退出当前 shell；Ubuntu 用于进入 Ubuntu /root。按键支持自定义和多页，可以直接让 AI 帮你修改常用命令。");
-        addManualSection("AI朋友 Help",
-            "AI朋友 Help 用于帮助新用户理解环境、检查问题和配置大模型。它可以显式进入，也可以在后台状态下从菜单关闭。");
     }
 
     private void renderPermissionsPage() {
@@ -2241,18 +2489,29 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         openBuiltinComponentOrFallback(findSmallPhoneComponent(), PAGE_SMALLPHONE);
     }
 
-    private LinearLayout createAiFriendHelpControlBlock(boolean homeBlock) {
+    private LinearLayout createPiWorkbenchControlBlock() {
         LinearLayout block = new LinearLayout(this);
         block.setOrientation(LinearLayout.VERTICAL);
         block.setPadding(0, dp(4), 0, dp(2));
 
-        TextView statusView = new TextView(this);
-        statusView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
-        statusView.setTextSize(14);
-        statusView.setTypeface(statusView.getTypeface(), android.graphics.Typeface.BOLD);
-        block.addView(statusView, new LinearLayout.LayoutParams(
+        TextView titleView = new TextView(this);
+        titleView.setText(PI_WEB_TITLE);
+        titleView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        titleView.setTextSize(14);
+        titleView.setTypeface(titleView.getTypeface(), android.graphics.Typeface.BOLD);
+        block.addView(titleView, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView bodyView = new TextView(this);
+        bodyView.setText("默认地址：" + getPiWebUrl());
+        bodyView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        bodyView.setTextSize(12);
+        LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        bodyParams.setMargins(0, dp(4), 0, 0);
+        block.addView(bodyView, bodyParams);
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -2261,330 +2520,22 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             LinearLayout.LayoutParams.WRAP_CONTENT);
         rowParams.setMargins(0, dp(8), 0, 0);
 
-        Button openButton = compactButton("", v -> openAiFriendHelp(), true);
+        Button openButton = compactButton("打开工作台", v -> openPiWorkbench(), true);
         row.addView(openButton, new LinearLayout.LayoutParams(0, dp(44), 1));
 
-        Button closeButton = compactButton(
-            getString(R.string.operit_ai_friend_help_action_close_background),
-            v -> requestCloseBackgroundAiFriendHelp(),
-            true);
-        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(dp(118), dp(44));
-        closeParams.setMargins(dp(8), 0, 0, 0);
-        row.addView(closeButton, closeParams);
+        Button controlButton = compactButton("运行控制", v -> openAllServiceControl(), true);
+        LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(dp(96), dp(44));
+        controlParams.setMargins(dp(8), 0, 0, 0);
+        row.addView(controlButton, controlParams);
         block.addView(row, rowParams);
-
-        if (homeBlock) {
-            aiFriendHelpHomeStatusView = statusView;
-            aiFriendHelpHomeOpenButton = openButton;
-            aiFriendHelpHomeCloseButton = closeButton;
-        } else {
-            aiFriendHelpNavStatusView = statusView;
-            aiFriendHelpNavOpenButton = openButton;
-            aiFriendHelpNavCloseButton = closeButton;
-        }
         return block;
     }
 
-    private void refreshAiFriendHelpEntryState() {
-        OperitControlStateSnapshot snapshot = readAiFriendHelpState();
-        AiFriendHelpUiState displayState = getAiFriendHelpDisplayState(snapshot);
-        updateAiFriendHelpControlBlock(
-            aiFriendHelpNavStatusView,
-            aiFriendHelpNavOpenButton,
-            aiFriendHelpNavCloseButton,
-            displayState);
-        updateAiFriendHelpControlBlock(
-            aiFriendHelpHomeStatusView,
-            aiFriendHelpHomeOpenButton,
-            aiFriendHelpHomeCloseButton,
-            displayState);
-    }
-
-    private OperitControlStateSnapshot readAiFriendHelpState() {
-        try {
-            return OperitControlStateStore.read(getApplicationContext());
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read Operit control state", e);
-            return null;
-        }
-    }
-
-    private AiFriendHelpUiState getAiFriendHelpDisplayState(OperitControlStateSnapshot snapshot) {
-        OperitProcessState effectiveState = snapshot == null
-            ? OperitProcessState.NOT_RUNNING
-            : snapshot.getEffectiveState();
-        if (isMissingLiveOperitProcess(snapshot, effectiveState)) {
-            markAiFriendHelpStoppedAfterProcessLoss();
-            effectiveState = OperitProcessState.NOT_RUNNING;
-        }
-
-        if (effectiveState == OperitProcessState.NOT_RUNNING) {
-            aiFriendHelpShutdownRequestedAtMs = 0L;
-            return getPendingAiFriendHelpLaunchState();
-        }
-        if (effectiveState == OperitProcessState.STOPPING) {
-            aiFriendHelpLaunchRequestedAtMs = 0L;
-            aiFriendHelpLaunchFailureNotified = false;
-            return AiFriendHelpUiState.STOPPING;
-        }
-        if (aiFriendHelpShutdownRequestedAtMs <= 0L) {
-            clearAiFriendHelpLaunchPending();
-            return toAiFriendHelpUiState(effectiveState);
-        }
-        long elapsed = System.currentTimeMillis() - aiFriendHelpShutdownRequestedAtMs;
-        if (elapsed <= OPERIT_SHUTDOWN_PENDING_UI_MS) {
-            clearAiFriendHelpLaunchPending();
-            return AiFriendHelpUiState.STOPPING;
-        }
-        aiFriendHelpShutdownRequestedAtMs = 0L;
-        clearAiFriendHelpLaunchPending();
-        return toAiFriendHelpUiState(effectiveState);
-    }
-
-    private AiFriendHelpUiState getPendingAiFriendHelpLaunchState() {
-        if (aiFriendHelpLaunchRequestedAtMs <= 0L) {
-            aiFriendHelpLaunchFailureNotified = false;
-            return AiFriendHelpUiState.NOT_RUNNING;
-        }
-
-        long elapsed = System.currentTimeMillis() - aiFriendHelpLaunchRequestedAtMs;
-        if (elapsed <= OPERIT_LAUNCH_PROCESS_GRACE_MS
-            || (elapsed <= OPERIT_LAUNCH_PENDING_UI_MS && isOperitProcessAlive(-1))) {
-            return AiFriendHelpUiState.STARTING;
-        }
-
-        aiFriendHelpLaunchRequestedAtMs = 0L;
-        if (!aiFriendHelpLaunchFailureNotified) {
-            aiFriendHelpLaunchFailureNotified = true;
-            Toast.makeText(this, R.string.operit_ai_friend_help_launch_failed, Toast.LENGTH_LONG).show();
-        }
-        return AiFriendHelpUiState.NOT_RUNNING;
-    }
-
-    private AiFriendHelpUiState toAiFriendHelpUiState(OperitProcessState state) {
-        if (state == OperitProcessState.FOREGROUND) {
-            return AiFriendHelpUiState.FOREGROUND;
-        }
-        if (state == OperitProcessState.BACKGROUND) {
-            return AiFriendHelpUiState.BACKGROUND;
-        }
-        if (state == OperitProcessState.STOPPING) {
-            return AiFriendHelpUiState.STOPPING;
-        }
-        return AiFriendHelpUiState.NOT_RUNNING;
-    }
-
-    private void clearAiFriendHelpLaunchPending() {
-        aiFriendHelpLaunchRequestedAtMs = 0L;
-        aiFriendHelpLaunchFailureNotified = false;
-    }
-
-    private boolean isMissingLiveOperitProcess(
-        OperitControlStateSnapshot snapshot,
-        OperitProcessState effectiveState) {
-        if (snapshot == null || !effectiveState.isRunningLike()) {
-            return false;
-        }
-        if (snapshot.getPid() <= 0 && isBlank(snapshot.getProcessName())) {
-            return false;
-        }
-        return !isOperitProcessAlive(snapshot.getPid());
-    }
-
-    private boolean isOperitProcessAlive(int expectedPid) {
-        ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
-        if (activityManager == null) {
-            return false;
-        }
-        List<ActivityManager.RunningAppProcessInfo> processes = activityManager.getRunningAppProcesses();
-        if (processes == null) {
-            return false;
-        }
-        String operitProcessName = OperitControlProtocol.operitProcessName(getPackageName());
-        for (ActivityManager.RunningAppProcessInfo process : processes) {
-            if (process == null || !operitProcessName.equals(process.processName)) {
-                continue;
-            }
-            if (expectedPid <= 0 || process.pid == expectedPid) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void markAiFriendHelpStoppedAfterProcessLoss() {
-        try {
-            OperitControlStateStore.markStopped(getApplicationContext());
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to mark Operit stopped after process loss", e);
-        }
-    }
-
-    private void updateAiFriendHelpControlBlock(
-        TextView statusView,
-        Button openButton,
-        Button closeButton,
-        AiFriendHelpUiState displayState) {
-        if (statusView == null || openButton == null || closeButton == null) {
-            return;
-        }
-        statusView.setText(getString(
-            R.string.operit_ai_friend_help_state_title,
-            getAiFriendHelpStateLabel(displayState)));
-
-        boolean starting = displayState == AiFriendHelpUiState.STARTING;
-        boolean stopping = displayState == AiFriendHelpUiState.STOPPING;
-        boolean background = displayState == AiFriendHelpUiState.BACKGROUND;
-        openButton.setText(getAiFriendHelpOpenActionLabel(displayState));
-        openButton.setEnabled(!starting && !stopping);
-        closeButton.setText(stopping
-            ? getString(R.string.operit_ai_friend_help_action_stopping)
-            : getString(R.string.operit_ai_friend_help_action_close_background));
-        closeButton.setVisibility(background || stopping ? View.VISIBLE : View.GONE);
-        closeButton.setEnabled(background && !stopping);
-    }
-
-    private String getAiFriendHelpStateLabel(AiFriendHelpUiState state) {
-        if (state == AiFriendHelpUiState.STARTING) {
-            return getString(R.string.operit_ai_friend_help_state_starting);
-        }
-        if (state == AiFriendHelpUiState.FOREGROUND) {
-            return getString(R.string.operit_ai_friend_help_state_foreground);
-        }
-        if (state == AiFriendHelpUiState.BACKGROUND) {
-            return getString(R.string.operit_ai_friend_help_state_background);
-        }
-        if (state == AiFriendHelpUiState.STOPPING) {
-            return getString(R.string.operit_ai_friend_help_state_stopping);
-        }
-        return getString(R.string.operit_ai_friend_help_state_not_running);
-    }
-
-    private String getAiFriendHelpOpenActionLabel(AiFriendHelpUiState state) {
-        if (state == AiFriendHelpUiState.NOT_RUNNING) {
-            return getString(R.string.operit_ai_friend_help_action_open);
-        }
-        if (state == AiFriendHelpUiState.STARTING) {
-            return getString(R.string.operit_ai_friend_help_action_starting);
-        }
-        if (state == AiFriendHelpUiState.STOPPING) {
-            return getString(R.string.operit_ai_friend_help_action_stopping);
-        }
-        return getString(R.string.operit_ai_friend_help_action_enter);
-    }
-
-    private void requestCloseBackgroundAiFriendHelp() {
-        clearAiFriendHelpLaunchPending();
-        OperitControlStateSnapshot snapshot = readAiFriendHelpState();
-        if (snapshot == null || !snapshot.isBackground()) {
-            refreshAiFriendHelpEntryState();
-            Toast.makeText(this, R.string.operit_ai_friend_help_not_background, Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        aiFriendHelpShutdownRequestedAtMs = System.currentTimeMillis();
-        try {
-            sendBroadcast(OperitControlProtocol.createShutdownIntent(this));
-            Toast.makeText(this, R.string.operit_ai_friend_help_shutdown_requested, Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            aiFriendHelpShutdownRequestedAtMs = 0L;
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to request Operit shutdown", e);
-            Toast.makeText(this, R.string.operit_ai_friend_help_shutdown_failed, Toast.LENGTH_SHORT).show();
-        }
-        refreshAiFriendHelpEntryState();
-        scheduleAiFriendHelpStateRefresh();
-    }
-
-    private void scheduleAiFriendHelpStateRefresh() {
-        View anchor = aiFriendHelpNavContainer != null ? aiFriendHelpNavContainer : contentView;
-        if (anchor == null) {
-            return;
-        }
-        anchor.postDelayed(this::refreshAiFriendHelpEntryState, 750);
-        anchor.postDelayed(this::refreshAiFriendHelpEntryState, 2000);
-        anchor.postDelayed(this::refreshAiFriendHelpEntryState, OPERIT_SHUTDOWN_PENDING_UI_MS + 250);
-        anchor.postDelayed(this::refreshAiFriendHelpEntryState, OPERIT_LAUNCH_PENDING_UI_MS + 250);
-    }
-
-    private void openAiFriendHelp() {
+    private void openPiWorkbench() {
         if (drawerLayout != null) {
             drawerLayout.closeDrawer(GravityCompat.START);
         }
-        aiFriendHelpShutdownRequestedAtMs = 0L;
-        aiFriendHelpLaunchRequestedAtMs = System.currentTimeMillis();
-        aiFriendHelpLaunchFailureNotified = false;
-        refreshAiFriendHelpEntryState();
-        Intent intent = createHostedOperitIntent();
-        intent.putExtra(OPERIT_EXTRA_HOSTED_MODE, true);
-        intent.putExtra(OPERIT_EXTRA_HELP_MODE, true);
-        if (startHostedOperitActivity(intent)) {
-            refreshAiFriendHelpEntryState();
-            scheduleAiFriendHelpStateRefresh();
-        } else {
-            aiFriendHelpLaunchRequestedAtMs = 0L;
-            aiFriendHelpLaunchFailureNotified = true;
-            refreshAiFriendHelpEntryState();
-        }
-    }
-
-    private boolean forwardExternalOperitIntentIfNeeded(Intent sourceIntent) {
-        if (!isExternalOperitEntryIntent(sourceIntent)) {
-            return false;
-        }
-
-        Intent targetIntent = createHostedOperitIntent();
-        targetIntent.setAction(sourceIntent.getAction());
-        if (sourceIntent.getData() != null || sourceIntent.getType() != null) {
-            targetIntent.setDataAndType(sourceIntent.getData(), sourceIntent.getType());
-        }
-        if (sourceIntent.getExtras() != null) {
-            targetIntent.putExtras(sourceIntent.getExtras());
-        }
-        ClipData clipData = sourceIntent.getClipData();
-        if (clipData != null) {
-            targetIntent.setClipData(clipData);
-        }
-        targetIntent.addFlags(sourceIntent.getFlags() & OPERIT_FORWARD_GRANT_FLAGS);
-        targetIntent.putExtra(OPERIT_EXTRA_HOSTED_MODE, true);
-        return startHostedOperitActivity(targetIntent);
-    }
-
-    private Intent createHostedOperitIntent() {
-        Intent intent = new Intent();
-        intent.setClassName(getPackageName(), OPERIT_MAIN_ACTIVITY_CLASS);
-        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        return intent;
-    }
-
-    private boolean startHostedOperitActivity(Intent intent) {
-        SmallPhoneOperitHost.install(getApplicationContext());
-        try {
-            com.termux.shared.errors.Error error = ActivityUtils.startActivity(this, intent, true, false);
-            if (error != null) {
-                Logger.logError(LOG_TAG, "Failed to start Operit hosted entry activity: " + error.getMessage());
-                Toast.makeText(this, R.string.operit_ai_friend_help_start_failed, Toast.LENGTH_LONG).show();
-                return false;
-            }
-            return true;
-        } catch (ActivityNotFoundException e) {
-            Logger.logError(LOG_TAG, "Operit hosted entry activity is not available: " + e.getMessage());
-            Toast.makeText(this, R.string.operit_ai_friend_help_start_failed, Toast.LENGTH_LONG).show();
-            return false;
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to start Operit hosted entry activity", e);
-            Toast.makeText(this, R.string.operit_ai_friend_help_start_failed, Toast.LENGTH_LONG).show();
-            return false;
-        }
-    }
-
-    private boolean isExternalOperitEntryIntent(Intent intent) {
-        if (intent == null) {
-            return false;
-        }
-        String action = intent.getAction();
-        return Intent.ACTION_VIEW.equals(action)
-            || Intent.ACTION_SEND.equals(action)
-            || Intent.ACTION_SEND_MULTIPLE.equals(action);
+        selectPage(PAGE_PI_WEB);
     }
 
     private void openMaintenanceLog(String stageSlug, String stageLabel) {

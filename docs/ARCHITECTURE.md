@@ -12,20 +12,21 @@ OpenHouseAI 是一个运行在 Android 手机上的人机协作 AI 平台。它�
 Android App / com.termux
   - product shell, permissions, onboarding, status, entry points
   - Termux bootstrap, first install, maintenance, recovery UI
-  - SmallPhone and Operit hosted surfaces
+  - pi-web WebView entry and service controls
 
 Termux
   - Android host bridge
   - Termux packages, shell, proot-distro
   - Ubuntu install/start/stop/repair
-  - rescue layer when Ubuntu or service-manager is unavailable
+  - host layer when Ubuntu or service-manager is unavailable
 
 Ubuntu in Termux
   - primary Linux workspace
-  - openhouse-agent long-term core location
+  - pi as the primary agent runtime
+  - pi-web as the primary user interface
   - Codex, Claude Code, CloudCLI
   - MCP servers and developer toolchains
-  - service-manager managed services
+  - service-manager managed services: pi-agent, pi-web, CloudCLI and connectors
 
 service-manager
   - post-install control plane
@@ -33,8 +34,8 @@ service-manager
   - machine-readable APIs for UI and AI
 
 User and AI surfaces
-  - SmallPhone as main human/AI interaction surface
-  - Operit as configuration, diagnostics, plugin UI, beginner entry
+  - pi-web as the default human/AI interaction surface
+  - pi extensions as the default plugin system
   - Codex / Claude Code / CloudCLI as core AI and programming capabilities
 ```
 
@@ -44,10 +45,10 @@ User and AI surfaces
 | --- | --- | --- |
 | Android App | Product shell, first-run onboarding, permission guidance, visual status, explicit start/stop UI, APK assets, Termux bootstrap entry | Core agent loop, long-running Linux services, MCP daemon lifecycle |
 | Termux | Android sandbox bridge, package prefix, `proot-distro`, Ubuntu lifecycle, rescue commands, Android-adjacent tools | Primary AI brain, large development toolchains, long-running agent state |
-| Ubuntu in Termux | Main Linux workspace, agent runtime, Codex, Claude Code, CloudCLI, Node/Python/Rust tooling, MCP servers | Android permissions, APK lifecycle, Termux bootstrap repair |
+| Ubuntu in Termux | Main Linux workspace, pi, pi-web, Codex, Claude Code, CloudCLI, Node/Python/Rust tooling, MCP servers | Android permissions, APK lifecycle, Termux bootstrap repair |
 | service-manager | Post-install service control plane, status APIs, logs, lifecycle actions, service definitions, health checks | First install chain, Android permission UI, direct model reasoning |
-| SmallPhone | Main product interaction surface, user-facing AI workspace, status and workflow entry | Termux bootstrap ownership, Ubuntu rootfs ownership |
-| Operit | AI configuration assistance, diagnostics, plugin UI, toolbox surfaces, beginner-friendly entry | Core agent kernel, primary runtime ownership, Android app shell replacement |
+| pi | Primary agent runtime, tool calling, extension loading, RPC/API surface, plugin execution contracts | Android shell, Termux bootstrap, service supervision |
+| pi-web | Main product interaction surface, user-facing AI workspace, tool display, local web UI | Service lifecycle ownership, Termux/Ubuntu installation |
 | Codex | Core coding/reasoning agent capability, codebase work, terminal-backed development tasks | Product shell, runtime supervision |
 | Claude Code | Core coding/reasoning agent capability, codebase work, terminal-backed development tasks | Product shell, runtime supervision |
 | CloudCLI | Model/account connectivity and ClaudeCodeUI-related access path where applicable | Product shell, runtime supervision |
@@ -68,8 +69,8 @@ The intended split is:
 ```text
 Android App: show, authorize, start, stop, inspect
 Termux: host, bridge, rescue, install, repair
-Ubuntu: reason, execute, build, run tools
-service-manager: supervise and expose state
+Ubuntu: run pi, pi-web, AI CLIs, builds, tools, and projects
+service-manager: supervise pi-agent, pi-web, connectors, and expose state
 ```
 
 ## Install Chain vs Control Plane
@@ -81,9 +82,9 @@ During first install, Android App and Termux coordinate:
 1. prepare Termux paths and packages
 2. install Ubuntu rootfs through `proot-distro`
 3. install Ubuntu packages and Node runtime
-4. install Codex, Claude Code, CloudCLI, SmallPhone runtime, and service-manager assets
-5. sync service definitions and component registry
-6. start the core services
+4. install Codex, Claude Code, CloudCLI, service-manager assets, pi, and pi-web
+5. sync pi extensions, service definitions, and component registry
+6. start `pi-agent` and `pi-web` through service-manager
 
 After first install succeeds, service-manager becomes the control plane for runtime services:
 
@@ -105,18 +106,37 @@ Runtime operations must use explicit targets:
 | --- | --- | --- |
 | Android | Permissions, intents, APK state, app private files, UI navigation | Linux development tasks |
 | Termux | Host checks, Ubuntu install/repair, Android bridge commands, emergency shell | Main coding agent workflow |
-| Ubuntu | Development commands, Codex, Claude Code, CloudCLI, MCP, openhouse-agent | Android permission changes |
+| Ubuntu | Development commands, pi, pi-web, Codex, Claude Code, CloudCLI, MCP | Android permission changes |
 | service-manager | Long-running services, health, logs, restart, service definitions | One-off shell execution that belongs in Termux/Ubuntu |
 
-Long-running services must be owned by service-manager or by a service-manager-supervised process. Android UI code and Operit UI code must not directly start persistent MCP, bridge, or agent daemons.
+Long-running services must be owned by service-manager or by a service-manager-supervised process. Android UI code and WebView code must not directly start persistent MCP, bridge, or agent daemons.
 
-## Operit Position
+## pi / pi-web Position
 
-Operit is retained long term, but as a hosted capability inside the OpenHouseAI product shell. It should help users configure models, inspect tools, diagnose runtime issues, and use plugin/toolbox surfaces.
+pi is the default OpenHouseAI agent runtime. It owns the default tool calling model, extension loading, and agent-facing APIs in Ubuntu.
 
-Operit is not the core agent kernel. It should call into the shared runtime bridge, service-manager, and future Ubuntu-side openhouse-agent rather than owning a second runtime.
+pi-web is the default OpenHouseAI UI. The Android App opens it through a local WebView at `http://127.0.0.1:30141/`, while service-manager owns its process lifecycle.
 
-See `OPERIT_ROLE.md` and `OPERIT_PLUGIN_COMPATIBILITY.md` for the detailed contract.
+Default service IDs:
+
+- `pi-agent`
+- `pi-web`
+
+Default pi environment:
+
+```text
+PI_CODING_AGENT_DIR=/root/.pi
+/root/.pi/extensions
+/root/.pi/agent/extensions
+```
+
+The default search extension is `multi-platform-search.ts`. Existing pi-web sessions may need a new conversation after extension changes because tool lists can be captured when the session starts.
+
+See `PI_AGENT_PLUGIN_SYSTEM.md` for the detailed contract.
+
+## Operit Removal Position
+
+Operit is no longer the default OpenHouseAI agent, UI, or plugin system. It may appear in historical migration notes while code removal is underway, but new architecture, install stages, and product copy must target pi and pi-web.
 
 ## Termux Compatibility Constraint
 
@@ -142,19 +162,20 @@ Ubuntu hosts agent and developer workflows.
 
 ## Current vs Long-Term State
 
-Current implementation contains the integration spine: SmallPhoneAI host, Termux/Ubuntu runtime ownership, first install flow, service-manager installation, SmallPhone runtime, CloudCLI, and a hosted Operit skeleton.
+Current implementation is being moved from the previous SmallPhone/Operit direction to the pi/pi-web direction. The stable spine remains: Termux-derived Android host, Ubuntu runtime ownership, first install flow, service-manager installation, CloudCLI, and service/component registration.
 
 Long-term work should extend this spine instead of replacing it:
 
-- build the openhouse-agent core in Ubuntu
+- make pi the default agent core in Ubuntu
+- make pi-web the default UI
 - make service-manager the stable service API
 - expose machine-readable state for AI agents
-- keep Operit as UI/configuration/diagnostics/plugin surface
 - keep Termux as host and rescue layer
 
 ## Non-Goals
 
 - Do not make Operit the Android app shell.
+- Do not make Operit the default OpenHouseAI agent, UI, or plugin system.
 - Do not place the primary agent loop inside an Android Activity or WebView.
 - Do not place the primary agent loop in the Termux base layer.
 - Do not start persistent daemons directly from UI code.

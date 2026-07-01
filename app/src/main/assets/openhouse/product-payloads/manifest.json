@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "generatedAt": "2026-06-29",
-  "description": "SmallPhoneAI first-run offline payloads bundled inside the APK. Network and GitHub are optional update paths after boot.",
+  "generatedAt": "2026-07-01",
+  "description": "OpenHouseAI runtime packages bundled inside the APK. pi/pi-web install may still require network access to the npm registry for dependency resolution.",
   "components": [
     {
       "id": "service-manager",
@@ -26,6 +26,20 @@
       "targetDir": "smallphone-active",
       "sha256": "dd250243e08b3222f79b7e12419bc829fafb2426394eb1e83b70d7ed771ac99f",
       "size": 1914880
+    },
+    {
+      "id": "pi-agent",
+      "archive": "pi-agent.tar",
+      "targetDir": "pi-agent",
+      "sha256": "f4c47b5c1c3e287eef4eae6f056961e492cb830a0dfeb4586f6284436c8e3056",
+      "size": 6123520
+    },
+    {
+      "id": "pi-web",
+      "archive": "pi-web.tar",
+      "targetDir": "pi-web",
+      "sha256": "2422cddc5e8ec44aa7f096937d9f84f88ca60d0c86f4a0e26eda4c6ba3a4968e",
+      "size": 5089280
     }
   ]
 }

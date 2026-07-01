@@ -68,6 +68,8 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
         SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
         SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
+        OPENHOUSE_PI_AGENT_DIR="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-}}" \
+        OPENHOUSE_PI_WEB_DIR="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-}}" \
         SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
         SMALLPHONEAI_CC_CONNECT_DISABLED="${SMALLPHONEAI_CC_CONNECT_DISABLED:-}" \
         SMALLPHONEAI_DISABLE_CC_CONNECT="${SMALLPHONEAI_DISABLE_CC_CONNECT:-}" \
@@ -76,6 +78,8 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
         SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-}" \
         SMALLPHONEAI_SMALLPHONE_CORE_URL="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-}" \
         SMALLPHONEAI_SMALLPHONE_URL="${SMALLPHONEAI_SMALLPHONE_URL:-}" \
+        OPENHOUSE_PI_WEB_URL="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-}}" \
+        PI_WEB_URL="${PI_WEB_URL:-}" \
         SMALLPHONEAI_START_READY_TIMEOUT="${SMALLPHONEAI_START_READY_TIMEOUT:-}" \
         SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-$HOME}" \
         SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
@@ -102,6 +106,7 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
     cc_probe_label="bridge=${cc_bridge_host}:${cc_bridge_port}, management=${cc_bridge_host}:${cc_management_port}"
     core_probe_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
     phone_probe_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
+    pi_web_probe_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
     cc_disabled=0
     case "${SMALLPHONEAI_CC_CONNECT_DISABLED:-${SMALLPHONEAI_DISABLE_CC_CONNECT:-}}" in
       1|true|TRUE|True|yes|YES|Yes|on|ON|On)
@@ -109,25 +114,22 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
         ;;
     esac
 
-    log "等待 Ubuntu runtime supervisor 就绪（最长 ${timeout}s）。"
+    log "等待 Ubuntu runtime supervisor 达到 pi 主线就绪条件（最长 ${timeout}s）。"
     waited=0
     while [ "$waited" -le "$timeout" ]; do
       missing=""
       if ! command -v curl >/dev/null 2>&1 || ! curl -fsS --max-time 2 "$sm_probe_url/api/v1/health" >/dev/null 2>&1; then
         missing="${missing:+$missing, }service-manager($sm_probe_url)"
       fi
-      if ! command -v curl >/dev/null 2>&1 || ! curl -fsS --max-time 2 "$phone_probe_url" >/dev/null 2>&1; then
-        missing="${missing:+$missing, }SmallPhone($phone_probe_url)"
-      fi
-      if ! command -v curl >/dev/null 2>&1 || ! curl -fsS --max-time 2 "$core_probe_url" >/dev/null 2>&1; then
-        missing="${missing:+$missing, }SmallPhone core($core_probe_url)"
+      if ! command -v curl >/dev/null 2>&1 || ! curl -fsS --max-time 2 "$pi_web_probe_url" >/dev/null 2>&1; then
+        missing="${missing:+$missing, }pi-web($pi_web_probe_url)"
       fi
       if [ "$cc_disabled" != "1" ] && { ! probe_tcp "$cc_bridge_host" "$cc_bridge_port" || ! probe_tcp "$cc_bridge_host" "$cc_management_port"; }; then
         missing="${missing:+$missing, }cc-connect($cc_probe_label)"
       fi
       if [ -z "$missing" ]; then
         log "Ubuntu runtime supervisor 已就绪。"
-        log "入口：service-manager=$sm_probe_url, SmallPhone=$phone_probe_url, SmallPhone core=$core_probe_url, cc-connect=$cc_probe_label"
+        log "入口：service-manager=$sm_probe_url, pi-web=$pi_web_probe_url, SmallPhone(兼容)=$phone_probe_url, SmallPhone core(兼容)=$core_probe_url, cc-connect=$cc_probe_label"
         exit 0
       fi
       if [ "$waited" -eq 0 ] || [ $((waited % 10)) -eq 0 ]; then
@@ -137,7 +139,7 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
       waited=$((waited + 2))
     done
 
-    warn "Ubuntu runtime supervisor 未在 ${timeout}s 内完全就绪。日志：$runtime_log"
+    warn "Ubuntu runtime supervisor 未在 ${timeout}s 内达到 pi 主线就绪条件。日志：$runtime_log"
     if [ -f "$runtime_log" ]; then
       tail -n 120 "$runtime_log" >&2 || true
     fi
@@ -214,6 +216,8 @@ component_dir_from_env() {
 service_manager_dir="$(component_dir_from_env "${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" service-manager /root/projects/service-manager)"
 cc_connect_dir="$(component_dir_from_env "${SMALLPHONEAI_CC_CONNECT_DIR:-}" openhouse-connect /root/openhouse-connect-fresh /root/cc-connect-fresh)"
 smallphone_dir="$(component_dir_from_env "${SMALLPHONEAI_SMALLPHONE_DIR:-}" smallphone-active /root/projects/smallphone/smallphone-active)"
+pi_agent_dir="$(component_dir_from_env "${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-}}" pi-agent /root/projects/pi)"
+pi_web_dir="$(component_dir_from_env "${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-}}" pi-web /root/projects/pi-web)"
 bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
 sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
 cc_host="${SMALLPHONEAI_CC_CONNECT_HOST:-127.0.0.1}"
@@ -222,6 +226,7 @@ cc_management_port="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-21020}"
 cc_url="bridge=${cc_host}:${cc_bridge_port}, management=${cc_host}:${cc_management_port}"
 smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
+pi_web_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
 log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
 
 export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$HOME/.npm-global/bin:$PATH"
@@ -435,11 +440,8 @@ is_final_readiness_ready() {
   if ! is_service_manager_ready; then
     append_readiness_missing "service-manager($sm_url)"
   fi
-  if ! probe_url "$smallphone_url"; then
-    append_readiness_missing "SmallPhone($smallphone_url)"
-  fi
-  if ! probe_url "$smallphone_core_url"; then
-    append_readiness_missing "SmallPhone core($smallphone_core_url)"
+  if ! probe_url "$pi_web_url"; then
+    append_readiness_missing "pi-web($pi_web_url)"
   fi
   if [ "$cc_connect_disabled" != "1" ] && { ! probe_tcp "$cc_host" "$cc_bridge_port" || ! probe_tcp "$cc_host" "$cc_management_port"; }; then
     append_readiness_missing "cc-connect($cc_url)"
@@ -460,15 +462,15 @@ wait_for_final_readiness() {
       ;;
   esac
 
-  log "等待 SmallPhone 运行栈最终就绪（最长 ${timeout}s）。"
+  log "等待 pi 主线运行栈最终就绪（最长 ${timeout}s）。"
   while true; do
     if is_final_readiness_ready; then
-      log "SmallPhone 运行栈已就绪。"
+      log "pi 主线运行栈已就绪。"
       return 0
     fi
 
     if [ "$waited" -ge "$timeout" ]; then
-      warn "SmallPhone 运行栈未在 ${timeout}s 内就绪：$readiness_missing"
+      warn "pi 主线运行栈未在 ${timeout}s 内就绪：$readiness_missing"
       return 1
     fi
 
@@ -537,6 +539,8 @@ run_register_if_present() {
 
 run_register_if_present "cc-connect/openhouse-connect" "$cc_connect_dir"
 run_register_if_present "SmallPhone" "$smallphone_dir"
+run_register_if_present "pi-agent" "$pi_agent_dir"
+run_register_if_present "pi-web" "$pi_web_dir"
 
 if ! command -v curl >/dev/null 2>&1; then
   warn "缺少 curl，无法调用 service-manager 启动 local-stack。"
@@ -559,7 +563,7 @@ printf 'header = "Authorization: Bearer %s"\n' "$sm_token" > "$curl_cfg"
 
 log "正在通过 service-manager 启动 group:local-stack。"
 if curl -q -fsS --max-time 10 -X POST -K "$curl_cfg" "$sm_url/api/v1/groups/local-stack/start" >/dev/null; then
-  log "SmallPhone 运行栈启动请求已提交。"
+  log "pi 主线运行栈启动请求已提交。"
 else
   warn "group:local-stack 启动失败；请确认组件已注册。"
   exit 1
@@ -570,9 +574,9 @@ if ! wait_for_final_readiness; then
 fi
 
 if [ "$cc_connect_disabled" = "1" ]; then
-  log "入口：service-manager=$sm_url, SmallPhone=$smallphone_url, SmallPhone core=$smallphone_core_url, cc-connect=disabled"
+  log "入口：service-manager=$sm_url, pi-web=$pi_web_url, SmallPhone(兼容)=$smallphone_url, SmallPhone core(兼容)=$smallphone_core_url, cc-connect=disabled"
 else
-  log "入口：service-manager=$sm_url, SmallPhone=$smallphone_url, SmallPhone core=$smallphone_core_url, cc-connect=$cc_url"
+  log "入口：service-manager=$sm_url, pi-web=$pi_web_url, SmallPhone(兼容)=$smallphone_url, SmallPhone core(兼容)=$smallphone_core_url, cc-connect=$cc_url"
 fi
 
 if [ "${SMALLPHONEAI_UBUNTU_RUNTIME_KEEPALIVE:-0}" = "1" ]; then

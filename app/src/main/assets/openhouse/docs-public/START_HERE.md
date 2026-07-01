@@ -10,7 +10,9 @@ OpenHouseAI 是一个装在手机里的 AI 工作台。它不是单纯的聊天�
    - 了解日常协作、智能操作系统、人生管理、知识库和人机编程等场景。
 3. `ENVIRONMENT.md`
    - 确认当前 Android、Termux、Ubuntu 和默认安装范围。
-4. `MODEL_API_SETUP.md`
+4. `PI_AGENT_PLUGIN_SYSTEM.md`
+   - 了解 pi、pi-web、插件目录和默认搜索插件。
+5. `MODEL_API_SETUP.md`
    - 需要使用 Codex、Claude Code 或 CloudCLI 时，再配置登录或模型 API。
 
 ## 给 AI agent 的入口
@@ -26,6 +28,10 @@ OpenHouseAI 是一个装在手机里的 AI 工作台。它不是单纯的聊天�
 
 ## 默认核心
 
-默认核心能力包括 Termux、Ubuntu、service-manager、SmallPhone、Operit、Codex、Claude Code 和 CloudCLI。
+默认核心能力包括 Termux、Ubuntu、service-manager、pi、pi-web、Codex、Claude Code 和 CloudCLI。
 
-OpenCode、Reasonix、Hermes 等退役外部工具不是 APK 默认核心能力。只有用户明确要求这些外部工具时，才阅读 `OPTIONAL_EXTERNAL_TOOLS.md`。
+pi 是默认主 agent，pi-web 是默认主 UI。`pi-agent` 和 `pi-web` 由 service-manager 管理，默认本地入口是 `http://127.0.0.1:30141/`。
+
+pi 和 pi-web 的默认项目包可以随 APK 提供，但 npm 依赖解析、缺失依赖安装和 registry 访问仍可能需要网络。首次安装不应被理解为完全离线流程。
+
+Operit、OpenCode、Reasonix、Hermes 等退役或外部工具不是 APK 默认核心能力。只有用户明确要求这些外部工具时，才阅读历史说明或 `OPTIONAL_EXTERNAL_TOOLS.md`。

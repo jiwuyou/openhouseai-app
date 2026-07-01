@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="operit_page_assistant_title">Operit Assistant</string>
-    <string name="operit_page_ai_friend_help_title">AI朋友 Help</string>
-    <string name="operit_page_return_main_menu">返回主菜单</string>
-    <string name="operit_page_assistant_welcome">输入自然语言请求，或使用快捷命令检查 Termux、Ubuntu 和 service-manager。\n\n可用命令示例：\n/termux pwd\n/ubuntu pwd\n/service-manager health\n/service-manager status smallphone-core</string>
-    <string name="operit_page_ai_friend_help_welcome">AI朋友 Help 已接入 SmallPhoneAI 主菜单。\n\n当前页面用于验证 Operit 能力迁移主线：Termux 命令、Ubuntu 命令和 service-manager 只读状态查询都会经过统一 runtime bridge。\n\n可用命令示例：\n/termux pwd\n/ubuntu pwd\n/service-manager health\n/service-manager status smallphone-core</string>
-</resources>

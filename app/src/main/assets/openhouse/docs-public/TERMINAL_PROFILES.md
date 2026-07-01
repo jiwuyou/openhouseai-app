@@ -53,9 +53,10 @@ Ubuntu 运行在 Termux 的 proot-distro 内，是主要工作区。
 - Codex CLI。
 - Claude Code。
 - CloudCLI / ClaudeCodeUI 相关命令。
+- pi 和 pi-web 的本地开发、启动脚本和插件检查。
 - Node.js、Python、Rust、Git 项目开发。
 - MCP server。
-- openhouse-agent 或未来自己的 agent 核心。
+- pi 主 agent 和后续自研 agent 能力。
 - 用户知识库、项目、脚本和长期任务的核心逻辑。
 
 常用检查：
@@ -98,7 +99,7 @@ proot-distro login ubuntu -- bash -lc 'pwd && cat /etc/os-release'
 | “检查安装完成没有” | Termux | `bash bootstrap.sh status` |
 | “修复 Ubuntu” | Termux | `proot-distro login ubuntu -- true` 后最小修复 |
 | “修复 Termux” | Termux / App | 修复 prefix、pkg、proot-distro |
-| “启动 SmallPhone/CloudCLI” | service-manager | `bash bootstrap.sh start` 或 service-manager API |
+| “启动 pi-web/pi-agent/CloudCLI” | service-manager | `bash bootstrap.sh start` 或 service-manager API |
 | “关闭后台服务” | service-manager | 对服务执行 stop |
 | “查看 App 闪退原因” | Android / Termux | logcat、App 日志、维护日志 |
 

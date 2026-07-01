@@ -113,6 +113,10 @@ if is_termux && [ "${SMALLPHONEAI_STATUS_IN_UBUNTU:-1}" = "1" ]; then
         SMALLPHONEAI_CC_CONNECT_BRIDGE_PORT="${SMALLPHONEAI_CC_CONNECT_BRIDGE_PORT:-}" \
         SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-}" \
         SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
+        OPENHOUSE_PI_AGENT_DIR="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-}}" \
+        OPENHOUSE_PI_WEB_DIR="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-}}" \
+        OPENHOUSE_PI_WEB_URL="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-}}" \
+        PI_WEB_URL="${PI_WEB_URL:-}" \
         SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" \
         bash -s status < "$0"
     exit $?
@@ -260,6 +264,8 @@ readiness_object() {
 service_manager_dir="$(component_dir_from_env "${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" service-manager /root/projects/service-manager)"
 cc_connect_dir="$(component_dir_from_env "${SMALLPHONEAI_CC_CONNECT_DIR:-}" openhouse-connect /root/openhouse-connect-fresh /root/cc-connect-fresh)"
 smallphone_dir="$(component_dir_from_env "${SMALLPHONEAI_SMALLPHONE_DIR:-}" smallphone-active /root/projects/smallphone/smallphone-active)"
+pi_agent_dir="$(component_dir_from_env "${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-}}" pi-agent /root/projects/pi)"
+pi_web_dir="$(component_dir_from_env "${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-}}" pi-web /root/projects/pi-web)"
 
 sm_url="${SERVICE_MANAGER_URL:-http://127.0.0.1:20087}"
 cc_host="${SMALLPHONEAI_CC_CONNECT_HOST:-127.0.0.1}"
@@ -268,6 +274,7 @@ cc_management_port="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-21020}"
 cc_url="bridge=${cc_host}:${cc_bridge_port}, management=${cc_host}:${cc_management_port}"
 smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
+pi_web_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
 likegirl_url="${SMALLPHONEAI_LIKEGIRL_URL:-http://127.0.0.1:23003/}"
 likegirl_clone_url="${SMALLPHONEAI_LIKEGIRL_CLONE_URL:-http://127.0.0.1:23008/}"
 cc_connect_disabled=0
@@ -293,16 +300,24 @@ if [ "$cc_bridge_reachable" = "1" ] && [ "$cc_management_reachable" = "1" ]; the
 fi
 smallphone_core_reachable="$(probe_url "$smallphone_core_url")"
 smallphone_reachable="$(probe_url "$smallphone_url")"
+pi_web_reachable="$(probe_url "$pi_web_url")"
 likegirl_reachable="$(probe_url "$likegirl_url")"
 likegirl_clone_reachable="$(probe_url "$likegirl_clone_url")"
+pi_agent_satisfied=0
+if [ -d "$pi_agent_dir" ] \
+  && { [ -f "$pi_agent_dir/scripts/check.sh" ] || [ -x "$pi_agent_dir/bin/openhouse-pi-agent-sentinel" ]; }; then
+  pi_agent_satisfied=1
+elif PATH="/root/.npm-global/bin:/root/.local/node/bin:/root/.local/bin:${PATH:-}" command -v pi >/dev/null 2>&1; then
+  pi_agent_satisfied=1
+fi
 cc_connect_satisfied="$cc_reachable"
 if [ "$cc_connect_disabled" = "1" ]; then
   cc_connect_satisfied=1
 fi
 ready=0
 if [ "$sm_reachable" = "1" ] \
-  && [ "$smallphone_reachable" = "1" ] \
-  && [ "$smallphone_core_reachable" = "1" ] \
+  && [ "$pi_agent_satisfied" = "1" ] \
+  && [ "$pi_web_reachable" = "1" ] \
   && [ "$cc_connect_satisfied" = "1" ]; then
   ready=1
 fi
@@ -310,7 +325,7 @@ fi
 state="missing"
 if [ "$ready" = "1" ]; then
   state="ready"
-elif [ "$sm_reachable" = "1" ] || [ -d "$service_manager_dir" ] || [ -d "$cc_connect_dir" ] || [ -d "$smallphone_dir" ]; then
+elif [ "$sm_reachable" = "1" ] || [ -d "$service_manager_dir" ] || [ -d "$cc_connect_dir" ] || [ -d "$pi_agent_dir" ] || [ -d "$pi_web_dir" ] || [ -d "$smallphone_dir" ]; then
   state="partial"
 fi
 
@@ -322,11 +337,15 @@ printf ',"ready":%s' "$(bool "$ready")"
 printf ',"readiness":{"ready":%s,"requirements":[' "$(bool "$ready")"
 readiness_object "service-manager" "service-manager API" "$sm_url" "$sm_reachable" "1" "0"
 printf ','
-readiness_object "smallphone" "SmallPhone frontend" "$smallphone_url" "$smallphone_reachable" "1" "0"
+readiness_object "pi-agent" "Pi Agent runtime sentinel" "$pi_agent_dir" "$pi_agent_satisfied" "1" "0"
 printf ','
-readiness_object "smallphone-core" "SmallPhone core API" "$smallphone_core_url" "$smallphone_core_reachable" "1" "0"
+readiness_object "pi-web" "Pi Web main agent UI" "$pi_web_url" "$pi_web_reachable" "1" "0"
 printf ','
 readiness_object "cc-connect-bridge" "cc-connect/openhouse-connect bridge and management" "$cc_url" "$cc_reachable" "$cc_connect_required" "$cc_connect_disabled"
+printf ','
+readiness_object "smallphone" "SmallPhone frontend compatibility service" "$smallphone_url" "$smallphone_reachable" "0" "0"
+printf ','
+readiness_object "smallphone-core" "SmallPhone core compatibility API" "$smallphone_core_url" "$smallphone_core_reachable" "0" "0"
 printf ']}'
 printf ',"components":['
 component_object "service-manager" "service-manager" "$service_manager_dir"
@@ -334,6 +353,10 @@ printf ','
 component_object "cc-connect" "cc-connect/openhouse-connect" "$cc_connect_dir" "$cc_connect_enabled"
 printf ','
 component_object "smallphone" "SmallPhone" "$smallphone_dir"
+printf ','
+component_object "pi-agent" "pi-agent" "$pi_agent_dir"
+printf ','
+component_object "pi-web" "pi-web" "$pi_web_dir"
 printf '],"ports":['
 port_object "service-manager" "$sm_url" "$sm_reachable"
 printf ','
@@ -344,6 +367,8 @@ printf ','
 port_object "smallphone-core" "$smallphone_core_url" "$smallphone_core_reachable"
 printf ','
 port_object "smallphone" "$smallphone_url" "$smallphone_reachable"
+printf ','
+port_object "pi-web" "$pi_web_url" "$pi_web_reachable"
 printf ','
 port_object "smallphone-likegirl" "$likegirl_url" "$likegirl_reachable"
 printf ','

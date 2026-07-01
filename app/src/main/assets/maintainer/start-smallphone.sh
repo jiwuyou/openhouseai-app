@@ -53,10 +53,13 @@ default_path() {
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path /root/projects/service-manager service-manager)}"
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path /root/cc-connect-fresh openhouse-connect)}"
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path /root/projects/smallphone/smallphone-active smallphone-active)}"
+pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path /root/projects/pi pi-agent)}}"
+pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path /root/projects/pi-web pi-web)}}"
 bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
 sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
 smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
+pi_web_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
 cc_url="${SMALLPHONEAI_CC_CONNECT_URL:-http://127.0.0.1:21040/}"
 log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
 
@@ -105,8 +108,7 @@ service_manager_ready() {
 
 stack_ready() {
   service_manager_ready \
-    && probe_url "$smallphone_url" \
-    && probe_url "$smallphone_core_url" \
+    && probe_url "$pi_web_url" \
     && { cc_connect_disabled || probe_url "$cc_url"; }
 }
 
@@ -251,6 +253,8 @@ fi
 
 register_if_present "cc-connect/openhouse-connect" "$cc_connect_dir"
 register_if_present "SmallPhone" "$smallphone_dir"
+register_if_present "pi-agent" "$pi_agent_dir"
+register_if_present "pi-web" "$pi_web_dir"
 
 if ! command -v curl >/dev/null 2>&1; then
   warn "缺少 curl，无法调用 service-manager。"
@@ -279,15 +283,16 @@ curl -q -fsS --max-time 10 -X POST -K "$work_dir/curl.cfg" "$sm_url/api/v1/group
 
 for _ in $(seq 1 45); do
   if stack_ready; then
-    log "SmallPhoneAI 运行栈已就绪：SmallPhone=$smallphone_url service-manager=$sm_url cc-connect=$cc_url"
+    log "SmallPhoneAI 运行栈已就绪：pi-web=$pi_web_url service-manager=$sm_url cc-connect=$cc_url"
     exit 0
   fi
   sleep 1
 done
 
-warn "SmallPhoneAI 运行栈启动后仍未完全就绪。"
-printf 'service-manager=%s\nSmallPhone=%s\nSmallPhone Core=%s\ncc-connect=%s\n' \
+warn "SmallPhoneAI 运行栈启动后仍未达到 pi 主线就绪条件。"
+printf 'service-manager=%s\npi-web=%s\nSmallPhone=%s\nSmallPhone Core=%s\ncc-connect=%s\n' \
   "$(service_manager_ready && printf reachable || printf down)" \
+  "$(probe_url "$pi_web_url" && printf reachable || printf down)" \
   "$(probe_url "$smallphone_url" && printf reachable || printf down)" \
   "$(probe_url "$smallphone_core_url" && printf reachable || printf down)" \
   "$(cc_connect_disabled && printf disabled || { probe_url "$cc_url" && printf reachable || printf down; })"
