@@ -10,6 +10,7 @@
 - service-manager 管理 `pi-agent` 和 `pi-web`。
 - Android App 通过 `pi-agent` 入口在 WebView 中加载 pi-web。
 - 用户长期使用的主工作台由用户选择，可以是 Claude Code、Codex、Hermes Web 或其它开源项目。
+- Codex、Claude Code、CloudCLI 和 Hermes 由 pi-agent 后置引导安装，入口脚本在 `/root/openhouse/scripts`。
 
 官方文档目录：
 
@@ -103,7 +104,7 @@ $HOME/.config/openhouseai/components.d/pi-agent.json
 
 ## 安装网络要求
 
-pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动；不要通过 `npm install -g` 安装 pi-web tgz，也不要把 pi-web 首装描述为需要 npm registry。Codex、Claude Code、CloudCLI、Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络，因此也不要把整个首次安装描述成完全离线安装或网络可选安装。
+pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动；不要通过 `npm install -g` 安装 pi-web tgz，也不要把 pi-web 首装描述为需要 npm registry。Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络。Codex、Claude Code、CloudCLI 和 Hermes 的网络安装放到 pi-agent 后置引导阶段，因此它们失败不应阻塞首次进入 pi-agent。
 
 ## 救援助手
 

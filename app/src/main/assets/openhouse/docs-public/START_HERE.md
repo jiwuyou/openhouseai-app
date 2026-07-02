@@ -18,7 +18,7 @@ pi-web 默认提示词应优先引用 `/root/openhouse/docs` 下的稳定文档�
 
 OpenHouse 有三层常见路径，不要混用：
 
-- Ubuntu 内路径：`/root`、`/root/openhouse/docs`、`/root/openhouseai-docs/official`、`/root/projects`。这是主要工作区，Claude Code、Codex、CloudCLI、pi、pi-web 和用户项目默认在这里。
+- Ubuntu 内路径：`/root`、`/root/openhouse/docs`、`/root/openhouseai-docs/official`、`/root/projects`。这是主要工作区；pi、pi-web、用户项目，以及后置安装完成后的 Claude Code、Codex、CloudCLI 默认在这里使用。
 - Termux 文件系统真实路径：`/data/data/com.termux/files/home` 和 `/data/data/com.termux/files/usr`。这是 Android 侧 Termux shell 的 home 和 prefix，负责底座、bootstrap、proot-distro 和 Ubuntu 修复。
 - Ubuntu rootfs 在 Termux 中的真实位置：`/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu`。知道这个位置有助于排障，但普通操作不要直接改 rootfs 文件。
 
@@ -48,13 +48,15 @@ openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
    - 确认当前 Android、Termux、Ubuntu 和默认安装范围。
 6. `PI_AGENT_PLUGIN_SYSTEM.md`
    - 了解 pi、pi-web、插件目录和默认搜索插件。
-7. `MODEL_API_SETUP.md`
+7. `AI_TOOL_POSTINSTALL.md`
+   - 需要后置安装 Codex、Claude Code、CloudCLI 或 Hermes 时，先看这里的脚本入口。
+8. `MODEL_API_SETUP.md`
    - 需要使用 Codex、Claude Code 或 CloudCLI 时，再配置登录或模型 API。
-8. `OPENHOUSE_FIRST_CONFIGURATION.md`
+9. `OPENHOUSE_FIRST_CONFIGURATION.md`
    - pi-web 模型可用后，让 pi-agent 完成模型迁移、CloudCLI/Claude Code 配置和连通测试。
-9. `CLOUDCLI_CLAUDE_CODE.md`
+10. `CLOUDCLI_CLAUDE_CODE.md`
    - 需要让 pi-agent 配置 CloudCLI 中的 Claude Code 时阅读。
-10. `HERMES_SETUP.md`
+11. `HERMES_SETUP.md`
    - 需要安装 Hermes 时阅读。Hermes 是可选高级能力，安装和配置会花比较久。
 
 ## 给 AI agent 的入口
@@ -70,7 +72,9 @@ openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
 
 ## 默认核心
 
-默认核心能力包括 Termux、Ubuntu、service-manager、pi、pi-web、Codex、Claude Code 和 CloudCLI。
+默认核心能力包括 Termux、Ubuntu、Node、OpenHouse 文档、service-manager、pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容服务。
+
+Codex、Claude Code、CloudCLI 和 Hermes 是后置 AI 工作能力。用户先进入 pi-agent 完成首次配置；pi-agent 再按 `/root/openhouse/scripts` 中的脚本和本文档引导安装这些能力。
 
 主菜单/侧边栏的一级服务入口至少包括：
 
@@ -84,7 +88,7 @@ OpenHouse 的主工作台由用户自己选择。用户可以继续使用 Claude
 
 `cc/codex` 是统一入口，用于 CloudCLI / Claude Code / Codex 相关页面和控制。不要把 CloudCLI、Claude Code、Codex 拆成多个一级入口，除非后续产品注册策略明确改变。
 
-pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Codex、Claude Code、CloudCLI、Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络，所以首次安装不应被理解为完全离线流程。
+pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络；Codex、Claude Code、CloudCLI 和 Hermes 的网络安装放到 pi-agent 后置引导阶段。
 
 Operit、OpenCode、Reasonix 等退役或外部工具不是 APK 默认核心能力。Hermes 不进入 APK 默认核心 payload，但可以作为 `pi-agent` 新建会话里的可选高级提示词出现，详见 `HERMES_SETUP.md` 和 `OPTIONAL_EXTERNAL_TOOLS.md`。
 
@@ -96,6 +100,7 @@ Operit、OpenCode、Reasonix 等退役或外部工具不是 APK 默认核心能�
 | --- | --- | --- |
 | 首次 OpenHouse 配置 | `/root/openhouse/docs/OPENHOUSE_FIRST_CONFIGURATION.md`, `/root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md`, `/root/openhouse/docs/MODEL_API_SETUP.md` | 让 pi-agent 迁移 pi-web 模型配置，测通 CloudCLI 中的 Claude Code。 |
 | 首次使用 | `/root/openhouse/docs/START_HERE.md`, `/root/openhouse/docs/CAPABILITIES_MAP.md`, `/root/openhouse/docs/AI_AGENT_REFERENCE.md` | 让用户理解 OpenHouse 能力、入口、文档和安全边界。 |
+| 后置安装 AI 工具 | `/root/openhouse/docs/AI_TOOL_POSTINSTALL.md`, `/root/openhouse/scripts/check-ai-tools.sh` | 检查并安装 Codex、Claude Code、CloudCLI、Hermes。 |
 | 配置 Claude Code | `/root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md`, `/root/openhouse/docs/MODEL_API_SETUP.md`, `/root/openhouse/docs/GITHUB_NETWORK_MIRRORS.md` | 按文档配置并测通 CloudCLI 中的 Claude Code；不确定时联网检索。 |
 | 选择主工作台 | `/root/openhouse/docs/WORKBENCH_OPTIONS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md` | 让用户选择 Claude Code、Codex、Hermes Web 或其它开源项目作为长期工作台。 |
 | 安装和配置 Hermes | `/root/openhouse/docs/HERMES_SETUP.md`, `/root/openhouse/docs/OPTIONAL_EXTERNAL_TOOLS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md` | 可选高级能力，耗时较久，使用独立 uv 环境。 |

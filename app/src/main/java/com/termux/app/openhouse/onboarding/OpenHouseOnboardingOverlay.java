@@ -275,7 +275,7 @@ public final class OpenHouseOnboardingOverlay {
 
     private void renderInstallStep() {
         String title = getInstallProgressTitle();
-        addStatusCard(title, "将安装 Ubuntu、Node.js、Codex、Claude Code、CloudCLI、service-manager、openhouse-connect、pi 和 pi-web。");
+        addStatusCard(title, "将安装 Ubuntu、Node.js、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。");
         addStatusCard("网络提醒", "初始化安装预计会下载约 500M 的文件内容，推荐在 Wi-Fi 网络下进行。");
         addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
         addReadingGuide(false, true);
@@ -296,7 +296,7 @@ public final class OpenHouseOnboardingOverlay {
         );
         addStatusCard(
             "安装完成后怎么用",
-            "service-manager 会负责后台服务；菜单侧边栏里 SmallPhone、pi-agent、cc/codex 是一级服务；Codex、Claude Code 和 CloudCLI 是主要 AI 能力。"
+            "service-manager 会负责后台服务；菜单侧边栏里 SmallPhone、pi-agent、运行控制和终端是基础入口。Codex、Claude Code 和 CloudCLI 稍后由 pi-agent 引导安装配置。"
         );
         addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
         addReadingGuide(true, false);
@@ -307,27 +307,23 @@ public final class OpenHouseOnboardingOverlay {
     private void renderLaunchConfigStep() {
         addStatusCard(
             "核心运行栈已安装完成",
-            "Ubuntu、Node.js、Codex、Claude Code、CloudCLI、service-manager、openhouse-connect、pi 和 pi-web 已作为默认核心栈就绪。"
+            "Ubuntu、Node.js、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务已作为默认核心栈就绪。"
         );
         addStatusCard(
             "service-manager 接管运行期",
             "首次安装阶段已经完成。之后后台服务的启动、停止和健康检查由 service-manager 管理。"
         );
         addStatusCard(
-            "终端里怎么用 AI",
-            "常用 Ubuntu 侧。输入 claude 使用 Claude Code，输入 codex 使用 Codex；CloudCLI 提供网页和远程交互入口。"
+            "终端只是备用入口",
+            "一般用户不需要直接使用终端。后续需要命令行时，可以从菜单单独查看终端详细教学，再回到菜单。"
         );
         addStatusCard(
             "pi-agent 的作用",
-            "pi-agent 是默认 agent 和插件入口，和 SmallPhone、cc/codex 一样在菜单侧边栏中进入。你不需要在首次安装时填写 API Key，安装完成后再按需配置模型。"
+            "pi-agent 是首次配置助手和插件入口。接下来请进入 pi-agent，让它按内置文档引导你配置模型、安装 Codex、Claude Code、CloudCLI 或 Hermes。"
         );
         addStatusCard(
             "菜单里的大服务",
-            "进入使用教学后先点击菜单。大服务区会看到 SmallPhone、pi-agent、cc/codex；cc/codex 是统一入口，控制页会真实执行运行或关闭，操作后记得刷新页面。"
-        );
-        addStatusCard(
-            "终端只是备用入口",
-            "一般用户不需要直接使用终端。后续需要命令行时，可以从菜单单独查看终端详细教学，再回到菜单。"
+            "进入使用教学后先点击菜单。教学会带你认识 pi-agent、运行控制和终端；cc/codex 未安装时会提示先去 pi-agent 完成安装配置。"
         );
 
         addActionButton("进入使用教学", isSetupComplete(), true, v -> {
@@ -525,11 +521,11 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private boolean isInstallDone() {
-        return installState.completed || status.isDeploymentComplete();
+        return installState.completed || isCoreDeploymentComplete();
     }
 
     private boolean isInstallStarted() {
-        return installState.running || installState.completed || installState.failed || installState.percent > 0 || status.getProgressPercent() > 0;
+        return installState.running || installState.completed || installState.failed || installState.percent > 0 || getCoreProgressPercent() > 0;
     }
 
     private boolean isSetupComplete() {
@@ -540,7 +536,7 @@ public final class OpenHouseOnboardingOverlay {
         if (installState.running || installState.completed || installState.failed || installState.percent > 0) {
             return installState.percent;
         }
-        return status.getProgressPercent();
+        return getCoreProgressPercent();
     }
 
     private String getInstallProgressTitle() {
@@ -554,7 +550,59 @@ public final class OpenHouseOnboardingOverlay {
         if (installState.running || installState.completed || installState.failed) {
             return installState.detailText;
         }
-        return status.getNextStepLabel();
+        return getCoreNextStepLabel();
+    }
+
+    private boolean isCoreDeploymentComplete() {
+        return status.termuxReady
+            && status.productPrepared
+            && status.ubuntuInstalled
+            && status.entryUbuntuConfigured
+            && status.nodeInstalled
+            && status.officialDocsSynced
+            && status.serviceManagerInstalled
+            && status.openhouseConnectInstalled
+            && status.smallPhoneRuntimeInstalled
+            && status.registrySynced
+            && status.serviceManagerReachable
+            && status.openhouseConnectReachable
+            && status.smallPhoneReachable;
+    }
+
+    private int getCoreProgressPercent() {
+        int done = 0;
+        int total = 13;
+        if (status.termuxReady) done++;
+        if (status.productPrepared) done++;
+        if (status.ubuntuInstalled) done++;
+        if (status.entryUbuntuConfigured) done++;
+        if (status.nodeInstalled) done++;
+        if (status.officialDocsSynced) done++;
+        if (status.serviceManagerInstalled) done++;
+        if (status.openhouseConnectInstalled) done++;
+        if (status.smallPhoneRuntimeInstalled) done++;
+        if (status.registrySynced) done++;
+        if (status.serviceManagerReachable) done++;
+        if (status.openhouseConnectReachable) done++;
+        if (status.smallPhoneReachable) done++;
+        return Math.round((done * 100f) / total);
+    }
+
+    private String getCoreNextStepLabel() {
+        if (!status.termuxReady) return "准备 Termux 基础环境";
+        if (!status.productPrepared) return "准备本机目录";
+        if (!status.ubuntuInstalled) return "准备 Linux 环境";
+        if (!status.entryUbuntuConfigured) return "设置启动方式";
+        if (!status.nodeInstalled) return "安装 Node.js";
+        if (!status.officialDocsSynced) return "同步使用文档";
+        if (!status.serviceManagerInstalled) return "安装 service-manager";
+        if (!status.openhouseConnectInstalled) return "安装 openhouse-connect";
+        if (!status.smallPhoneRuntimeInstalled) return "安装 SmallPhone 兼容服务";
+        if (!status.registrySynced) return "同步 service-manager 注册表";
+        if (!status.serviceManagerReachable) return "启动 service-manager";
+        if (!status.openhouseConnectReachable) return "启动 openhouse-connect";
+        if (!status.smallPhoneReachable) return "启动 SmallPhone 兼容服务";
+        return "核心控制平面已就绪，下一步进入 pi-agent";
     }
 
     private ForceSkipInfo getForceSkipInfo(Step step) {
@@ -672,21 +720,20 @@ public final class OpenHouseOnboardingOverlay {
             addReadingSection(body, "安装需要多久", "第一次安装通常需要 10 分钟到半小时。时间取决于手机性能、网络和包下载速度。");
             addReadingSection(body, "这款软件会做什么", "OpenHouseAI 会帮你配置一套顶级 AI 编程环境。它到底能做什么，取决于你想让它帮你做什么。");
             addReadingSection(body, "会安装哪些核心能力",
-                "Ubuntu 是主要运行环境，Node.js 是 Codex、Claude Code 和 CloudCLI 的运行依赖。",
+                "Ubuntu 是主要运行环境，Node.js 是 pi-agent 和 pi-web 的运行依赖。",
                 "service-manager 是安装完成后的控制平面，负责后台服务启动、停止和健康检查。",
                 "openhouse-connect、pi 和 pi-web 负责本机服务、pi-agent、插件体系和页面入口。");
-            addReadingSection(body, "为什么是这些 AI Agent",
-                "Claude Code 是非常顶级的 AI Agent 软件，适合改代码、解释代码、修复问题和持续协作。",
-                "Codex 也是核心 AI Agent，适合在项目目录中持续协作。",
-                "CloudCLI 提供网页和远程交互入口，适合不熟悉终端的新用户。");
+            addReadingSection(body, "AI Agent 为什么后置安装",
+                "Codex、Claude Code、CloudCLI 和 Hermes 不再阻塞首次安装。",
+                "先让 pi-agent 可用，再由 pi-agent 读取内置文档，按用户选择安装和配置这些能力。");
             addReadingSection(body, "安装时不用填 Key",
-                "首次安装只负责把环境和核心能力装好，不要求现在选择模型或填写 API Key。",
-                "需要使用模型时，再通过 pi-agent、CloudCLI、Codex 或 Claude Code 的配置流程处理。");
+                "首次安装只负责把控制平面装好，不要求现在选择模型或填写 API Key。",
+                "需要使用模型时，先进入 pi-agent，再由 pi-agent 引导迁移配置或安装工作台。");
             addReadingSection(body, "安装完成后怎么开始",
-                "常用 Ubuntu 终端。输入 claude 可进入 Claude Code，输入 codex 可进入 Codex。",
-                "需要图形界面时从菜单进入 pi-agent；后台服务由 service-manager 统一管理。");
+                "从菜单进入 pi-agent，点击首次使用提示，让它先阅读 /root/openhouse/docs。",
+                "后台服务由 service-manager 统一管理；终端只是后续排障和高级操作入口。");
         } else {
-            addReadingSection(body, "安装完成后的基本使用方法", "等待页面会说明核心组件、service-manager、pi-agent、Codex、Claude Code 和 CloudCLI 的用途。");
+            addReadingSection(body, "安装完成后的基本使用方法", "等待页面会说明核心组件、service-manager、pi-agent 和后置 AI 能力的安装入口。");
         }
         contentView.addView(card, topMarginParams(dp(10)));
     }
@@ -826,7 +873,7 @@ public final class OpenHouseOnboardingOverlay {
 
     private enum Step {
         PERMISSION("后台权限", "允许后台完成初始化", "初始化会安装 Ubuntu 和 AI 工具。请先允许忽略电池优化，并进入启动管理/后台保活设置，避免息屏或切换应用后中断。"),
-        INSTALL("开始安装", "开始安装核心运行环境", "点击后会安装 Ubuntu、Node.js、Codex、Claude Code、CloudCLI、service-manager、pi 和 pi-web。"),
+        INSTALL("开始安装", "开始安装核心运行环境", "点击后会安装 Ubuntu、Node.js、pi-agent、pi-web、service-manager 和兼容服务。"),
         WAITING_INSTALL("等待安装", "等待安装完成", "安装继续在后台进行。这里会简要说明安装完成后的基本使用方法，不需要现在填写模型或 Key。"),
         LAUNCH_CONFIG("使用说明", "开始使用 openhouse ai", "核心栈已安装完成。service-manager 会接管运行期服务，pi-agent 是默认 agent 和插件入口。");
 

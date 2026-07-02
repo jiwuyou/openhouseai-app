@@ -921,7 +921,7 @@ ensure_service_manager_registration_context() {
   log "service-manager 注册上下文已就绪。"
 }
 
-run_component() {
+component_prepare_install() {
   local name="$1"
   local dir="$2"
   local url="$3"
@@ -932,19 +932,53 @@ run_component() {
     if [ "$required" = "1" ]; then
       failures=$((failures + 1))
     fi
-    return 0
+    return 1
   fi
 
   if ! validate_bundle_local_install_source "$name" "$payload_name" "$dir"; then
     if [ "$required" = "1" ]; then
       failures=$((failures + 1))
     fi
-    return 0
+    return 1
   fi
 
   run_repo_script "$name" "$dir" "scripts/install.sh" "$required" "$payload_name"
+}
+
+component_check() {
+  local name="$1"
+  local dir="$2"
+  local required="$3"
+  local payload_name="$4"
+
   run_repo_script "$name" "$dir" "scripts/check.sh" "$required" "$payload_name"
+}
+
+component_register() {
+  local name="$1"
+  local dir="$2"
+  local payload_name="$3"
+
   run_repo_script "$name" "$dir" "scripts/register-service.sh" "0" "$payload_name"
+}
+
+run_component() {
+  local name="$1"
+  local dir="$2"
+  local url="$3"
+  local required="$4"
+  local payload_name="$5"
+
+  component_prepare_install "$name" "$dir" "$url" "$required" "$payload_name" || return 0
+  component_check "$name" "$dir" "$required" "$payload_name"
+  component_register "$name" "$dir" "$payload_name"
+}
+
+selected_components_need_service_manager_context() {
+  should_run_component "pi-agent" \
+    || should_run_component "pi-web" \
+    || should_run_component "cc-connect" \
+    || should_run_component "smallphone"
 }
 
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
@@ -968,26 +1002,46 @@ fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"
 else
-  log "本次处理默认组件：service-manager、cc-connect/openhouse-connect、pi-agent、pi-web；SmallPhone 作为兼容组件尝试安装。"
+  log "本次处理默认组件：先安装 pi-agent/pi-web，再准备 service-manager，随后注册基础栈、openhouse-connect 和 SmallPhone 兼容服务。"
 fi
 
 validate_component_targets
 
+pi_agent_component_ready=0
+pi_web_component_ready=0
+
+if should_run_component "pi-agent"; then
+  if component_prepare_install "pi-agent" "$pi_agent_dir" "${OPENHOUSE_PI_AGENT_GIT_URL:-}" "1" "pi-agent"; then
+    pi_agent_component_ready=1
+  fi
+fi
+if should_run_component "pi-web"; then
+  if component_prepare_install "pi-web" "$pi_web_dir" "${OPENHOUSE_PI_WEB_GIT_URL:-}" "1" "pi-web"; then
+    pi_web_component_ready=1
+  fi
+fi
 if should_run_component "service-manager"; then
-  run_component "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"
+  if component_prepare_install "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"; then
+    component_check "service-manager" "$service_manager_dir" "1" "service-manager"
+    component_register "service-manager" "$service_manager_dir" "service-manager"
+  fi
+fi
+if should_run_component "service-manager" || selected_components_need_service_manager_context; then
   ensure_service_manager_registration_context || true
+fi
+if should_run_component "pi-agent" && [ "$pi_agent_component_ready" = "1" ]; then
+  component_check "pi-agent" "$pi_agent_dir" "1" "pi-agent"
+  component_register "pi-agent" "$pi_agent_dir" "pi-agent"
+fi
+if should_run_component "pi-web" && [ "$pi_web_component_ready" = "1" ]; then
+  component_check "pi-web" "$pi_web_dir" "1" "pi-web"
+  component_register "pi-web" "$pi_web_dir" "pi-web"
 fi
 if should_run_component "cc-connect"; then
   run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "${SMALLPHONEAI_CC_CONNECT_GIT_URL:-https://github.com/jiwuyou/openhouse-connect-fresh.git}" "1" "openhouse-connect"
 fi
 if should_run_component "smallphone"; then
   run_component "SmallPhone compatibility service" "$smallphone_dir" "${SMALLPHONEAI_SMALLPHONE_GIT_URL:-https://github.com/jiwuyou/wuxian-smallphone.git}" "0" "smallphone"
-fi
-if should_run_component "pi-agent"; then
-  run_component "pi-agent" "$pi_agent_dir" "${OPENHOUSE_PI_AGENT_GIT_URL:-}" "1" "pi-agent"
-fi
-if should_run_component "pi-web"; then
-  run_component "pi-web" "$pi_web_dir" "${OPENHOUSE_PI_WEB_GIT_URL:-}" "1" "pi-web"
 fi
 
 if [ -n "${SERVICE_MANAGER_TOKEN:-}" ]; then

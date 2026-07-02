@@ -5,26 +5,26 @@ OpenHouseAI 运行在 Android 手机上，结构如下：
 - Android 是宿主系统。
 - Termux 提供终端环境和包管理。
 - Ubuntu 通过 `proot-distro` 安装在 Termux 内。
-- Node.js 24 LTS、Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 安装在 Ubuntu 内。
+- Node.js 24 LTS、pi-agent、pi-web、service-manager 和基础桥接服务安装在 Ubuntu 内。
+- Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 由 pi-agent 后置引导安装，也安装在 Ubuntu 内。
 - pi 和 pi-web 安装在 Ubuntu 内。
 - 安装完成后，service-manager 负责管理 openhouse-connect、`pi-agent`、`pi-web` 和核心后台服务。
 
 ## 安装范围
 
-OpenHouseAI 只负责安装和检测：
+首次安装只负责安装和检测：
 
 - Ubuntu proot
 - Node.js 24 LTS
-- Codex CLI
-- Claude Code
-- ClaudeCodeUI / CloudCLI
+- OpenHouse 文档和后置脚本入口
 - service-manager
 - openhouse-connect
 - pi
 - pi-web
 - 默认 pi 扩展，例如 `multi-platform-search.ts`
+- SmallPhone 兼容服务
 
-Node.js 24 LTS 是单独可见阶段，排在 Codex CLI、Claude Code 和 ClaudeCodeUI / CloudCLI 之前。后续阶段只检查并使用该 Node.js runtime，不再各自隐式安装系统 Node.js。
+Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 是后置能力，不阻塞首次安装。后置入口在 `/root/openhouse/scripts`，说明在 `/root/openhouse/docs/AI_TOOL_POSTINSTALL.md`。
 
 ## 阶段顺序
 
@@ -37,16 +37,18 @@ Node.js 24 LTS 是单独可见阶段，排在 Codex CLI、Claude Code 和 Claude
 5. 安装 Ubuntu 基础包。
 6. 设置打开 Termux 后默认进入 Ubuntu。
 7. 安装 Node.js 24 LTS。
-8. 安装 Codex CLI。
-9. 安装 Claude Code。
-10. 安装 ClaudeCodeUI / CloudCLI。
-11. 安装 service-manager、openhouse-connect 和 pi，并解压校验 APK 内置 pi-web 完整 runtime。
-12. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
-13. 启动 `pi-agent` 和 `pi-web`。
+8. 同步 OpenHouse 文档和后置脚本入口。
+9. 解压校验 APK 内置 pi-agent / pi-web 完整 runtime。
+10. 安装并配置 service-manager。
+11. 注册并启动 `pi-agent` 和 `pi-web`。
+12. 安装 openhouse-connect 和 SmallPhone 兼容服务。
+13. 注册 openhouse-connect / SmallPhone 到 service-manager。
+14. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
+15. 启动 OpenHouse 基础运行栈。
 
-默认进入 Ubuntu 必须在安装 Node.js 24 LTS、Codex CLI、Claude Code 和 ClaudeCodeUI / CloudCLI 之前完成。
+默认进入 Ubuntu 必须在后置 AI 工具安装之前完成。
 
-pi-web 首装使用 APK 内置完整 runtime，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Node.js、Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI、Ubuntu 基础包和其它缺失依赖阶段仍可能需要网络。
+pi-web 首装使用 APK 内置完整 runtime，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Node.js、Ubuntu 基础包和其它缺失依赖阶段仍可能需要网络。Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 的网络安装放到 pi-agent 后置引导阶段。
 
 Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubuntu cloud image 镜像源，选择当前可达且较快的 rootfs URL，再执行 `proot-distro install -n ubuntu <rootfs-url>`。如需指定源，可在执行前设置 `OPENHOUSEAI_UBUNTU_ROOTFS_URL`。
 
@@ -62,6 +64,7 @@ OpenHouse 的路径必须按层理解。`/root` 是 Ubuntu 内的 root home，�
 | --- | --- |
 | `/root` | Ubuntu root 用户主目录，pi-web 新项目默认建议目录。 |
 | `/root/openhouse/docs` | 推荐官方文档目录，给用户和 AI 使用。 |
+| `/root/openhouse/scripts` | 后置 AI 工具安装和检查入口。 |
 | `/root/openhouseai-docs/official` | 兼容旧路径的官方文档目录。 |
 | `/root/openhouseai-docs/agent-notes` | AI 或维护任务可写的笔记目录。 |
 | `/root/projects` | 常见项目目录。 |

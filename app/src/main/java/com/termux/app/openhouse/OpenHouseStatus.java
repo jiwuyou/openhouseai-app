@@ -69,15 +69,16 @@ public final class OpenHouseStatus {
     }
 
     public boolean isDeploymentComplete() {
+        return isCoreDeploymentComplete();
+    }
+
+    public boolean isCoreDeploymentComplete() {
         return termuxReady
             && productPrepared
             && ubuntuInstalled
-            && officialDocsSynced
             && entryUbuntuConfigured
             && nodeInstalled
-            && codexInstalled
-            && claudeCodeInstalled
-            && cloudCliInstalled
+            && officialDocsSynced
             && serviceManagerInstalled
             && openhouseConnectInstalled
             && smallPhoneRuntimeInstalled
@@ -85,6 +86,13 @@ public final class OpenHouseStatus {
             && serviceManagerReachable
             && openhouseConnectReachable
             && smallPhoneReachable;
+    }
+
+    public boolean isFullAiToolsDeploymentComplete() {
+        return isCoreDeploymentComplete()
+            && codexInstalled
+            && claudeCodeInstalled
+            && cloudCliInstalled;
     }
 
     public int getAgentReadyCount() {
@@ -97,16 +105,13 @@ public final class OpenHouseStatus {
 
     public int getProgressPercent() {
         int done = 0;
-        int total = 16;
+        int total = 13;
         if (termuxReady) done++;
         if (productPrepared) done++;
         if (ubuntuInstalled) done++;
-        if (officialDocsSynced) done++;
         if (entryUbuntuConfigured) done++;
         if (nodeInstalled) done++;
-        if (codexInstalled) done++;
-        if (claudeCodeInstalled) done++;
-        if (cloudCliInstalled) done++;
+        if (officialDocsSynced) done++;
         if (serviceManagerInstalled) done++;
         if (openhouseConnectInstalled) done++;
         if (smallPhoneRuntimeInstalled) done++;
@@ -121,12 +126,9 @@ public final class OpenHouseStatus {
         if (!termuxReady) return "准备 Termux 基础环境";
         if (!productPrepared) return "准备本机目录";
         if (!ubuntuInstalled) return "准备 Linux 环境";
-        if (!officialDocsSynced) return "同步使用文档";
         if (!entryUbuntuConfigured) return "设置启动方式";
         if (!nodeInstalled) return "安装 Node.js";
-        if (!codexInstalled) return "安装 AI 工具：Codex";
-        if (!claudeCodeInstalled) return "安装 AI 工具：Claude Code";
-        if (!cloudCliInstalled) return "安装 CloudCLI";
+        if (!officialDocsSynced) return "同步使用文档";
         if (!serviceManagerInstalled) return "安装 service-manager";
         if (!openhouseConnectInstalled) return "安装 openhouse-connect";
         if (!smallPhoneRuntimeInstalled) return "安装 SmallPhone runtime";
@@ -134,6 +136,6 @@ public final class OpenHouseStatus {
         if (!serviceManagerReachable) return "启动 service-manager";
         if (!openhouseConnectReachable) return "启动 openhouse-connect";
         if (!smallPhoneReachable) return "启动 SmallPhone";
-        return "核心 AI 运行栈已就绪";
+        return "OpenHouse 控制平面已就绪";
     }
 }

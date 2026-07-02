@@ -14,7 +14,7 @@
     <string name="openhouse_action_close">关闭</string>
     <string name="openhouse_action_advanced_short">高级</string>
     <string name="openhouse_action_set_current_home">设当前页为首页</string>
-    <string name="openhouse_home_status_default">当前首页：cc/codex</string>
+    <string name="openhouse_home_status_default">当前首页：pi-agent</string>
     <string name="openhouse_section_frequent">常用</string>
     <string name="openhouse_section_all">全部</string>
     <string name="openhouse_section_maintenance">维护</string>
@@ -47,6 +47,6 @@
     <string name="openhouse_cloudcli_action_failed">cc/codex 操作失败，请查看日志。</string>
     <string name="openhouse_browser_unavailable">没有可用浏览器，地址已复制。</string>
     <string name="openhouse_install_phase_total_hint">全程约30分钟</string>
-    <string name="openhouse_install_estimate_total" formatted="false">全程预计约30分钟；会准备 Ubuntu、Node、Codex、Claude Code、CloudCLI、service-manager、openhouse-connect 和 SmallPhone。</string>
+    <string name="openhouse_install_estimate_total" formatted="false">全程预计约30分钟；会准备 Ubuntu、Node、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。</string>
     <string name="openhouse_install_estimate_tail" formatted="false">阶段末尾约10%会慢速增加，属于收尾等待。</string>
 </resources>

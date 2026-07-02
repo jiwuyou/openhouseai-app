@@ -1,6 +1,15 @@
 # Codex、Claude Code 和 CloudCLI 登录/API 配置
 
-本文件说明安装完成后，如何让 Codex CLI、Claude Code 和 CloudCLI 连接大模型服务。
+本文件说明后置安装完成后，如何让 Codex CLI、Claude Code 和 CloudCLI 连接大模型服务。
+
+如果命令尚未安装，先由 pi-agent 使用：
+
+```bash
+/root/openhouse/scripts/install-codex.sh
+/root/openhouse/scripts/install-claude-code.sh
+/root/openhouse/scripts/install-cloudcli.sh
+/root/openhouse/scripts/check-ai-tools.sh
+```
 
 不要把 API key 写入 git 仓库、共享文档、APK 资源、日志或截图。优先使用工具自带登录流程，或只在本机 shell 配置环境变量。
 
@@ -137,7 +146,7 @@ claude
 
 ## CloudCLI
 
-CloudCLI / ClaudeCodeUI 是安装完成后的网页入口，运行期由 service-manager 管理。首次安装不会要求填写模型或 API key。
+CloudCLI / ClaudeCodeUI 是后置网页入口，运行期由 service-manager 管理。首次安装不会要求填写模型或 API key，也不会因为 CloudCLI 缺失而阻塞 pi-web / pi-agent。
 
 如果 CloudCLI 页面要求登录或连接模型，按页面提示完成。不要把 API Key 粘贴到聊天内容、日志、截图或仓库中。
 
@@ -165,8 +174,10 @@ admin
 ```bash
 command -v codex
 command -v claude
+command -v cloudcli
 codex --version
 claude --version
+cloudcli version || cloudcli --version
 ```
 
 检查环境变量是否存在：
@@ -182,7 +193,7 @@ printenv ANTHROPIC_API_KEY
 
 ### 命令不存在
 
-重新执行维护中心里的 `下载 Codex CLI`、`下载 Claude Code` 或 `下载 CloudCLI` 阶段。
+执行 `/root/openhouse/scripts/check-ai-tools.sh` 确认缺失项，再执行对应后置安装脚本。
 
 ### API key 配置后仍不可用
 

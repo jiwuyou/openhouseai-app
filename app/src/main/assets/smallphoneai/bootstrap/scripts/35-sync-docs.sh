@@ -74,6 +74,7 @@ LEGACY_DOC_ROOT="$TERMUX_HOME/smallphoneai-docs"
 OPENHOUSE_DOC_ROOT="$TERMUX_HOME/openhouse"
 OFFICIAL_DOC_DIR="$DOC_ROOT/official"
 AGENT_NOTES_DIR="$DOC_ROOT/agent-notes"
+OFFICIAL_SCRIPT_DIR="$TERMUX_HOME/openhouseai-scripts"
 
 ensure_symlink() {
   local target="$1"
@@ -93,8 +94,125 @@ ensure_symlink() {
   ln -sfn "$target" "$link_path"
 }
 
+write_public_script_fallbacks() {
+  log "未检测到 APK scripts-public，写入最小后置安装脚本入口。"
+  mkdir -p "$OFFICIAL_SCRIPT_DIR"
+
+  cat > "$OFFICIAL_SCRIPT_DIR/_openhouse-postinstall-common.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+oh_log(){ printf '[OpenHouse postinstall] %s\n' "$*"; }
+oh_die(){ printf '[OpenHouse postinstall] ERROR: %s\n' "$*" >&2; exit 1; }
+oh_is_current_ubuntu(){ [ -r /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release; }
+oh_termux_home(){ if oh_is_current_ubuntu; then printf '%s\n' /data/data/com.termux/files/home; else printf '%s\n' "${HOME:-/data/data/com.termux/files/home}"; fi; }
+oh_bootstrap(){ local home; home="$(oh_termux_home)"; for p in "${OPENHOUSE_BOOTSTRAP:-}" "${SMALLPHONEAI_BOOTSTRAP:-}" "$home/.smallphoneai-bootstrap/bootstrap.sh" "$HOME/.smallphoneai-bootstrap/bootstrap.sh"; do [ -n "$p" ] && [ -f "$p" ] && { printf '%s\n' "$p"; return 0; }; done; return 1; }
+oh_run_bootstrap(){ local b; b="$(oh_bootstrap)" || oh_die "找不到 bootstrap.sh，请先完成 OpenHouse 首次安装。"; chmod +x "$b" 2>/dev/null || true; oh_log "执行 bootstrap 阶段：$1"; bash "$b" "$1"; }
+oh_run_ubuntu_bash(){ if oh_is_current_ubuntu; then bash -lc "$1"; else command -v proot-distro >/dev/null 2>&1 || oh_die "缺少 proot-distro。"; proot-distro login ubuntu -- bash -lc "$1"; fi; }
+oh_next_docs(){ cat <<'DOCS'
+
+下一步建议：
+- /root/openhouse/docs/OPENHOUSE_FIRST_CONFIGURATION.md
+- /root/openhouse/docs/MODEL_API_SETUP.md
+- /root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md
+- /root/openhouse/docs/SERVICE_MANAGER.md
+- /root/openhouse/docs/RECOVERY.md
+DOCS
+}
+EOF
+
+  cat > "$OFFICIAL_SCRIPT_DIR/install-codex.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/_openhouse-postinstall-common.sh"
+oh_run_bootstrap node
+oh_run_bootstrap codex
+oh_run_ubuntu_bash 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v codex; codex --version || true'
+oh_next_docs
+EOF
+
+  cat > "$OFFICIAL_SCRIPT_DIR/install-claude-code.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/_openhouse-postinstall-common.sh"
+oh_run_bootstrap node
+oh_run_bootstrap claude-code
+oh_run_ubuntu_bash 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v claude; claude --version || true'
+oh_next_docs
+EOF
+
+  cat > "$OFFICIAL_SCRIPT_DIR/install-cloudcli.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/_openhouse-postinstall-common.sh"
+oh_run_bootstrap node
+oh_run_bootstrap cloudcli
+oh_run_bootstrap sync-registry || true
+oh_run_bootstrap start || true
+oh_run_ubuntu_bash 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v cloudcli; cloudcli version || cloudcli --version || true'
+printf '%s\n' 'CloudCLI 默认本机账号密码：admin / 123456。请按 /root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md 测通 Claude Code。'
+oh_next_docs
+EOF
+
+  cat > "$OFFICIAL_SCRIPT_DIR/install-hermes.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/_openhouse-postinstall-common.sh"
+oh_run_ubuntu_bash 'set -euo pipefail; export PATH="$HOME/.local/bin:$PATH"; command -v git >/dev/null; command -v curl >/dev/null; command -v python3 >/dev/null; command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh; export PATH="$HOME/.local/bin:$PATH"; mkdir -p /root/.local/share/openhouseai; cd /root/.local/share/openhouseai; if [ -d hermes-webui/.git ]; then cd hermes-webui && git pull --ff-only || true; else git clone https://github.com/nesquena/hermes-webui.git hermes-webui && cd hermes-webui; fi; uv venv .venv; printf "%s\n" "Hermes prepared at /root/.local/share/openhouseai/hermes-webui"'
+printf '%s\n' '请继续按 /root/openhouse/docs/HERMES_SETUP.md 前台测通并注册 service-manager。'
+oh_next_docs
+EOF
+
+  cat > "$OFFICIAL_SCRIPT_DIR/check-ai-tools.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/_openhouse-postinstall-common.sh"
+missing=0
+check(){ label="$1"; cmd="$2"; if oh_run_ubuntu_bash "$cmd"; then printf '[ok] %s\n' "$label"; else printf '[missing] %s\n' "$label" >&2; missing=1; fi; }
+check Node 'export PATH="$HOME/.local/node/bin:$PATH"; command -v node && node -v'
+check Codex 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v codex && codex --version'
+check Claude-Code 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v claude && claude --version'
+check CloudCLI 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v cloudcli && (cloudcli version || cloudcli --version)'
+check Docs 'test -d /root/openhouse/docs && test -f /root/openhouse/docs/START_HERE.md'
+check Scripts 'test -d /root/openhouse/scripts && test -f /root/openhouse/scripts/install-codex.sh'
+oh_run_bootstrap status || missing=1
+exit "$missing"
+EOF
+
+  chmod +x "$OFFICIAL_SCRIPT_DIR"/*.sh
+}
+
+sync_public_scripts() {
+  local source_dir
+  mkdir -p "$OFFICIAL_SCRIPT_DIR"
+  for source_dir in \
+    "${OPENHOUSE_SCRIPTS_PUBLIC_DIR:-}" \
+    "$TERMUX_HOME/.smallphoneai-bootstrap/apk-assets/openhouse/scripts-public" \
+    "$TERMUX_HOME/.smallphoneai-bootstrap/openhouse/scripts-public" \
+    "$TERMUX_HOME/.smallphoneai-bootstrap/scripts-public"; do
+    [ -n "$source_dir" ] || continue
+    if [ -d "$source_dir" ]; then
+      log "正在同步 OpenHouse 后置安装脚本：$source_dir -> $OFFICIAL_SCRIPT_DIR"
+      rm -rf "$OFFICIAL_SCRIPT_DIR/.sync-tmp"
+      mkdir -p "$OFFICIAL_SCRIPT_DIR/.sync-tmp"
+      cp -a "$source_dir/." "$OFFICIAL_SCRIPT_DIR/.sync-tmp/"
+      find "$OFFICIAL_SCRIPT_DIR/.sync-tmp" -type f -name '*.sh' -exec chmod +x {} +
+      find "$OFFICIAL_SCRIPT_DIR" -mindepth 1 -maxdepth 1 ! -name '.sync-tmp' -exec rm -rf {} +
+      cp -a "$OFFICIAL_SCRIPT_DIR/.sync-tmp/." "$OFFICIAL_SCRIPT_DIR/"
+      rm -rf "$OFFICIAL_SCRIPT_DIR/.sync-tmp"
+      return 0
+    fi
+  done
+
+  write_public_script_fallbacks
+}
+
 log "正在同步 OpenHouse 官方文档路径到 $OFFICIAL_DOC_DIR"
-mkdir -p "$OFFICIAL_DOC_DIR" "$AGENT_NOTES_DIR" "$LEGACY_DOC_ROOT" "$OPENHOUSE_DOC_ROOT"
+mkdir -p "$OFFICIAL_DOC_DIR" "$AGENT_NOTES_DIR" "$LEGACY_DOC_ROOT" "$OPENHOUSE_DOC_ROOT" "$OFFICIAL_SCRIPT_DIR"
 
 if [ -f "$OFFICIAL_DOC_DIR/PRODUCT_OVERVIEW.md" ] && [ -f "$OFFICIAL_DOC_DIR/AI_AGENT_REFERENCE.md" ]; then
   log "检测到 APK docs-public 官方文档已存在，跳过 bootstrap fallback 正文写入。"
@@ -158,6 +276,8 @@ EOF
 fi
 
 ensure_symlink "$OFFICIAL_DOC_DIR" "$OPENHOUSE_DOC_ROOT/docs"
+sync_public_scripts
+ensure_symlink "$OFFICIAL_SCRIPT_DIR" "$OPENHOUSE_DOC_ROOT/scripts"
 ensure_symlink "$OFFICIAL_DOC_DIR" "$LEGACY_DOC_ROOT/official"
 ensure_symlink "$AGENT_NOTES_DIR" "$LEGACY_DOC_ROOT/agent-notes"
 
@@ -192,18 +312,18 @@ SmallPhoneAI 运行在 Android 手机上，结构如下：
 
 ## 安装范围
 
-SmallPhoneAI bootstrap 负责安装、检查、注册和启动：
+SmallPhoneAI bootstrap 首装负责安装、检查、注册和启动：
 
 - Ubuntu proot
-- Codex CLI
-- Claude Code
 - Node.js 24 LTS
-- ClaudeCodeUI / CloudCLI
 - service-manager
 - cc-connect/openhouse-connect
 - SmallPhone
+- pi-agent / pi-web
 
-Node.js 24 LTS 是单独可见阶段，排在 Codex CLI、Claude Code 和 ClaudeCodeUI / CloudCLI 之前。后续阶段只检查并使用该 Node.js runtime，不再各自隐式安装系统 Node.js。
+Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 是后置能力，由 pi-agent 按 `/root/openhouse/scripts` 和 `/root/openhouse/docs` 引导安装。
+
+Node.js 24 LTS 是单独可见阶段，后置 AI 工具只检查并使用该 Node.js runtime，不再各自隐式安装系统 Node.js。
 
 ## 阶段顺序
 
@@ -216,15 +336,16 @@ Node.js 24 LTS 是单独可见阶段，排在 Codex CLI、Claude Code 和 Claude
 5. 安装 Ubuntu 基础包。
 6. 设置打开 Termux 后默认进入 Ubuntu。
 7. 安装 Node.js 24 LTS。
-8. 安装 Codex CLI。
-9. 安装 Claude Code。
-10. 安装 ClaudeCodeUI / CloudCLI。
-11. 进入 Ubuntu/proot，调用 service-manager、cc-connect/openhouse-connect、SmallPhone 子仓库自己的 `scripts/install.sh`、`scripts/check.sh`、`scripts/register-service.sh`。
-12. 同步 OpenHouseAI registry 和 service-manager 服务配置。
-13. 在 Ubuntu/proot 内启动 service-manager，并通过 `group:local-stack` 启动已注册服务。
-14. 输出最终状态 JSON，供 App Shell 做健康判断。
+8. 同步 OpenHouse 文档和后置脚本入口。
+9. 解包 pi-agent / pi-web。
+10. 安装并配置 service-manager。
+11. 注册并启动 pi-agent / pi-web。
+12. 安装 openhouse-connect 和 SmallPhone 兼容服务。
+13. 同步 OpenHouseAI registry 和 service-manager 服务配置。
+14. 在 Ubuntu/proot 内启动 service-manager，并通过 `group:local-stack` 启动已注册服务。
+15. 输出最终状态 JSON，供 App Shell 做健康判断。
 
-默认进入 Ubuntu 必须在安装 Node.js 24 LTS、Codex CLI、Claude Code 和 ClaudeCodeUI / CloudCLI 之前完成。
+默认进入 Ubuntu 必须在后置 AI 工具安装之前完成。
 
 Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubuntu cloud image 镜像源，选择当前可达且较快的 rootfs URL，再执行 `proot-distro install -n ubuntu <rootfs-url>`。如需指定源，可在执行前设置 `SMALLPHONEAI_UBUNTU_ROOTFS_URL`。
 
@@ -422,7 +543,7 @@ export ANTHROPIC_API_KEY="你的 Anthropic API key"
 
 ## CloudCLI
 
-CloudCLI / ClaudeCodeUI 是网页交互入口。首次安装会安装 CloudCLI，但不会要求登录或配置模型。
+CloudCLI / ClaudeCodeUI 是后置网页交互入口。首次安装不会要求登录或配置模型，也不会因为 CloudCLI 缺失阻塞 pi-agent。
 
 常用命令：
 
@@ -488,13 +609,16 @@ ensure_symlink() {
 }
 
 termux_doc_root="/data/data/com.termux/files/home/openhouseai-docs"
+termux_script_root="/data/data/com.termux/files/home/openhouseai-scripts"
 mkdir -p "$HOME/openhouseai-docs" "$HOME/smallphoneai-docs" "$HOME/openhouse"
 ensure_symlink "$termux_doc_root/official" "$HOME/openhouseai-docs/official"
 ensure_symlink "$termux_doc_root/agent-notes" "$HOME/openhouseai-docs/agent-notes"
 ensure_symlink "$termux_doc_root/official" "$HOME/smallphoneai-docs/official"
 ensure_symlink "$termux_doc_root/agent-notes" "$HOME/smallphoneai-docs/agent-notes"
 ensure_symlink "$termux_doc_root/official" "$HOME/openhouse/docs"
+ensure_symlink "$termux_script_root" "$HOME/openhouse/scripts"
 printf "%s\n" "$HOME/openhouse/docs"
+printf "%s\n" "$HOME/openhouse/scripts"
 printf "%s\n" "$HOME/openhouseai-docs/official"
 '
 

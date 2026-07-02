@@ -12,7 +12,7 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 | --- | --- | --- |
 | Android App | 入口、权限、状态、显式开关 | 观察状态，请求用户确认，进入维护/控制页面 |
 | Termux | Android 宿主、底座、救援层 | 修复 Termux/Ubuntu，调用 Android 桥，检查安装链路 |
-| Ubuntu in Termux | 核心 Linux 工作区 | pi、pi-web、开发、Codex、Claude Code、CloudCLI、MCP、项目命令 |
+| Ubuntu in Termux | 核心 Linux 工作区 | pi、pi-web、开发、后置 AI 工具、MCP、项目命令 |
 | service-manager | 安装完成后的控制平面 | 管理后台服务的启动、停止、状态、日志和修复 |
 | pi-agent / pi-web | 首次配置助手和背后的本地页面运行时 | 读取文档、迁移模型配置、调用插件、帮助用户理解系统 |
 
@@ -83,7 +83,7 @@ search
 
 | 层 | 典型路径 | 用途 |
 | --- | --- | --- |
-| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/openhouseai-docs/official`, `/root/projects` | 开发、AI CLI、pi、CloudCLI、Claude Code、用户项目。 |
+| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/openhouseai-docs/official`, `/root/projects` | 开发、pi、用户项目，以及后置安装完成后的 AI CLI、CloudCLI、Claude Code。 |
 | Termux 外层 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | bootstrap、Termux 包、proot-distro、Ubuntu 启停、底座修复。 |
 | Ubuntu rootfs 真实路径 | `/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu` | Ubuntu 数据在 Termux 文件系统中的位置；排障时识别，不要默认直接修改。 |
 
@@ -235,14 +235,26 @@ proot-distro login ubuntu -- true
 5. 安装 Ubuntu 基础包。
 6. 设置打开 Termux 后默认进入 Ubuntu。
 7. 安装 Node.js 24 LTS。
-8. 安装 Codex CLI。
-9. 安装 Claude Code。
-10. 安装 ClaudeCodeUI / CloudCLI。
-11. 安装 service-manager、openhouse-connect、pi 和 pi-web。
-12. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
-13. 启动 `pi-agent` 和 `pi-web`。
+8. 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。
+9. 解包 pi-agent / pi-web。
+10. 安装并配置 service-manager。
+11. 注册并启动 pi-agent / pi-web。
+12. 安装 openhouse-connect 和 SmallPhone 兼容服务。
+13. 注册 openhouse-connect / SmallPhone 到 service-manager。
+14. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
+15. 启动 OpenHouse 基础运行栈。
 
-首次安装完成后，service-manager 成为运行期控制平面。首次安装时不要要求用户配置默认模型或 API key。
+首次安装完成后，service-manager 成为运行期控制平面。首次安装时不要要求用户配置默认模型或 API key，也不要强制安装 Codex、Claude Code、CloudCLI 或 Hermes。
+
+后置 AI 工具入口：
+
+```text
+/root/openhouse/scripts/install-codex.sh
+/root/openhouse/scripts/install-claude-code.sh
+/root/openhouse/scripts/install-cloudcli.sh
+/root/openhouse/scripts/install-hermes.sh
+/root/openhouse/scripts/check-ai-tools.sh
+```
 
 ## pi-agent 首次会话任务
 

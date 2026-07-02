@@ -35,7 +35,7 @@ public final class OpenHouseComponentRegistry {
     private static final String CONTROL_ENTRY_TYPE_SERVICE_CONTROL = "service-control";
     private static final String DEFAULT_CLOUDCLI_URL = "http://127.0.0.1:23083/";
     private static final String DEFAULT_SMALLPHONE_URL = "http://127.0.0.1:22082/";
-    private static final String DEFAULT_HOME_TARGET = "cloudcli";
+    private static final String DEFAULT_HOME_TARGET = "pi-web";
 
     private OpenHouseComponentRegistry() {
     }
@@ -257,7 +257,7 @@ public final class OpenHouseComponentRegistry {
         components.add(createComponent(
             "cloudcli",
             "cc/codex",
-            "Claude Code / Codex 统一入口",
+            "后置 AI 能力：请进入 pi-agent 完成安装配置",
             "ai",
             20,
             OpenHouseComponent.EntryType.WEBVIEW,

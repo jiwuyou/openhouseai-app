@@ -601,7 +601,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 renderPiWebPage();
                 break;
             case PAGE_AI:
-                setHeader(getCcCodexTitle(), getCcCodexSubtitle("Claude Code / Codex 统一入口"));
+                setHeader(getCcCodexTitle(), getCcCodexSubtitle("后置 AI 能力：请进入 pi-agent 完成安装配置"));
                 renderAiPage();
                 break;
             case PAGE_SMALLPHONE:
@@ -1151,7 +1151,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         panel.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
 
         cloudCliStatusView = new TextView(this);
-        cloudCliStatusView.setText(ccCodexTitle + " 地址：" + ccCodexUrl);
+        cloudCliStatusView.setText(ccCodexTitle + " 地址：" + ccCodexUrl
+            + "\n未安装时请先进入 pi-agent 完成安装配置；已安装后可在这里手动启动、停止或刷新。");
         cloudCliStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
         cloudCliStatusView.setTextSize(13);
         panel.addView(cloudCliStatusView);
@@ -1185,7 +1186,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         fallback.addView(title);
 
         TextView body = new TextView(this);
-        body.setText("没有连接到 " + ccCodexUrl + "。可以先启动 " + ccCodexTitle + "，启动后本页会继续使用内置浏览器打开。");
+        body.setText("没有连接到 " + ccCodexUrl + "。如果这是首次使用，请先进入 pi-agent 完成 Codex、Claude Code 和 CloudCLI 的安装配置；如果已经配置好，可以从运行控制启动后刷新。");
         body.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
         body.setTextSize(14);
         body.setGravity(Gravity.CENTER);
@@ -1197,7 +1198,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         fallback.addView(body, bodyParams);
 
         addButtonRow(fallback,
-            compactButton("启动", v -> runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action.START_CLAUDE_CODE_UI), true),
+            compactButton("进入 pi-agent", v -> openPiAgent(), true),
             compactButton("刷新", v -> reloadCloudCliWebView(), true));
         Button showControls = button("展开控制", v -> {
             cloudCliControlsVisible = true;
@@ -1664,41 +1665,27 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         steps.add(GuidedTutorialOverlay.Step
             .explanation(
                 "先认识菜单里的大服务",
-                "这里是 OpenHouse 的主要入口。SmallPhone、pi-agent、cc/codex 在同一个大服务区，不是彼此的二级页面。")
+                "这里是 OpenHouse 的主要入口。首装完成后，先用 pi-agent 完成首次配置；运行控制负责查看、启动、关闭和修复服务。")
             .build());
         steps.add(GuidedTutorialOverlay.Step
             .requiredClick(
-                "这是 SmallPhone",
-                "请点一下箭头指向的位置。本步只用于认识入口，不会切换页面。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonNavSmallPhone))
-            .onTargetClick((overlay, step) -> true)
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .requiredClick(
-                "这是 pi-agent",
-                "请点一下箭头指向的位置。pi-agent 是默认 agent 和插件入口，稍后会真正进入它。",
+                "进入 pi-agent",
+                "请点击 pi-agent。它是首次配置助手，会引导你读取文档、配置模型，并按需安装 Codex、Claude Code、CloudCLI 或 Hermes。",
                 GuidedTutorialOverlay.targetById(root, R.id.buttonNavPiAgent))
-            .onTargetClick((overlay, step) -> true)
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .requiredClick(
-                "点击 cc/codex",
-                "请点击 cc/codex。点击服务本身会切换到对应页面。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonNavAi))
             .onTargetClick((overlay, step) -> {
-                openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI);
+                openPiAgent();
                 return true;
             })
             .build());
         steps.add(GuidedTutorialOverlay.Step
             .explanation(
-                "cc/codex 是统一入口",
-                "这里承接 Claude Code / Codex 的网页使用入口。服务启动、关闭和修复不在这个页面直接做，而是在控制页里做。")
+                "pi-agent 是配置起点",
+                "如果 pi-agent 还没有模型配置，先按页面提示配置模型。之后点击“首次使用 OpenHouse”，让它阅读 /root/openhouse/docs 并继续引导你。")
             .build());
         steps.add(GuidedTutorialOverlay.Step
             .requiredClick(
                 "回到菜单",
-                "请点击菜单，回到侧边栏继续看 cc/codex 的控制入口。",
+                "请点击菜单，回到侧边栏继续认识运行控制。",
                 GuidedTutorialOverlay.targetById(root, R.id.buttonOpenDrawer))
             .onTargetClick((overlay, step) -> {
                 if (drawerLayout != null) {
@@ -1710,13 +1697,20 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             .build());
         steps.add(GuidedTutorialOverlay.Step
             .requiredClick(
-                "进入 cc/codex 控制",
-                "请点击 cc/codex 右侧的控制。下一页会真实控制服务，运行中就关闭，未运行就启动，完成后记得刷新。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonNavAiControl))
+                "这是运行控制",
+                "请点一下运行控制入口。本步只认识入口，不会跳转。以后服务未运行、需要关闭或修复时，从这里进入。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonNavServiceControl))
+            .onTargetClick((overlay, step) -> true)
+            .build());
+        steps.add(GuidedTutorialOverlay.Step
+            .requiredClick(
+                "回到终端",
+                "请点击回到终端。终端一般只是备用入口，后续有需要可以单独看终端详细教学。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonNavTerminal))
             .onTargetClick((overlay, step) -> {
-                savePendingUsageTutorialStage(USAGE_STAGE_AFTER_CONTROL);
+                savePendingUsageTutorialStage(USAGE_STAGE_START_CORE);
                 overlay.destroy();
-                openCcCodexControlForTeaching();
+                openTerminal(true);
                 return true;
             })
             .advanceAfterTargetClick(false)
@@ -1915,7 +1909,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         steps.add(GuidedTutorialOverlay.Step
             .requiredClick(
                 "进入 pi-agent",
-                "核心服务已启动。请点击 pi-agent，接下来在 pi-agent 里按页面提示配置模型和 Claude Code。",
+                "核心服务已启动。请点击 pi-agent，接下来在 pi-agent 里按页面提示完成首次配置。",
                 GuidedTutorialOverlay.targetById(root, R.id.buttonNavPiAgent))
             .onTargetClick((overlay, step) -> {
                 openPiAgent();
@@ -1925,12 +1919,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         steps.add(GuidedTutorialOverlay.Step
             .explanation(
                 "在 pi-agent 里继续",
-                "进入后请按 pi-agent 页面提示操作：点侧边栏三横线，项目选 /root，配置模型，新建会话，选择“配置 Claude Code”。第一次消息把 URL、key/token 和模型 id 发给 AI。")
+                "进入后请按 pi-agent 页面提示操作：点侧边栏三横线，项目选 /root，配置模型，新建会话，选择“首次使用 OpenHouse”。如果要配置 Claude Code，第一次消息把 URL、key/token 和模型 id 发给 AI。")
             .build());
         steps.add(GuidedTutorialOverlay.Step
             .explanation(
                 "配置完成后的检查",
-                "测通目标是 CloudCLI 中的 Claude Code。配置好后，可以从菜单进入 cc/codex；默认账号密码是 admin / 123456，仅限本机使用，后续可修改密码。")
+                "pi-agent 会按 /root/openhouse/docs 的文档引导安装和测通 Codex、Claude Code、CloudCLI 或 Hermes。cc/codex 未安装时会提示先回 pi-agent 完成安装配置。")
             .build());
 
         usageTutorialOverlay = new GuidedTutorialOverlay(
@@ -2718,7 +2712,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         LinearLayout panel = panel();
         addTitle(panel, usageCoreServicesMode ? "启动核心服务" : "使用教学", 19);
         if (usageCoreServicesMode) {
-            addBody(panel, "终端教学结束后，请明确点击下面的按钮，OpenHouse 才会启动内置核心服务。这个动作会拉起 service-manager、pi-agent/pi-web、SmallPhone 兼容入口和 cc/codex。");
+            addBody(panel, "终端教学结束后，请明确点击下面的按钮，OpenHouse 才会启动内置核心服务。这个动作会拉起 service-manager、pi-agent/pi-web、openhouse-connect 和 SmallPhone 兼容入口；cc/codex 后续由 pi-agent 安装配置。");
             usageCoreServicesProgressView = new TextView(this);
             usageCoreServicesProgressView.setText(usageCoreServicesFailed
                 ? "上次启动没有完成。请重试启动核心服务，或返回菜单稍后从运行控制处理。"
@@ -2742,7 +2736,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 selectPage(PAGE_HOME);
             }));
         } else {
-            addBody(panel, "使用教学会带你认识菜单里的 SmallPhone、pi-agent、cc/codex，进入 cc/codex 控制，回到终端，再启动核心服务。需要真实点击的步骤不会显示“下一步”。");
+            addBody(panel, "使用教学会带你认识菜单、pi-agent、运行控制和终端，再启动核心服务，最后回到 pi-agent 完成首次配置。需要真实点击的步骤不会显示“下一步”。");
             Button startButton = button("开始使用教学", v -> startUsageTeachingFlow());
             startButton.setTag(HOME_USAGE_TUTORIAL_TAG);
             panel.addView(startButton);
@@ -2752,15 +2746,15 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void renderManualPage() {
         addManualSection("安装时建议阅读",
-            "第一次安装通常需要 10 分钟到半小时，期间会下载较大的运行环境，建议在 Wi-Fi 下进行。openhouse ai 会准备 Ubuntu、Node、Codex、Claude Code、CloudCLI、service-manager、openhouse-connect 和 SmallPhone。");
+            "第一次安装通常需要 10 分钟到半小时，期间会下载较大的运行环境，建议在 Wi-Fi 下进行。openhouse ai 会准备 Ubuntu、Node、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。");
         addManualSection("首次安装之后",
             "安装链路只负责把环境装好。安装完成后，service-manager 才是运行控制平面，用于查看、启动、停止和修复内置服务。");
         addManualSection("终端里的 AI 怎么用",
-            "以 Claude Code 为例，在 Ubuntu 终端输入 claude 再按回车即可使用；想继续上次对话，可以输入 claude --continue。Codex 可在 Ubuntu 终端中直接使用 codex。");
+            "Codex、Claude Code 和 CloudCLI 改为后置能力。先进入 pi-agent 完成安装配置；配置好后可在 Ubuntu 终端使用 claude、codex 或对应命令。");
         addManualSection("Termux 和 Ubuntu",
             "启动后看到的是 Termux 终端。openhouse ai 会在 Termux 里安装 Ubuntu proot，Codex、Claude Code 和 CloudCLI 主要安装在 Ubuntu 的 /root 环境。普通入口终端可以默认进入 Ubuntu，维护中心底部终端固定为 Termux。");
         addManualSection("CloudCLI 和 SmallPhone",
-            "CloudCLI 提供 cc/codex 统一入口。SmallPhone 是本机页面和运行栈入口。两者的服务状态可从运行控制或维护中心查看。");
+            "CloudCLI 提供 cc/codex 统一入口，但不再是首次安装必需项。SmallPhone 是本机页面和兼容运行栈入口。两者的服务状态可从运行控制或维护中心查看。");
         addManualSection("pi-agent",
             "pi-agent 是默认 agent 和插件体系入口，和 SmallPhone、cc/codex 一样是菜单侧边栏一级服务。完成安装后，它会由 service-manager 管理，默认地址为 " + PI_WEB_DEFAULT_URL + "。");
         addManualSection("底部快捷键",
@@ -2796,7 +2790,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void renderTerminalGuidePage() {
         LinearLayout panel = panel();
         addTitle(panel, "使用教学", 19);
-        addBody(panel, "使用教学会在终端上教你打开菜单、认识 SmallPhone、pi-agent、cc/codex 这些一级服务，回到终端，并查看运行控制。终端一般不需要直接使用，后续有需要可以单独看详细教学。");
+        addBody(panel, "使用教学会在终端上教你打开菜单、认识 pi-agent 和运行控制，回到终端，并在基础服务启动后进入 pi-agent。终端一般不需要直接使用，后续有需要可以单独看详细教学。");
         addButtonRow(panel,
             compactButton("打开使用教学", v -> openTerminal(true), true),
             compactButton("直接回到终端", v -> openTerminal(false), true));
@@ -2893,18 +2887,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 return;
             }
 
-            runOnUiThread(() -> setUsageCoreServicesProgress("核心运行栈已启动，正在启动 cc/codex..."));
-
-            OpenHouseMaintainerRunner.Result ccCodexResult =
-                runner.run(OpenHouseMaintainerRunner.Action.START_CLAUDE_CODE_UI,
-                    ClaudeCodeUiSettings.DEFAULT_PORT);
             runOnUiThread(() -> {
-                if (!ccCodexResult.isSuccess()) {
-                    showCoreServicesStartFailed(
-                        "核心运行栈已启动，但 cc/codex 启动失败。请重试启动核心服务，或返回菜单后从运行控制/维护与修复处理。");
-                    return;
-                }
-                setUsageCoreServicesProgress("核心运行栈启动完成。\ncc/codex 启动完成。");
+                setUsageCoreServicesProgress("核心运行栈启动完成。\ncc/codex 会由 pi-agent 后续安装配置。");
                 Toast.makeText(this, "核心服务已启动", Toast.LENGTH_LONG).show();
                 startAfterCoreServicesTutorial();
             });

@@ -12,13 +12,13 @@ OpenHouse 帮用户在手机上构建自己的 AI 工作环境。用户可以直
 
 | 能力 | 给用户的价值 | 给 AI 的用法 | 主要文档 |
 | --- | --- | --- | --- |
-| 首次配置 | 配好 pi-web 后继续完成 OpenHouse 初始化 | 读取文档，迁移模型，测通 CloudCLI/Claude Code | `OPENHOUSE_FIRST_CONFIGURATION.md` |
+| 首次配置 | 配好 pi-web 后继续完成 OpenHouse 初始化 | 读取文档，检查后置工具，迁移模型，测通 CloudCLI/Claude Code | `OPENHOUSE_FIRST_CONFIGURATION.md`, `AI_TOOL_POSTINSTALL.md` |
 | 工作台选择 | 不被锁定到单一 UI | 推荐 Claude Code、Codex、Hermes Web 或其它开源项目 | `WORKBENCH_OPTIONS.md` |
 | Termux | Android 侧 Linux 底座和救援入口 | 修复 Ubuntu、调用 Android 侧桥接能力 | `TERMINAL_PROFILES.md`, `RECOVERY.md` |
-| Ubuntu in Termux | 主要开发环境 | 运行 Node/Python/uv/npm/git/Codex/Claude Code/pi | `ENVIRONMENT.md` |
+| Ubuntu in Termux | 主要开发环境 | 运行 Node/Python/uv/npm/git/pi，以及后置安装完成后的 Codex/Claude Code | `ENVIRONMENT.md` |
 | service-manager | 统一管理后台服务 | 启动、停止、修复、查日志和注册服务 | `SERVICE_MANAGER.md` |
-| CloudCLI / Claude Code | 编程工作台和网页入口 | 配置模型、测试连通、交给用户继续使用 | `CLOUDCLI_CLAUDE_CODE.md` |
-| Codex | 编程、修改项目、运行命令和测试 | 在 Ubuntu 项目目录中执行开发任务 | `MODEL_API_SETUP.md` |
+| CloudCLI / Claude Code | 后置编程工作台和网页入口 | 通过脚本安装，配置模型、测试连通、交给用户继续使用 | `AI_TOOL_POSTINSTALL.md`, `CLOUDCLI_CLAUDE_CODE.md` |
+| Codex | 后置命令行编程能力 | 通过脚本安装，在 Ubuntu 项目目录中执行开发任务 | `AI_TOOL_POSTINSTALL.md`, `MODEL_API_SETUP.md` |
 | Hermes Web | 可选高级工作台 | 在独立 uv 环境安装并注册服务 | `HERMES_SETUP.md` |
 | pi / pi-web | 首次配置助手和插件运行入口 | 读取文档、使用搜索插件、迁移配置 | `PI_AGENT_PLUGIN_SYSTEM.md` |
 | 内置浏览器/WebView | 打开本地网页服务 | 检查本地 UI、端口和 WebView 差异 | `BROWSER_AND_WEBVIEW.md` |
@@ -34,7 +34,7 @@ OpenHouse 的能力应该被理解为一个开放平台，而不是固定功能�
 用户可以用它：
 
 - 让 AI 帮自己配置开发环境和大模型。
-- 在手机上运行 Claude Code、Codex、pi-agent、CloudCLI 等工具。
+- 在手机上运行 pi-agent，并按需后置安装 Claude Code、Codex、CloudCLI、Hermes 等工具。
 - 用 service-manager 启动、停止、修复和托管后台服务。
 - 打开内置浏览器查看本地 Web 工作台。
 - 让 AI 使用 Termux 或 Ubuntu 命令完成文件、项目、构建和排障任务。
@@ -57,8 +57,8 @@ AI 可以协助：
 
 文档中出现的能力分为三类：
 
-1. 已内置并默认安装：例如 Termux、Ubuntu、service-manager、pi、pi-web、CloudCLI、Claude Code、Codex。
-2. 可选安装或后续扩展：例如 Hermes Web、文件中转站增强、其它开源工作台。
+1. 已内置并默认安装：例如 Termux、Ubuntu、Node、service-manager、pi-agent、pi-web、openhouse-connect、SmallPhone 兼容服务。
+2. 后置安装或后续扩展：例如 Codex CLI、Claude Code、CloudCLI、Hermes Web、文件中转站增强、其它开源工作台。
 3. 授权后可能增强：例如 Shizuku 相关真机操控能力。
 
 AI 不应把可选能力说成已经可用，也不应承诺所有 Android 设备都支持同样的系统控制能力。执行前先检查状态、读取文档、必要时联网检索。
@@ -79,4 +79,3 @@ AI 不应把可选能力说成已经可用，也不应承诺所有 Android 设�
 ```
 
 如果 `/root/openhouse/docs` 不存在，使用兼容路径继续工作，并提醒用户或维护者同步文档路径。
-

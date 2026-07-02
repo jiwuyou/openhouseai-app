@@ -138,13 +138,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageAction.PREPARE,
         StageAction.TERMUX_PACKAGES,
         StageAction.INSTALL_UBUNTU,
-        StageAction.SYNC_OFFICIAL_DOCS,
         StageAction.UBUNTU_PACKAGES,
         StageAction.CONFIGURE_ENTRY_UBUNTU,
         StageAction.INSTALL_NODE,
-        StageAction.INSTALL_CODEX,
-        StageAction.INSTALL_CLAUDE_CODE,
-        StageAction.INSTALL_CLAUDE_CODE_UI,
+        StageAction.SYNC_OFFICIAL_DOCS,
         StageAction.RUNTIME_COMPONENTS,
         StageAction.SYNC_OPENHOUSE_REGISTRY,
         StageAction.START_SMALLPHONE
@@ -1977,7 +1974,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             sharedInstallCompleted = false;
             setSharedInstallText(
                 "详细进度：等待主界面安装状态",
-                "后台权限处理完成后，点击开始安装即可。首次安装会准备 Ubuntu、Node、Codex、Claude Code、CloudCLI、pi 和 pi-web；不需要现在填写模型或 API Key。"
+                "后台权限处理完成后，点击开始安装即可。首次安装会准备 Ubuntu、Node、pi-agent、pi-web 和 service-manager 控制平面；不需要现在填写模型或 API Key。"
             );
             refreshSharedInstallLogTail(false);
             mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
@@ -2016,9 +2013,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             progress.append(" · ").append(phaseLabel.trim());
         }
         if (coreAiInstallPhase) {
-            progress.append(" · 核心 AI 工具");
+            progress.append(" · 可选 AI 工具");
         } else if (running || (!completed && !failed)) {
-            progress.append(" · 首次安装会下载 Ubuntu、Node、Codex、Claude Code、CloudCLI 和运行栈");
+            progress.append(" · 首次安装会准备 Ubuntu、Node 和 OpenHouse 控制平面");
         }
 
         StringBuilder detail = new StringBuilder();
@@ -2027,7 +2024,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         } else if (running) {
             detail.append("主界面安装正在运行，本页只观察同一个安装过程。");
         } else if (completed) {
-            detail.append("安装已完成。service-manager 会作为安装完成后的控制平面管理后台服务；可返回主界面进入 pi-agent、cc/codex、Codex 或 Claude Code。");
+            detail.append("安装已完成。service-manager 会作为控制平面管理后台服务；可返回主界面进入 pi-agent 完成首次配置。");
         } else if (failed) {
             detail.append("安装失败。请查看下方共享日志或维护终端输出。");
         } else {
@@ -2307,9 +2304,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         String estimate = null;
         if (coreAiInstallPhase) {
-            estimate = "当前是核心 AI 工具安装阶段，会安装 Codex、Claude Code 或 CloudCLI。";
+            estimate = "当前是可选 AI 工具安装阶段，会安装 Codex、Claude Code 或 CloudCLI。";
         } else if (running) {
-            estimate = "安装阶段只需要等待，不需要填写模型或 API Key；安装完成后由 service-manager 管理后台服务。";
+            estimate = "安装阶段只需要等待，不需要填写模型或 API Key；安装完成后先进入 pi-agent 做首次配置。";
         } else if (!completed && !failed) {
             estimate = "权限处理后点击开始安装，随后等待核心环境安装完成。";
         }
@@ -2583,11 +2580,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         if (sequence.isEmpty()) {
             sequence.addAll(Arrays.asList(ONE_CLICK_STAGE_SEQUENCE));
         }
+        ensureStageAfter(sequence, StageAction.UBUNTU_PACKAGES, StageAction.INSTALL_UBUNTU);
+        ensureStageAfter(sequence, StageAction.CONFIGURE_ENTRY_UBUNTU, StageAction.UBUNTU_PACKAGES);
         ensureStageAfter(sequence, StageAction.INSTALL_NODE, StageAction.CONFIGURE_ENTRY_UBUNTU);
-        ensureStageAfter(sequence, StageAction.INSTALL_CODEX, StageAction.INSTALL_NODE);
-        ensureStageAfter(sequence, StageAction.INSTALL_CLAUDE_CODE, StageAction.INSTALL_NODE);
-        ensureStageAfter(sequence, StageAction.INSTALL_CLAUDE_CODE_UI, StageAction.INSTALL_CLAUDE_CODE);
-        ensureStageAfter(sequence, StageAction.RUNTIME_COMPONENTS, StageAction.INSTALL_CLAUDE_CODE_UI);
+        ensureStageAfter(sequence, StageAction.SYNC_OFFICIAL_DOCS, StageAction.INSTALL_NODE);
+        ensureStageAfter(sequence, StageAction.RUNTIME_COMPONENTS, StageAction.SYNC_OFFICIAL_DOCS);
         ensureStageAfter(sequence, StageAction.SYNC_OPENHOUSE_REGISTRY, StageAction.RUNTIME_COMPONENTS);
         ensureStageAfter(sequence, StageAction.START_SMALLPHONE, StageAction.SYNC_OPENHOUSE_REGISTRY);
         return sequence;
@@ -2602,9 +2599,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             case UBUNTU_PACKAGES:
             case CONFIGURE_ENTRY_UBUNTU:
             case INSTALL_NODE:
-            case INSTALL_CODEX:
-            case INSTALL_CLAUDE_CODE:
-            case INSTALL_CLAUDE_CODE_UI:
             case RUNTIME_COMPONENTS:
             case SYNC_OPENHOUSE_REGISTRY:
             case START_SMALLPHONE:
@@ -2615,15 +2609,26 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void ensureStageAfter(List<StageAction> sequence, StageAction stageAction, StageAction dependency) {
-        if (sequence.contains(stageAction)) {
+        int dependencyIndex = sequence.indexOf(dependency);
+        int stageIndex = sequence.indexOf(stageAction);
+        if (dependencyIndex < 0) {
+            if (stageIndex < 0) {
+                sequence.add(stageAction);
+            }
             return;
         }
-        int dependencyIndex = sequence.indexOf(dependency);
-        if (dependencyIndex >= 0) {
+        if (stageIndex >= 0) {
+            if (stageIndex > dependencyIndex) {
+                return;
+            }
+            sequence.remove(stageIndex);
+            if (stageIndex < dependencyIndex) {
+                dependencyIndex--;
+            }
             sequence.add(dependencyIndex + 1, stageAction);
             return;
         }
-        sequence.add(stageAction);
+        sequence.add(dependencyIndex + 1, stageAction);
     }
 
     private List<StageFlowGroup> getStageFlowGroups() {
@@ -2638,8 +2643,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             new StageAction[] {
                 StageAction.PREPARE,
                 StageAction.TERMUX_PACKAGES,
-                StageAction.INSTALL_UBUNTU,
-                StageAction.SYNC_OFFICIAL_DOCS
+                StageAction.INSTALL_UBUNTU
             }
         ));
         groups.add(new StageFlowGroup(
@@ -2655,15 +2659,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         groups.add(new StageFlowGroup(
             getString(R.string.one_click_auto_node_title),
             getString(R.string.one_click_auto_node_detail),
-            new StageAction[] { StageAction.INSTALL_NODE }
-        ));
-        groups.add(new StageFlowGroup(
-            getString(R.string.one_click_auto_agents_title),
-            getString(R.string.one_click_auto_agents_detail),
             new StageAction[] {
-                StageAction.INSTALL_CODEX,
-                StageAction.INSTALL_CLAUDE_CODE,
-                StageAction.INSTALL_CLAUDE_CODE_UI
+                StageAction.INSTALL_NODE,
+                StageAction.SYNC_OFFICIAL_DOCS
             }
         ));
         groups.add(new StageFlowGroup(
@@ -3676,7 +3674,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private String buildPostRemoteOneClickScript() throws IOException {
         StringBuilder scriptBody = new StringBuilder();
-        scriptBody.append("log '远程一键安装完成。安装完成后由 service-manager 管理 pi、pi-web、CloudCLI 和桥接服务。'\n");
+        scriptBody.append("log '远程一键安装完成。安装完成后由 service-manager 管理 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容服务。'\n");
         return scriptBody.toString();
     }
 
@@ -3774,7 +3772,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
         body.append("阶段执行：").append(commandInFlight ? "进行中" : "空闲").append('\n');
         body.append("运行控制：安装完成后由 service-manager 管理后台服务，地址 ").append(SERVICE_MANAGER_BASE_URL).append('\n');
-        body.append("核心入口：pi-agent、cc/codex、Codex、Claude Code").append('\n');
+        body.append("核心入口：pi-agent、运行控制、终端；cc/codex 由 pi-agent 后置安装配置").append('\n');
         body.append(permissionOverview).append('\n');
         body.append("产品文档：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/openhouseai-docs").append('\n');
         body.append("工作区：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/workspace").append('\n');
@@ -4142,14 +4140,14 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean prepareComplete = isPrepareStageComplete() || isLastExitSuccess(prepareExitCode);
         boolean termuxPackagesComplete = isTermuxPackagesStageComplete() || isLastExitSuccess(termuxPackagesExitCode);
         boolean ubuntuInstalled = termuxPackagesComplete && (isUbuntuInstalled() || isLastExitSuccess(installUbuntuExitCode));
-        boolean officialDocsSynced = ubuntuInstalled && (isOfficialDocsSynced() || isLastExitSuccess(syncOfficialDocsExitCode));
-        boolean ubuntuPackagesComplete = officialDocsSynced && (isUbuntuPackagesStageComplete() || isLastExitSuccess(ubuntuPackagesExitCode));
+        boolean ubuntuPackagesComplete = ubuntuInstalled && (isUbuntuPackagesStageComplete() || isLastExitSuccess(ubuntuPackagesExitCode));
         boolean entryUbuntuConfigured = ubuntuPackagesComplete && (isEntryUbuntuConfigured() || isLastExitSuccess(configureEntryUbuntuExitCode));
         boolean nodeInstalled = entryUbuntuConfigured && (isNodeInstalled() || isLastExitSuccess(installNodeExitCode));
+        boolean officialDocsSynced = nodeInstalled && (isOfficialDocsSynced() || isLastExitSuccess(syncOfficialDocsExitCode));
         boolean codexInstalled = nodeInstalled && (isCodexInstalled() || isLastExitSuccess(installCodexExitCode));
         boolean claudeCodeInstalled = nodeInstalled && (isClaudeCodeInstalled() || isLastExitSuccess(installClaudeCodeExitCode));
         boolean claudeCodeUiInstalled = claudeCodeInstalled && (isClaudeCodeUiInstalled() || isLastExitSuccess(installClaudeCodeUiExitCode));
-        boolean runtimeComponentsInstalled = claudeCodeUiInstalled && (isRuntimeComponentsInstalled() || isLastExitSuccess(runtimeComponentsExitCode));
+        boolean runtimeComponentsInstalled = officialDocsSynced && (isRuntimeComponentsInstalled() || isLastExitSuccess(runtimeComponentsExitCode));
         boolean openHouseRegistrySynced = runtimeComponentsInstalled && (isOpenHouseRegistrySynced() || isLastExitSuccess(syncOpenHouseRegistryExitCode));
         boolean smallPhoneStarted = openHouseRegistrySynced && (isSmallPhoneStackReachable() || isLastExitSuccess(startSmallPhoneExitCode));
 
@@ -4186,7 +4184,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             StageAction.SYNC_OFFICIAL_DOCS,
             officialDocsSynced
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_sync_official_docs_complete))
-                : (!ubuntuInstalled
+                : (!nodeInstalled
                     ? StagePresentation.blocked(this, getString(R.string.stage_detail_sync_official_docs_blocked))
                     : failedOrReady(syncOfficialDocsExitCode,
                         getString(R.string.stage_detail_sync_official_docs_failed),
@@ -4197,7 +4195,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             StageAction.UBUNTU_PACKAGES,
             ubuntuPackagesComplete
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_ubuntu_packages_complete))
-                : (!officialDocsSynced
+                : (!ubuntuInstalled
                     ? StagePresentation.blocked(this, getString(R.string.stage_detail_ubuntu_packages_blocked))
                     : failedOrReady(ubuntuPackagesExitCode,
                         getString(R.string.stage_detail_ubuntu_packages_failed),
@@ -4263,11 +4261,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             StageAction.RUNTIME_COMPONENTS,
             runtimeComponentsInstalled
                 ? StagePresentation.complete(this, "service-manager、openhouse-connect、pi 与 pi-web 已安装或已完成。")
-                : (!claudeCodeUiInstalled
-                    ? StagePresentation.blocked(this, "请先完成 Codex、Claude Code 和 CloudCLI 安装阶段。")
+                : (!officialDocsSynced
+                    ? StagePresentation.blocked(this, "请先完成同步官方文档阶段。")
                     : failedOrReady(runtimeComponentsExitCode,
                         "运行组件安装失败，请查看该阶段日志。",
-                        "准备安装 service-manager、openhouse-connect、pi 与 pi-web。"))
+                        "准备安装 pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容组件。"))
         );
 
         snapshot.presentations.put(

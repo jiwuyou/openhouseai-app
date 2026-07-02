@@ -43,7 +43,7 @@ public final class OpenHouseOnboardingState {
         this.installStageSlug = resolvedInstallState.currentStageSlug;
 
         boolean launchInstallSatisfied = oneClickInstallCompleted
-            || (status != null && status.isDeploymentComplete());
+            || (status != null && status.isCoreDeploymentComplete());
         this.launchAllowed = launchInstallSatisfied;
     }
 

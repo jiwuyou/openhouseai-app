@@ -20,7 +20,7 @@
   },
   "runtimePayloads": {
     "firstRunSource": "apk_bundled_packages",
-    "networkRole": "required_for_base_tools_not_pi_web_runtime",
+    "networkRole": "required_for_system_base_tools_not_pi_web_runtime",
     "description": "APK 内置运行组件包；pi-web 首装使用 APK 内置完整 runtime，只做解压、校验、注册和启动，不通过 npm install 安装 pi-web。",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
@@ -62,17 +62,17 @@
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "准备 Termux、Ubuntu、文档路径和基础依赖。",
-      "stages": ["env_check", "prepare", "termux_packages", "install_ubuntu", "sync_official_docs", "ubuntu_packages", "entry_ubuntu"]
+      "description": "准备 Termux、Ubuntu 和基础系统依赖。",
+      "stages": ["env_check", "prepare", "termux_packages", "install_ubuntu", "ubuntu_packages", "entry_ubuntu"]
     },
     {
-      "title": "安装核心 AI 工具",
-      "description": "安装或检查 Node.js、Codex、Claude Code 和 CloudCLI。",
-      "stages": ["install_node", "install_codex", "install_claude_code", "install_claude_code_ui"]
+      "title": "准备控制平面依赖",
+      "description": "安装 Node.js 并同步 OpenHouse 文档；Codex、Claude Code、CloudCLI 和 Hermes 改为 pi-agent 后置引导安装。",
+      "stages": ["install_node", "sync_official_docs"]
     },
     {
-      "title": "安装本机 Agent 运行组件",
-      "description": "从 APK 内置运行组件包安装 service-manager、cc-connect/openhouse-connect、SmallPhone 兼容组件和 Pi Agent，并解压校验 pi-web 完整 runtime；其它基础工具阶段仍可能需要网络。",
+      "title": "建立 OpenHouse 控制平面",
+      "description": "先解包/安装 pi-agent 和 pi-web，再安装并准备 service-manager，随后注册基础栈、openhouse-connect 和 SmallPhone 兼容服务。",
       "stages": ["runtime_components", "sync_openhouse_registry"]
     },
     {
@@ -91,8 +91,8 @@
         {
           "id": "install",
           "type": "button",
-          "label": "安装 SmallPhoneAI",
-          "description": "完整准备环境，安装 Node.js、Codex、Claude Code、CloudCLI、Pi Agent 和核心运行组件，解压内置 pi-web runtime，并输出最终健康状态；基础工具阶段仍可能需要网络。",
+          "label": "安装 OpenHouse 控制平面",
+          "description": "完整准备 Termux/Ubuntu、Node.js、OpenHouse 文档、Pi Agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务，并输出最终健康状态；Codex、Claude Code、CloudCLI 和 Hermes 由 pi-agent 后置引导安装。",
           "action": {
             "type": "bootstrap",
             "args": ["install"],
@@ -148,8 +148,8 @@
     {
       "id": "agent_cli_repair",
       "type": "actions",
-      "title": "核心 AI 工具补装与修复",
-      "description": "单独补装或检查 Node.js、Codex、Claude Code、CloudCLI。",
+      "title": "后置 AI 能力补装与修复",
+      "description": "供 pi-agent 或人工单独补装/检查 Node.js、Codex、Claude Code 和 CloudCLI；这些能力不阻塞默认首次安装。",
       "items": [
         {
           "id": "install_node",
@@ -162,21 +162,21 @@
           "id": "install_codex",
           "type": "button",
           "label": "安装 Codex",
-          "description": "在 Ubuntu 内安装 OpenAI Codex CLI。",
+          "description": "后置能力：在 Ubuntu 内安装 OpenAI Codex CLI。",
           "action": { "type": "bootstrap", "args": ["codex"] }
         },
         {
           "id": "install_claude_code",
           "type": "button",
           "label": "安装 Claude Code",
-          "description": "在 Ubuntu 内安装 Anthropic Claude Code。",
+          "description": "后置能力：在 Ubuntu 内安装 Anthropic Claude Code。",
           "action": { "type": "bootstrap", "args": ["claude-code"] }
         },
         {
           "id": "install_claude_code_ui",
           "type": "button",
           "label": "安装 CloudCLI",
-          "description": "在 Ubuntu 内安装或检查 ClaudeCodeUI / CloudCLI。",
+          "description": "后置能力：在 Ubuntu 内安装或检查 ClaudeCodeUI / CloudCLI。",
           "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
         }
       ]
@@ -228,31 +228,31 @@
     {
       "id": "install_node",
       "title": "安装 Node.js",
-      "description": "安装或检查核心 AI 工具共用的 Node.js 24 LTS 和 npm。",
+      "description": "安装或检查 OpenHouse 控制平面和后置 AI 工具共用的 Node.js 24 LTS 和 npm。",
       "action": { "type": "bootstrap", "args": ["node"] }
     },
     {
       "id": "install_codex",
       "title": "安装 Codex CLI",
-      "description": "通过 npm 安装或检查 @openai/codex。",
+      "description": "后置能力：通过 npm 安装或检查 @openai/codex。",
       "action": { "type": "bootstrap", "args": ["codex"] }
     },
     {
       "id": "install_claude_code",
       "title": "安装 Claude Code",
-      "description": "通过 npm 安装或检查 @anthropic-ai/claude-code。",
+      "description": "后置能力：通过 npm 安装或检查 @anthropic-ai/claude-code。",
       "action": { "type": "bootstrap", "args": ["claude-code"] }
     },
     {
       "id": "install_claude_code_ui",
       "title": "安装 CloudCLI",
-      "description": "通过 npm 安装或检查 ClaudeCodeUI / CloudCLI。",
+      "description": "后置能力：通过 npm 安装或检查 ClaudeCodeUI / CloudCLI。",
       "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
     },
     {
       "id": "runtime_components",
-      "title": "安装本机 Agent 运行组件",
-      "description": "从 APK 内置运行组件包安装、检查并注册 service-manager、cc-connect/openhouse-connect、SmallPhone 兼容组件和 Pi Agent，并解压校验 pi-web 完整 runtime；其它基础工具阶段仍可能需要网络。",
+      "title": "安装 OpenHouse 运行组件",
+      "description": "从 APK 内置运行组件包先安装 pi-agent/pi-web，再准备 service-manager，随后检查并注册 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容组件。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {

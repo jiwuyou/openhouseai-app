@@ -391,13 +391,10 @@ required_stage_scripts() {
         10-prepare-termux.sh \
         12-update-termux-packages.sh \
         20-install-ubuntu.sh \
-        35-sync-docs.sh \
         30-update-ubuntu-packages.sh \
         70-configure-entry-ubuntu.sh \
         38-install-node.sh \
-        42-install-codex.sh \
-        44-install-claude-code.sh \
-        45-install-claude-code-ui.sh \
+        35-sync-docs.sh \
         50-install-runtime-components.sh \
         48-sync-openhouse-registry.sh \
         60-start-smallphone.sh \
@@ -478,13 +475,10 @@ run_full_install() {
   run_stage 10-prepare-termux.sh
   run_stage 12-update-termux-packages.sh
   run_stage 20-install-ubuntu.sh
-  run_stage 35-sync-docs.sh
   run_stage 30-update-ubuntu-packages.sh
   run_stage 70-configure-entry-ubuntu.sh
   run_stage 38-install-node.sh
-  run_stage 42-install-codex.sh
-  run_stage 44-install-claude-code.sh
-  run_stage 45-install-claude-code-ui.sh
+  run_stage 35-sync-docs.sh
   run_stage 50-install-runtime-components.sh
   run_stage 48-sync-openhouse-registry.sh
   run_stage 60-start-smallphone.sh
@@ -495,7 +489,7 @@ show_menu() {
   cat <<EOF
 SmallPhoneAI Installer
 
-1. 完整安装并启动 SmallPhone
+1. 完整安装并启动 OpenHouse 控制平面
 2. 查看 SmallPhoneAI 机器可读状态
 3. 只准备 Termux 路径、配置和文档
 4. 只安装 Termux 基础包
@@ -504,9 +498,9 @@ SmallPhoneAI Installer
 7. 只更新 Ubuntu 软件包
 8. 设置默认进入 Ubuntu
 9. 只安装 Node.js 24 LTS
-10. 只安装 Codex
-11. 只安装 Claude Code
-12. 只安装 ClaudeCodeUI / CloudCLI
+10. 后置安装 Codex
+11. 后置安装 Claude Code
+12. 后置安装 ClaudeCodeUI / CloudCLI
 13. 安装/注册 SmallPhone 运行组件
 14. 同步 OpenHouseAI registry
 15. 启动 SmallPhone 运行栈

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "2026.06.01.1",
+  "version": "2026.07.01.1",
   "title": "OpenHouseAI 维护器",
   "sourceName": "OpenHouseAI APK 原始插件",
   "updatedAt": "2026-06-01",
@@ -9,36 +9,31 @@
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "准备 Termux 路径和文档、安装 Termux 基础包、Ubuntu rootfs，并同步 OpenHouseAI 文档。",
-      "stages": ["prepare", "termux_packages", "install_ubuntu", "sync_official_docs"]
+      "description": "准备 Termux 路径、安装 Termux 基础包、Ubuntu rootfs，并配置 Ubuntu 侧基础依赖和入口。",
+      "stages": ["env_check", "prepare", "termux_packages", "install_ubuntu", "ubuntu_packages", "entry_ubuntu"]
     },
     {
-      "title": "更新 Ubuntu 基础包",
-      "description": "安装 Ubuntu 内 curl、git、证书、procps、ripgrep、unzip 等基础工具。",
-      "stages": ["ubuntu_packages"]
+      "title": "准备控制平面依赖",
+      "description": "安装 Node.js 并同步 OpenHouse 文档；Codex、Claude Code、CloudCLI 和 Hermes 改为 pi-agent 后置引导安装。",
+      "stages": ["install_node", "sync_official_docs"]
     },
     {
-      "title": "设置默认终端",
-      "description": "在安装 Agent CLI 前设置打开 Termux 后默认进入 Ubuntu。",
-      "stages": ["entry_ubuntu"]
+      "title": "建立 OpenHouse 控制平面",
+      "description": "先安装 pi-agent 和 pi-web，再安装并准备 service-manager，随后注册基础栈、openhouse-connect 和 SmallPhone 兼容服务。",
+      "stages": ["runtime_components", "sync_openhouse_registry"]
     },
     {
-      "title": "安装 Agent CLI",
-      "description": "安装 Node.js、Codex CLI、Claude Code 和 CloudCLI。",
-      "stages": ["install_node", "install_codex", "install_claude_code", "install_claude_code_ui"]
-    },
-    {
-      "title": "注册并启动核心运行栈",
-      "description": "安装 service-manager、openhouse-connect 和 pi，解压校验 APK 内置 pi-web runtime，注册服务并启动核心服务；其它基础工具阶段仍可能需要网络。",
-      "stages": ["runtime_components", "sync_openhouse_registry", "start_smallphone"]
+      "title": "启动 pi-agent 运行栈",
+      "description": "启动 service-manager，通过 group:local-stack 启动 pi-web、SmallPhone 兼容入口和已注册服务，并读取最终健康状态。",
+      "stages": ["start_smallphone"]
     }
   ],
   "sections": [
     {
       "id": "agent_cli_repair",
       "type": "actions",
-      "title": "AI 工具补装与修复",
-      "description": "单独补装或修复 Node.js、Codex CLI、Claude Code 和 CloudCLI。",
+      "title": "后置 AI 能力补装与修复",
+      "description": "供 pi-agent 或人工单独补装/检查 Node.js、Codex、Claude Code 和 CloudCLI；Hermes 通过 pi-agent 文档和脚本后置引导安装。这些能力不阻塞默认首次安装。",
       "items": [
         {
           "id": "install_node",
@@ -51,28 +46,28 @@
           "id": "install_codex",
           "type": "button",
           "label": "安装 Codex",
-          "description": "在 Ubuntu 内安装 OpenAI Codex CLI。",
+          "description": "后置能力：在 Ubuntu 内安装 OpenAI Codex CLI。",
           "action": { "type": "bootstrap", "args": ["codex"] }
         },
         {
           "id": "install_claude_code",
           "type": "button",
           "label": "安装 Claude Code",
-          "description": "在 Ubuntu 内安装 Anthropic Claude Code。",
+          "description": "后置能力：在 Ubuntu 内安装 Anthropic Claude Code。",
           "action": { "type": "bootstrap", "args": ["claude-code"] }
         },
         {
           "id": "install_claude_code_ui",
           "type": "button",
           "label": "安装 CloudCLI",
-          "description": "在 Ubuntu 内安装或检查 CloudCLI / ClaudeCodeUI。",
+          "description": "后置能力：在 Ubuntu 内安装或检查 CloudCLI / ClaudeCodeUI。",
           "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
         },
         {
           "id": "runtime_components",
           "type": "button",
           "label": "安装运行组件",
-          "description": "安装 service-manager、openhouse-connect 和 pi，并解压校验 APK 内置 pi-web runtime；其它基础工具阶段仍可能需要网络。",
+          "description": "从 APK 内置运行组件包先安装 pi-agent/pi-web，再准备 service-manager，随后检查并注册 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容组件。",
           "action": { "type": "bootstrap", "args": ["runtime-components"] }
         },
         {
@@ -86,13 +81,19 @@
           "id": "start_smallphone",
           "type": "button",
           "label": "启动核心服务",
-          "description": "启动 service-manager 管理的 pi、pi-web 和 CloudCLI 相关服务。",
+          "description": "启动 service-manager 管理的 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容服务。",
           "action": { "type": "bootstrap", "args": ["start"] }
         }
       ]
     }
   ],
   "stages": [
+    {
+      "id": "env_check",
+      "title": "检查 Termux",
+      "description": "检查当前是否为支持的 Termux/Ubuntu 环境。",
+      "action": { "type": "bootstrap", "args": ["env-check"] }
+    },
     {
       "id": "prepare",
       "title": "准备 Termux",
@@ -101,25 +102,19 @@
     },
     {
       "id": "termux_packages",
-      "title": "下载 Termux 基础包",
+      "title": "安装 Termux 基础包",
       "description": "pkg 安装 proot-distro、curl、openssl、ca-certificates。",
       "action": { "type": "bootstrap", "args": ["termux-packages"] }
     },
     {
       "id": "install_ubuntu",
-      "title": "下载 Ubuntu rootfs",
+      "title": "安装 Ubuntu rootfs",
       "description": "测速并选择 Ubuntu rootfs 镜像源，再注入 Ubuntu 侧环境探测命令。",
       "action": { "type": "bootstrap", "args": ["ubuntu"] }
     },
     {
-      "id": "sync_official_docs",
-      "title": "同步官方文档",
-      "description": "同步 OpenHouseAI 文档到 ~/openhouseai-docs/official。",
-      "action": { "type": "bootstrap", "args": ["sync-docs"] }
-    },
-    {
       "id": "ubuntu_packages",
-      "title": "下载 Ubuntu 基础包",
+      "title": "安装 Ubuntu 基础包",
       "description": "apt 安装 curl、ca-certificates、git、procps、ripgrep、unzip。",
       "action": { "type": "bootstrap", "args": ["ubuntu-packages"] }
     },
@@ -131,32 +126,38 @@
     },
     {
       "id": "install_node",
-      "title": "下载 Node.js",
-      "description": "在 Ubuntu 内安装或检查 Node.js 24 LTS。",
+      "title": "安装 Node.js",
+      "description": "安装或检查 OpenHouse 控制平面和后置 AI 工具共用的 Node.js 24 LTS 和 npm。",
       "action": { "type": "bootstrap", "args": ["node"] }
     },
     {
+      "id": "sync_official_docs",
+      "title": "同步说明文档",
+      "description": "同步 OpenHouseAI 文档到 ~/openhouseai-docs/official，并保留兼容路径。",
+      "action": { "type": "bootstrap", "args": ["sync-docs"] }
+    },
+    {
       "id": "install_codex",
-      "title": "下载 Codex CLI",
-      "description": "检测终端环境后通过 npm 安装 @openai/codex。",
+      "title": "后置安装 Codex CLI",
+      "description": "后置能力：检测终端环境后通过 npm 安装或检查 @openai/codex。",
       "action": { "type": "bootstrap", "args": ["codex"] }
     },
     {
       "id": "install_claude_code",
-      "title": "下载 Claude Code",
-      "description": "检测终端环境后通过 npm 安装 @anthropic-ai/claude-code。",
+      "title": "后置安装 Claude Code",
+      "description": "后置能力：检测终端环境后通过 npm 安装或检查 @anthropic-ai/claude-code。",
       "action": { "type": "bootstrap", "args": ["claude-code"] }
     },
     {
       "id": "install_claude_code_ui",
-      "title": "下载 CloudCLI",
-      "description": "检测终端环境后安装或检查 CloudCLI / ClaudeCodeUI。",
+      "title": "后置安装 CloudCLI",
+      "description": "后置能力：检测终端环境后安装或检查 CloudCLI / ClaudeCodeUI。",
       "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
     },
     {
       "id": "runtime_components",
-      "title": "安装运行组件",
-      "description": "安装 service-manager、openhouse-connect 和 pi，并解压校验 APK 内置 pi-web runtime；其它基础工具阶段仍可能需要网络。",
+      "title": "安装 OpenHouse 运行组件",
+      "description": "从 APK 内置运行组件包先安装 pi-agent/pi-web，再准备 service-manager，随后检查并注册 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容组件。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {
@@ -167,8 +168,8 @@
     },
     {
       "id": "start_smallphone",
-      "title": "启动核心服务",
-      "description": "启动安装完成后的 pi、pi-web 和连接服务，由 service-manager 管理运行期生命周期。",
+      "title": "启动 pi-agent 运行栈",
+      "description": "启动 service-manager，通过 group:local-stack 启动 pi-web、SmallPhone 运行栈，并输出最终健康状态。",
       "action": { "type": "bootstrap", "args": ["start"] }
     }
   ]

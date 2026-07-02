@@ -11,6 +11,14 @@
 
 pi-web 默认提示词应引用这个路径，而不是引用源码目录。
 
+如果 `cloudcli` 命令或 `cc/codex` 服务缺失，先执行：
+
+```bash
+/root/openhouse/scripts/install-cloudcli.sh
+```
+
+再继续本文档的模型配置和测通步骤。
+
 ## 用户需要先提供
 
 让用户在第一条消息里一次性给出：
@@ -34,7 +42,7 @@ model id:
 
 ## pi-agent 的执行边界
 
-首次安装不会自动修 Claude Code 的 CloudCLI 配置，也不会要求用户配置默认模型或 API key。
+首次安装不会自动安装或修复 CloudCLI / Claude Code 配置，也不会要求用户配置默认模型或 API key。
 
 当用户选择“配置 Claude Code”提示词后，由 pi-agent 按本文档检查和修复：
 

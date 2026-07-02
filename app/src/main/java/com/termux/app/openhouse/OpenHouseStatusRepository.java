@@ -82,6 +82,27 @@ public final class OpenHouseStatusRepository {
         );
     }
 
+    public boolean isCoreDeploymentComplete() {
+        return isCoreDeploymentComplete(loadStatus());
+    }
+
+    public static boolean isCoreDeploymentComplete(OpenHouseStatus status) {
+        return status != null
+            && status.termuxReady
+            && status.productPrepared
+            && status.ubuntuInstalled
+            && status.officialDocsSynced
+            && status.entryUbuntuConfigured
+            && status.nodeInstalled
+            && status.serviceManagerInstalled
+            && status.openhouseConnectInstalled
+            && status.smallPhoneRuntimeInstalled
+            && status.registrySynced
+            && status.serviceManagerReachable
+            && status.openhouseConnectReachable
+            && status.smallPhoneReachable;
+    }
+
     public OpenHouseOnboardingState loadOnboardingState() {
         OpenHouseInstallState installState = OpenHouseInstallState.idle();
         try {
@@ -303,8 +324,8 @@ public final class OpenHouseStatusRepository {
     private boolean isOneClickInstallCompleted() {
         try {
             OpenHouseStatus status = loadStatus();
-            return status.isDeploymentComplete()
-                || (OpenHouseInstallController.getInstance(context).getState().completed && status.isDeploymentComplete());
+            return isCoreDeploymentComplete(status)
+                || (OpenHouseInstallController.getInstance(context).getState().completed && isCoreDeploymentComplete(status));
         } catch (Exception e) {
             return false;
         }
@@ -312,7 +333,7 @@ public final class OpenHouseStatusRepository {
 
     private boolean isInstallDone(OpenHouseInstallState installState, OpenHouseStatus status) {
         return (installState != null && installState.completed)
-            || (status != null && status.isDeploymentComplete());
+            || isCoreDeploymentComplete(status);
     }
 
     private OpenHouseOnboardingState.Step readStoredStep(SharedPreferences preferences) {

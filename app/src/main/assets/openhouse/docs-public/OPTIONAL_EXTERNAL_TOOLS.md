@@ -1,6 +1,8 @@
 # 可选外部工具手册
 
-默认核心能力是 service-manager、pi、pi-web、Codex CLI、Claude Code、CloudCLI 和 openhouse-connect。
+默认核心能力是 service-manager、pi-agent、pi-web、openhouse-connect、SmallPhone 兼容服务和文档/脚本入口。
+
+Codex CLI、Claude Code、CloudCLI 和 Hermes 是 pi-agent 后置引导安装的 AI 工作能力，不再作为首次安装的阻塞项。
 
 Operit、OpenCode、Reasonix、Hermes 不作为 APK 内置脚本、payload、插件入口或默认服务打包。本文只作为产品手册，供 pi-agent 或 AI 在用户明确要求时参考外部安装和配置；执行前应优先确认工具当前官方文档和版本要求。
 
@@ -9,7 +11,7 @@ Hermes 是一个例外：它可以出现在 pi-agent 新建会话的默认新手
 ## 通用原则
 
 - 只在 Ubuntu 侧安装可选 AI 工具。
-- 不要从 APK 资源目录寻找 OpenCode、Reasonix 或 Hermes 安装脚本。
+- 不要从 APK 资源目录寻找 OpenCode 或 Reasonix 安装脚本。Hermes 只有 `/root/openhouse/scripts/install-hermes.sh` 这个后置准备入口，不代表 APK 内置完整 Hermes payload。
 - 不要假设这些工具已经被 service-manager 管理。
 - 如果用户希望后台托管，需要该工具提供独立的 `scripts/register-service.sh`，或由维护者新增 service-manager 服务注册清单。
 - 不要把 API key 写入仓库、APK 资源、共享文档、日志或截图。
@@ -95,7 +97,7 @@ service-manager status
 
 ## 给 AI 的判断规则
 
-- 默认核心问题：优先检查 service-manager、pi、pi-web、Codex CLI、Claude Code、CloudCLI、openhouse-connect。
+- 默认核心问题：优先检查 service-manager、pi-agent、pi-web、openhouse-connect、SmallPhone 兼容服务和 `/root/openhouse/scripts/check-ai-tools.sh`。
 - 可选外部工具问题：先确认用户明确选择了 OpenCode、Reasonix 或 Hermes，再按本文指导检查。
 - 安装失败时：不要回退默认核心栈，不要修改 APK 内置 manifest，只在用户环境中处理外部工具。
 - 文档过期时：以工具当前官方文档为准，并把差异反馈给用户。

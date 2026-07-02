@@ -32,6 +32,7 @@ public final class OpenHouseBundledRuntimeSync {
     private static final String BOOTSTRAP_ASSET_DIR = "smallphoneai/bootstrap";
     private static final String BOOTSTRAP_SCRIPTS_ASSET_DIR = BOOTSTRAP_ASSET_DIR + "/scripts";
     private static final String PAYLOAD_ASSET_DIR = "openhouse/product-payloads";
+    private static final String SCRIPTS_PUBLIC_ASSET_DIR = "openhouse/scripts-public";
     private static final String SYNC_MARKER_NAME = ".apk-sync-marker";
 
     private OpenHouseBundledRuntimeSync() {
@@ -46,6 +47,7 @@ public final class OpenHouseBundledRuntimeSync {
         AssetManager assetManager = appContext.getAssets();
         File bootstrapDir = getBootstrapDir();
         File payloadDir = getPayloadDir();
+        File scriptsPublicDir = getScriptsPublicDir();
 
         List<String> bootstrapAssets = collectAssetFiles(assetManager, BOOTSTRAP_ASSET_DIR);
         if (bootstrapAssets.isEmpty()) {
@@ -55,13 +57,16 @@ public final class OpenHouseBundledRuntimeSync {
         if (payloadAssets.isEmpty()) {
             throw new IOException("APK bundled payloads are missing: " + PAYLOAD_ASSET_DIR);
         }
+        List<String> scriptsPublicAssets = collectAssetFiles(assetManager, SCRIPTS_PUBLIC_ASSET_DIR);
 
         List<Entry> entries = new ArrayList<>();
         copyAssetFiles(appContext, bootstrapAssets, BOOTSTRAP_ASSET_DIR, bootstrapDir, entries);
         copyAssetFiles(appContext, payloadAssets, PAYLOAD_ASSET_DIR, payloadDir, entries);
+        copyAssetFiles(appContext, scriptsPublicAssets, SCRIPTS_PUBLIC_ASSET_DIR, scriptsPublicDir, entries);
         pruneObsoleteFiles(new File(bootstrapDir, "scripts"),
             relativePathSet(bootstrapAssets, BOOTSTRAP_SCRIPTS_ASSET_DIR));
         pruneObsoleteFiles(payloadDir, relativePathSet(payloadAssets, PAYLOAD_ASSET_DIR));
+        pruneObsoleteFiles(scriptsPublicDir, relativePathSet(scriptsPublicAssets, SCRIPTS_PUBLIC_ASSET_DIR));
 
         File bootstrapFile = getBootstrapFile();
         if (!bootstrapFile.isFile()) {
@@ -103,6 +108,10 @@ public final class OpenHouseBundledRuntimeSync {
 
     public static File getPayloadDir() {
         return new File(getBootstrapDir(), "apk-assets/openhouse/product-payloads");
+    }
+
+    public static File getScriptsPublicDir() {
+        return new File(getBootstrapDir(), "apk-assets/openhouse/scripts-public");
     }
 
     private static List<String> collectAssetFiles(AssetManager assetManager, String rootPath) throws IOException {
@@ -298,6 +307,7 @@ public final class OpenHouseBundledRuntimeSync {
         builder.append("synced_at_ms=").append(System.currentTimeMillis()).append('\n');
         builder.append("bootstrap_asset_dir=").append(BOOTSTRAP_ASSET_DIR).append('\n');
         builder.append("payload_asset_dir=").append(PAYLOAD_ASSET_DIR).append('\n');
+        builder.append("scripts_public_asset_dir=").append(SCRIPTS_PUBLIC_ASSET_DIR).append('\n');
         builder.append("asset_count=").append(entries.size()).append('\n');
         builder.append("asset_tree_sha256=").append(treeHash).append('\n');
         for (Entry entry : entries) {

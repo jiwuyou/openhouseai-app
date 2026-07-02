@@ -13,6 +13,14 @@ Hermes 不进入 APK 默认核心 payload，不预置默认后台服务，也不
 
 pi-web 默认提示词应引用这个路径，并明确标注 Hermes 是可选高级任务。
 
+后置入口脚本：
+
+```bash
+/root/openhouse/scripts/install-hermes.sh
+```
+
+该脚本只准备独立目录和 uv 环境。Hermes 上游启动方式可能变化，必须按当前 README 前台测通后再注册 service-manager。
+
 ## 上游项目
 
 当前参考项目：

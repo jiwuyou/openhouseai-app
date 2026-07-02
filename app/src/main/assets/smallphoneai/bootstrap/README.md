@@ -1,8 +1,10 @@
 # SmallPhoneAI Bootstrap
 
 This repo is the online bootstrap source for SmallPhoneAI on Termux/Ubuntu.
-It prepares the phone runtime, installs agent CLIs, coordinates SmallPhone
-runtime components, and exposes machine-readable hooks for the app shell.
+It prepares the phone runtime, establishes the OpenHouse control plane,
+coordinates SmallPhone runtime components, and exposes machine-readable hooks
+for the app shell. Agent CLIs such as Codex, Claude Code, CloudCLI, and Hermes
+are post-install capabilities that pi-agent can guide later.
 
 The intended runtime split is:
 
@@ -45,24 +47,33 @@ bash bootstrap.sh sync-core-stack
 `install`/`full` is idempotent and runs:
 
 ```text
-env-check -> prepare -> termux-packages -> ubuntu -> sync-docs ->
-ubuntu-packages -> entry-ubuntu -> node -> codex -> claude-code ->
-claude-code-ui -> components -> registry-sync -> start -> status
+env-check -> prepare -> termux-packages -> ubuntu -> ubuntu-packages ->
+entry-ubuntu -> node -> sync-docs -> components -> registry-sync ->
+start -> status
 ```
 
-Retired external tools are no longer bundled as built-in installer
-stages or optional APK asset scripts.
+Codex, Claude Code, and ClaudeCodeUI / CloudCLI remain available as explicit
+post-install commands (`codex`, `claude-code`, and `claude-code-ui`), but they
+do not block the default first-run control plane installation.
 
 `components` enters Ubuntu/proot by default, installs child repos from
 APK-bundled package archives, and then delegates to child repo contracts:
 
+- `pi-agent`
+- `pi-web`
 - `service-manager`
 - `cc-connect` / `openhouse-connect`
 - `SmallPhone`
-- `pi-agent`
-- `pi-web`
 - `smallphone-likegirl` control test, through the SmallPhone standalone app
   service registration
+
+The default component order is:
+
+```text
+install pi-agent/pi-web -> install and prepare service-manager ->
+check/register pi-agent/pi-web -> install/check/register openhouse-connect ->
+install/check/register SmallPhone compatibility service
+```
 
 The required APK asset archives are:
 
@@ -80,9 +91,9 @@ first run. `50-install-runtime-components.sh` defaults to
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle`; this prevents first-run source
 clones from GitHub. It is not an air-gapped install: apt, npm, pip, model
 providers, and ordinary network checks may still be used when a stage needs
-operating-system or package dependencies. In particular, Pi Agent/pi-web use
-APK-bundled npm package archives first, but npm may still contact the configured
-registry while resolving transitive dependencies.
+operating-system or package dependencies. Pi Agent and pi-web use APK-bundled
+payloads first; pi-web is shipped as a complete runtime and should not run
+`npm install` during first-run setup.
 
 GitHub source updates are a separate path through
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=git-update` and
