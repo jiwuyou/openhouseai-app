@@ -14,7 +14,19 @@ OpenHouseAI 同时保留 Termux 终端和 Ubuntu 终端。它们不是同一种�
 
 ## Termux 终端
 
-Termux 是 Android App 沙箱内的 Linux-like 宿主层。
+Termux 是 Android App 沙箱内的 Linux-like 宿主层。它不是 `/root`，也不是 Ubuntu；它的 home 通常是：
+
+```text
+/data/data/com.termux/files/home
+```
+
+Termux prefix 通常是：
+
+```text
+/data/data/com.termux/files/usr
+```
+
+OpenHouse 菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。安装完成后，打开 Termux 终端可能会自动进入 Ubuntu，因此排障时必须先用命令识别当前层。
 
 适合执行：
 
@@ -50,6 +62,29 @@ proot-distro login ubuntu -- true
 
 Ubuntu 运行在 Termux 的 proot-distro 内，是主要工作区。
 
+Ubuntu 内的 home 通常是：
+
+```text
+/root
+```
+
+常用 Ubuntu 内路径：
+
+```text
+/root/openhouse/docs
+/root/openhouseai-docs/official
+/root/projects
+/root/.pi
+```
+
+Ubuntu rootfs 在 Termux 文件系统中的常见真实位置是：
+
+```text
+/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu
+```
+
+知道 rootfs 位置是为了排障和备份判断。普通命令应进入 Ubuntu 后执行，不要直接在 Termux 外层改 rootfs 内部文件。
+
 适合执行：
 
 - Codex CLI。
@@ -58,13 +93,15 @@ Ubuntu 运行在 Termux 的 proot-distro 内，是主要工作区。
 - pi 和 pi-web 的本地开发、启动脚本和插件检查。
 - Node.js、Python、Rust、Git 项目开发。
 - MCP server。
-- pi 主 agent 和后续自研 agent 能力。
+- pi-agent 首次配置能力和后续自研 agent 能力。
 - 用户知识库、项目、脚本和长期任务的核心逻辑。
 
 常用检查：
 
 ```bash
 ~/bin/openhouseai-env-probe 2>/dev/null || ~/bin/smallphoneai-env-probe 2>/dev/null || true
+pwd
+echo "$HOME"
 cat /etc/os-release
 command -v node
 command -v codex
@@ -79,6 +116,56 @@ proot-distro login ubuntu -- bash -lc 'pwd && cat /etc/os-release'
 ```
 
 注意：频繁用 `proot-distro login ubuntu -- command` 执行大量短命令会增加开销。高频任务应放进 Ubuntu 内的常驻服务，并由 service-manager 管理。
+
+## 跨层调用
+
+### Termux -> Ubuntu
+
+如果当前在 Termux 外层，需要调用 Ubuntu 侧命令，使用：
+
+```bash
+proot-distro login ubuntu -- <command>
+```
+
+常见示例：
+
+```bash
+proot-distro login ubuntu -- bash -lc 'pwd; node -v'
+proot-distro login ubuntu -- bash -lc 'cd /root/projects && git status --short'
+proot-distro login ubuntu -- bash -lc 'cd /root && service-manager status 2>/dev/null || true'
+```
+
+规则：
+
+- 已经在 Ubuntu 时，不要嵌套调用 `proot-distro login ubuntu -- ...`。
+- 单次检查可以从 Termux 调 Ubuntu。
+- 高频命令、长任务、开发服务应在 Ubuntu 内或通过 service-manager 常驻执行。
+- 如果 `proot-distro login ubuntu -- true` 失败，先修 Ubuntu，不要继续跑开发命令。
+
+### Ubuntu -> Termux
+
+如果当前在 Ubuntu 内，需要 Termux 外层能力，不要默认直接调用外层 Termux shell。Ubuntu 是 proot 内层，直接执行外层 Termux binary 或改 Termux prefix 可能绕过预期环境。
+
+优先方案：
+
+1. 让用户或维护流程进入 OpenHouse 的 Termux 终端入口执行底座命令。
+2. 使用 Android App 维护入口执行安装、启动、修复、日志收集。
+3. 使用 OpenHouse 已提供的 bridge、bootstrap 脚本或 service-manager 动作。
+4. 先查 `/root/openhouse/docs`、`SERVICE_MANAGER.md`、`RECOVERY.md` 和 bootstrap 文档，确认项目支持的跨层调用方式。
+
+可用于识别 Termux 外层的真实路径：
+
+```text
+/data/data/com.termux/files/usr/bin
+/data/data/com.termux/files/home
+```
+
+风险提示：
+
+- 不要在 Ubuntu 内盲目运行 `/data/data/com.termux/files/usr/bin/pkg`。
+- 不要在 Ubuntu 内直接修改 `/data/data/com.termux/files/usr`。
+- 不要从 Ubuntu 里直接重置或删除 Termux home/prefix。
+- proot、apt、Android 权限、底座修复优先回 Termux 外层处理。
 
 ## 自定义终端
 
@@ -104,6 +191,29 @@ proot-distro login ubuntu -- bash -lc 'pwd && cat /etc/os-release'
 | “启动 pi-web/pi-agent/CloudCLI” | service-manager | `bash bootstrap.sh start` 或 service-manager API |
 | “关闭后台服务” | service-manager | 对服务执行 stop |
 | “查看 App 闪退原因” | Android / Termux | logcat、App 日志、维护日志 |
+| “当前在 Termux，执行 Ubuntu 命令” | Termux -> Ubuntu | `proot-distro login ubuntu -- bash -lc 'pwd; node -v'` |
+| “当前在 Ubuntu，需要 Termux 底座能力” | 回 Termux / bridge / App 维护入口 | 先查文档和受支持脚本，不要在 Ubuntu 内盲目改 Termux prefix |
+
+## 快速判断当前终端层
+
+AI 执行命令前可以先跑：
+
+```bash
+pwd
+echo "$HOME"
+cat /etc/os-release 2>/dev/null || true
+command -v proot-distro 2>/dev/null || true
+test -d /data/data/com.termux/files/home && echo has-termux-home || true
+test -d /root && echo has-root-dir || true
+```
+
+判断规则：
+
+- `$HOME` 是 `/root`，且 `/etc/os-release` 显示 Ubuntu：当前在 Ubuntu 终端。
+- `$HOME` 是 `/data/data/com.termux/files/home`：当前在 Termux 外层。
+- 能看到 `proot-distro` 并且 home 是 Termux 路径：适合管理或修复 Ubuntu。
+- 能看到 `/root/openhouse/docs`：通常说明当前已经进入 Ubuntu。
+- 只看到 `/data/data/com.termux/files/...`：通常说明还在 Termux 外层。
 
 ## Termux 与 Ubuntu 的差异
 

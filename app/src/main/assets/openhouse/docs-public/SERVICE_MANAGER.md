@@ -129,7 +129,7 @@ $HOME/.config/openhouseai/components.d/*.json
   "enabled": true,
   "shellMenu": {
     "title": "pi-agent",
-    "subtitle": "默认主 agent",
+    "subtitle": "首次配置助手",
     "section": "ai",
     "order": 80,
     "visible": true,
@@ -164,7 +164,7 @@ $HOME/.config/openhouseai/components.d/*.json
 }
 ```
 
-`pi-agent` 是侧边栏一级入口，和 `SmallPhone`、`cc/codex` 同级。pi-web 是该入口背后的本地页面运行时，不应作为新手教学里的另一个大入口。
+`pi-agent` 是侧边栏一级入口，和 `SmallPhone`、`cc/codex` 同级。pi-web 是该入口背后的本地页面运行时，不应作为新手教学里的另一个大入口。`pi-agent` 负责首次配置、文档索引和配置迁移，不是唯一主工作台。
 
 `cc/codex` 是统一入口，服务控制可以绑定 `cloudcli`、`cc-connect`、Codex 相关服务或后续 Claude Code 服务。除非产品菜单策略变化，不要把 CloudCLI、Claude Code、Codex 拆成多个一级入口。
 

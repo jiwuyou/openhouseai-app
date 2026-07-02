@@ -14,7 +14,7 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 | Termux | Android 宿主、底座、救援层 | 修复 Termux/Ubuntu，调用 Android 桥，检查安装链路 |
 | Ubuntu in Termux | 核心 Linux 工作区 | pi、pi-web、开发、Codex、Claude Code、CloudCLI、MCP、项目命令 |
 | service-manager | 安装完成后的控制平面 | 管理后台服务的启动、停止、状态、日志和修复 |
-| pi-agent / pi-web | 默认主 agent 入口和背后的本地页面运行时 | 调用插件、展示工具、承载用户和 AI 的主要任务会话 |
+| pi-agent / pi-web | 首次配置助手和背后的本地页面运行时 | 读取文档、迁移模型配置、调用插件、帮助用户理解系统 |
 
 ## 强制规则
 
@@ -33,9 +33,11 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 侧边栏入口。组件注册只允许描述 UI 入口和 service-manager 引用，不能包含 `command`、
 `shell`、`script` 或 `args`。
 
-默认主 agent 是 pi。用户侧一级入口名称是 `pi-agent`，与 `SmallPhone`、`cc/codex` 同级；pi-web 是 `pi-agent` 背后的本地页面运行时。不要把 Operit 当作默认 agent、默认 UI 或默认插件体系。
+`pi-agent` 是首次配置助手、文档索引员和配置迁移执行者。用户侧一级入口名称是 `pi-agent`，与 `SmallPhone`、`cc/codex` 同级；pi-web 是 `pi-agent` 背后的本地页面运行时。不要把 `pi-agent` 写成唯一主工作台，也不要把 Operit 当作默认 agent、默认 UI 或默认插件体系。
 
-新手教学和面向用户文案应写“进入 pi-agent”，不要把 pi-web 写成需要用户单独理解的一级服务。需要说明技术实现时，可以说 pi-web 由 service-manager 托管，默认本地地址是 `http://127.0.0.1:30141/`。
+新手教学和面向用户文案可以写“进入 pi-agent 完成首次配置”，不要把 pi-web 写成需要用户单独理解的一级服务。需要说明技术实现时，可以说 pi-web 由 service-manager 托管，默认本地地址是 `http://127.0.0.1:30141/`。
+
+OpenHouse 的主工作台由用户选择。用户可能继续使用 Claude Code、Codex、Hermes Web，也可能要求 AI 搜索、安装和改造其它开源项目。AI 应根据用户目标推荐工作台，而不是默认把所有任务都拉回 `pi-agent`。
 
 `cc/codex` 是 CloudCLI / Claude Code / Codex 的统一入口。除非组件注册策略改变，不要把这三者拆成多个一级菜单项。
 
@@ -77,6 +79,16 @@ search
 
 先判断自己在哪一层，再执行任务。
 
+三层路径速记：
+
+| 层 | 典型路径 | 用途 |
+| --- | --- | --- |
+| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/openhouseai-docs/official`, `/root/projects` | 开发、AI CLI、pi、CloudCLI、Claude Code、用户项目。 |
+| Termux 外层 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | bootstrap、Termux 包、proot-distro、Ubuntu 启停、底座修复。 |
+| Ubuntu rootfs 真实路径 | `/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu` | Ubuntu 数据在 Termux 文件系统中的位置；排障时识别，不要默认直接修改。 |
+
+OpenHouse 菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。Termux 终端不是 `/root`，它是 Android 侧 Termux shell；安装完成后可能自动进入 Ubuntu，所以必须用命令确认当前层。
+
 在 Termux 外层优先运行：
 
 ```bash
@@ -96,6 +108,65 @@ cat /etc/os-release
 command -v proot-distro
 proot-distro login ubuntu -- true
 ```
+
+通用快速判断：
+
+```bash
+pwd
+echo "$HOME"
+cat /etc/os-release 2>/dev/null || true
+command -v proot-distro 2>/dev/null || true
+test -d /data/data/com.termux/files/usr && echo termux-prefix-visible || true
+test -d /root/openhouse/docs && echo openhouse-docs-visible || true
+```
+
+判断规则：
+
+- `$HOME=/root` 且 `/etc/os-release` 显示 Ubuntu：当前在 Ubuntu 内。
+- `$HOME=/data/data/com.termux/files/home`：当前在 Termux 外层。
+- `proot-distro` 可用且当前 home 是 Termux 路径：可以管理 Ubuntu。
+- `/root/openhouse/docs` 可见：通常说明已经在 Ubuntu 视角或 rootfs 视角。
+- 不确定时先报告当前层，不要继续执行有副作用的命令。
+
+## 跨层调用规则
+
+### Termux -> Ubuntu
+
+当前在 Termux 外层，需要执行 Ubuntu 命令时，使用：
+
+```bash
+proot-distro login ubuntu -- bash -lc 'pwd; node -v'
+```
+
+更多示例：
+
+```bash
+proot-distro login ubuntu -- bash -lc 'cd /root/projects && ls -la'
+proot-distro login ubuntu -- bash -lc 'cd /root && cat /etc/os-release'
+```
+
+如果已经在 Ubuntu 内，不要嵌套调用 `proot-distro login ubuntu -- ...`。嵌套调用会增加复杂度，也容易让路径和环境判断变乱。
+
+### Ubuntu -> Termux
+
+当前在 Ubuntu 内，需要 Termux 外层能力时，不要假设能直接调用外层 Termux shell。Ubuntu 是 proot 内层；即使能看到 `/data/data/com.termux/files/usr/bin` 或 `/data/data/com.termux/files/home`，也不代表直接执行 Termux binary 或修改 Termux prefix 是安全的。
+
+优先选择：
+
+1. 通过 OpenHouse 的 Termux 终端入口执行底座命令。
+2. 通过 Android App 维护入口执行启动、修复和日志收集。
+3. 使用项目已经暴露的 bridge、bootstrap 脚本或 service-manager 动作。
+4. 先查 `/root/openhouse/docs`、`SERVICE_MANAGER.md`、`RECOVERY.md` 和 bootstrap 文档，确认是否有受支持的跨层命令。
+
+不要硬猜桥接命令。没有明确文档时，向用户说明需要回到 Termux 外层执行。
+
+### 决策规则
+
+- 开发、构建、测试、用户项目、Codex、Claude Code、CloudCLI、pi、pi-web：优先 Ubuntu。
+- service-manager 管理的长期服务：优先 service-manager。
+- proot-distro、Termux 包、Android 权限、安装日志、底座修复：优先 Termux 外层。
+- 从 Termux 调 Ubuntu：使用 `proot-distro login ubuntu -- <command>`。
+- 从 Ubuntu 需要 Termux 能力：先判断是否必须回外层；优先使用 bridge/App 维护入口；不要在 Ubuntu 内盲目改 Termux prefix。
 
 ## 默认终端选择
 
@@ -178,20 +249,25 @@ proot-distro login ubuntu -- true
 pi-agent 的新手提示词必须能直接引用安装后的稳定文档路径。官方文档目录是：
 
 ```text
+/root/openhouse/docs
 /root/openhouseai-docs/official
 ~/openhouseai-docs/official
 ```
 
 默认提示词引用：
 
-- 首次使用：读 `/root/openhouseai-docs/official/START_HERE.md`、`/root/openhouseai-docs/official/PRODUCT_OVERVIEW.md`、`/root/openhouseai-docs/official/TERMINAL_PROFILES.md`。
-- 配置 Claude Code：读 `/root/openhouseai-docs/official/CLOUDCLI_CLAUDE_CODE.md`、`/root/openhouseai-docs/official/MODEL_API_SETUP.md`。
-- 安装和配置 Hermes：读 `/root/openhouseai-docs/official/HERMES_SETUP.md`、`/root/openhouseai-docs/official/OPTIONAL_EXTERNAL_TOOLS.md`。
-- 熟悉 OpenHouse 整个系统：读 `/root/openhouseai-docs/official/SERVICE_MANAGER.md`、`/root/openhouseai-docs/official/RECOVERY.md`、`/root/openhouseai-docs/official/AI_AGENT_REFERENCE.md`。
+- 首次 OpenHouse 配置：读 `/root/openhouse/docs/OPENHOUSE_FIRST_CONFIGURATION.md`、`/root/openhouse/docs/MODEL_API_SETUP.md`、`/root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md`。
+- 首次使用：读 `/root/openhouse/docs/START_HERE.md`、`/root/openhouse/docs/PRODUCT_OVERVIEW.md`、`/root/openhouse/docs/CAPABILITIES_MAP.md`、`/root/openhouse/docs/TERMINAL_PROFILES.md`。
+- 配置 Claude Code：读 `/root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md`、`/root/openhouse/docs/MODEL_API_SETUP.md`、`/root/openhouse/docs/GITHUB_NETWORK_MIRRORS.md`。
+- 安装和配置 Hermes：读 `/root/openhouse/docs/HERMES_SETUP.md`、`/root/openhouse/docs/OPTIONAL_EXTERNAL_TOOLS.md`、`/root/openhouse/docs/SERVICE_MANAGER.md`。
+- 选择主工作台：读 `/root/openhouse/docs/WORKBENCH_OPTIONS.md`、`/root/openhouse/docs/SERVICE_MANAGER.md`、`/root/openhouse/docs/BROWSER_AND_WEBVIEW.md`。
+- 熟悉 OpenHouse 整个系统：读 `/root/openhouse/docs/SERVICE_MANAGER.md`、`/root/openhouse/docs/RECOVERY.md`、`/root/openhouse/docs/AI_AGENT_REFERENCE.md`。
 
 默认项目目录建议是 `/root`。这是 Ubuntu root 用户目录，不是 Android 系统根目录。执行文件修改前，应先确认目标路径和用户意图。
 
 默认工具策略是全部开启。只有用户明确要求低风险、只读或关闭工具时，才切换到受限工具模式。
+
+如果内置文档没有覆盖当前版本、provider、安装方式或开源项目状态，必须联网检索。优先查官方文档、GitHub README、release、issue 和示例配置；GitHub 访问慢或失败时阅读 `GITHUB_NETWORK_MIRRORS.md`。
 
 ## 安全确认门槛
 

@@ -71,11 +71,97 @@ fi
 
 DOC_ROOT="$TERMUX_HOME/openhouseai-docs"
 LEGACY_DOC_ROOT="$TERMUX_HOME/smallphoneai-docs"
+OPENHOUSE_DOC_ROOT="$TERMUX_HOME/openhouse"
 OFFICIAL_DOC_DIR="$DOC_ROOT/official"
 AGENT_NOTES_DIR="$DOC_ROOT/agent-notes"
 
-log "正在同步 SmallPhoneAI 文档到 $OFFICIAL_DOC_DIR"
-mkdir -p "$OFFICIAL_DOC_DIR" "$AGENT_NOTES_DIR" "$LEGACY_DOC_ROOT"
+ensure_symlink() {
+  local target="$1"
+  local link_path="$2"
+  local link_parent
+  link_parent="$(dirname "$link_path")"
+  mkdir -p "$link_parent"
+
+  if [ -L "$link_path" ] || [ -f "$link_path" ]; then
+    rm -f "$link_path"
+  elif [ -e "$link_path" ]; then
+    local backup_path="${link_path}.backup-$(date +%Y%m%d%H%M%S)"
+    mv "$link_path" "$backup_path"
+    log "已备份非符号链接路径：$link_path -> $backup_path"
+  fi
+
+  ln -sfn "$target" "$link_path"
+}
+
+log "正在同步 OpenHouse 官方文档路径到 $OFFICIAL_DOC_DIR"
+mkdir -p "$OFFICIAL_DOC_DIR" "$AGENT_NOTES_DIR" "$LEGACY_DOC_ROOT" "$OPENHOUSE_DOC_ROOT"
+
+if [ -f "$OFFICIAL_DOC_DIR/PRODUCT_OVERVIEW.md" ] && [ -f "$OFFICIAL_DOC_DIR/AI_AGENT_REFERENCE.md" ]; then
+  log "检测到 APK docs-public 官方文档已存在，跳过 bootstrap fallback 正文写入。"
+else
+  log "未检测到完整 docs-public 官方文档，写入 OpenHouse fallback 索引。"
+  rm -f \
+    "$OFFICIAL_DOC_DIR/START_HERE.md" \
+    "$OFFICIAL_DOC_DIR/README.md" \
+    "$OFFICIAL_DOC_DIR/ENVIRONMENT.md" \
+    "$OFFICIAL_DOC_DIR/RUNTIME_COMPONENTS.md" \
+    "$OFFICIAL_DOC_DIR/MODEL_API_SETUP.md"
+
+  cat > "$OFFICIAL_DOC_DIR/START_HERE.md" <<'EOF'
+# OpenHouse 文档入口
+
+这是 bootstrap fallback 文档。完整官方文档应来自 APK 内置目录 `openhouse/docs-public`，并同步到以下路径：
+
+- `/root/openhouse/docs`
+- `/root/openhouseai-docs/official`
+- `~/openhouseai-docs/official`
+
+如果只看到本 fallback 文件，说明完整官方文档还没有完成同步。请优先运行官方文档同步阶段，或重新执行首次安装/修复流程。
+
+OpenHouse 是一个让人和 AI 共同使用软件、构建个人工作台的平台。pi-agent 是首次配置助手和文档索引员，不是唯一主工作台。用户可以选择 Claude Code、Codex、Hermes Web，或让 AI 搜索、安装和改造其他开源项目作为自己的长期工作台。
+
+AI 处理 OpenHouse 相关任务时，应优先查看 `/root/openhouse/docs`。如果本机文档没有覆盖当前问题，应主动联网检索，优先查官方文档、项目 README、issue 和 release。
+EOF
+
+  cat > "$OFFICIAL_DOC_DIR/README.md" <<'EOF'
+# OpenHouse 官方文档
+
+稳定文档路径：
+
+- `/root/openhouse/docs`
+- `/root/openhouseai-docs/official`
+- `~/openhouseai-docs/official`
+
+完整文档由 APK 内置 `openhouse/docs-public` 同步生成。此 README 是 fallback 索引，用于在完整文档尚未落地时给用户和 AI 一个正确入口。
+
+请先阅读 `START_HERE.md`。当完整官方文档同步完成后，应能看到产品能力、架构、模型迁移、service-manager、Termux/Ubuntu、CloudCLI/Claude Code、Codex、Hermes Web、Shizuku、浏览器、GitHub 镜像和排障等文档。
+EOF
+
+  cat > "$OFFICIAL_DOC_DIR/OPENHOUSE_DOC_PATHS.md" <<'EOF'
+# OpenHouse 文档路径
+
+主要路径：
+
+- `/root/openhouse/docs`
+- `/root/openhouseai-docs/official`
+- `~/openhouseai-docs/official`
+
+兼容路径：
+
+- `~/smallphoneai-docs/official`
+
+Agent 笔记路径：
+
+- `/root/openhouseai-docs/agent-notes`
+- `~/openhouseai-docs/agent-notes`
+EOF
+fi
+
+ensure_symlink "$OFFICIAL_DOC_DIR" "$OPENHOUSE_DOC_ROOT/docs"
+ensure_symlink "$OFFICIAL_DOC_DIR" "$LEGACY_DOC_ROOT/official"
+ensure_symlink "$AGENT_NOTES_DIR" "$LEGACY_DOC_ROOT/agent-notes"
+
+: <<'OPENHOUSE_LEGACY_DOCS_DISABLED'
 
 cat > "$OFFICIAL_DOC_DIR/START_HERE.md" <<'EOF'
 # 从这里开始
@@ -378,6 +464,38 @@ cat > "$OFFICIAL_DOC_DIR/README.md" <<'EOF'
 3. Codex CLI、Claude Code 和 CloudCLI 的登录/API 配置：见 `MODEL_API_SETUP.md`。
 EOF
 
-run_ubuntu_logged bash -lc 'set -euo pipefail; mkdir -p "$HOME/openhouseai-docs" "$HOME/smallphoneai-docs"; ln -sfn /data/data/com.termux/files/home/openhouseai-docs/official "$HOME/openhouseai-docs/official"; ln -sfn /data/data/com.termux/files/home/openhouseai-docs/agent-notes "$HOME/openhouseai-docs/agent-notes"; ln -sfn /data/data/com.termux/files/home/openhouseai-docs/official "$HOME/smallphoneai-docs/official"; ln -sfn /data/data/com.termux/files/home/openhouseai-docs/agent-notes "$HOME/smallphoneai-docs/agent-notes"; printf "%s\n" "$HOME/openhouseai-docs/official"'
+OPENHOUSE_LEGACY_DOCS_DISABLED
 
-log "SmallPhoneAI 文档同步阶段完成。"
+run_ubuntu_logged bash -lc '
+set -euo pipefail
+
+ensure_symlink() {
+  local target="$1"
+  local link_path="$2"
+  local link_parent
+  link_parent="$(dirname "$link_path")"
+  mkdir -p "$link_parent"
+
+  if [ -L "$link_path" ] || [ -f "$link_path" ]; then
+    rm -f "$link_path"
+  elif [ -e "$link_path" ]; then
+    local backup_path="${link_path}.backup-$(date +%Y%m%d%H%M%S)"
+    mv "$link_path" "$backup_path"
+    printf "Backed up non-symlink docs path: %s -> %s\n" "$link_path" "$backup_path"
+  fi
+
+  ln -sfn "$target" "$link_path"
+}
+
+termux_doc_root="/data/data/com.termux/files/home/openhouseai-docs"
+mkdir -p "$HOME/openhouseai-docs" "$HOME/smallphoneai-docs" "$HOME/openhouse"
+ensure_symlink "$termux_doc_root/official" "$HOME/openhouseai-docs/official"
+ensure_symlink "$termux_doc_root/agent-notes" "$HOME/openhouseai-docs/agent-notes"
+ensure_symlink "$termux_doc_root/official" "$HOME/smallphoneai-docs/official"
+ensure_symlink "$termux_doc_root/agent-notes" "$HOME/smallphoneai-docs/agent-notes"
+ensure_symlink "$termux_doc_root/official" "$HOME/openhouse/docs"
+printf "%s\n" "$HOME/openhouse/docs"
+printf "%s\n" "$HOME/openhouseai-docs/official"
+'
+
+log "OpenHouse 官方文档同步阶段完成。"

@@ -1,18 +1,20 @@
 # pi agent 和插件体系
 
-本文档说明 OpenHouseAI 当前默认 agent、页面运行时和插件体系。
+本文档说明 OpenHouseAI 当前 pi-agent 入口、页面运行时和插件体系。
 
 ## 默认核心
 
-- pi 是默认主 agent。
+- `pi-agent` 是首次配置助手、文档索引员和配置迁移执行者。
 - `pi-agent` 是 Android 菜单/侧边栏一级服务入口。
 - pi-web 是 `pi-agent` 背后的本地页面运行时。
 - service-manager 管理 `pi-agent` 和 `pi-web`。
 - Android App 通过 `pi-agent` 入口在 WebView 中加载 pi-web。
+- 用户长期使用的主工作台由用户选择，可以是 Claude Code、Codex、Hermes Web 或其它开源项目。
 
 官方文档目录：
 
 ```text
+/root/openhouse/docs
 /root/openhouseai-docs/official
 ~/openhouseai-docs/official
 ```
@@ -107,7 +109,7 @@ pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注�
 
 Termux 侧救援助手是后置预留能力。本轮不安装、不常驻、不进入首次安装关键路径。
 
-未来如果启用，应由主 agent 或维护入口安装配置，并保持按需启动。
+未来如果启用，应由用户选择的工作台、pi-agent 首次配置流程或维护入口安装配置，并保持按需启动。
 
 ## 历史能力边界
 
