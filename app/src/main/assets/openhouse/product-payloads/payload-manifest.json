@@ -29,8 +29,8 @@
     {
       "id": "pi-web",
       "archive": "pi-web.tar",
-      "sha256": "35b81d64f001ceac6b559b40daab16fd381a11980f626073d1a2903b519a7b73",
-      "size": 123340800
+      "sha256": "a9f58e6c857e6bc95389adc549814c5f73ae2176f797ef8ce4bc41bf9fb81300",
+      "size": 123320320
     }
   ]
 }

@@ -69,12 +69,13 @@ if is_current_ubuntu; then
   TERMUX_HOME="/data/data/com.termux/files/home"
 fi
 
-DOC_ROOT="$TERMUX_HOME/smallphoneai-docs"
+DOC_ROOT="$TERMUX_HOME/openhouseai-docs"
+LEGACY_DOC_ROOT="$TERMUX_HOME/smallphoneai-docs"
 OFFICIAL_DOC_DIR="$DOC_ROOT/official"
 AGENT_NOTES_DIR="$DOC_ROOT/agent-notes"
 
 log "正在同步 SmallPhoneAI 文档到 $OFFICIAL_DOC_DIR"
-mkdir -p "$OFFICIAL_DOC_DIR" "$AGENT_NOTES_DIR"
+mkdir -p "$OFFICIAL_DOC_DIR" "$AGENT_NOTES_DIR" "$LEGACY_DOC_ROOT"
 
 cat > "$OFFICIAL_DOC_DIR/START_HERE.md" <<'EOF'
 # 从这里开始
@@ -145,15 +146,17 @@ Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubunt
 
 - Termux 主目录：`/data/data/com.termux/files/home`
 - 工作区：`/data/data/com.termux/files/home/workspace`
-- 官方文档：`/data/data/com.termux/files/home/smallphoneai-docs/official`
-- Agent 笔记：`/data/data/com.termux/files/home/smallphoneai-docs/agent-notes`
+- 官方文档：`/data/data/com.termux/files/home/openhouseai-docs/official`
+- Agent 笔记：`/data/data/com.termux/files/home/openhouseai-docs/agent-notes`
 - 启动入口配置：`/data/data/com.termux/files/home/.smallphoneai`
 - 运行组件仓库根目录：`~/smallphoneai-repos`
 
 Ubuntu 中如果存在以下短路径，优先使用短路径：
 
-- `~/smallphoneai-docs/official`
-- `~/smallphoneai-docs/agent-notes`
+- `~/openhouseai-docs/official`
+- `~/openhouseai-docs/agent-notes`
+- `~/smallphoneai-docs/official` 兼容旧路径
+- `~/smallphoneai-docs/agent-notes` 兼容旧路径
 - `~/smallphoneai-links/docs-path.txt`
 - `~/smallphoneai-links/workspace-path.txt`
 
@@ -375,6 +378,6 @@ cat > "$OFFICIAL_DOC_DIR/README.md" <<'EOF'
 3. Codex CLI、Claude Code 和 CloudCLI 的登录/API 配置：见 `MODEL_API_SETUP.md`。
 EOF
 
-run_ubuntu_logged bash -lc 'set -euo pipefail; mkdir -p "$HOME/smallphoneai-docs"; ln -sfn /data/data/com.termux/files/home/smallphoneai-docs/official "$HOME/smallphoneai-docs/official"; ln -sfn /data/data/com.termux/files/home/smallphoneai-docs/agent-notes "$HOME/smallphoneai-docs/agent-notes"; printf "%s\n" "$HOME/smallphoneai-docs/official"'
+run_ubuntu_logged bash -lc 'set -euo pipefail; mkdir -p "$HOME/openhouseai-docs" "$HOME/smallphoneai-docs"; ln -sfn /data/data/com.termux/files/home/openhouseai-docs/official "$HOME/openhouseai-docs/official"; ln -sfn /data/data/com.termux/files/home/openhouseai-docs/agent-notes "$HOME/openhouseai-docs/agent-notes"; ln -sfn /data/data/com.termux/files/home/openhouseai-docs/official "$HOME/smallphoneai-docs/official"; ln -sfn /data/data/com.termux/files/home/openhouseai-docs/agent-notes "$HOME/smallphoneai-docs/agent-notes"; printf "%s\n" "$HOME/openhouseai-docs/official"'
 
 log "SmallPhoneAI 文档同步阶段完成。"

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="openhouse_usage_tutorial_step_count">第 %1$d/%2$d 步</string>
+    <string name="openhouse_usage_tutorial_next">下一步</string>
+    <string name="openhouse_usage_tutorial_finish">完成</string>
+    <string name="openhouse_usage_tutorial_skip">跳过</string>
+    <string name="openhouse_usage_tutorial_skip_wait">20秒后可跳过</string>
+    <string name="openhouse_usage_tutorial_click_instruction">请点击箭头指向的位置。</string>
+    <string name="openhouse_usage_tutorial_side_effect_instruction">这一步会真实改变状态，请确认后点击箭头指向的位置。</string>
+    <string name="openhouse_usage_tutorial_target_missing">目标暂时不可见，已切换为说明步骤。</string>
+</resources>

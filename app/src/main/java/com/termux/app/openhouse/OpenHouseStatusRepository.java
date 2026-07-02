@@ -189,8 +189,8 @@ public final class OpenHouseStatusRepository {
 
     private boolean isProductPrepared() {
         File docsDir = firstExistingDirectory(
-            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "smallphoneai-docs"),
-            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "openhouseai-docs"));
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "openhouseai-docs"),
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "smallphoneai-docs"));
         File workspaceDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "workspace");
         return docsDir != null
             && workspaceDir.isDirectory()
@@ -201,8 +201,8 @@ public final class OpenHouseStatusRepository {
 
     private boolean isOfficialDocsSynced() {
         File docsDir = firstExistingDirectory(
-            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "smallphoneai-docs"),
-            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "openhouseai-docs"));
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "openhouseai-docs"),
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "smallphoneai-docs"));
         if (docsDir == null) {
             return false;
         }

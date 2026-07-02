@@ -2027,7 +2027,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         } else if (running) {
             detail.append("主界面安装正在运行，本页只观察同一个安装过程。");
         } else if (completed) {
-            detail.append("安装已完成。service-manager 会作为安装完成后的控制平面管理后台服务；可返回主界面打开 Pi Web 工作台、CloudCLI、Codex 或 Claude Code。");
+            detail.append("安装已完成。service-manager 会作为安装完成后的控制平面管理后台服务；可返回主界面进入 pi-agent、cc/codex、Codex 或 Claude Code。");
         } else if (failed) {
             detail.append("安装失败。请查看下方共享日志或维护终端输出。");
         } else {
@@ -3774,7 +3774,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
         body.append("阶段执行：").append(commandInFlight ? "进行中" : "空闲").append('\n');
         body.append("运行控制：安装完成后由 service-manager 管理后台服务，地址 ").append(SERVICE_MANAGER_BASE_URL).append('\n');
-        body.append("核心入口：Pi Web 工作台、CloudCLI、Codex、Claude Code").append('\n');
+        body.append("核心入口：pi-agent、cc/codex、Codex、Claude Code").append('\n');
         body.append(permissionOverview).append('\n');
         body.append("产品文档：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/openhouseai-docs").append('\n');
         body.append("工作区：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/workspace").append('\n');

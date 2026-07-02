@@ -4,6 +4,8 @@
 
 不要把 API key 写入 git 仓库、共享文档、APK 资源、日志或截图。优先使用工具自带登录流程，或只在本机 shell 配置环境变量。
 
+如果用户正在 `pi-agent` 中配置 CloudCLI 里的 Claude Code，优先阅读 `CLOUDCLI_CLAUDE_CODE.md`。该文档描述网页配置、`agent.js` 修复、默认账号密码和测通目标。
+
 ## Codex CLI
 
 Codex CLI 通常有两种使用方式：
@@ -135,9 +137,26 @@ claude
 
 ## CloudCLI
 
-CloudCLI / ClaudeCodeUI 是安装完成后的网页工作台入口，运行期由 service-manager 管理。首次安装不会要求填写模型或 API key。
+CloudCLI / ClaudeCodeUI 是安装完成后的网页入口，运行期由 service-manager 管理。首次安装不会要求填写模型或 API key。
 
 如果 CloudCLI 页面要求登录或连接模型，按页面提示完成。不要把 API Key 粘贴到聊天内容、日志、截图或仓库中。
+
+OpenHouseAI 的菜单中，CloudCLI / Claude Code / Codex 合并在 `cc/codex` 统一入口里。默认本地账号密码是：
+
+```text
+admin
+123456
+```
+
+这组默认账号密码仅限本机首次使用。后续如果服务暴露到非本机网络，或用户希望长期使用，应修改密码并限制监听地址。
+
+通过 pi-agent 配置 CloudCLI 中的 Claude Code 时，用户需要一次性提供：
+
+- URL
+- key/token
+- model id
+
+配置完成后，测通目标是 CloudCLI 页面里的 Claude Code 能正常使用，而不是只在 Ubuntu 终端里运行 `claude` 命令。
 
 ## 配置检查
 

@@ -5,23 +5,27 @@
     <string name="openhouse_terminal_tutorial_start_using">开始使用</string>
 
     <string name="openhouse_terminal_tutorial_intro_title">终端教学</string>
-    <string name="openhouse_terminal_tutorial_intro_body">这里是 openhouse ai 的终端。你可以直接输入命令，也可以用底部工具栏快速补全常用按键和 AI 命令。</string>
+    <string name="openhouse_terminal_tutorial_intro_body">这里是 openhouse ai 的终端。一般不需要直接使用终端；后续需要命令行时，可以单独查看终端详细教学。</string>
+    <string name="openhouse_terminal_tutorial_terminal_title">终端区域</string>
+    <string name="openhouse_terminal_tutorial_terminal_body">这里显示 Termux 终端输出。当前完整使用教学不需要你输入命令；请点击高亮区域继续，这次点击不会发送任何命令。</string>
+    <string name="openhouse_terminal_tutorial_sessions_button_title">打开终端列表</string>
+    <string name="openhouse_terminal_tutorial_sessions_button_body">这个按钮会打开左侧终端列表。请点击箭头指向的位置继续。</string>
     <string name="openhouse_terminal_tutorial_sessions_title">多终端侧边栏</string>
-    <string name="openhouse_terminal_tutorial_sessions_body">点击右侧“终端列表”按钮会打开左侧侧边栏。这里可以新建会话、切换会话，或长按创建命名会话。</string>
+    <string name="openhouse_terminal_tutorial_sessions_body">这里可以新建会话、切换会话，或长按创建命名会话。完整使用教学只认识位置，不会切换会话；请点击高亮区域继续。</string>
     <string name="openhouse_terminal_tutorial_base_keys_title">基础按键</string>
-    <string name="openhouse_terminal_tutorial_base_keys_body">底部工具栏前两排是常用基础键：ESC、/、-、HOME、方向键、exit、ubuntu、TAB、CTRL、ALT 和键盘按钮。</string>
+    <string name="openhouse_terminal_tutorial_base_keys_body">底部工具栏前两排是常用基础键：ESC、/、-、HOME、方向键、exit、ubuntu、TAB、CTRL、ALT 和键盘按钮。请点击高亮区域继续，这次点击不会输入命令。</string>
     <string name="openhouse_terminal_tutorial_ai_keys_title">AI 快捷键</string>
-    <string name="openhouse_terminal_tutorial_ai_keys_body" tools:ignore="TypographyDashes">第三排是 openhouse ai 默认 AI 快捷键：claude、codex、cloudcli、smallphone 和 --continue。点击命令名会先输入命令或常用状态命令。</string>
+    <string name="openhouse_terminal_tutorial_ai_keys_body" tools:ignore="TypographyDashes">第三排是 openhouse ai 默认 AI 快捷键：claude、codex、cloudcli、smallphone 和 --continue。正常使用时点击命令名会输入命令；本教学点击高亮区域不会输入命令。</string>
     <string name="openhouse_terminal_tutorial_continue_title">继续对话</string>
     <string name="openhouse_terminal_tutorial_continue_body" tools:ignore="TypographyDashes">要继续 Claude 会话，可以依次点击 claude 和 --continue，终端中会组成 claude --continue。Codex 也可以用同样方式组合。</string>
     <string name="openhouse_terminal_tutorial_full_commands_title">完整继续命令</string>
-    <string name="openhouse_terminal_tutorial_full_commands_body" tools:ignore="TypographyDashes">滑到下一页工具栏可直接输入常用命令：claude --continue、codex --continue、cloudcli --help 和 service-manager status smallphone-core。</string>
+    <string name="openhouse_terminal_tutorial_full_commands_body" tools:ignore="TypographyDashes">滑到下一页工具栏可直接输入常用命令：claude --continue、codex --continue、cloudcli --help 和 service-manager status smallphone-core。请点击高亮区域继续，本教学不会执行这些命令。</string>
     <string name="openhouse_terminal_tutorial_custom_keys_title">自定义快捷键</string>
     <string name="openhouse_terminal_tutorial_custom_keys_body">检测到你已经在 termux.properties 中配置了 extra-keys。openhouse ai 没有覆盖这些自定义键，因此这里只显示你的自定义工具栏。</string>
     <string name="openhouse_terminal_tutorial_claude_title">直接使用 Claude</string>
     <string name="openhouse_terminal_tutorial_claude_body" tools:ignore="TypographyDashes">常用 AI 命令主要在 Ubuntu 终端侧运行。先点 ubuntu 进入 Ubuntu，再输入 claude 或 codex，然后按回车使用。</string>
     <string name="openhouse_terminal_tutorial_menu_title">打开菜单</string>
-    <string name="openhouse_terminal_tutorial_menu_body">右侧“菜单”进入 openhouse ai 菜单页，里面有使用手册、终端快捷键、维护与修复、日志和高级设置。</string>
+    <string name="openhouse_terminal_tutorial_menu_body">终端教学到这里结束。请点击右侧“菜单”，回到 OpenHouse 菜单并进入“启动核心服务”阶段。</string>
     <string name="openhouse_terminal_tutorial_runtime_title">Termux 与 Ubuntu</string>
-    <string name="openhouse_terminal_tutorial_runtime_body">当前页默认是 Termux 终端，适合执行 Android 侧命令和维护脚本。点击 ubuntu 进入 Ubuntu 终端，日常使用 Claude Code、Codex、CloudCLI 和 SmallPhone 状态命令通常在 Ubuntu 侧完成；输入 exit 可回到 Termux。</string>
+    <string name="openhouse_terminal_tutorial_runtime_body">当前页默认是 Termux 终端，适合执行 Android 侧命令和维护脚本。点击 ubuntu 进入 Ubuntu 终端，日常使用 Claude Code、Codex、CloudCLI 和 SmallPhone 状态命令通常在 Ubuntu 侧完成；输入 exit 可回到 Termux。详细终端教学后置，现在先继续 OpenHouse 主流程。</string>
 </resources>

@@ -34,11 +34,7 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
 
             @Override
             public void onStartTerminalTutorial(boolean restartEntrySession) {
-                if (returnToSmallPhoneHost) {
-                    openSmallPhoneHost();
-                    return;
-                }
-                openTerminal(true, restartEntrySession);
+                openUsageTeaching();
             }
 
             @Override
@@ -83,6 +79,14 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
     private void openSmallPhoneHost() {
         ActivityUtils.startActivity(this,
             SmallPhoneFirstLaunchGate.newSmallPhoneHostIntent(this));
+        finish();
+    }
+
+    private void openUsageTeaching() {
+        Intent intent = new Intent(this, OpenHouseHomeActivity.class);
+        intent.putExtra(OpenHouseHomeActivity.EXTRA_OPENHOUSE_TUTORIAL,
+            OpenHouseHomeActivity.TUTORIAL_OPENHOUSE_USAGE);
+        ActivityUtils.startActivity(this, intent);
         finish();
     }
 

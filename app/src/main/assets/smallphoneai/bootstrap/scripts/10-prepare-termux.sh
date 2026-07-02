@@ -62,7 +62,8 @@ TERMUX_BIN_DIR="$TERMUX_PREFIX/bin"
 ENV_PROBE_COMMAND="$TERMUX_BIN_DIR/smallphoneai-env-probe"
 BROWSER_COMMAND="$TERMUX_BIN_DIR/openhouse-browser"
 UBUNTU_BROWSER_COMMAND="$TERMUX_PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs/usr/local/bin/openhouse-browser"
-DOC_DIR="$TERMUX_HOME/smallphoneai-docs"
+DOC_DIR="$TERMUX_HOME/openhouseai-docs"
+LEGACY_DOC_DIR="$TERMUX_HOME/smallphoneai-docs"
 WORKSPACE_DIR="$TERMUX_HOME/workspace"
 TERMUX_CONFIG_DIR="$TERMUX_HOME/.termux"
 TERMUX_PROPERTIES_FILE="$TERMUX_CONFIG_DIR/termux.properties"
@@ -770,8 +771,8 @@ EOF
 }
 
 log "正在确保基础目录存在。"
-mkdir -p "$DOC_DIR" "$WORKSPACE_DIR" "$TERMUX_CONFIG_DIR"
-chmod 700 "$DOC_DIR" "$WORKSPACE_DIR" "$TERMUX_CONFIG_DIR" || true
+mkdir -p "$DOC_DIR" "$LEGACY_DOC_DIR" "$WORKSPACE_DIR" "$TERMUX_CONFIG_DIR"
+chmod 700 "$DOC_DIR" "$LEGACY_DOC_DIR" "$WORKSPACE_DIR" "$TERMUX_CONFIG_DIR" || true
 
 log "正在启用 allow-external-apps。"
 touch "$TERMUX_PROPERTIES_FILE"
@@ -823,6 +824,7 @@ install_env_probe_cli
 install_controlled_browser_cli
 
 log "文档路径：$DOC_DIR"
+log "兼容文档路径：$LEGACY_DOC_DIR"
 log "工作区路径：$WORKSPACE_DIR"
 log "Termux 配置：$TERMUX_PROPERTIES_FILE"
 log "Termux 路径、配置和文档准备完成。"

@@ -246,6 +246,31 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/rowNavPiAgent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/buttonNavPiAgent"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_weight="1"
+                        android:text="@string/openhouse_nav_pi_agent"
+                        android:textAllCaps="false" />
+
+                    <Button
+                        android:id="@+id/buttonNavPiAgentControl"
+                        android:layout_width="68dp"
+                        android:layout_height="52dp"
+                        android:layout_marginStart="8dp"
+                        android:minWidth="0dp"
+                        android:text="@string/openhouse_action_control"
+                        android:textAllCaps="false" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/rowNavAi"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -332,6 +357,14 @@
                     android:layout_height="52dp"
                     android:layout_marginTop="8dp"
                     android:text="@string/openhouse_nav_manual"
+                    android:textAllCaps="false" />
+
+                <Button
+                    android:id="@+id/buttonNavUsageTutorial"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/openhouse_nav_usage_tutorial"
                     android:textAllCaps="false" />
 
                 <LinearLayout

@@ -293,7 +293,7 @@ public final class OpenHouseInstallController {
                 false,
                 100,
                 "初始化安装完成",
-                "已检测到 Linux 环境、AI 工具和 Pi Agent 工作台安装完成，无需再次执行初始化。",
+                "已检测到 Linux 环境、AI 工具和 pi-agent 安装完成，无需再次执行初始化。",
                 MANIFEST_FULL_SLUG
             );
             clearRunningMarker();
@@ -545,7 +545,7 @@ public final class OpenHouseInstallController {
                 false,
                 100,
                 "初始化安装完成",
-                "Ubuntu、Node.js、Codex、Claude Code、CloudCLI、Pi Agent 工作台和 SmallPhoneAI 运行栈已安装完成，service-manager 将负责运行期管理。",
+                "Ubuntu、Node.js、Codex、Claude Code、CloudCLI、pi-agent 和 SmallPhoneAI 运行栈已安装完成，service-manager 将负责运行期管理。",
                 MANIFEST_FULL_SLUG
             );
         }
@@ -1273,7 +1273,7 @@ public final class OpenHouseInstallController {
         INSTALL_NODE("install_node", "install-node.sh", "安装 Node.js 24 LTS", "正在安装或检查 Node.js 24 LTS，后续 AI 工具会复用这一套 Node 运行时。"),
         RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装本机 Agent 运行栈", "正在从 APK 内置组件包安装 service-manager、cc-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web；pi/pi-web 依赖解析可能访问 npm registry。"),
         SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh", "同步 OpenHouseAI 注册表", "正在把 Ubuntu mirror 同步到 Termux canonical，供 App、SmallPhone 和 AI 读取。"),
-        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动本机 Agent 工作台", "正在启动 pi-web、SmallPhone 入口和运行组件。"),
+        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动本机 pi-agent", "正在启动 pi-agent、SmallPhone 入口和运行组件。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),
         INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh", "安装 AI 工具：ClaudeCodeUI", "正在安装 ClaudeCodeUI / CloudCLI，并固定端口 23083。");

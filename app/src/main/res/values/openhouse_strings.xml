@@ -4,7 +4,7 @@
     <string name="openhouse_onboarding_activity_title">AI 软件安装引导</string>
     <string name="openhouse_home_subtitle">菜单总览</string>
     <string name="openhouse_drawer_title">openhouse ai</string>
-    <string name="openhouse_drawer_subtitle">SmallPhone / CloudCLI 控制面</string>
+    <string name="openhouse_drawer_subtitle">SmallPhone / pi-agent / cc/codex</string>
     <string name="openhouse_action_menu">菜单</string>
     <string name="openhouse_action_copy">复制</string>
     <string name="openhouse_action_open_browser">浏览器打开</string>
@@ -14,16 +14,18 @@
     <string name="openhouse_action_close">关闭</string>
     <string name="openhouse_action_advanced_short">高级</string>
     <string name="openhouse_action_set_current_home">设当前页为首页</string>
-    <string name="openhouse_home_status_default">当前首页：CC/Codex</string>
+    <string name="openhouse_home_status_default">当前首页：cc/codex</string>
     <string name="openhouse_section_frequent">常用</string>
     <string name="openhouse_section_all">全部</string>
     <string name="openhouse_section_maintenance">维护</string>
     <string name="openhouse_nav_home">菜单总览</string>
-    <string name="openhouse_nav_ai">CC/Codex</string>
+    <string name="openhouse_nav_ai">cc/codex</string>
     <string name="openhouse_nav_smallphone">SmallPhone</string>
+    <string name="openhouse_nav_pi_agent">pi-agent</string>
     <string name="openhouse_nav_controlled_browser">受控浏览器</string>
     <string name="openhouse_nav_service_control">运行控制</string>
     <string name="openhouse_nav_manual">使用手册</string>
+    <string name="openhouse_nav_usage_tutorial">使用教学</string>
     <string name="openhouse_nav_permissions">权限获取</string>
     <string name="openhouse_nav_about">软件说明</string>
     <string name="openhouse_nav_terminal_guide">终端教学</string>
@@ -41,8 +43,8 @@
     <string name="openhouse_status_unknown">尚未完成检查</string>
     <string name="openhouse_clipboard_copied">已复制：%1$s</string>
     <string name="openhouse_url_manual">https://jiwuyou.github.io/openhouseai-docs/</string>
-    <string name="openhouse_cloudcli_action_running">CC/Codex 操作执行中，请稍候。</string>
-    <string name="openhouse_cloudcli_action_failed">CC/Codex 操作失败，请查看日志。</string>
+    <string name="openhouse_cloudcli_action_running">cc/codex 操作执行中，请稍候。</string>
+    <string name="openhouse_cloudcli_action_failed">cc/codex 操作失败，请查看日志。</string>
     <string name="openhouse_browser_unavailable">没有可用浏览器，地址已复制。</string>
     <string name="openhouse_install_phase_total_hint">全程约30分钟</string>
     <string name="openhouse_install_estimate_total" formatted="false">全程预计约30分钟；会准备 Ubuntu、Node、Codex、Claude Code、CloudCLI、service-manager、openhouse-connect 和 SmallPhone。</string>

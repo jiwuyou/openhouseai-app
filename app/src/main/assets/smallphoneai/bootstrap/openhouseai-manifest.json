@@ -76,7 +76,7 @@
       "stages": ["runtime_components", "sync_openhouse_registry"]
     },
     {
-      "title": "启动本机 Agent 工作台",
+      "title": "启动 pi-agent 运行栈",
       "description": "启动 service-manager，通过 group:local-stack 启动 pi-web、SmallPhone 兼容入口和已注册服务，并读取最终健康状态。",
       "stages": ["start_smallphone"]
     }
@@ -110,7 +110,7 @@
         {
           "id": "start_smallphone",
           "type": "button",
-          "label": "启动本机 Agent 工作台",
+          "label": "启动 pi-agent 运行栈",
           "description": "启动 service-manager，请求启动 group:local-stack，并输出最终健康状态。",
           "action": {
             "type": "bootstrap",
@@ -210,7 +210,7 @@
     {
       "id": "sync_official_docs",
       "title": "同步说明文档",
-      "description": "同步 SmallPhoneAI 文档到 ~/smallphoneai-docs/official。",
+      "description": "同步 OpenHouseAI 文档到 ~/openhouseai-docs/official，并保留 ~/smallphoneai-docs/official 兼容路径。",
       "action": { "type": "bootstrap", "args": ["sync-docs"] }
     },
     {
@@ -263,7 +263,7 @@
     },
     {
       "id": "start_smallphone",
-      "title": "启动本机 Agent 工作台",
+      "title": "启动 pi-agent 运行栈",
       "description": "启动 service-manager，通过 group:local-stack 启动 pi-web、SmallPhone 运行栈，并输出最终健康状态。",
       "action": {
         "type": "bootstrap",

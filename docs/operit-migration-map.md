@@ -16,7 +16,7 @@
 
 当前实现主线的验收标准是：
 
-- pi-web 是 Android App 的默认 AI 工作台入口。
+- pi-agent 是 Android App 的默认一级服务入口。
 - pi 是 Ubuntu 侧默认主 agent。
 - `pi-agent` 和 `pi-web` 注册到 service-manager。
 - 默认插件目录是 `/root/.pi/extensions` 和 `/root/.pi/agent/extensions`。

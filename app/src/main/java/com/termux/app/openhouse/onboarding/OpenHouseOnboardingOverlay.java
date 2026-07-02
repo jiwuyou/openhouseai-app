@@ -296,7 +296,7 @@ public final class OpenHouseOnboardingOverlay {
         );
         addStatusCard(
             "安装完成后怎么用",
-            "service-manager 会负责后台服务；Pi Web 工作台是默认 AI 入口；Codex、Claude Code 和 CloudCLI 是主要 AI 能力。"
+            "service-manager 会负责后台服务；菜单侧边栏里 SmallPhone、pi-agent、cc/codex 是一级服务；Codex、Claude Code 和 CloudCLI 是主要 AI 能力。"
         );
         addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
         addReadingGuide(true, false);
@@ -318,11 +318,19 @@ public final class OpenHouseOnboardingOverlay {
             "常用 Ubuntu 侧。输入 claude 使用 Claude Code，输入 codex 使用 Codex；CloudCLI 提供网页和远程交互入口。"
         );
         addStatusCard(
-            "Pi Web 工作台的作用",
-            "它是默认 AI 工作台和插件入口。你不需要在首次安装时填写 API Key，安装完成后再按需配置模型。"
+            "pi-agent 的作用",
+            "pi-agent 是默认 agent 和插件入口，和 SmallPhone、cc/codex 一样在菜单侧边栏中进入。你不需要在首次安装时填写 API Key，安装完成后再按需配置模型。"
+        );
+        addStatusCard(
+            "菜单里的大服务",
+            "进入使用教学后先点击菜单。大服务区会看到 SmallPhone、pi-agent、cc/codex；cc/codex 是统一入口，控制页会真实执行运行或关闭，操作后记得刷新页面。"
+        );
+        addStatusCard(
+            "终端只是备用入口",
+            "一般用户不需要直接使用终端。后续需要命令行时，可以从菜单单独查看终端详细教学，再回到菜单。"
         );
 
-        addActionButton("进入使用演示", isSetupComplete(), true, v -> {
+        addActionButton("进入使用教学", isSetupComplete(), true, v -> {
             dismissGuide();
             callbacks.onStartTerminalTutorial(true);
         });
@@ -666,19 +674,19 @@ public final class OpenHouseOnboardingOverlay {
             addReadingSection(body, "会安装哪些核心能力",
                 "Ubuntu 是主要运行环境，Node.js 是 Codex、Claude Code 和 CloudCLI 的运行依赖。",
                 "service-manager 是安装完成后的控制平面，负责后台服务启动、停止和健康检查。",
-                "openhouse-connect、pi 和 pi-web 负责本机服务、默认 AI 工作台、插件体系和页面入口。");
+                "openhouse-connect、pi 和 pi-web 负责本机服务、pi-agent、插件体系和页面入口。");
             addReadingSection(body, "为什么是这些 AI Agent",
                 "Claude Code 是非常顶级的 AI Agent 软件，适合改代码、解释代码、修复问题和持续协作。",
                 "Codex 也是核心 AI Agent，适合在项目目录中持续协作。",
                 "CloudCLI 提供网页和远程交互入口，适合不熟悉终端的新用户。");
             addReadingSection(body, "安装时不用填 Key",
                 "首次安装只负责把环境和核心能力装好，不要求现在选择模型或填写 API Key。",
-                "需要使用模型时，再通过 Pi Web、CloudCLI、Codex 或 Claude Code 的配置流程处理。");
+                "需要使用模型时，再通过 pi-agent、CloudCLI、Codex 或 Claude Code 的配置流程处理。");
             addReadingSection(body, "安装完成后怎么开始",
                 "常用 Ubuntu 终端。输入 claude 可进入 Claude Code，输入 codex 可进入 Codex。",
-                "需要图形界面时打开 Pi Web 工作台；后台服务由 service-manager 统一管理。");
+                "需要图形界面时从菜单进入 pi-agent；后台服务由 service-manager 统一管理。");
         } else {
-            addReadingSection(body, "安装完成后的基本使用方法", "等待页面会说明核心组件、service-manager、Pi Web 工作台、Codex、Claude Code 和 CloudCLI 的用途。");
+            addReadingSection(body, "安装完成后的基本使用方法", "等待页面会说明核心组件、service-manager、pi-agent、Codex、Claude Code 和 CloudCLI 的用途。");
         }
         contentView.addView(card, topMarginParams(dp(10)));
     }
@@ -820,7 +828,7 @@ public final class OpenHouseOnboardingOverlay {
         PERMISSION("后台权限", "允许后台完成初始化", "初始化会安装 Ubuntu 和 AI 工具。请先允许忽略电池优化，并进入启动管理/后台保活设置，避免息屏或切换应用后中断。"),
         INSTALL("开始安装", "开始安装核心运行环境", "点击后会安装 Ubuntu、Node.js、Codex、Claude Code、CloudCLI、service-manager、pi 和 pi-web。"),
         WAITING_INSTALL("等待安装", "等待安装完成", "安装继续在后台进行。这里会简要说明安装完成后的基本使用方法，不需要现在填写模型或 Key。"),
-        LAUNCH_CONFIG("使用说明", "开始使用 openhouse ai", "核心栈已安装完成。service-manager 会接管运行期服务，Pi Web 工作台是默认 AI 入口。");
+        LAUNCH_CONFIG("使用说明", "开始使用 openhouse ai", "核心栈已安装完成。service-manager 会接管运行期服务，pi-agent 是默认 agent 和插件入口。");
 
         final String label;
         final String title;

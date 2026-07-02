@@ -1,13 +1,21 @@
 # pi agent 和插件体系
 
-本文档说明 OpenHouseAI 当前默认 agent、UI 和插件体系。
+本文档说明 OpenHouseAI 当前默认 agent、页面运行时和插件体系。
 
 ## 默认核心
 
 - pi 是默认主 agent。
-- pi-web 是默认主 UI。
+- `pi-agent` 是 Android 菜单/侧边栏一级服务入口。
+- pi-web 是 `pi-agent` 背后的本地页面运行时。
 - service-manager 管理 `pi-agent` 和 `pi-web`。
-- Android App 通过 WebView 打开 pi-web。
+- Android App 通过 `pi-agent` 入口在 WebView 中加载 pi-web。
+
+官方文档目录：
+
+```text
+/root/openhouseai-docs/official
+~/openhouseai-docs/official
+```
 
 默认地址：
 
@@ -86,7 +94,7 @@ $HOME/.config/openhouseai/service-manager/services.d/pi-web.json
 侧边栏组件路径：
 
 ```text
-$HOME/.config/openhouseai/components.d/pi-web.json
+$HOME/.config/openhouseai/components.d/pi-agent.json
 ```
 
 组件注册只描述 UI 入口和 service-manager 引用。命令、脚本、工作目录、环境变量和停止方式必须放在 service-manager 的服务清单中。

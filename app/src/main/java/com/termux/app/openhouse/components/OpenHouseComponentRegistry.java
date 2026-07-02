@@ -256,8 +256,8 @@ public final class OpenHouseComponentRegistry {
         List<OpenHouseComponent> components = new ArrayList<>();
         components.add(createComponent(
             "cloudcli",
-            "CC/Codex",
-            "Claude Code / Codex 网页工作台",
+            "cc/codex",
+            "Claude Code / Codex 统一入口",
             "ai",
             20,
             OpenHouseComponent.EntryType.WEBVIEW,

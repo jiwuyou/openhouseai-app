@@ -48,6 +48,7 @@ import com.termux.app.openhouse.OpenHouseClaudeCodeUiController;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
 import com.termux.app.openhouse.components.OpenHouseComponent;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
+import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
 import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.app.smallphone.SmallPhoneHostController;
 import com.termux.shared.activity.ActivityUtils;
@@ -59,6 +60,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -84,6 +86,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PAGE_REPAIR = "repair";
     private static final String PAGE_LOGS = "logs";
     private static final String PAGE_ADVANCED = "advanced";
+    private static final String PAGE_USAGE_TUTORIAL = "usage_tutorial";
     private static final String PAGE_COMPONENT_PREFIX = "component:";
     private static final String EXTRA_SERVICE_CONTROL_COMPONENT_ID = "openhouse_component_id";
     private static final String EXTRA_SERVICE_CONTROL_TITLE = "openhouse_component_title";
@@ -93,13 +96,21 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String EXTRA_SERVICE_CONTROL_MODE = "openhouse_service_control_mode";
     private static final String SERVICE_CONTROL_MODE_COMPONENT = "component";
     private static final String SERVICE_CONTROL_MODE_ALL = "all";
+    public static final String EXTRA_OPENHOUSE_TUTORIAL = "openhouse_tutorial";
+    public static final String TUTORIAL_OPENHOUSE_USAGE = "openhouse_usage";
+    public static final String TUTORIAL_START_CORE_SERVICES = "start_core_services";
+    public static final String TUTORIAL_CC_CODEX_CONTROL = "cc_codex_control";
+    private static final String PREF_USAGE_TUTORIAL_STAGE = "usage_tutorial_stage";
+    private static final String USAGE_STAGE_AFTER_CONTROL = "after_control";
+    private static final String USAGE_STAGE_START_CORE = TUTORIAL_START_CORE_SERVICES;
     private static final String CC_CODEX_SERVICE_NAME = "cloudcli";
     private static final String SMALLPHONE_HOME_TARGET = "messages";
     private static final String MENU_OVERRIDES_RELATIVE_PATH = ".config/openhouseai/menu-overrides.json";
-    private static final String CC_CODEX_TITLE = "CC/Codex";
-    private static final String PI_WEB_TITLE = "Pi Agent 工作台";
+    private static final String CC_CODEX_TITLE = "cc/codex";
+    private static final String PI_WEB_TITLE = "pi-agent";
     private static final String PI_WEB_DEFAULT_URL = "http://127.0.0.1:30141/";
-    private static final String PI_WEB_ENTRY_TAG = "pi_web_entry";
+    private static final String HOME_USAGE_TUTORIAL_TAG = "openhouse_home_usage_tutorial";
+    private static final String HOME_CORE_SERVICES_BUTTON_TAG = "openhouse_core_services_start";
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -117,7 +128,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private Button refreshCurrentButton;
     private TextView pageTitleView;
     private TextView pageSubtitleView;
-    private LinearLayout piWorkbenchNavContainer;
     private String currentPage = PAGE_HOME;
     private List<OpenHouseComponent> dynamicComponents = Collections.emptyList();
     private OpenHouseComponentRegistry.LoadResult dynamicRegistryResult;
@@ -146,6 +156,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private boolean firstLaunchGateForwarded;
     private String renderedCloudCliUrl;
     private String renderedPiWebUrl;
+    private GuidedTutorialOverlay usageTutorialOverlay;
+    private boolean usageCoreServicesMode = false;
+    private boolean usageCoreServicesFailed = false;
+    private TextView usageCoreServicesProgressView;
+    private Button usageCoreServicesStartButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -193,6 +208,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        destroyUsageTutorialOverlay();
         if (smallPhoneController != null) {
             smallPhoneController.onDestroy();
             smallPhoneController = null;
@@ -249,6 +265,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         } else if (isComponentPage(currentPage) && dynamicWebView != null) {
             dynamicWebView.onResume();
         }
+        scheduleResumePendingUsageTutorial();
     }
 
     @Override
@@ -263,6 +280,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         if (handleOpenHouseIntent(intent)) {
+            scheduleResumePendingUsageTutorial();
             return;
         }
         if (routeFirstLaunchGateIfNeeded()) {
@@ -337,11 +355,14 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavSmallPhone).setOnClickListener(
             v -> openBuiltinComponentOrFallback(findSmallPhoneComponent(), PAGE_SMALLPHONE));
         findViewById(R.id.buttonNavSmallPhoneControl).setOnClickListener(v -> openComponentControl(findSmallPhoneComponent()));
+        findViewById(R.id.buttonNavPiAgent).setOnClickListener(v -> openPiAgent());
+        findViewById(R.id.buttonNavPiAgentControl).setOnClickListener(v -> openPiWebControlOrAll());
         findViewById(R.id.buttonNavControlledBrowser).setOnClickListener(
             v -> openBuiltinComponentOrFallback(findControlledBrowserComponent(), PAGE_CONTROLLED_BROWSER));
         findViewById(R.id.buttonNavControlledBrowserControl).setOnClickListener(v -> openComponentControl(findControlledBrowserComponent()));
         findViewById(R.id.buttonNavServiceControl).setOnClickListener(v -> openAllServiceControl());
         findViewById(R.id.buttonNavManual).setOnClickListener(v -> selectPage(PAGE_MANUAL));
+        findViewById(R.id.buttonNavUsageTutorial).setOnClickListener(v -> startUsageTeachingFlow());
         findViewById(R.id.buttonNavPermissions).setOnClickListener(v -> selectPage(PAGE_PERMISSIONS));
         findViewById(R.id.buttonNavAbout).setOnClickListener(v -> selectPage(PAGE_ABOUT));
         findViewById(R.id.buttonNavTerminalGuide).setOnClickListener(v -> selectPage(PAGE_TERMINAL_GUIDE));
@@ -350,32 +371,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavLogs).setOnClickListener(v -> selectPage(PAGE_LOGS));
         findViewById(R.id.buttonNavAdvanced).setOnClickListener(v -> selectPage(PAGE_ADVANCED));
         findViewById(R.id.buttonNavTerminal).setOnClickListener(v -> openTerminal(false));
-        addPiWorkbenchDrawerEntry();
         if (setCurrentHomeButton != null) {
             setCurrentHomeButton.setOnClickListener(v -> setCurrentPageAsHome());
         }
         updateHomePreferenceViews();
-    }
-
-    private void addPiWorkbenchDrawerEntry() {
-        View anchor = findViewById(R.id.buttonNavServiceControl);
-        if (anchor == null || !(anchor.getParent() instanceof LinearLayout)) {
-            return;
-        }
-        LinearLayout parent = (LinearLayout) anchor.getParent();
-        View existing = parent.findViewWithTag(PI_WEB_ENTRY_TAG);
-        if (existing != null) {
-            return;
-        }
-
-        piWorkbenchNavContainer = createPiWorkbenchControlBlock();
-        piWorkbenchNavContainer.setTag(PI_WEB_ENTRY_TAG);
-
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT);
-        params.setMargins(0, dp(8), 0, 0);
-        parent.addView(piWorkbenchNavContainer, parent.indexOfChild(anchor) + 1, params);
     }
 
     private void refreshDynamicComponents() {
@@ -394,8 +393,27 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             findCcCodexComponent(), getCcCodexTitle());
         setBuiltinNavigationRowState(R.id.rowNavSmallPhone, R.id.buttonNavSmallPhone, R.id.buttonNavSmallPhoneControl,
             findSmallPhoneComponent(), getSmallPhoneTitle());
+        updatePiAgentNavigationRowState();
         setBuiltinNavigationRowState(R.id.rowNavControlledBrowser, R.id.buttonNavControlledBrowser, R.id.buttonNavControlledBrowserControl,
             findControlledBrowserComponent(), getControlledBrowserTitle());
+    }
+
+    private void updatePiAgentNavigationRowState() {
+        View row = findViewById(R.id.rowNavPiAgent);
+        if (row == null) {
+            return;
+        }
+        OpenHouseComponent component = findPiWebComponent();
+        boolean visible = isComponentVisible(component);
+        row.setVisibility(visible ? View.VISIBLE : View.GONE);
+        View openButton = findViewById(R.id.buttonNavPiAgent);
+        if (openButton instanceof Button) {
+            ((Button) openButton).setText(getPiWebTitle());
+        }
+        View controlButton = findViewById(R.id.buttonNavPiAgentControl);
+        if (controlButton != null) {
+            controlButton.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void setBuiltinNavigationRowState(int rowId, int openButtonId, int controlButtonId,
@@ -424,11 +442,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         int visibility = View.VISIBLE;
         int[] fallbackButtonIds = new int[] {
             R.id.rowNavAi,
+            R.id.rowNavPiAgent,
             R.id.rowNavSmallPhone,
             R.id.rowNavControlledBrowser,
             R.id.buttonNavHome,
             R.id.buttonNavServiceControl,
             R.id.buttonNavManual,
+            R.id.buttonNavUsageTutorial,
             R.id.buttonNavPermissions,
             R.id.buttonNavAbout,
             R.id.buttonNavTerminalGuide,
@@ -577,11 +597,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
         switch (currentPage) {
             case PAGE_PI_WEB:
-                setHeader(getPiWebTitle(), getPiWebSubtitle("Pi Agent / 插件工作台"));
+                setHeader(getPiWebTitle(), getPiWebSubtitle("默认 agent 和插件入口"));
                 renderPiWebPage();
                 break;
             case PAGE_AI:
-                setHeader(getCcCodexTitle(), getCcCodexSubtitle("Claude Code / Codex 网页工作台"));
+                setHeader(getCcCodexTitle(), getCcCodexSubtitle("Claude Code / Codex 统一入口"));
                 renderAiPage();
                 break;
             case PAGE_SMALLPHONE:
@@ -596,6 +616,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 showScrollContent();
                 setHeader("使用手册", "离线基础说明和在线手册入口");
                 renderManualPage();
+                break;
+            case PAGE_USAGE_TUTORIAL:
+                showScrollContent();
+                setHeader("使用教学", usageCoreServicesMode ? "启动核心服务" : "按箭头认识 OpenHouse");
+                renderUsageTutorialPage();
                 break;
             case PAGE_PERMISSIONS:
                 showScrollContent();
@@ -1558,6 +1583,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void openComponentControl(OpenHouseComponent component) {
+        openComponentControl(component, false);
+    }
+
+    private void openComponentControl(OpenHouseComponent component, boolean ccCodexTeaching) {
         if (component == null || !component.hasControlEntry()) {
             openMaintenanceCenter();
             return;
@@ -1569,6 +1598,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         intent.putExtra(EXTRA_SERVICE_CONTROL_URL, firstNonBlank(component.url, getCurrentBrowserUrl()));
         intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_NAMES, joinValues(component.serviceNames));
         intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_REFS, joinValues(component.serviceRefs));
+        if (ccCodexTeaching) {
+            intent.putExtra(OpenHouseServiceControlActivity.EXTRA_SERVICE_CONTROL_TUTORIAL,
+                OpenHouseServiceControlActivity.TUTORIAL_CC_CODEX_CONTROL);
+        }
         if (drawerLayout != null) {
             drawerLayout.closeDrawer(GravityCompat.START);
         }
@@ -1582,6 +1615,363 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             drawerLayout.closeDrawer(GravityCompat.START);
         }
         ActivityUtils.startActivity(this, intent);
+    }
+
+    private boolean isUsageTutorialIntent(Intent intent) {
+        if (intent == null) {
+            return false;
+        }
+        String tutorial = intent.getStringExtra(EXTRA_OPENHOUSE_TUTORIAL);
+        return TUTORIAL_OPENHOUSE_USAGE.equals(tutorial)
+            || TUTORIAL_START_CORE_SERVICES.equals(tutorial)
+            || TUTORIAL_CC_CODEX_CONTROL.equals(tutorial);
+    }
+
+    private boolean isStartCoreServicesTutorialIntent(Intent intent) {
+        return intent != null
+            && TUTORIAL_START_CORE_SERVICES.equals(intent.getStringExtra(EXTRA_OPENHOUSE_TUTORIAL));
+    }
+
+    private void startUsageTeachingFlow() {
+        clearPendingUsageTutorialStage();
+        usageCoreServicesMode = false;
+        destroyUsageTutorialOverlay();
+        selectPage(PAGE_HOME);
+        if (drawerLayout != null) {
+            drawerLayout.post(() -> {
+                drawerLayout.openDrawer(GravityCompat.START);
+                startMenuUsageTutorialOverlay();
+            });
+        } else {
+            startMenuUsageTutorialOverlay();
+        }
+    }
+
+    private void startMenuUsageTutorialOverlay() {
+        if (isFinishing()) {
+            return;
+        }
+        if (drawerLayout != null && !drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            drawerLayout.openDrawer(GravityCompat.START);
+        }
+
+        View root = findViewById(android.R.id.content);
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+
+        List<GuidedTutorialOverlay.Step> steps = new ArrayList<>();
+        steps.add(GuidedTutorialOverlay.Step
+            .explanation(
+                "先认识菜单里的大服务",
+                "这里是 OpenHouse 的主要入口。SmallPhone、pi-agent、cc/codex 在同一个大服务区，不是彼此的二级页面。")
+            .build());
+        steps.add(GuidedTutorialOverlay.Step
+            .requiredClick(
+                "这是 SmallPhone",
+                "请点一下箭头指向的位置。本步只用于认识入口，不会切换页面。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonNavSmallPhone))
+            .onTargetClick((overlay, step) -> true)
+            .build());
+        steps.add(GuidedTutorialOverlay.Step
+            .requiredClick(
+                "这是 pi-agent",
+                "请点一下箭头指向的位置。pi-agent 是默认 agent 和插件入口，稍后会真正进入它。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonNavPiAgent))
+            .onTargetClick((overlay, step) -> true)
+            .build());
+        steps.add(GuidedTutorialOverlay.Step
+            .requiredClick(
+                "点击 cc/codex",
+                "请点击 cc/codex。点击服务本身会切换到对应页面。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonNavAi))
+            .onTargetClick((overlay, step) -> {
+                openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI);
+                return true;
+            })
+            .build());
+        steps.add(GuidedTutorialOverlay.Step
+            .explanation(
+                "cc/codex 是统一入口",
+                "这里承接 Claude Code / Codex 的网页使用入口。服务启动、关闭和修复不在这个页面直接做，而是在控制页里做。")
+            .build());
+        steps.add(GuidedTutorialOverlay.Step
+            .requiredClick(
+                "回到菜单",
+                "请点击菜单，回到侧边栏继续看 cc/codex 的控制入口。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonOpenDrawer))
+            .onTargetClick((overlay, step) -> {
+                if (drawerLayout != null) {
+                    drawerLayout.openDrawer(GravityCompat.START);
+                }
+                overlay.refreshTarget();
+                return true;
+            })
+            .build());
+        steps.add(GuidedTutorialOverlay.Step
+            .requiredClick(
+                "进入 cc/codex 控制",
+                "请点击 cc/codex 右侧的控制。下一页会真实控制服务，运行中就关闭，未运行就启动，完成后记得刷新。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonNavAiControl))
+            .onTargetClick((overlay, step) -> {
+                savePendingUsageTutorialStage(USAGE_STAGE_AFTER_CONTROL);
+                overlay.destroy();
+                openCcCodexControlForTeaching();
+                return true;
+            })
+            .advanceAfterTargetClick(false)
+            .build());
+
+        usageTutorialOverlay = new GuidedTutorialOverlay(
+            this,
+            (ViewGroup) root,
+            steps,
+            new GuidedTutorialOverlay.SimpleListener() {
+                @Override
+                public void onFinished(GuidedTutorialOverlay overlay) {
+                    usageTutorialOverlay = null;
+                }
+
+                @Override
+                public void onSkipped(GuidedTutorialOverlay overlay, GuidedTutorialOverlay.Step step) {
+                    usageTutorialOverlay = null;
+                }
+            });
+        usageTutorialOverlay.start();
+    }
+
+    private void openCcCodexControlForTeaching() {
+        OpenHouseComponent component = findCcCodexComponent();
+        if (component != null && component.hasControlEntry()) {
+            openComponentControl(component, true);
+            return;
+        }
+        Intent intent = new Intent(this, OpenHouseServiceControlActivity.class);
+        intent.putExtra(EXTRA_SERVICE_CONTROL_MODE, SERVICE_CONTROL_MODE_COMPONENT);
+        intent.putExtra(EXTRA_SERVICE_CONTROL_COMPONENT_ID, "cc-codex");
+        intent.putExtra(EXTRA_SERVICE_CONTROL_TITLE, getCcCodexTitle());
+        intent.putExtra(EXTRA_SERVICE_CONTROL_URL, getCcCodexUrl());
+        intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_NAMES, CC_CODEX_SERVICE_NAME);
+        intent.putExtra(OpenHouseServiceControlActivity.EXTRA_SERVICE_CONTROL_TUTORIAL,
+            OpenHouseServiceControlActivity.TUTORIAL_CC_CODEX_CONTROL);
+        if (drawerLayout != null) {
+            drawerLayout.closeDrawer(GravityCompat.START);
+        }
+        ActivityUtils.startActivity(this, intent);
+    }
+
+    private void scheduleResumePendingUsageTutorial() {
+        if (drawerLayout == null) {
+            resumePendingUsageTutorialIfNeeded();
+            return;
+        }
+        drawerLayout.postDelayed(this::resumePendingUsageTutorialIfNeeded, 180);
+    }
+
+    private boolean resumePendingUsageTutorialIfNeeded() {
+        if (usageTutorialOverlay != null && usageTutorialOverlay.isShowing()) {
+            return false;
+        }
+        String stage = getPendingUsageTutorialStage();
+        if (USAGE_STAGE_AFTER_CONTROL.equals(stage)) {
+            clearPendingUsageTutorialStage();
+            startAfterControlUsageTutorial();
+            return true;
+        }
+        if (USAGE_STAGE_START_CORE.equals(stage)) {
+            startCoreServicesTeachingStage();
+            return true;
+        }
+        return false;
+    }
+
+    private void startAfterControlUsageTutorial() {
+        usageCoreServicesMode = false;
+        destroyUsageTutorialOverlay();
+        selectPage(PAGE_HOME);
+        if (drawerLayout != null) {
+            drawerLayout.post(() -> {
+                drawerLayout.openDrawer(GravityCompat.START);
+                startAfterControlUsageTutorialOverlay();
+            });
+        } else {
+            startAfterControlUsageTutorialOverlay();
+        }
+    }
+
+    private void startAfterControlUsageTutorialOverlay() {
+        if (isFinishing()) {
+            return;
+        }
+        if (drawerLayout != null && !drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            drawerLayout.openDrawer(GravityCompat.START);
+        }
+        View root = findViewById(android.R.id.content);
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+
+        List<GuidedTutorialOverlay.Step> steps = new ArrayList<>();
+        steps.add(GuidedTutorialOverlay.Step
+            .requiredClick(
+                "回到终端",
+                "请点击回到终端。终端一般只是备用入口，后续有需要可以单独看终端详细教学。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonNavTerminal))
+            .onTargetClick((overlay, step) -> {
+                savePendingUsageTutorialStage(USAGE_STAGE_START_CORE);
+                overlay.destroy();
+                openTerminal(true);
+                return true;
+            })
+            .advanceAfterTargetClick(false)
+            .build());
+
+        usageTutorialOverlay = new GuidedTutorialOverlay(
+            this,
+            (ViewGroup) root,
+            steps,
+            new GuidedTutorialOverlay.SimpleListener() {
+                @Override
+                public void onFinished(GuidedTutorialOverlay overlay) {
+                    usageTutorialOverlay = null;
+                }
+
+                @Override
+                public void onSkipped(GuidedTutorialOverlay overlay, GuidedTutorialOverlay.Step step) {
+                    usageTutorialOverlay = null;
+                }
+            });
+        usageTutorialOverlay.start();
+    }
+
+    private void startCoreServicesTeachingStage() {
+        clearPendingUsageTutorialStage();
+        destroyUsageTutorialOverlay();
+        usageCoreServicesMode = true;
+        usageCoreServicesFailed = false;
+        selectPage(PAGE_USAGE_TUTORIAL);
+        View root = findViewById(android.R.id.content);
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+        List<GuidedTutorialOverlay.Step> steps = new ArrayList<>();
+        steps.add(GuidedTutorialOverlay.Step
+            .sideEffectClick(
+                "启动核心服务",
+                "终端教学结束后，需要把内置核心服务拉起来。请点击启动核心服务，这一步会真实启动后台服务。",
+                GuidedTutorialOverlay.targetByTag(root, HOME_CORE_SERVICES_BUTTON_TAG))
+            .onTargetClick((overlay, step) -> {
+                overlay.destroy();
+                startCoreServicesFromTutorial();
+                return true;
+            })
+            .build());
+
+        usageTutorialOverlay = new GuidedTutorialOverlay(
+            this,
+            (ViewGroup) root,
+            steps,
+            new GuidedTutorialOverlay.SimpleListener() {
+                @Override
+                public void onFinished(GuidedTutorialOverlay overlay) {
+                    usageTutorialOverlay = null;
+                }
+
+                @Override
+                public void onSkipped(GuidedTutorialOverlay overlay, GuidedTutorialOverlay.Step step) {
+                    usageTutorialOverlay = null;
+                }
+            });
+        usageTutorialOverlay.start();
+    }
+
+    private void startAfterCoreServicesTutorial() {
+        usageCoreServicesMode = false;
+        usageCoreServicesFailed = false;
+        selectPage(PAGE_HOME);
+        if (drawerLayout != null) {
+            drawerLayout.post(() -> {
+                drawerLayout.openDrawer(GravityCompat.START);
+                startPiAgentFinalTutorialOverlay();
+            });
+        } else {
+            startPiAgentFinalTutorialOverlay();
+        }
+    }
+
+    private void startPiAgentFinalTutorialOverlay() {
+        if (isFinishing()) {
+            return;
+        }
+        if (drawerLayout != null && !drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            drawerLayout.openDrawer(GravityCompat.START);
+        }
+        View root = findViewById(android.R.id.content);
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+
+        List<GuidedTutorialOverlay.Step> steps = new ArrayList<>();
+        steps.add(GuidedTutorialOverlay.Step
+            .requiredClick(
+                "进入 pi-agent",
+                "核心服务已启动。请点击 pi-agent，接下来在 pi-agent 里按页面提示配置模型和 Claude Code。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonNavPiAgent))
+            .onTargetClick((overlay, step) -> {
+                openPiAgent();
+                return true;
+            })
+            .build());
+        steps.add(GuidedTutorialOverlay.Step
+            .explanation(
+                "在 pi-agent 里继续",
+                "进入后请按 pi-agent 页面提示操作：点侧边栏三横线，项目选 /root，配置模型，新建会话，选择“配置 Claude Code”。第一次消息把 URL、key/token 和模型 id 发给 AI。")
+            .build());
+        steps.add(GuidedTutorialOverlay.Step
+            .explanation(
+                "配置完成后的检查",
+                "测通目标是 CloudCLI 中的 Claude Code。配置好后，可以从菜单进入 cc/codex；默认账号密码是 admin / 123456，仅限本机使用，后续可修改密码。")
+            .build());
+
+        usageTutorialOverlay = new GuidedTutorialOverlay(
+            this,
+            (ViewGroup) root,
+            steps,
+            new GuidedTutorialOverlay.SimpleListener() {
+                @Override
+                public void onFinished(GuidedTutorialOverlay overlay) {
+                    usageTutorialOverlay = null;
+                }
+
+                @Override
+                public void onSkipped(GuidedTutorialOverlay overlay, GuidedTutorialOverlay.Step step) {
+                    usageTutorialOverlay = null;
+                }
+            });
+        usageTutorialOverlay.start();
+    }
+
+    private void destroyUsageTutorialOverlay() {
+        if (usageTutorialOverlay != null) {
+            usageTutorialOverlay.destroy();
+            usageTutorialOverlay = null;
+        }
+    }
+
+    private void savePendingUsageTutorialStage(String stage) {
+        if (isBlank(stage)) {
+            clearPendingUsageTutorialStage();
+            return;
+        }
+        getOpenHouseHomePrefs().edit().putString(PREF_USAGE_TUTORIAL_STAGE, stage).apply();
+    }
+
+    private String getPendingUsageTutorialStage() {
+        return getOpenHouseHomePrefs().getString(PREF_USAGE_TUTORIAL_STAGE, "");
+    }
+
+    private void clearPendingUsageTutorialStage() {
+        getOpenHouseHomePrefs().edit().remove(PREF_USAGE_TUTORIAL_STAGE).apply();
     }
 
     private String resolveNativePage(String page) {
@@ -1608,6 +1998,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 return PAGE_CONTROLLED_BROWSER;
             case PAGE_MANUAL:
                 return PAGE_MANUAL;
+            case PAGE_USAGE_TUTORIAL:
+            case "usage-tutorial":
+            case "tutorial":
+                return PAGE_USAGE_TUTORIAL;
             case PAGE_PERMISSIONS:
                 return PAGE_PERMISSIONS;
             case PAGE_ABOUT:
@@ -1930,6 +2324,16 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return false;
         }
 
+        if (isUsageTutorialIntent(intent)) {
+            if (isStartCoreServicesTutorialIntent(intent)
+                || USAGE_STAGE_START_CORE.equals(getPendingUsageTutorialStage())) {
+                startCoreServicesTeachingStage();
+            } else {
+                startUsageTeachingFlow();
+            }
+            return true;
+        }
+
         boolean hasBrowserCommand = ControlledBrowserRpcFiles.hasBrowserCommand(intent);
         Bundle browserCommand = hasBrowserCommand
             ? ControlledBrowserRpcFiles.normalizeCommand(this, intent)
@@ -1958,6 +2362,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private boolean hasExplicitOpenHouseTarget(Intent intent) {
         if (intent == null) {
             return false;
+        }
+        if (isUsageTutorialIntent(intent)) {
+            return true;
         }
         if (ControlledBrowserRpcFiles.hasBrowserCommand(intent)) {
             return true;
@@ -2278,13 +2685,16 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void renderHomePage() {
         LinearLayout panel = panel();
         addTitle(panel, "菜单总览", 19);
-        addBody(panel, "这里保留主入口：Pi Agent 工作台、SmallPhone、CloudCLI、service-manager、终端、文档、日志和维护中心。安装完成后，运行控制由 service-manager 负责。");
+        addBody(panel, "这里保留主入口：SmallPhone、pi-agent、cc/codex、service-manager、终端、文档、日志和维护中心。安装完成后，运行控制由 service-manager 负责。");
         panel.addView(createPiWorkbenchControlBlock());
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
+            compactButton("使用教学", v -> startUsageTeachingFlow(), true));
+        addButtonRow(panel,
             compactButton("打开 " + getCcCodexTitle(),
                 v -> openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI),
-                true));
+                true),
+            compactButton("进入 " + getPiWebTitle(), v -> openPiAgent(), true));
         addButtonRow(panel,
             compactButton("打开 " + getSmallPhoneTitle(), v -> openSmallPhone(), true),
             compactButton("运行控制", v -> openAllServiceControl(), true));
@@ -2298,10 +2708,46 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addTitle(quick, "快速状态", 17);
         addStatusRow(quick, getCcCodexTitle() + " 地址", getCcCodexUrl());
         addStatusRow(quick, getSmallPhoneTitle() + " 地址", getSmallPhoneUrl());
-        addStatusRow(quick, PI_WEB_TITLE + " 地址", getPiWebUrl());
+        addStatusRow(quick, getPiWebTitle() + " 地址", getPiWebUrl());
         addStatusRow(quick, "运行环境", "AI 工具安装在 Ubuntu /root");
         addStatusRow(quick, "控制平面", "service-manager");
         contentView.addView(quick);
+    }
+
+    private void renderUsageTutorialPage() {
+        LinearLayout panel = panel();
+        addTitle(panel, usageCoreServicesMode ? "启动核心服务" : "使用教学", 19);
+        if (usageCoreServicesMode) {
+            addBody(panel, "终端教学结束后，请明确点击下面的按钮，OpenHouse 才会启动内置核心服务。这个动作会拉起 service-manager、pi-agent/pi-web、SmallPhone 兼容入口和 cc/codex。");
+            usageCoreServicesProgressView = new TextView(this);
+            usageCoreServicesProgressView.setText(usageCoreServicesFailed
+                ? "上次启动没有完成。请重试启动核心服务，或返回菜单稍后从运行控制处理。"
+                : "等待点击“启动核心服务”。");
+            usageCoreServicesProgressView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+            usageCoreServicesProgressView.setTextSize(14);
+            usageCoreServicesProgressView.setLineSpacing(dp(2), 1.0f);
+            LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+            progressParams.setMargins(0, dp(10), 0, 0);
+            panel.addView(usageCoreServicesProgressView, progressParams);
+
+            usageCoreServicesStartButton = button(
+                usageCoreServicesFailed ? "重试启动核心服务" : "启动核心服务",
+                v -> startCoreServicesFromTutorial());
+            usageCoreServicesStartButton.setTag(HOME_CORE_SERVICES_BUTTON_TAG);
+            panel.addView(usageCoreServicesStartButton);
+            panel.addView(button("返回菜单", v -> {
+                usageCoreServicesMode = false;
+                selectPage(PAGE_HOME);
+            }));
+        } else {
+            addBody(panel, "使用教学会带你认识菜单里的 SmallPhone、pi-agent、cc/codex，进入 cc/codex 控制，回到终端，再启动核心服务。需要真实点击的步骤不会显示“下一步”。");
+            Button startButton = button("开始使用教学", v -> startUsageTeachingFlow());
+            startButton.setTag(HOME_USAGE_TUTORIAL_TAG);
+            panel.addView(startButton);
+        }
+        contentView.addView(panel);
     }
 
     private void renderManualPage() {
@@ -2314,9 +2760,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addManualSection("Termux 和 Ubuntu",
             "启动后看到的是 Termux 终端。openhouse ai 会在 Termux 里安装 Ubuntu proot，Codex、Claude Code 和 CloudCLI 主要安装在 Ubuntu 的 /root 环境。普通入口终端可以默认进入 Ubuntu，维护中心底部终端固定为 Termux。");
         addManualSection("CloudCLI 和 SmallPhone",
-            "CloudCLI 提供 Claude Code / Codex 网页工作台。SmallPhone 是本机页面和运行栈入口。两者的服务状态可从运行控制或维护中心查看。");
-        addManualSection("Pi Agent 工作台",
-            "Pi Agent 工作台是后续默认 agent 和插件体系入口。完成安装后，它会由 service-manager 管理，默认地址为 " + PI_WEB_DEFAULT_URL + "。");
+            "CloudCLI 提供 cc/codex 统一入口。SmallPhone 是本机页面和运行栈入口。两者的服务状态可从运行控制或维护中心查看。");
+        addManualSection("pi-agent",
+            "pi-agent 是默认 agent 和插件体系入口，和 SmallPhone、cc/codex 一样是菜单侧边栏一级服务。完成安装后，它会由 service-manager 管理，默认地址为 " + PI_WEB_DEFAULT_URL + "。");
         addManualSection("底部快捷键",
             "底部按键包含 ESC、TAB、CTRL、ALT、方向键、键盘、Termux、Ubuntu、exit、clear，以及常用 AI 快捷键。exit 用于退出当前 shell；Ubuntu 用于进入 Ubuntu /root。按键支持自定义和多页，可以直接让 AI 帮你修改常用命令。");
     }
@@ -2349,10 +2795,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void renderTerminalGuidePage() {
         LinearLayout panel = panel();
-        addTitle(panel, "使用演示", 19);
-        addBody(panel, "使用演示会在终端上教你打开终端列表、使用底部快捷键、输入 claude 或 codex、打开菜单，并查看运行控制。");
+        addTitle(panel, "使用教学", 19);
+        addBody(panel, "使用教学会在终端上教你打开菜单、认识 SmallPhone、pi-agent、cc/codex 这些一级服务，回到终端，并查看运行控制。终端一般不需要直接使用，后续有需要可以单独看详细教学。");
         addButtonRow(panel,
-            compactButton("打开使用演示", v -> openTerminal(true), true),
+            compactButton("打开使用教学", v -> openTerminal(true), true),
             compactButton("直接回到终端", v -> openTerminal(false), true));
         contentView.addView(panel);
     }
@@ -2423,6 +2869,63 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         box.setTextSize(14);
         box.setChecked(checked);
         return box;
+    }
+
+    private void startCoreServicesFromTutorial() {
+        destroyUsageTutorialOverlay();
+        usageCoreServicesMode = true;
+        usageCoreServicesFailed = false;
+        if (!PAGE_USAGE_TUTORIAL.equals(currentPage)) {
+            selectPage(PAGE_USAGE_TUTORIAL);
+        }
+        if (usageCoreServicesStartButton != null) {
+            usageCoreServicesStartButton.setEnabled(false);
+            usageCoreServicesStartButton.setText("启动中...");
+        }
+        setUsageCoreServicesProgress("正在启动 service-manager、openhouse-connect、pi-agent、pi-web 和 SmallPhone 兼容入口...");
+        backgroundExecutor.execute(() -> {
+            OpenHouseMaintainerRunner runner = new OpenHouseMaintainerRunner(this);
+            OpenHouseMaintainerRunner.Result stackResult =
+                runner.run(OpenHouseMaintainerRunner.Action.START_SMALLPHONE, 0);
+            if (!stackResult.isSuccess()) {
+                runOnUiThread(() -> showCoreServicesStartFailed(
+                    "核心运行栈启动失败。请重试启动核心服务，或返回菜单后从运行控制/维护与修复处理。"));
+                return;
+            }
+
+            runOnUiThread(() -> setUsageCoreServicesProgress("核心运行栈已启动，正在启动 cc/codex..."));
+
+            OpenHouseMaintainerRunner.Result ccCodexResult =
+                runner.run(OpenHouseMaintainerRunner.Action.START_CLAUDE_CODE_UI,
+                    ClaudeCodeUiSettings.DEFAULT_PORT);
+            runOnUiThread(() -> {
+                if (!ccCodexResult.isSuccess()) {
+                    showCoreServicesStartFailed(
+                        "核心运行栈已启动，但 cc/codex 启动失败。请重试启动核心服务，或返回菜单后从运行控制/维护与修复处理。");
+                    return;
+                }
+                setUsageCoreServicesProgress("核心运行栈启动完成。\ncc/codex 启动完成。");
+                Toast.makeText(this, "核心服务已启动", Toast.LENGTH_LONG).show();
+                startAfterCoreServicesTutorial();
+            });
+        });
+    }
+
+    private void setUsageCoreServicesProgress(String text) {
+        if (usageCoreServicesProgressView != null) {
+            usageCoreServicesProgressView.setText(text);
+        }
+    }
+
+    private void showCoreServicesStartFailed(String message) {
+        usageCoreServicesFailed = true;
+        usageCoreServicesMode = true;
+        setUsageCoreServicesProgress(message);
+        if (usageCoreServicesStartButton != null) {
+            usageCoreServicesStartButton.setEnabled(true);
+            usageCoreServicesStartButton.setText("重试启动核心服务");
+        }
+        Toast.makeText(this, "核心服务启动未完成，请重试或返回菜单", Toast.LENGTH_LONG).show();
     }
 
     private void runClaudeCodeUiAction(OpenHouseMaintainerRunner.Action action) {
@@ -2520,10 +3023,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             LinearLayout.LayoutParams.WRAP_CONTENT);
         rowParams.setMargins(0, dp(8), 0, 0);
 
-        Button openButton = compactButton("打开工作台", v -> openPiWorkbench(), true);
+        Button openButton = compactButton("进入 pi-agent", v -> openPiAgent(), true);
         row.addView(openButton, new LinearLayout.LayoutParams(0, dp(44), 1));
 
-        Button controlButton = compactButton("运行控制", v -> openAllServiceControl(), true);
+        Button controlButton = compactButton("控制", v -> openPiWebControlOrAll(), true);
         LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(dp(96), dp(44));
         controlParams.setMargins(dp(8), 0, 0, 0);
         row.addView(controlButton, controlParams);
@@ -2531,7 +3034,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return block;
     }
 
-    private void openPiWorkbench() {
+    private void openPiAgent() {
         if (drawerLayout != null) {
             drawerLayout.closeDrawer(GravityCompat.START);
         }

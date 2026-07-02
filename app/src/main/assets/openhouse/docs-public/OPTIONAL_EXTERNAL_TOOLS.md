@@ -2,7 +2,9 @@
 
 默认核心能力是 service-manager、pi、pi-web、Codex CLI、Claude Code、CloudCLI 和 openhouse-connect。
 
-Operit、OpenCode、Reasonix、Hermes 不作为 APK 内置脚本、payload、插件入口或默认服务打包。本文只作为产品手册，供 pi、pi-web 或 AI 在用户明确要求时参考外部安装和配置；执行前应优先确认工具当前官方文档和版本要求。
+Operit、OpenCode、Reasonix、Hermes 不作为 APK 内置脚本、payload、插件入口或默认服务打包。本文只作为产品手册，供 pi-agent 或 AI 在用户明确要求时参考外部安装和配置；执行前应优先确认工具当前官方文档和版本要求。
+
+Hermes 是一个例外：它可以出现在 pi-agent 新建会话的默认新手提示词中，但必须标注为可选高级能力、耗时较久，并引用 `HERMES_SETUP.md`。这不代表 Hermes 已经进入 APK 核心 payload。
 
 ## 通用原则
 
@@ -70,16 +72,17 @@ reasonix --version
 
 ## Hermes
 
-Hermes 不再作为 APK 内置 payload 打包，也没有默认 `hermes.tgz`。默认首页和默认后台服务不指向 Hermes。
+Hermes 不作为 APK 内置 payload 打包，也没有默认 `hermes.tgz`。它可以作为 pi-agent 默认新手提示词中的可选高级任务出现，但默认后台服务不预置 Hermes。
 
-如果用户明确要求安装 Hermes，需要外部提供当前 Hermes 仓库、发布包或安装说明。AI 不应假设 APK 内有 Hermes 包。
+如果用户明确要求安装 Hermes，优先阅读 `HERMES_SETUP.md`。AI 不应假设 APK 内有 Hermes 包，也不应污染 OpenHouse 主 Node/Python 环境。
 
 推荐接入流程：
 
-1. 在 Ubuntu 侧按 Hermes 当前项目说明完成安装。
-2. 确认可执行入口、工作目录、端口、日志路径和停止方式。
-3. 若需要后台管理，新增独立 service-manager 注册脚本或服务清单。
-4. 若需要出现在 OpenHouseAI 菜单，新增独立 `components.d/*.json` 注册项。
+1. 在 Ubuntu 侧使用 `uv` 创建独立环境。
+2. 按 `https://github.com/nesquena/hermes-webui` 当前说明安装 Hermes WebUI。
+3. 确认可执行入口、工作目录、端口、日志路径和停止方式。
+4. 若需要后台管理，新增独立 service-manager 服务清单。
+5. 若需要出现在 OpenHouseAI 菜单，新增独立 `components.d/*.json` 注册项。
 
 注册完成后再检查：
 
@@ -88,7 +91,7 @@ service-manager list
 service-manager status
 ```
 
-如果没有注册项，不要把 Hermes 显示为内置功能。
+如果没有注册项，不要把 Hermes 显示为内置服务。
 
 ## 给 AI 的判断规则
 

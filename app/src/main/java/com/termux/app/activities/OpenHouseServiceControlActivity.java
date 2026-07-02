@@ -23,6 +23,7 @@ import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerLogEntry;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerService;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceStatus;
+import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
 import com.termux.shared.logger.Logger;
 
 import java.util.ArrayList;
@@ -42,6 +43,8 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     public static final String EXTRA_SERVICE_CONTROL_URL = "openhouse_component_url";
     public static final String EXTRA_SERVICE_CONTROL_SERVICE_NAMES = "openhouse_service_names";
     public static final String EXTRA_SERVICE_CONTROL_SERVICE_REFS = "openhouse_service_refs";
+    public static final String EXTRA_SERVICE_CONTROL_TUTORIAL = "openhouse_service_control_tutorial";
+    public static final String TUTORIAL_CC_CODEX_CONTROL = "cc_codex_control";
 
     private static final String LOG_TAG = "OpenHouseServiceControl";
     private static final String ACTION_START = "start";
@@ -56,15 +59,21 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private final Map<String, ServiceCard> serviceCards = new LinkedHashMap<>();
 
     private ServiceManagerControlClient controlClient;
+    private ScrollView rootScrollView;
     private LinearLayout contentView;
     private LinearLayout serviceListView;
     private TextView statusView;
+    private TextView controlPlaneStatusView;
+    private Button returnMenuButton;
     private Button repairControlPlaneButton;
     private Button maintenanceButton;
+    private GuidedTutorialOverlay ccCodexTutorialOverlay;
     private boolean allMode;
+    private boolean ccCodexTutorialStarted;
     private String componentId = "";
     private String componentTitle = "";
     private String componentUrl = "";
+    private String tutorialMode = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,6 +87,10 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (ccCodexTutorialOverlay != null) {
+            ccCodexTutorialOverlay.destroy();
+            ccCodexTutorialOverlay = null;
+        }
         backgroundExecutor.shutdownNow();
     }
 
@@ -90,10 +103,12 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         componentId = ServiceManagerClient.sanitizeServiceId(intent.getStringExtra(EXTRA_SERVICE_CONTROL_COMPONENT_ID));
         componentTitle = safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_TITLE));
         componentUrl = normalizeOpenUrl(intent.getStringExtra(EXTRA_SERVICE_CONTROL_URL));
+        tutorialMode = safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_TUTORIAL));
     }
 
     private void buildContentView() {
         ScrollView scrollView = new ScrollView(this);
+        rootScrollView = scrollView;
         scrollView.setFillViewport(true);
         scrollView.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
 
@@ -118,13 +133,24 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         header.addView(titleView);
 
         TextView descriptionView = bodyText(allMode
-            ? "日常运行控制页。这里只调用 service-manager，不展示首次安装详细进度。"
+            ? "日常运行控制页。这里显示控制中枢和各服务状态，只调用 service-manager，不展示首次安装详细进度。"
             : "日常组件控制页。这里只控制该组件注册的服务，不展示首次安装详细进度。");
         header.addView(descriptionView, topMarginParams(8));
+
+        if (isCcCodexTutorial()) {
+            addCcCodexTutorialPanel(header);
+        }
 
         statusView = bodyText("正在读取服务状态...");
         statusView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
         header.addView(statusView, topMarginParams(12));
+
+        controlPlaneStatusView = bodyText("控制中枢：正在检查 service-manager...");
+        controlPlaneStatusView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        header.addView(controlPlaneStatusView, topMarginParams(10));
+
+        returnMenuButton = actionButton("返回菜单", v -> returnToOpenHouseMenu());
+        header.addView(returnMenuButton, topMarginParams(10));
 
         if (!componentUrl.isEmpty()) {
             header.addView(actionButton("浏览器打开", v -> openBrowserUrl(componentUrl)), topMarginParams(10));
@@ -147,6 +173,13 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         contentView.addView(serviceListView, topMarginParams(14));
 
         setContentView(scrollView);
+    }
+
+    private void addCcCodexTutorialPanel(LinearLayout parent) {
+        TextView title = sectionTitle("cc/codex 控制教学");
+        parent.addView(title, topMarginParams(12));
+        TextView body = bodyText("请真实执行一次服务控制：如果当前状态是运行中，点击“教学操作：关闭”；如果当前未运行，点击“教学操作：启动”。完成后点击“刷新”确认状态。\n\n浏览器也可以打开这个本机地址，但本教学不会自动跳转浏览器。");
+        parent.addView(body, topMarginParams(6));
     }
 
     private void addBulkControls() {
@@ -172,6 +205,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         serviceCards.clear();
         setBusy(true);
         setStatus("正在读取服务列表...");
+        setControlPlaneStatus("控制中枢：正在检查 service-manager...");
         hideMaintenanceFallback();
         if (allMode) {
             loadAllServices();
@@ -201,12 +235,15 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                         true));
                 }
                 runOnUiThread(() -> {
+                    updateControlPlaneStatusFromSnapshots(snapshots);
                     renderServices(snapshots);
                     refreshAllStatuses();
                 });
             } catch (Exception e) {
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to list services", e);
-                runOnUiThread(() -> showServiceManagerError("无法读取 service-manager 服务列表。\n" + safeErrorMessage(e)));
+                runOnUiThread(() -> showServiceManagerError(
+                    "控制中枢异常：无法读取 service-manager 服务列表。\n影响：运行控制无法统一查看、启动或关闭服务。\n推荐动作：请点击“修复控制中枢”。\n"
+                        + safeErrorMessage(e)));
             }
         });
     }
@@ -222,6 +259,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         for (String serviceId : serviceIds) {
             snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, "", componentUrl, true));
         }
+        setControlPlaneStatus("控制中枢：当前组件由 service-manager 控制；如果启动、关闭或状态刷新失败，请点击“修复控制中枢”。");
         renderServices(snapshots);
         refreshAllStatuses();
     }
@@ -282,6 +320,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         if (services == null || services.isEmpty()) {
             setBusy(false);
             setStatus(allMode ? "service-manager 没有返回服务。" : "这个组件没有可控制的服务。");
+            maybeStartCcCodexControlTutorial();
             return;
         }
         for (ServiceSnapshot snapshot : services) {
@@ -309,8 +348,16 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         cardView.addView(logView, topMarginParams(10));
 
         Button openButton = actionButton("浏览器打开", v -> openBrowserUrl(currentServiceUrl(snapshot.id)));
+        Button tutorialActionButton = actionButton("教学操作：读取状态中", v -> refreshServiceStatus(snapshot.id));
+        tutorialActionButton.setVisibility(isCcCodexTutorialService(snapshot.id) ? View.VISIBLE : View.GONE);
+        if (tutorialActionButton.getVisibility() == View.VISIBLE) {
+            cardView.addView(tutorialActionButton, topMarginParams(10));
+        }
 
-        ServiceCard card = new ServiceCard(snapshot.id, cardView, titleView, detailView, logView, openButton);
+        Button refreshButton = actionButton("刷新", v -> refreshServiceStatus(snapshot.id));
+
+        ServiceCard card = new ServiceCard(snapshot.id, cardView, titleView, detailView, logView,
+            openButton, tutorialActionButton, refreshButton);
         updateCard(card, snapshot);
 
         addButtonRow(cardView,
@@ -324,7 +371,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             actionButton("修复", v -> runSingleAction(snapshot.id, ACTION_REPAIR)));
         addButtonRow(cardView,
             actionButton("日志", v -> fetchLogs(snapshot.id)),
-            actionButton("刷新", v -> refreshServiceStatus(snapshot.id)));
+            refreshButton);
 
         return card;
     }
@@ -364,13 +411,16 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                         updateCard(card, snapshot);
                     }
                 }
+                updateControlPlaneStatusFromSnapshots(snapshots);
                 setBusy(false);
                 if (!firstError.isEmpty()) {
-                    setStatus("部分状态读取失败。\n" + firstError);
+                    setStatus("部分状态读取失败。\n" + firstError
+                        + "\n如果控制中枢异常，请点击“修复控制中枢”。");
                     showMaintenanceFallback();
                 } else {
                     setStatus("状态已刷新。");
                 }
+                maybeStartCcCodexControlTutorial();
             });
         });
     }
@@ -535,6 +585,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                 setStatus("全部" + actionLabel(cleanAction) + "完成：成功 " + finalOkCount
                     + "，失败 " + finalFailCount
                     + "，跳过 " + finalSkipCount
+                    + "。\n如果你正在查看服务页面，请刷新页面确认最新状态。"
                     + (finalReport.isEmpty() ? "" : "\n" + finalReport));
                 if (finalFailCount > 0) {
                     showMaintenanceFallback();
@@ -608,6 +659,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         card.titleView.setText(snapshot.displayName);
         card.url = firstNonBlank(snapshot.url, card.url);
         updateOpenButton(card.openButton, card.url);
+        updateTutorialActionButton(card, snapshot);
         String pid = snapshot.pid > 0 ? String.valueOf(snapshot.pid) : "-";
         card.detailView.setText(
             "状态：" + stateLabel(snapshot.state)
@@ -616,10 +668,29 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                 + "\n消息：" + firstNonBlank(snapshot.message, "-"));
     }
 
+    private void updateTutorialActionButton(ServiceCard card, ServiceSnapshot snapshot) {
+        if (card == null || card.tutorialActionButton == null || snapshot == null) {
+            return;
+        }
+        if (!isCcCodexTutorialService(snapshot.id)) {
+            card.tutorialActionButton.setVisibility(View.GONE);
+            return;
+        }
+        card.tutorialActionButton.setVisibility(View.VISIBLE);
+        boolean running = isRunningState(snapshot.state);
+        String action = running ? ACTION_STOP : ACTION_START;
+        card.tutorialActionButton.setText(running
+            ? "教学操作：当前运行，点击关闭"
+            : "教学操作：当前未运行，点击运行");
+        card.tutorialActionButton.setOnClickListener(v -> runSingleAction(snapshot.id, action));
+    }
+
     private void showServiceManagerError(String message) {
         setBusy(false);
         setStatus(message);
+        setControlPlaneStatus("控制中枢：异常或无法连接。请点击“修复控制中枢”。");
         showMaintenanceFallback();
+        maybeStartCcCodexControlTutorial();
     }
 
     private void showMaintenanceFallback() {
@@ -660,19 +731,21 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
 
     private void runControlPlaneRepair() {
         setBusy(true);
-        setStatus("正在轻量修复控制中枢。这个动作只恢复 service-manager 和控制配置，不执行全量安装或运行栈修复...");
+        setControlPlaneStatus("控制中枢：修复中...");
+        setStatus("正在修复控制中枢。\n会检查 service-manager，恢复控制配置，重新读取服务状态。\n不会删除项目文件、会话记录，也不会执行全量安装。");
         backgroundExecutor.execute(() -> {
             OpenHouseMaintainerRunner.Result result = new OpenHouseMaintainerRunner(this)
                 .run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0);
             runOnUiThread(() -> {
                 setBusy(false);
                 if (result.isSuccess()) {
-                    setStatus("控制中枢轻量修复完成，正在重新读取服务状态。"
+                    setControlPlaneStatus("控制中枢：修复完成，正在刷新服务状态。");
+                    setStatus("控制中枢修复完成。\n下一步：正在重新读取服务状态；回到服务页面后请刷新确认。"
                         + formatMaintainerOutput(result.output));
                     hideMaintenanceFallback();
                     loadInitialServices();
                 } else {
-                    showServiceManagerError("控制中枢轻量修复失败，退出码 " + result.exitCode
+                    showServiceManagerError("控制中枢修复失败。\n影响：运行控制可能无法启动、关闭或检查服务。\n下一步：可以打开维护与修复查看详细日志。\n退出码 " + result.exitCode
                         + formatMaintainerOutput(result.output));
                 }
             });
@@ -683,6 +756,10 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         if (!ACTION_STOP.equals(action) && !ACTION_RESTART.equals(action)) {
             return false;
         }
+        return isControlPlaneService(serviceId);
+    }
+
+    private boolean isControlPlaneService(String serviceId) {
         String normalized = safeTrim(serviceId).toLowerCase(Locale.US);
         return normalized.equals("service-manager")
             || normalized.endsWith("-service-manager")
@@ -691,7 +768,237 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
 
     private String formatActionResult(String serviceId, String action, ServiceManagerActionResult result) {
         return serviceId + " " + actionLabel(action) + (result.success() ? "已提交。" : "失败。")
+            + (result.success() ? "\n如果你正在查看该服务页面，请刷新页面确认最新状态。" : "")
             + (safeTrim(result.message()).isEmpty() ? "" : "\n" + result.message());
+    }
+
+    private void maybeStartCcCodexControlTutorial() {
+        if (!isCcCodexTutorial() || ccCodexTutorialStarted || isFinishing()) {
+            return;
+        }
+        ViewGroup overlayContainer = findViewById(android.R.id.content);
+        if (overlayContainer == null) {
+            return;
+        }
+        ccCodexTutorialStarted = true;
+        List<GuidedTutorialOverlay.Step> steps = new ArrayList<>();
+        steps.add(GuidedTutorialOverlay.Step.explanation(
+            "控制中枢状态",
+            "这里显示 service-manager 控制中枢和 cc/codex 服务状态。启动、关闭、修复都会真实改变服务，只能由你亲自点击。"
+        ).build());
+        steps.add(GuidedTutorialOverlay.Step.sideEffectClick(
+            "真实操作 cc/codex",
+            "请点击箭头指向的教学操作按钮：当前运行就关闭，当前未运行就启动。点击后请等待页面提示完成。",
+            this::findCcCodexTutorialActionButton
+        ).onTargetClick((overlay, step) -> {
+            Button actionButton = findCcCodexTutorialActionButton();
+            if (actionButton == null) {
+                Toast.makeText(this, "还没有找到 cc/codex 教学操作按钮，请稍后刷新。", Toast.LENGTH_SHORT).show();
+                overlay.refreshTarget();
+                return true;
+            }
+            if (!actionButton.isEnabled()) {
+                Toast.makeText(this, "服务正在处理，请等待状态更新后再点击。", Toast.LENGTH_SHORT).show();
+                overlay.refreshTarget();
+                return true;
+            }
+            actionButton.performClick();
+            overlay.next();
+            return true;
+        }).build());
+        steps.add(GuidedTutorialOverlay.Step.requiredClick(
+            "刷新确认状态",
+            "服务操作提交后，请等待状态文字更新，再点击箭头指向的刷新按钮确认最新状态。",
+            this::findCcCodexRefreshButton
+        ).onTargetClick((overlay, step) -> {
+            Button refreshButton = findCcCodexRefreshButton();
+            if (refreshButton == null) {
+                Toast.makeText(this, "还没有找到刷新按钮，请稍后再试。", Toast.LENGTH_SHORT).show();
+                overlay.refreshTarget();
+                return true;
+            }
+            if (!refreshButton.isEnabled()) {
+                Toast.makeText(this, "正在处理，请稍等再点刷新。", Toast.LENGTH_SHORT).show();
+                overlay.refreshTarget();
+                return true;
+            }
+            refreshButton.performClick();
+            overlay.next();
+            return true;
+        }).build());
+        steps.add(GuidedTutorialOverlay.Step.explanation(
+            "浏览器打开",
+            "cc/codex 也可以用浏览器打开本机地址。本教学只说明这件事，不会自动跳转浏览器。"
+        ).build());
+        steps.add(GuidedTutorialOverlay.Step.requiredClick(
+            "返回菜单",
+            "请点击返回菜单，继续后面的 OpenHouse 使用教学。",
+            () -> returnMenuButton
+        ).build());
+
+        ccCodexTutorialOverlay = new GuidedTutorialOverlay(
+            this,
+            overlayContainer,
+            steps,
+            new GuidedTutorialOverlay.SimpleListener() {
+                @Override
+                public void onStepChanged(GuidedTutorialOverlay overlay,
+                                          GuidedTutorialOverlay.Step step,
+                                          int stepIndex) {
+                    scrollTutorialTargetIntoView(overlay, step);
+                }
+
+                @Override
+                public void onSkipped(GuidedTutorialOverlay overlay,
+                                      GuidedTutorialOverlay.Step step) {
+                    ccCodexTutorialOverlay = null;
+                }
+
+                @Override
+                public void onFinished(GuidedTutorialOverlay overlay) {
+                    ccCodexTutorialOverlay = null;
+                }
+            }
+        );
+        ccCodexTutorialOverlay.start();
+    }
+
+    private Button findCcCodexTutorialActionButton() {
+        ServiceCard card = findCcCodexTutorialCard();
+        return card == null ? null : card.tutorialActionButton;
+    }
+
+    private Button findCcCodexRefreshButton() {
+        ServiceCard card = findCcCodexTutorialCard();
+        return card == null ? null : card.refreshButton;
+    }
+
+    private ServiceCard findCcCodexTutorialCard() {
+        for (ServiceCard card : serviceCards.values()) {
+            if (card != null && isCcCodexTutorialService(card.serviceId)) {
+                return card;
+            }
+        }
+        return null;
+    }
+
+    private void scrollTutorialTargetIntoView(GuidedTutorialOverlay overlay,
+                                              GuidedTutorialOverlay.Step step) {
+        if (rootScrollView == null || contentView == null || step == null
+            || step.targetSupplier == null) {
+            return;
+        }
+        rootScrollView.post(() -> {
+            View target = step.targetSupplier.getTargetView();
+            if (target == null) {
+                if (overlay != null) {
+                    overlay.refreshTarget();
+                }
+                return;
+            }
+            int targetTop = topRelativeToContent(target);
+            rootScrollView.smoothScrollTo(0, Math.max(0, targetTop - dp(32)));
+            if (overlay != null) {
+                rootScrollView.postDelayed(overlay::refreshTarget, 260);
+            }
+        });
+    }
+
+    private int topRelativeToContent(View target) {
+        int top = 0;
+        View current = target;
+        while (current != null && current != contentView) {
+            top += current.getTop();
+            if (!(current.getParent() instanceof View)) {
+                break;
+            }
+            current = (View) current.getParent();
+        }
+        return top;
+    }
+
+    private void returnToOpenHouseMenu() {
+        Intent intent = new Intent(this, OpenHouseHomeActivity.class);
+        intent.putExtra("openhouse_page", "home");
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(intent);
+        finish();
+    }
+
+    private void updateControlPlaneStatusFromSnapshots(List<ServiceSnapshot> snapshots) {
+        ServiceSnapshot controlPlane = findControlPlaneSnapshot(snapshots);
+        if (controlPlane == null) {
+            if (allMode) {
+                setControlPlaneStatus("控制中枢：未在服务列表中找到 service-manager。若运行控制不可用，请点击“修复控制中枢”。");
+                showMaintenanceFallback();
+            }
+            return;
+        }
+        String state = stateLabel(controlPlane.state);
+        String message = firstNonBlank(controlPlane.message, "-");
+        setControlPlaneStatus("控制中枢：" + state + "（service-manager）\n消息：" + message);
+        if (!controlPlane.success || isProblemState(controlPlane.state)) {
+            showMaintenanceFallback();
+        }
+    }
+
+    private ServiceSnapshot findControlPlaneSnapshot(List<ServiceSnapshot> snapshots) {
+        if (snapshots == null) {
+            return null;
+        }
+        for (ServiceSnapshot snapshot : snapshots) {
+            if (snapshot != null && isControlPlaneService(snapshot.id)) {
+                return snapshot;
+            }
+        }
+        return null;
+    }
+
+    private boolean isProblemState(String state) {
+        String normalized = safeTrim(state).toLowerCase(Locale.US);
+        return normalized.isEmpty()
+            || "unknown".equals(normalized)
+            || "error".equals(normalized)
+            || "failed".equals(normalized)
+            || "unhealthy".equals(normalized)
+            || "missing".equals(normalized)
+            || "not-installed".equals(normalized)
+            || "not_installed".equals(normalized);
+    }
+
+    private void setControlPlaneStatus(String text) {
+        if (controlPlaneStatusView != null) {
+            controlPlaneStatusView.setText(trimForStatus(text));
+        }
+    }
+
+    private boolean isCcCodexTutorial() {
+        return TUTORIAL_CC_CODEX_CONTROL.equals(tutorialMode);
+    }
+
+    private boolean isCcCodexTutorialService(String serviceId) {
+        if (!isCcCodexTutorial()) {
+            return false;
+        }
+        String normalized = safeTrim(serviceId).toLowerCase(Locale.US).replace('_', '-');
+        return normalized.equals("cloudcli")
+            || normalized.equals("cloud-cli")
+            || normalized.equals("cc-codex")
+            || normalized.equals("claude-code-ui")
+            || normalized.equals("claudecodeui")
+            || normalized.contains("cloudcli")
+            || normalized.contains("cloud-cli")
+            || normalized.contains("cc-codex")
+            || normalized.contains("claude-code");
+    }
+
+    private boolean isRunningState(String state) {
+        String normalized = safeTrim(state).toLowerCase(Locale.US);
+        return normalized.equals("running")
+            || normalized.equals("active")
+            || normalized.equals("up")
+            || normalized.equals("healthy")
+            || normalized.equals("ready");
     }
 
     private String resultLabel(ServiceManagerActionResult result) {
@@ -981,15 +1288,20 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         final TextView detailView;
         final TextView logView;
         final Button openButton;
+        final Button tutorialActionButton;
+        final Button refreshButton;
         String url;
 
-        ServiceCard(String serviceId, LinearLayout root, TextView titleView, TextView detailView, TextView logView, Button openButton) {
+        ServiceCard(String serviceId, LinearLayout root, TextView titleView, TextView detailView, TextView logView,
+                    Button openButton, Button tutorialActionButton, Button refreshButton) {
             this.serviceId = serviceId;
             this.root = root;
             this.titleView = titleView;
             this.detailView = detailView;
             this.logView = logView;
             this.openButton = openButton;
+            this.tutorialActionButton = tutorialActionButton;
+            this.refreshButton = refreshButton;
             this.url = "";
         }
     }

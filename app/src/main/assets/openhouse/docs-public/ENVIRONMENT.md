@@ -53,9 +53,9 @@ Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubunt
 ## 路径
 
 - Termux 主目录：`/data/data/com.termux/files/home`
-- 工作区：`/data/data/com.termux/files/home/workspace`
-- 官方文档：`/data/data/com.termux/files/home/openhouseai-docs/official`
-- Agent 笔记：`/data/data/com.termux/files/home/openhouseai-docs/agent-notes`
+- 工作区：`~/workspace`
+- 官方文档：`~/openhouseai-docs/official`
+- Agent 笔记：`~/openhouseai-docs/agent-notes`
 - 启动入口配置：`/data/data/com.termux/files/home/.openhouseai`
 - pi 默认目录：`/root/.pi`
 - pi 扩展目录：`/root/.pi/extensions`
@@ -67,6 +67,8 @@ Ubuntu 中如果存在以下短路径，优先使用短路径：
 - `~/openhouseai-docs/agent-notes`
 - `~/openhouseai-links/docs-path.txt`
 - `~/openhouseai-links/workspace-path.txt`
+
+在 Ubuntu 中，`~` 通常就是 `/root`，因此官方文档也可以写成 `/root/openhouseai-docs/official`。pi-web 默认提示词和 pi-agent 文档引用应优先使用 `/root/openhouseai-docs/official/<file>`。
 
 ## 环境检测
 

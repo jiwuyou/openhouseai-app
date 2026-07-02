@@ -46,7 +46,7 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 ```json
 {
   "name": "pi-web",
-  "description": "pi-web 本地 AI 工作台",
+  "description": "pi-agent 本地页面运行时",
   "provider": "process",
   "command": ["openhouse-pi-web-start"],
   "working_dir": "/root/.local/share/openhouseai/pi-web",
@@ -121,15 +121,15 @@ $HOME/.config/openhouseai/components.d/*.json
 
 组件注册只描述入口、标题、分区和 service-manager 绑定关系。不要在组件注册里写 `command`、`shell`、`script` 或 `args`；这些执行细节必须放在 service-manager 的 `ServiceSpec` 中。
 
-一个同时提供 pi-web 打开入口和控制入口的组件示例：
+一个同时提供 `pi-agent` 进入入口和控制入口的组件示例：
 
 ```json
 {
-  "id": "pi-web",
+  "id": "pi-agent",
   "enabled": true,
   "shellMenu": {
-    "title": "AI 工作台",
-    "subtitle": "pi-web 本地工作台",
+    "title": "pi-agent",
+    "subtitle": "默认主 agent",
     "section": "ai",
     "order": 80,
     "visible": true,
@@ -163,6 +163,10 @@ $HOME/.config/openhouseai/components.d/*.json
   "ai": {}
 }
 ```
+
+`pi-agent` 是侧边栏一级入口，和 `SmallPhone`、`cc/codex` 同级。pi-web 是该入口背后的本地页面运行时，不应作为新手教学里的另一个大入口。
+
+`cc/codex` 是统一入口，服务控制可以绑定 `cloudcli`、`cc-connect`、Codex 相关服务或后续 Claude Code 服务。除非产品菜单策略变化，不要把 CloudCLI、Claude Code、Codex 拆成多个一级入口。
 
 标准组件清单使用四层结构：`shellMenu`、`smallphoneApp`、`serviceManager`、`ai`。即使某一层暂时不用，也保留为空对象，方便通过 registry API 校验和同步。
 
@@ -249,6 +253,25 @@ service-manager status pi-web
 ```
 
 如果本地 CLI 不可用，使用 API。
+
+## 运行控制页展示规则
+
+Android 运行控制页应把 service-manager 显示为“控制中枢”。它不是普通业务服务，而是安装完成后的运行期控制平面。
+
+建议状态映射：
+
+| 控制中枢状态 | 对用户说明 | 推荐动作 |
+| --- | --- | --- |
+| 运行中 | 可以管理 `pi-agent`、`cc/codex` 和其它后台服务。 | 无需修复。 |
+| 未运行 | 上层服务可能打不开，但数据通常还在。 | 点击修复或启动运行栈。 |
+| 异常 | 控制平面启动失败或配置/token 不一致。 | 点击修复，完成后刷新页面。 |
+| 无法连接 | App 暂时无法访问本地 API。 | 先修复控制中枢，再看具体服务。 |
+
+修复说明应按“状态 -> 影响 -> 推荐动作 -> 修复过程 -> 结果”呈现。默认不要把长日志直接展示给普通用户；提供“查看详细日志”和“复制诊断信息”即可。
+
+服务启动、关闭、重启或修复后，页面必须提示用户刷新，因为 WebView 内部状态和 service-manager 状态可能不会同步重载。
+
+所有服务控制页都应提供“返回菜单”按钮，避免用户被困在单个服务控制页面。
 
 ## API 调用模板
 

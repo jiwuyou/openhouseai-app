@@ -112,8 +112,8 @@ pi-web 组件入口应使用 WebView：
   "id": "pi-web",
   "enabled": true,
   "shellMenu": {
-    "title": "AI 工作台",
-    "subtitle": "pi-web 本地工作台",
+    "title": "pi-agent",
+    "subtitle": "pi-agent 本地入口",
     "section": "ai",
     "order": 80,
     "visible": true,

@@ -14,7 +14,7 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 | Termux | Android 宿主、底座、救援层 | 修复 Termux/Ubuntu，调用 Android 桥，检查安装链路 |
 | Ubuntu in Termux | 核心 Linux 工作区 | pi、pi-web、开发、Codex、Claude Code、CloudCLI、MCP、项目命令 |
 | service-manager | 安装完成后的控制平面 | 管理后台服务的启动、停止、状态、日志和修复 |
-| pi / pi-web | 默认主 agent 和默认主 UI | 调用插件、展示工具、承载用户和 AI 的主要工作台 |
+| pi-agent / pi-web | 默认主 agent 入口和背后的本地页面运行时 | 调用插件、展示工具、承载用户和 AI 的主要任务会话 |
 
 ## 强制规则
 
@@ -33,7 +33,11 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 侧边栏入口。组件注册只允许描述 UI 入口和 service-manager 引用，不能包含 `command`、
 `shell`、`script` 或 `args`。
 
-默认主 agent 是 pi，默认主 UI 是 pi-web。不要把 Operit 当作默认 agent、默认 UI 或默认插件体系。
+默认主 agent 是 pi。用户侧一级入口名称是 `pi-agent`，与 `SmallPhone`、`cc/codex` 同级；pi-web 是 `pi-agent` 背后的本地页面运行时。不要把 Operit 当作默认 agent、默认 UI 或默认插件体系。
+
+新手教学和面向用户文案应写“进入 pi-agent”，不要把 pi-web 写成需要用户单独理解的一级服务。需要说明技术实现时，可以说 pi-web 由 service-manager 托管，默认本地地址是 `http://127.0.0.1:30141/`。
+
+`cc/codex` 是 CloudCLI / Claude Code / Codex 的统一入口。除非组件注册策略改变，不要把这三者拆成多个一级菜单项。
 
 Termux 侧救援助手是后置预留能力。本轮不安装、不常驻、不进入首次安装关键路径。
 
@@ -168,6 +172,26 @@ proot-distro login ubuntu -- true
 13. 启动 `pi-agent` 和 `pi-web`。
 
 首次安装完成后，service-manager 成为运行期控制平面。首次安装时不要要求用户配置默认模型或 API key。
+
+## pi-agent 首次会话任务
+
+pi-agent 的新手提示词必须能直接引用安装后的稳定文档路径。官方文档目录是：
+
+```text
+/root/openhouseai-docs/official
+~/openhouseai-docs/official
+```
+
+默认提示词引用：
+
+- 首次使用：读 `/root/openhouseai-docs/official/START_HERE.md`、`/root/openhouseai-docs/official/PRODUCT_OVERVIEW.md`、`/root/openhouseai-docs/official/TERMINAL_PROFILES.md`。
+- 配置 Claude Code：读 `/root/openhouseai-docs/official/CLOUDCLI_CLAUDE_CODE.md`、`/root/openhouseai-docs/official/MODEL_API_SETUP.md`。
+- 安装和配置 Hermes：读 `/root/openhouseai-docs/official/HERMES_SETUP.md`、`/root/openhouseai-docs/official/OPTIONAL_EXTERNAL_TOOLS.md`。
+- 熟悉 OpenHouse 整个系统：读 `/root/openhouseai-docs/official/SERVICE_MANAGER.md`、`/root/openhouseai-docs/official/RECOVERY.md`、`/root/openhouseai-docs/official/AI_AGENT_REFERENCE.md`。
+
+默认项目目录建议是 `/root`。这是 Ubuntu root 用户目录，不是 Android 系统根目录。执行文件修改前，应先确认目标路径和用户意图。
+
+默认工具策略是全部开启。只有用户明确要求低风险、只读或关闭工具时，才切换到受限工具模式。
 
 ## 安全确认门槛
 
