@@ -25,7 +25,7 @@
     <string name="openhouse_terminal_tutorial_claude_title">直接使用 Claude</string>
     <string name="openhouse_terminal_tutorial_claude_body" tools:ignore="TypographyDashes">常用 AI 命令主要在 Ubuntu 终端侧运行。先点 ubuntu 进入 Ubuntu，再输入 claude 或 codex，然后按回车使用。</string>
     <string name="openhouse_terminal_tutorial_menu_title">打开菜单</string>
-    <string name="openhouse_terminal_tutorial_menu_body">终端教学到这里结束。请点击右侧“菜单”，回到 OpenHouse 菜单并进入“启动核心服务”阶段。</string>
+    <string name="openhouse_terminal_tutorial_menu_body">终端教学到这里结束。请点击右侧“菜单”，回到 OpenHouse 菜单；核心服务由前台运行策略和运行控制负责。</string>
     <string name="openhouse_terminal_tutorial_runtime_title">Termux 与 Ubuntu</string>
-    <string name="openhouse_terminal_tutorial_runtime_body">当前页默认是 Termux 终端，适合执行 Android 侧命令和维护脚本。点击 ubuntu 进入 Ubuntu 终端，日常使用 Claude Code、Codex、CloudCLI 和 SmallPhone 状态命令通常在 Ubuntu 侧完成；输入 exit 可回到 Termux。详细终端教学后置，现在先继续 OpenHouse 主流程。</string>
+    <string name="openhouse_terminal_tutorial_runtime_body">当前页默认是 Termux 终端，适合执行 Android 侧命令和维护脚本。点击 ubuntu 进入 Ubuntu 终端，日常使用 Claude Code、Codex、CloudCLI 和 SmallPhone 状态命令通常在 Ubuntu 侧完成；输入 exit 可回到 Termux。</string>
 </resources>

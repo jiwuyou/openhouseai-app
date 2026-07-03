@@ -10,6 +10,7 @@ import androidx.viewpager.widget.ViewPager;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.app.activities.OpenHouseHomeActivity;
+import com.termux.app.browser.ControlledBrowserContract;
 import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
 
 import java.util.ArrayList;
@@ -20,7 +21,6 @@ public final class OpenHouseTerminalTutorial {
     private static final int NO_TOOLBAR_PAGE = -1;
     private static final int SHORT_AI_KEYS_PAGE = 0;
     private static final int FULL_AI_COMMANDS_PAGE = 1;
-    private static final String TUTORIAL_START_CORE_SERVICES = "start_core_services";
 
     private final TermuxActivity mActivity;
     private final List<StepSpec> mStepSpecs = new ArrayList<>();
@@ -268,13 +268,12 @@ public final class OpenHouseTerminalTutorial {
         }
     }
 
-    private void finishTutorial(boolean openStartCoreServicesStage) {
+    private void finishTutorial(boolean openOpenHouseMenu) {
         dismiss();
         mActivity.getDrawer().closeDrawers();
-        if (openStartCoreServicesStage) {
+        if (openOpenHouseMenu) {
             Intent intent = new Intent(mActivity, OpenHouseHomeActivity.class);
-            intent.putExtra(OpenHouseHomeActivity.EXTRA_OPENHOUSE_TUTORIAL,
-                TUTORIAL_START_CORE_SERVICES);
+            intent.putExtra(ControlledBrowserContract.EXTRA_OPENHOUSE_PAGE, "home");
             mActivity.startActivity(intent);
             return;
         }

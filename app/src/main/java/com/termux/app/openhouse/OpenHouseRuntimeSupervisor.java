@@ -1,0 +1,378 @@
+package com.termux.app.openhouse;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.os.SystemClock;
+
+import com.termux.app.openhouse.servicecontrol.ServiceManagerActionResult;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerRedactor;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerResult;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceStatus;
+import com.termux.shared.logger.Logger;
+import com.termux.shared.termux.TermuxConstants;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.io.File;
+import java.util.List;
+import java.util.Locale;
+
+public final class OpenHouseRuntimeSupervisor {
+
+    private static final String LOG_TAG = "OpenHouseRuntimeSupervisor";
+    private static final String PREFS_NAME = "openhouse_runtime_control";
+    private static final String KEY_EXIT_ALL_REQUESTED = "exit_all_requested";
+    private static final String[] DEFAULT_LONG_RUNNING_SERVICES = new String[] {
+        "smallphone-frontend-beta",
+        "smallphone-core",
+        "pi-agent",
+        "pi-web",
+        "cloudcli"
+    };
+    private static final long MIN_FOREGROUND_TICK_MS = 15_000L;
+    private static final long MIN_SERVICE_CHECK_MS = 30_000L;
+    private static final long MIN_REPAIR_INTERVAL_MS = 60_000L;
+
+    private static final Object LOCK = new Object();
+    private static long lastForegroundTickMs;
+    private static long lastServiceCheckMs;
+    private static long lastRepairMs;
+    private static int consecutiveControlPlaneFailures;
+
+    private final Context context;
+    private final ServiceManagerControlClient controlClient;
+
+    public OpenHouseRuntimeSupervisor(Context context) {
+        this.context = context.getApplicationContext();
+        this.controlClient = new ServiceManagerControlClient(this.context);
+    }
+
+    public MaintenanceReport runForegroundMaintenanceTick() {
+        return maintainDefaultServices(false);
+    }
+
+    public MaintenanceReport ensureDefaultLongRunningServices() {
+        clearExitAllRequested(context);
+        return maintainDefaultServices(true);
+    }
+
+    public static boolean isExitAllRequested(Context context) {
+        if (context == null) {
+            return false;
+        }
+        return prefs(context).getBoolean(KEY_EXIT_ALL_REQUESTED, false);
+    }
+
+    public static void setExitAllRequested(Context context, boolean requested) {
+        if (context == null) {
+            return;
+        }
+        prefs(context).edit().putBoolean(KEY_EXIT_ALL_REQUESTED, requested).apply();
+    }
+
+    public static void clearExitAllRequested(Context context) {
+        setExitAllRequested(context, false);
+    }
+
+    private MaintenanceReport maintainDefaultServices(boolean userInitiated) {
+        long now = SystemClock.elapsedRealtime();
+        if (!userInitiated && !isForegroundMaintenanceEligible()) {
+            return MaintenanceReport.skipped("核心运行栈尚未完成安装，前台保活本次跳过。");
+        }
+        if (!userInitiated && isExitAllRequested(context)) {
+            return MaintenanceReport.skipped("已执行全部退出；本次前台保活暂停，重新打开 App 或点击恢复默认核心服务后再拉起。");
+        }
+        if (!userInitiated && shouldSkipForegroundTick(now)) {
+            return MaintenanceReport.skipped("前台保活已节流，跳过本次轻量检查。");
+        }
+
+        ServiceManagerResult health = controlClient.healthCheck();
+        if (!health.success) {
+            int failureCount = recordControlPlaneFailure();
+            StringBuilder message = new StringBuilder();
+            appendLine(message, "service-manager 暂不可达：" + safeText(health.message));
+            appendLine(message, "连续失败次数：" + failureCount);
+            boolean repairAttempted = false;
+            boolean repairSuccess = false;
+            if (failureCount >= 2 && shouldAttemptRepair(now)) {
+                repairAttempted = true;
+                OpenHouseMaintainerRunner.Result repair = runControlPlaneRepair();
+                repairSuccess = repair.isSuccess();
+                appendLine(message, repairSuccess
+                    ? "已执行控制中枢轻量修复。"
+                    : "控制中枢修复失败，退出码 " + repair.exitCode + formatOutput(repair.output));
+                if (repairSuccess) {
+                    health = controlClient.healthCheck();
+                    if (health.success) {
+                        resetControlPlaneFailures();
+                        MaintenanceReport services = startDefaultServices(true, true);
+                        return services.withControlPlane(true, repairAttempted, repairSuccess)
+                            .withMessage(message + "\n" + services.message);
+                    }
+                }
+            }
+            return MaintenanceReport.failure(
+                message.toString(),
+                false,
+                repairAttempted,
+                repairSuccess,
+                failureCount,
+                failureCount >= 3
+            );
+        }
+
+        resetControlPlaneFailures();
+        boolean shouldCheckServices;
+        synchronized (LOCK) {
+            shouldCheckServices = userInitiated || now - lastServiceCheckMs >= MIN_SERVICE_CHECK_MS;
+            if (shouldCheckServices) {
+                lastServiceCheckMs = now;
+            }
+        }
+        if (!shouldCheckServices) {
+            return MaintenanceReport.success("service-manager 可达；默认长期服务检查已节流。", true, false, false);
+        }
+        return startDefaultServices(userInitiated, false).withControlPlane(true, false, false);
+    }
+
+    private MaintenanceReport startDefaultServices(boolean userInitiated, boolean afterRepair) {
+        StringBuilder details = new StringBuilder();
+        int startedCount = 0;
+        int skippedCount = 0;
+        int failedCount = 0;
+
+        ServiceManagerActionResult groupStart = controlClient.runGroupAction("local-stack", "start");
+        if (groupStart.success()) {
+            appendLine(details, "local-stack：已提交启动。");
+        } else if (userInitiated || afterRepair) {
+            appendLine(details, "local-stack：启动失败或未注册，继续逐个检查。"
+                + optionalMessage(groupStart.message()));
+        }
+
+        for (String serviceId : DEFAULT_LONG_RUNNING_SERVICES) {
+            try {
+                ServiceManagerServiceStatus status = controlClient.getStatus(serviceId);
+                if (isRunningState(status.state())) {
+                    skippedCount++;
+                    appendLine(details, serviceId + "：已运行。");
+                    continue;
+                }
+                ServiceManagerActionResult start = controlClient.runAction(serviceId, "start");
+                if (start.success()) {
+                    startedCount++;
+                    appendLine(details, serviceId + "：已提交启动。");
+                } else {
+                    failedCount++;
+                    appendLine(details, serviceId + "：启动失败。" + optionalMessage(start.message()));
+                }
+            } catch (Exception e) {
+                failedCount++;
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to ensure default service: " + serviceId, e);
+                appendLine(details, serviceId + "：状态检查失败。" + safeText(e.getMessage()));
+            }
+        }
+
+        boolean success = failedCount == 0;
+        String summary = "默认核心服务检查完成：启动 " + startedCount
+            + "，已运行 " + skippedCount
+            + "，失败 " + failedCount + "。";
+        String message = details.length() == 0 ? summary : summary + "\n" + details;
+        return new MaintenanceReport(
+            success,
+            false,
+            true,
+            false,
+            false,
+            0,
+            false,
+            startedCount,
+            skippedCount,
+            failedCount,
+            message,
+            Collections.unmodifiableList(copyDefaultServices())
+        );
+    }
+
+    private OpenHouseMaintainerRunner.Result runControlPlaneRepair() {
+        synchronized (LOCK) {
+            lastRepairMs = SystemClock.elapsedRealtime();
+        }
+        return new OpenHouseMaintainerRunner(context)
+            .run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0);
+    }
+
+    private boolean isForegroundMaintenanceEligible() {
+        File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");
+        File serviceManagerConfig = new File(
+            TermuxConstants.TERMUX_HOME_DIR_PATH,
+            ".config/openhouseai/service-manager/config.json"
+        );
+        File serviceSpecsDir = new File(
+            TermuxConstants.TERMUX_HOME_DIR_PATH,
+            ".config/openhouseai/service-manager/services.d"
+        );
+        File componentsDir = new File(
+            TermuxConstants.TERMUX_HOME_DIR_PATH,
+            ".config/openhouseai/components.d"
+        );
+        return bash.isFile()
+            && serviceManagerConfig.isFile()
+            && hasJsonFile(serviceSpecsDir)
+            && hasJsonFile(componentsDir);
+    }
+
+    private static boolean hasJsonFile(File dir) {
+        File[] files = dir == null ? null : dir.listFiles((file, name) ->
+            file.isFile() && name != null && name.endsWith(".json"));
+        return files != null && files.length > 0;
+    }
+
+    private static boolean shouldSkipForegroundTick(long now) {
+        synchronized (LOCK) {
+            if (now - lastForegroundTickMs < MIN_FOREGROUND_TICK_MS) {
+                return true;
+            }
+            lastForegroundTickMs = now;
+            return false;
+        }
+    }
+
+    private static boolean shouldAttemptRepair(long now) {
+        synchronized (LOCK) {
+            return now - lastRepairMs >= MIN_REPAIR_INTERVAL_MS;
+        }
+    }
+
+    private static int recordControlPlaneFailure() {
+        synchronized (LOCK) {
+            consecutiveControlPlaneFailures++;
+            return consecutiveControlPlaneFailures;
+        }
+    }
+
+    private static void resetControlPlaneFailures() {
+        synchronized (LOCK) {
+            consecutiveControlPlaneFailures = 0;
+        }
+    }
+
+    private static boolean isRunningState(String state) {
+        String normalized = safeTrim(state).toLowerCase(Locale.US);
+        return "running".equals(normalized)
+            || "active".equals(normalized)
+            || "up".equals(normalized)
+            || "healthy".equals(normalized)
+            || "ready".equals(normalized);
+    }
+
+    private static SharedPreferences prefs(Context context) {
+        return context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    private static List<String> copyDefaultServices() {
+        List<String> values = new ArrayList<>();
+        Collections.addAll(values, DEFAULT_LONG_RUNNING_SERVICES);
+        return values;
+    }
+
+    private static String optionalMessage(String message) {
+        String clean = safeText(message);
+        return clean.isEmpty() ? "" : " " + clean;
+    }
+
+    private static String formatOutput(String output) {
+        String clean = safeText(output);
+        return clean.isEmpty() ? "" : "\n" + clean;
+    }
+
+    private static void appendLine(StringBuilder builder, String line) {
+        if (builder == null || line == null || line.isEmpty()) {
+            return;
+        }
+        if (builder.length() > 0) {
+            builder.append('\n');
+        }
+        builder.append(line);
+    }
+
+    private static String safeText(String value) {
+        return ServiceManagerRedactor.redact(safeTrim(value));
+    }
+
+    private static String safeTrim(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    public static final class MaintenanceReport {
+        public final boolean success;
+        public final boolean skipped;
+        public final boolean controlPlaneReachable;
+        public final boolean repairAttempted;
+        public final boolean repairSuccess;
+        public final int failureCount;
+        public final boolean userActionRequired;
+        public final int startedCount;
+        public final int skippedCount;
+        public final int failedCount;
+        public final String message;
+        public final List<String> defaultServiceIds;
+
+        private MaintenanceReport(
+            boolean success,
+            boolean skipped,
+            boolean controlPlaneReachable,
+            boolean repairAttempted,
+            boolean repairSuccess,
+            int failureCount,
+            boolean userActionRequired,
+            int startedCount,
+            int skippedCount,
+            int failedCount,
+            String message,
+            List<String> defaultServiceIds
+        ) {
+            this.success = success;
+            this.skipped = skipped;
+            this.controlPlaneReachable = controlPlaneReachable;
+            this.repairAttempted = repairAttempted;
+            this.repairSuccess = repairSuccess;
+            this.failureCount = failureCount;
+            this.userActionRequired = userActionRequired;
+            this.startedCount = startedCount;
+            this.skippedCount = skippedCount;
+            this.failedCount = failedCount;
+            this.message = ServiceManagerRedactor.redact(message);
+            this.defaultServiceIds = defaultServiceIds == null ? Collections.emptyList() : defaultServiceIds;
+        }
+
+        static MaintenanceReport skipped(String message) {
+            return new MaintenanceReport(true, true, false, false, false, 0, false, 0, 0, 0, message, copyDefaultServices());
+        }
+
+        static MaintenanceReport success(String message, boolean controlPlaneReachable, boolean repairAttempted, boolean repairSuccess) {
+            return new MaintenanceReport(true, false, controlPlaneReachable, repairAttempted, repairSuccess, 0, false, 0, 0, 0, message, copyDefaultServices());
+        }
+
+        static MaintenanceReport failure(
+            String message,
+            boolean controlPlaneReachable,
+            boolean repairAttempted,
+            boolean repairSuccess,
+            int failureCount,
+            boolean userActionRequired
+        ) {
+            return new MaintenanceReport(false, false, controlPlaneReachable, repairAttempted, repairSuccess, failureCount, userActionRequired, 0, 0, 1, message, copyDefaultServices());
+        }
+
+        MaintenanceReport withControlPlane(boolean reachable, boolean repairAttempted, boolean repairSuccess) {
+            return new MaintenanceReport(success, skipped, reachable, repairAttempted, repairSuccess,
+                failureCount, userActionRequired, startedCount, skippedCount, failedCount, message, defaultServiceIds);
+        }
+
+        MaintenanceReport withMessage(String message) {
+            return new MaintenanceReport(success, skipped, controlPlaneReachable, repairAttempted, repairSuccess,
+                failureCount, userActionRequired, startedCount, skippedCount, failedCount, message, defaultServiceIds);
+        }
+    }
+}

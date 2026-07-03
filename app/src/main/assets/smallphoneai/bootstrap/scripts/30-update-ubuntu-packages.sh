@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/_retry-profile.sh" ]; then
+  # shellcheck source=_retry-profile.sh
+  . "$SCRIPT_DIR/_retry-profile.sh"
+fi
+
 log() {
   printf '[SmallPhoneAI] %s\n' "$*"
 }
@@ -51,13 +57,24 @@ run_environment_probe() {
 
 run_ubuntu_logged() {
   if is_current_ubuntu; then
-    run_logged "$@"
+    run_logged env \
+      OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+      SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+      SMALLPHONEAI_UBUNTU_APT_MIRROR="${SMALLPHONEAI_UBUNTU_APT_MIRROR:-}" \
+      "$@"
   else
-    run_logged proot-distro login ubuntu -- "$@"
+    run_logged proot-distro login ubuntu -- env \
+      OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+      SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+      SMALLPHONEAI_UBUNTU_APT_MIRROR="${SMALLPHONEAI_UBUNTU_APT_MIRROR:-}" \
+      "$@"
   fi
 }
 
 run_environment_probe
+if command -v smallphoneai_log_retry_profile >/dev/null 2>&1; then
+  smallphoneai_log_retry_profile '[SmallPhoneAI]'
+fi
 
 if ! is_current_ubuntu && { ! command -v proot-distro >/dev/null 2>&1 || ! proot-distro login ubuntu -- true >/dev/null 2>&1; }; then
   log "Ubuntu 不可用，请先运行：bash bootstrap.sh ubuntu"
@@ -71,6 +88,9 @@ codename="${VERSION_CODENAME:-noble}"
 if [ -n "${SMALLPHONEAI_UBUNTU_APT_MIRROR:-}" ]; then
   selected_mirror="$SMALLPHONEAI_UBUNTU_APT_MIRROR"
   echo "使用指定 Ubuntu apt 镜像源：$selected_mirror"
+elif [ "${OPENHOUSE_RETRY_MODE:-normal}" = "cn" ]; then
+  selected_mirror="https://mirrors.ustc.edu.cn/ubuntu-ports"
+  echo "国内网络重试：使用固定 Ubuntu apt 镜像源：$selected_mirror"
 else
   selected_mirror=""
   best_time=""

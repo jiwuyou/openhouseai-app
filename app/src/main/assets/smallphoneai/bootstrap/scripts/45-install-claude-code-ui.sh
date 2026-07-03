@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/_retry-profile.sh" ]; then
+  # shellcheck source=_retry-profile.sh
+  . "$SCRIPT_DIR/_retry-profile.sh"
+fi
+
 log() {
   printf '[SmallPhoneAI] %s\n' "$*"
 }
@@ -10,17 +16,33 @@ run_logged() {
   "$@"
 }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 is_current_ubuntu() {
   [ -f /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release
 }
 
 run_ubuntu_logged() {
   if is_current_ubuntu; then
-    run_logged "$@"
+    run_logged env \
+      OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+      SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+      NPM_REGISTRY="${NPM_REGISTRY:-}" \
+      NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-${NPM_REGISTRY:-}}" \
+      SMALLPHONEAI_NPM_FETCH_RETRIES="${SMALLPHONEAI_NPM_FETCH_RETRIES:-}" \
+      SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT:-}" \
+      SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT:-}" \
+      SMALLPHONEAI_NPM_FETCH_TIMEOUT="${SMALLPHONEAI_NPM_FETCH_TIMEOUT:-}" \
+      "$@"
   else
-    run_logged proot-distro login ubuntu -- "$@"
+    run_logged proot-distro login ubuntu -- env \
+      OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+      SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+      NPM_REGISTRY="${NPM_REGISTRY:-}" \
+      NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-${NPM_REGISTRY:-}}" \
+      SMALLPHONEAI_NPM_FETCH_RETRIES="${SMALLPHONEAI_NPM_FETCH_RETRIES:-}" \
+      SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT:-}" \
+      SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT:-}" \
+      SMALLPHONEAI_NPM_FETCH_TIMEOUT="${SMALLPHONEAI_NPM_FETCH_TIMEOUT:-}" \
+      "$@"
   fi
 }
 
@@ -34,6 +56,10 @@ if [ -f "$SCRIPT_DIR/44-install-claude-code.sh" ]; then
   run_logged bash "$SCRIPT_DIR/44-install-claude-code.sh"
 else
   log "未找到 44-install-claude-code.sh，继续安装 CloudCLI，但 Claude Code 可能需要单独安装。"
+fi
+
+if command -v smallphoneai_log_retry_profile >/dev/null 2>&1; then
+  smallphoneai_log_retry_profile '[SmallPhoneAI]'
 fi
 
 log "正在 Ubuntu 内安装或检查 ClaudeCodeUI / CloudCLI。"

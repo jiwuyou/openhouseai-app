@@ -20,10 +20,20 @@ oh_ensure_claude_native_path
 start_cloudcli_service() {
   oh_run_ubuntu_bash 'set -euo pipefail
 SM_CONFIG="$HOME/.config/openhouseai/service-manager/config.json"
-SM_URL="http://127.0.0.1:20087"
 [ -r "$SM_CONFIG" ] || { echo "service-manager config not found: $SM_CONFIG" >&2; exit 1; }
 SM_TOKEN="$(sed -n '\''s/.*"auth_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'\'' "$SM_CONFIG" | head -n 1)"
 [ -n "$SM_TOKEN" ] || { echo "service-manager token not found" >&2; exit 1; }
+SM_ADDR="$(sed -n '\''s/.*"\(listen_addr\|listenAddr\|base_url\|baseUrl\|url\)"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\2/p'\'' "$SM_CONFIG" | head -n 1)"
+[ -n "$SM_ADDR" ] || { echo "service-manager listen address not found" >&2; exit 1; }
+case "$SM_ADDR" in
+  http://0.0.0.0*) SM_URL="http://127.0.0.1${SM_ADDR#http://0.0.0.0}" ;;
+  https://0.0.0.0*) SM_URL="https://127.0.0.1${SM_ADDR#https://0.0.0.0}" ;;
+  http://*|https://*) SM_URL="$SM_ADDR" ;;
+  :*) SM_URL="http://127.0.0.1$SM_ADDR" ;;
+  0.0.0.0:*) SM_URL="http://127.0.0.1:${SM_ADDR#0.0.0.0:}" ;;
+  *) SM_URL="http://$SM_ADDR" ;;
+esac
+SM_URL="${SM_URL%/}"
 curl_cfg="$(mktemp)"
 trap '\''rm -f "$curl_cfg"'\'' EXIT
 printf '\''header = "Authorization: Bearer %s"\n'\'' "$SM_TOKEN" > "$curl_cfg"

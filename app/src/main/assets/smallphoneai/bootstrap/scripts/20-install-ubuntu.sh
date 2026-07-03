@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/_retry-profile.sh" ]; then
+  # shellcheck source=_retry-profile.sh
+  . "$SCRIPT_DIR/_retry-profile.sh"
+fi
+
 log() {
   printf '[SmallPhoneAI] %s\n' "$*"
 }
@@ -50,6 +56,9 @@ run_environment_probe() {
 }
 
 run_environment_probe
+if command -v smallphoneai_log_retry_profile >/dev/null 2>&1; then
+  smallphoneai_log_retry_profile '[SmallPhoneAI]'
+fi
 
 if is_current_ubuntu; then
   log "当前已在 Ubuntu 内，无需安装 Ubuntu rootfs。"
@@ -69,6 +78,10 @@ ubuntu_rootfs_candidates() {
     printf '%s\n' "$SMALLPHONEAI_UBUNTU_ROOTFS_URL"
     return 0
   fi
+  if [ -n "${SMALLPHONEAI_UBUNTU_ROOTFS_URLS:-}" ]; then
+    printf '%s\n' "$SMALLPHONEAI_UBUNTU_ROOTFS_URLS"
+    return 0
+  fi
 
   cat <<'EOF'
 https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
@@ -84,6 +97,33 @@ select_ubuntu_rootfs_url() {
 
   if ! command -v curl >/dev/null 2>&1; then
     log "缺少 curl，无法测速 Ubuntu rootfs 下载源。"
+    return 1
+  fi
+
+  if command -v smallphoneai_is_cn_retry >/dev/null 2>&1 && smallphoneai_is_cn_retry; then
+    log "国内网络重试：按固定顺序探测 Ubuntu rootfs 下载源。"
+    while IFS= read -r url; do
+      [ -n "$url" ] || continue
+      log "探测：$url"
+      metrics="$(
+        curl -L --connect-timeout 8 --max-time 20 -r 0-1048575 \
+          -o /dev/null \
+          -w 'code=%{http_code} size=%{size_download}' \
+          "$url" 2>/dev/null || true
+      )"
+      code="$(printf '%s\n' "$metrics" | awk '{for (i=1;i<=NF;i++) if ($i ~ /^code=/) {sub(/^code=/,"",$i); print $i; exit}}')"
+      size="$(printf '%s\n' "$metrics" | awk '{for (i=1;i<=NF;i++) if ($i ~ /^size=/) {sub(/^size=/,"",$i); printf "%.0f\n", $i; exit}}')"
+      size="${size:-0}"
+      if { [ "$code" = "200" ] || [ "$code" = "206" ]; } && [ "$size" -gt 0 ]; then
+        SELECTED_UBUNTU_ROOTFS_URL="$url"
+        log "选择 Ubuntu rootfs 国内固定源：$url"
+        return 0
+      fi
+      log "Ubuntu rootfs 国内源不可用：$url"
+    done <<EOF
+$(ubuntu_rootfs_candidates)
+EOF
+    log "国内固定 Ubuntu rootfs 源均不可用。"
     return 1
   fi
 

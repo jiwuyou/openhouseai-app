@@ -80,7 +80,16 @@ proot-distro login ubuntu -- true
 判断 service-manager 是否可用：
 
 ```bash
-curl -fsS --max-time 2 http://127.0.0.1:20087/api/v1/health
+SM_CONFIG="$HOME/.config/openhouseai/service-manager/config.json"
+SM_ADDR="$(sed -n 's/.*"\(listen_addr\|listenAddr\|base_url\|baseUrl\|url\)"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\2/p' "$SM_CONFIG" | head -n 1)"
+case "$SM_ADDR" in
+  http://0.0.0.0*) SM_URL="http://127.0.0.1${SM_ADDR#http://0.0.0.0}" ;;
+  http://*|https://*) SM_URL="$SM_ADDR" ;;
+  :*) SM_URL="http://127.0.0.1$SM_ADDR" ;;
+  0.0.0.0:*) SM_URL="http://127.0.0.1:${SM_ADDR#0.0.0.0:}" ;;
+  *) SM_URL="http://$SM_ADDR" ;;
+esac
+curl -fsS --max-time 2 "${SM_URL%/}/api/v1/health"
 ```
 
 ## 恢复 service-manager 和运行栈

@@ -33,6 +33,7 @@ public final class OpenHouseComponentRegistry {
     private static final String MENU_OVERRIDES_FILE = "menu-overrides.json";
     private static final String REGISTRY_STATE_FILE = "registry-state.json";
     private static final String CONTROL_ENTRY_TYPE_SERVICE_CONTROL = "service-control";
+    private static final String DEFAULT_PI_AGENT_URL = "http://127.0.0.1:30141/";
     private static final String DEFAULT_CLOUDCLI_URL = "http://127.0.0.1:23083/";
     private static final String DEFAULT_SMALLPHONE_URL = "http://127.0.0.1:22082/";
     private static final String DEFAULT_HOME_TARGET = "pi-web";
@@ -254,6 +255,25 @@ public final class OpenHouseComponentRegistry {
 
     private static List<OpenHouseComponent> createBuiltinComponents() {
         List<OpenHouseComponent> components = new ArrayList<>();
+        components.add(createComponent(
+            "pi-agent",
+            "pi-agent",
+            "首次配置助手和插件入口",
+            "ai",
+            10,
+            OpenHouseComponent.EntryType.WEBVIEW,
+            DEFAULT_PI_AGENT_URL,
+            null,
+            "控制",
+            true,
+            true,
+            true,
+            true,
+            "builtin",
+            Arrays.asList("pi-agent", "pi-web"),
+            Arrays.asList(
+                "service-manager://services/pi-agent",
+                "service-manager://services/pi-web")));
         components.add(createComponent(
             "cloudcli",
             "cc/codex",

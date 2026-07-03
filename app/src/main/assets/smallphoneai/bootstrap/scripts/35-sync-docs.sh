@@ -433,7 +433,7 @@ bash bootstrap.sh status
 | cc-connect bridge | `tcp://127.0.0.1:21010` |
 | cc-connect management | `tcp://127.0.0.1:21020` |
 | cc-connect webhook/callback | `tcp://127.0.0.1:21040` |
-| service-manager | `http://127.0.0.1:20087/` |
+| service-manager | 以 `$HOME/.config/openhouseai/service-manager/config.json` 中的监听地址为准，默认通常是 `http://127.0.0.1:20087/` |
 
 控制测试应用端口：
 

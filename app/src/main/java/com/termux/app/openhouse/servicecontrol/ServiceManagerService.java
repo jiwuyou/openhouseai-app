@@ -41,10 +41,10 @@ public final class ServiceManagerService {
         this.provider = provider == null ? "" : provider;
         this.state = state == null ? "" : state;
         this.pid = pid;
-        this.message = message == null ? "" : message;
+        this.message = ServiceManagerRedactor.redact(message);
         this.url = normalizeUrl(url);
         this.tags = tags == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(tags));
-        this.raw = raw == null ? "" : raw;
+        this.raw = ServiceManagerRedactor.redact(raw);
     }
 
     static ServiceManagerService fromJson(JSONObject json) {

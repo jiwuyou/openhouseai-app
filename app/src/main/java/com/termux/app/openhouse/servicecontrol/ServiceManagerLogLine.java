@@ -23,8 +23,8 @@ public final class ServiceManagerLogLine {
         return new ServiceManagerLogLine(
             firstNonBlank(json.optString("time", ""), json.optString("timestamp", "")),
             json.optString("stream", ""),
-            firstNonBlank(json.optString("message", ""), json.optString("line", "")),
-            json.toString()
+            ServiceManagerRedactor.redact(firstNonBlank(json.optString("message", ""), json.optString("line", ""))),
+            ServiceManagerRedactor.redact(json.toString())
         );
     }
 

@@ -258,7 +258,7 @@ reason
 | Ubuntu | `proot-distro login ubuntu -- true`。 |
 | Node | Ubuntu 内 `node --version`、`npm --version`。 |
 | 文档 | `/root/openhouse/docs` 存在且 P0 文档可读。 |
-| service-manager | `http://127.0.0.1:20087` API 可访问。 |
+| service-manager | OpenHouse 专用配置中的 `listen_addr` / `base_url` 对应 API 可访问；默认通常是 `http://127.0.0.1:20087`。 |
 | pi-agent | service-manager 状态和本地端口健康检查一致。 |
 | cloudcli | 目标端口 `23083` 可访问，未配置模型时返回可解释页面或状态。 |
 | smallphone | service-manager 状态和本地健康端口一致。 |

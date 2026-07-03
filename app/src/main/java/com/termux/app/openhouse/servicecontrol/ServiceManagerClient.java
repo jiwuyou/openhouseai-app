@@ -50,7 +50,7 @@ public final class ServiceManagerClient {
     private final String baseUrl;
 
     public ServiceManagerClient() {
-        this(DEFAULT_BASE_URL);
+        this(resolveConfiguredBaseUrl());
     }
 
     public ServiceManagerClient(String baseUrl) {
@@ -76,6 +76,29 @@ public final class ServiceManagerClient {
                 .build();
         } catch (Exception e) {
             return errorResult(e, "service-manager 服务列表读取失败");
+        }
+    }
+
+    public ServiceManagerResult healthCheck() {
+        try {
+            HttpResponse response = requestWithoutToken("GET", "/api/v1/health", 1200, 1800);
+            if (!response.isSuccess()) {
+                response = requestWithoutToken("GET", "/health", 1200, 1800);
+            }
+            if (!response.isSuccess()) {
+                return ServiceManagerResult.fromHttpFailure(
+                    response.code,
+                    response.body,
+                    "service-manager health check failed"
+                );
+            }
+            return ServiceManagerResult.builder(true)
+                .code(response.code)
+                .body(response.body)
+                .message("service-manager health check ok")
+                .build();
+        } catch (Exception e) {
+            return errorResult(e, "service-manager health check failed");
         }
     }
 
@@ -148,6 +171,40 @@ public final class ServiceManagerClient {
         }
     }
 
+    public ServiceManagerResult runGroupAction(String groupId, String action) {
+        String cleanGroupId = sanitizeServiceId(groupId);
+        String cleanAction = sanitizeAction(action);
+        if (cleanGroupId.isEmpty()) {
+            return ServiceManagerResult.invalid("服务组 ID 无效。");
+        }
+        if (cleanAction.isEmpty()) {
+            return ServiceManagerResult.invalid("服务组动作无效。");
+        }
+        try {
+            HttpResponse response = request(
+                "POST",
+                "/api/v1/groups/" + cleanGroupId + "/" + cleanAction
+            );
+            if (!response.isSuccess()) {
+                return ServiceManagerResult.fromHttpFailure(
+                    response.code,
+                    response.body,
+                    cleanGroupId + " 服务组" + cleanActionLabel(cleanAction) + "失败"
+                ).withTarget(cleanGroupId, cleanAction);
+            }
+            return ServiceManagerResult.builder(true)
+                .code(response.code)
+                .body(response.body)
+                .message(cleanGroupId + " 服务组已提交" + cleanActionLabel(cleanAction) + "请求。")
+                .serviceId(cleanGroupId)
+                .action(cleanAction)
+                .build();
+        } catch (Exception e) {
+            return errorResult(e, cleanGroupId + " 服务组" + cleanActionLabel(cleanAction) + "失败")
+                .withTarget(cleanGroupId, cleanAction);
+        }
+    }
+
     public ServiceManagerResult getLogs(String serviceId, int limit) {
         String cleanServiceId = sanitizeServiceId(serviceId);
         if (cleanServiceId.isEmpty()) {
@@ -181,6 +238,26 @@ public final class ServiceManagerClient {
 
     public ServiceManagerResult getLogs(String serviceId) {
         return getLogs(serviceId, DEFAULT_LOG_LIMIT);
+    }
+
+    public static String resolveConfiguredBaseUrl() {
+        for (ServiceManagerConfigCandidate candidate : configCandidates()) {
+            if (!candidate.file.isFile()) {
+                continue;
+            }
+            try {
+                JSONObject json = new JSONObject(readTextFile(candidate.file));
+                for (String endpoint : endpointValuesFromConfig(json)) {
+                    String baseUrl = normalizeBaseUrl(endpoint);
+                    if (!baseUrl.isEmpty()) {
+                        return baseUrl;
+                    }
+                }
+            } catch (IOException | JSONException ignored) {
+                // Stale or half-written config. Try the next candidate.
+            }
+        }
+        return DEFAULT_BASE_URL;
     }
 
     public static ServiceManagerTarget parseServiceManagerRef(String ref) {
@@ -291,24 +368,32 @@ public final class ServiceManagerClient {
         }
     }
 
+    private HttpResponse requestWithoutToken(
+        String method,
+        String path,
+        int connectTimeoutMs,
+        int readTimeoutMs
+    ) throws IOException {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(baseUrl + path).openConnection();
+            connection.setConnectTimeout(connectTimeoutMs);
+            connection.setReadTimeout(readTimeoutMs);
+            connection.setRequestMethod(method);
+            connection.setRequestProperty("Accept", "application/json");
+            int code = connection.getResponseCode();
+            String body = readConnectionBody(connection, code >= 400);
+            return new HttpResponse(code, body);
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
     public static String resolveTokenForBaseUrl(String baseUrl) {
         String normalizedBaseUrl = normalizeBaseUrl(baseUrl);
-        ServiceManagerConfigCandidate[] candidates = new ServiceManagerConfigCandidate[] {
-            new ServiceManagerConfigCandidate(
-                new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/openhouseai/service-manager/config.json"),
-                true
-            ),
-            new ServiceManagerConfigCandidate(
-                new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH,
-                    "var/lib/proot-distro/installed-rootfs/ubuntu/root/.config/service-manager/config.json"),
-                false
-            ),
-            new ServiceManagerConfigCandidate(
-                new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/service-manager/config.json"),
-                false
-            )
-        };
-        for (ServiceManagerConfigCandidate candidate : candidates) {
+        for (ServiceManagerConfigCandidate candidate : configCandidates()) {
             if (!candidate.file.isFile()) {
                 continue;
             }
@@ -324,6 +409,24 @@ public final class ServiceManagerClient {
             }
         }
         return "";
+    }
+
+    private static ServiceManagerConfigCandidate[] configCandidates() {
+        return new ServiceManagerConfigCandidate[] {
+            new ServiceManagerConfigCandidate(
+                new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/openhouseai/service-manager/config.json"),
+                true
+            ),
+            new ServiceManagerConfigCandidate(
+                new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH,
+                    "var/lib/proot-distro/installed-rootfs/ubuntu/root/.config/service-manager/config.json"),
+                false
+            ),
+            new ServiceManagerConfigCandidate(
+                new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/service-manager/config.json"),
+                false
+            )
+        };
     }
 
     private static boolean configMatchesBaseUrl(
@@ -661,10 +764,28 @@ public final class ServiceManagerClient {
 
     private static String normalizeBaseUrl(String value) {
         String normalized = safeTrim(value);
+        if (normalized.isEmpty()) {
+            return DEFAULT_BASE_URL;
+        }
+        if (!normalized.contains("://")) {
+            normalized = "http://" + addressForUrl(normalized);
+        }
+        normalized = normalizeWildcardHost(normalized);
         if (normalized.endsWith("/")) {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
-        return normalized.isEmpty() ? DEFAULT_BASE_URL : normalized;
+        return normalized;
+    }
+
+    private static String normalizeWildcardHost(String value) {
+        String normalized = safeTrim(value);
+        if (normalized.startsWith("http://0.0.0.0")) {
+            return "http://127.0.0.1" + normalized.substring("http://0.0.0.0".length());
+        }
+        if (normalized.startsWith("https://0.0.0.0")) {
+            return "https://127.0.0.1" + normalized.substring("https://0.0.0.0".length());
+        }
+        return normalized;
     }
 
     private static final class ServiceManagerConfigCandidate {

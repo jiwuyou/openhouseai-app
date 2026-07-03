@@ -1,6 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/_retry-profile.sh" ]; then
+  # shellcheck source=_retry-profile.sh
+  . "$SCRIPT_DIR/_retry-profile.sh"
+fi
+
+if ! command -v smallphoneai_retry_mode >/dev/null 2>&1; then
+  smallphoneai_retry_mode() {
+    local raw
+    raw="${OPENHOUSE_RETRY_MODE:-${SMALLPHONEAI_RETRY_MODE:-normal}}"
+    raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+    case "$raw" in
+      cn|china|mainland|domestic|china-mainland) printf 'cn' ;;
+      *) printf 'normal' ;;
+    esac
+  }
+
+  smallphoneai_is_cn_retry() {
+    [ "$(smallphoneai_retry_mode)" = "cn" ]
+  }
+
+  smallphoneai_maybe_rewrite_github_url() {
+    local url="$1"
+    local prefix="${SMALLPHONEAI_GITHUB_PROXY_PREFIX:-${OPENHOUSE_GITHUB_PROXY_PREFIX:-}}"
+    if smallphoneai_is_cn_retry && [ -n "$prefix" ]; then
+      case "$url" in
+        https://github.com/*|https://raw.githubusercontent.com/*)
+          printf '%s%s\n' "$prefix" "$url"
+          return 0
+          ;;
+      esac
+    fi
+    printf '%s\n' "$url"
+  }
+fi
+
 log() {
   printf '[SmallPhoneAI] %s\n' "$*"
 }
@@ -56,6 +92,17 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
         SMALLPHONEAI_COMPONENTS_STRICT="${SMALLPHONEAI_COMPONENTS_STRICT:-1}" \
         SMALLPHONEAI_COMPONENT_TARGETS="${SMALLPHONEAI_COMPONENT_TARGETS:-}" \
         SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
+        OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+        SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+        NPM_REGISTRY="${NPM_REGISTRY:-}" \
+        NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-${NPM_REGISTRY:-}}" \
+        SMALLPHONEAI_NODE_DIST_BASE="${SMALLPHONEAI_NODE_DIST_BASE:-}" \
+        SMALLPHONEAI_NPM_FETCH_RETRIES="${SMALLPHONEAI_NPM_FETCH_RETRIES:-}" \
+        SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT:-}" \
+        SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT:-}" \
+        SMALLPHONEAI_NPM_FETCH_TIMEOUT="${SMALLPHONEAI_NPM_FETCH_TIMEOUT:-}" \
+        SMALLPHONEAI_GITHUB_PROXY_PREFIX="${SMALLPHONEAI_GITHUB_PROXY_PREFIX:-}" \
+        OPENHOUSE_GITHUB_PROXY_PREFIX="${OPENHOUSE_GITHUB_PROXY_PREFIX:-}" \
         SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-$HOME}" \
         SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
@@ -81,6 +128,14 @@ strict="${SMALLPHONEAI_COMPONENTS_STRICT:-1}"
 component_targets="${SMALLPHONEAI_COMPONENT_TARGETS:-}"
 force_payload_refresh="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}"
 failures=0
+
+if command -v smallphoneai_log_retry_profile >/dev/null 2>&1; then
+  smallphoneai_log_retry_profile '[SmallPhoneAI]'
+else
+  export OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}"
+  export SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-$OPENHOUSE_RETRY_MODE}"
+  log "网络重试模式：$(smallphoneai_retry_mode)。"
+fi
 
 normalize_target() {
   case "$1" in
@@ -348,6 +403,9 @@ validate_payload_source() {
   fi
 
   if [ -f "$source" ]; then
+    if ! validate_payload_manifest_checksum "$name" "$source" "$payload_name"; then
+      return 1
+    fi
     if ! tar -"$tar_list_flags" "$source" >/dev/null 2>&1; then
       warn "$name: APK payload archive is not a readable tar/tar.gz: $source"
       return 1
@@ -370,6 +428,116 @@ validate_payload_source() {
 
   warn "$name: missing APK-bundled payload: $source"
   return 1
+}
+
+payload_manifest_file() {
+  local candidate
+  for candidate in "$payload_root/payload-manifest.json" "$payload_root/manifest.json"; do
+    [ -f "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+payload_manifest_entry() {
+  local payload_name="$1"
+  local archive_name="$2"
+  local manifest
+  manifest="$(payload_manifest_file || true)"
+  [ -n "$manifest" ] || return 1
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$manifest" "$payload_name" "$archive_name" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+manifest = Path(sys.argv[1])
+payload_id = sys.argv[2]
+archive = sys.argv[3]
+doc = json.loads(manifest.read_text(encoding="utf-8"))
+items = doc.get("payloads") or doc.get("components") or []
+for item in items:
+    if item.get("id") == payload_id or item.get("archive") == archive:
+        print(f"{item.get('sha256','')}\t{item.get('size','')}")
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+    return $?
+  fi
+
+  if command -v node >/dev/null 2>&1; then
+    node - "$manifest" "$payload_name" "$archive_name" <<'NODE'
+const fs = require("fs");
+const manifest = process.argv[2];
+const payloadId = process.argv[3];
+const archive = process.argv[4];
+const doc = JSON.parse(fs.readFileSync(manifest, "utf8"));
+const items = doc.payloads || doc.components || [];
+const item = items.find((entry) => entry.id === payloadId || entry.archive === archive);
+if (!item) process.exit(1);
+process.stdout.write(`${item.sha256 || ""}\t${item.size || ""}\n`);
+NODE
+    return $?
+  fi
+
+  warn "缺少 python3/node，无法读取 payload manifest。"
+  return 1
+}
+
+file_sha256() {
+  local path="$1"
+  if command -v smallphoneai_sha256_file >/dev/null 2>&1; then
+    smallphoneai_sha256_file "$path"
+    return $?
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+    return 0
+  fi
+  if command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$path" | awk '{print $NF}'
+    return 0
+  fi
+  return 1
+}
+
+validate_payload_manifest_checksum() {
+  local name="$1"
+  local source="$2"
+  local payload_name="$3"
+  local archive_name entry expected_sha expected_size actual_sha actual_size
+
+  archive_name="$(basename "$source")"
+  entry="$(payload_manifest_entry "$payload_name" "$archive_name" || true)"
+  if [ -z "$entry" ]; then
+    warn "$name: payload manifest 中找不到条目，拒绝安装以避免未校验制品：$payload_name / $archive_name"
+    return 1
+  fi
+
+  expected_sha="$(printf '%s' "$entry" | awk -F '\t' '{print $1}')"
+  expected_size="$(printf '%s' "$entry" | awk -F '\t' '{print $2}')"
+  if [ -n "$expected_size" ]; then
+    actual_size="$(wc -c < "$source" | tr -d '[:space:]')"
+    if [ "$actual_size" != "$expected_size" ]; then
+      warn "$name: payload size 校验失败：$archive_name expected=$expected_size actual=$actual_size"
+      return 1
+    fi
+  fi
+
+  if [ -n "$expected_sha" ]; then
+    actual_sha="$(file_sha256 "$source")" || {
+      warn "$name: 无法计算 payload sha256：$archive_name"
+      return 1
+    }
+    if [ "$actual_sha" != "$expected_sha" ]; then
+      warn "$name: payload sha256 校验失败：$archive_name expected=$expected_sha actual=$actual_sha"
+      return 1
+    fi
+    log "$name: payload sha256 校验通过：$archive_name $actual_sha"
+  else
+    warn "$name: payload manifest 缺少 sha256：$archive_name"
+    return 1
+  fi
 }
 
 find_payload_source() {
@@ -469,6 +637,7 @@ prepare_component_from_git_update() {
   local name="$1"
   local dir="$2"
   local url="$3"
+  local effective_url="$url"
 
   if [ -d "$dir/.git" ] || [ -d "$dir" ]; then
     if [ "$allow_git_update" = "1" ] && [ -d "$dir/.git" ]; then
@@ -492,14 +661,18 @@ prepare_component_from_git_update() {
     return 1
   fi
 
+  if command -v smallphoneai_maybe_rewrite_github_url >/dev/null 2>&1; then
+    effective_url="$(smallphoneai_maybe_rewrite_github_url "$url")"
+  fi
+
   if ! command -v git >/dev/null 2>&1; then
-    warn "$name: 缺少 git，无法自动拉取 $url。"
+    warn "$name: 缺少 git，无法自动拉取 $effective_url。"
     return 1
   fi
 
   mkdir -p "$(dirname "$dir")"
-  log "$name: 可选更新路径正在拉取仓库 $url -> $dir"
-  git clone --depth 1 "$url" "$dir"
+  log "$name: 可选更新路径正在拉取仓库 $effective_url -> $dir"
+  git clone --depth 1 "$effective_url" "$dir"
 }
 
 prepare_component() {
@@ -689,6 +862,7 @@ install_node24_runtime() {
   local node_tmp="$HOME/.local/node-download"
   local node_dist_base="${SMALLPHONEAI_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v24.x}"
   local node_tarball
+  local shasums_file
 
   if ! command -v curl >/dev/null 2>&1; then
     warn "缺少 curl，无法安装 Node 24 runtime。"
@@ -704,9 +878,11 @@ install_node24_runtime() {
   fi
 
   mkdir -p "$node_root" "$node_tmp"
-  log "正在从 Node 官方源安装 Node 24 runtime（不访问 GitHub）：$node_dist_base"
-  node_tarball="$(curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors "$node_dist_base/SHASUMS256.txt" \
-    | awk -v arch="linux-$arch.tar.xz" '$2 ~ arch "$" { print $2; exit }')"
+  log "正在从 Node dist 源安装 Node 24 runtime（不访问 GitHub）：$node_dist_base"
+  shasums_file="$node_tmp/SHASUMS256.txt"
+  curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors "$node_dist_base/SHASUMS256.txt" \
+    -o "$shasums_file"
+  node_tarball="$(awk -v arch="linux-$arch.tar.xz" '$2 ~ arch "$" { print $2; exit }' "$shasums_file")"
   if [ -z "$node_tarball" ]; then
     warn "无法解析 Node 24 linux-$arch tarball。"
     return 1
@@ -714,6 +890,10 @@ install_node24_runtime() {
 
   curl -fL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors \
     "$node_dist_base/$node_tarball" -o "$node_tmp/$node_tarball"
+  (
+    cd "$node_tmp"
+    grep -F " $node_tarball" "$shasums_file" | sha256sum -c -
+  )
   rm -rf "$node_root"
   mkdir -p "$node_root"
   tar -xJf "$node_tmp/$node_tarball" -C "$node_root" --strip-components=1

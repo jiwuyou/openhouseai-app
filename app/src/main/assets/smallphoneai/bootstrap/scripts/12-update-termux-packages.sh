@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/_retry-profile.sh" ]; then
+  # shellcheck source=_retry-profile.sh
+  . "$SCRIPT_DIR/_retry-profile.sh"
+fi
+
 log() {
   printf '[SmallPhoneAI] %s\n' "$*"
 }
@@ -58,6 +64,11 @@ termux_main_repo_override() {
 }
 
 termux_main_repo_candidates() {
+  if command -v smallphoneai_is_cn_retry >/dev/null 2>&1 && smallphoneai_is_cn_retry; then
+    smallphoneai_cn_termux_main_repo_candidates
+    return 0
+  fi
+
   cat <<'EOF'
 https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main
 https://mirrors.ustc.edu.cn/termux/apt/termux-main
@@ -247,6 +258,12 @@ termux_repo_retry_order() {
   override="$(termux_main_repo_override)"
   if [ -n "$override" ]; then
     printf '%s\n' "$override"
+    if command -v smallphoneai_is_cn_retry >/dev/null 2>&1 && smallphoneai_is_cn_retry; then
+      for repo in $(termux_main_repo_candidates); do
+        [ "$repo" = "$override" ] && continue
+        printf '%s\n' "$repo"
+      done
+    fi
     return 0
   fi
 
@@ -288,6 +305,9 @@ install_termux_base_packages() {
 }
 
 run_environment_probe
+if command -v smallphoneai_log_retry_profile >/dev/null 2>&1; then
+  smallphoneai_log_retry_profile '[SmallPhoneAI]'
+fi
 
 if ! is_termux; then
   log "Termux 基础包阶段只能在 Termux 外层运行。当前运行环境：$(detect_smallphoneai_runtime)"

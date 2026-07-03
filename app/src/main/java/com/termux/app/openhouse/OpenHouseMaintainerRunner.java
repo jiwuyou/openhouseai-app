@@ -2,6 +2,7 @@ package com.termux.app.openhouse;
 
 import android.content.Context;
 
+import com.termux.app.openhouse.servicecontrol.ServiceManagerRedactor;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
@@ -154,7 +155,8 @@ public final class OpenHouseMaintainerRunner {
         }
 
         String redacted = SECRET_PATTERN.matcher(value).replaceAll("$1$2***");
-        return OPENAI_STYLE_KEY_PATTERN.matcher(redacted).replaceAll("sk-***");
+        redacted = OPENAI_STYLE_KEY_PATTERN.matcher(redacted).replaceAll("sk-***");
+        return ServiceManagerRedactor.redact(redacted);
     }
 
     private String buildWrapperScript(String stageLabel, String stageSlug, String scriptBody) {

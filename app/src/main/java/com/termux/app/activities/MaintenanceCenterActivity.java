@@ -125,7 +125,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final String PREF_USE_REMOTE_BOOTSTRAP = "maintenance_use_remote_bootstrap";
     private static final String DEFAULT_MAINTENANCE_MANIFEST_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/openhouseai-manifest.json";
     private static final String DEFAULT_BOOTSTRAP_URL = "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh";
-    private static final String SERVICE_MANAGER_BASE_URL = "http://127.0.0.1:20087";
     private static final String DEFAULT_USER_PLUGIN_PATH = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openhouseai/plugins/user/openhouseai-manifest.json";
     private static final int DEFAULT_LOCAL_MAINTENANCE_WEB_PORT = 38423;
     private static final int MIN_LOCAL_MAINTENANCE_WEB_PORT = 10000;
@@ -1186,7 +1185,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         TextView descriptionView = createDynamicBodyText(
             "来自组件注册的 service-manager target。这里不会执行 maintainer shell，只调用本机 service-manager REST API。"
-                + "\n服务端：" + SERVICE_MANAGER_BASE_URL);
+                + "\n服务端：" + serviceManagerBaseUrl());
         LinearLayout.LayoutParams descriptionParams = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1395,11 +1394,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private ServiceManagerResponse serviceManagerRequest(String method, String path) throws IOException, JSONException {
-        String token = resolveServiceManagerToken();
+        String baseUrl = serviceManagerBaseUrl();
+        String token = resolveServiceManagerToken(baseUrl);
         if (token.isEmpty()) {
             throw new IOException("找不到 service-manager token。请先完成运行栈安装或启动 service-manager。");
         }
-        HttpURLConnection connection = (HttpURLConnection) new URL(SERVICE_MANAGER_BASE_URL + path).openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URL(baseUrl + path).openConnection();
         connection.setConnectTimeout(2500);
         connection.setReadTimeout(7000);
         connection.setRequestMethod(method);
@@ -1411,8 +1411,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         return new ServiceManagerResponse(code, body);
     }
 
-    private String resolveServiceManagerToken() throws IOException, JSONException {
-        return ServiceManagerClient.resolveTokenForBaseUrl(SERVICE_MANAGER_BASE_URL);
+    private String serviceManagerBaseUrl() {
+        return ServiceManagerClient.resolveConfiguredBaseUrl();
+    }
+
+    private String resolveServiceManagerToken(String baseUrl) throws IOException, JSONException {
+        return ServiceManagerClient.resolveTokenForBaseUrl(baseUrl);
     }
 
     private String readConnectionBody(HttpURLConnection connection, boolean errorBody) throws IOException {
@@ -3771,7 +3775,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             body.append("维护终端：").append(getString(R.string.status_terminal_starting)).append('\n');
         }
         body.append("阶段执行：").append(commandInFlight ? "进行中" : "空闲").append('\n');
-        body.append("运行控制：安装完成后由 service-manager 管理后台服务，地址 ").append(SERVICE_MANAGER_BASE_URL).append('\n');
+        body.append("运行控制：安装完成后由 service-manager 管理后台服务，地址 ").append(serviceManagerBaseUrl()).append('\n');
         body.append("核心入口：pi-agent、运行控制、终端；cc/codex 由 pi-agent 后置安装配置").append('\n');
         body.append(permissionOverview).append('\n');
         body.append("产品文档：").append(TermuxConstants.TERMUX_HOME_DIR_PATH).append("/openhouseai-docs").append('\n');
@@ -4427,8 +4431,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private boolean isSmallPhoneStackReachable() {
+        String serviceManagerBaseUrl = serviceManagerBaseUrl();
         return runTermuxCommand(
-            "curl -fsS --max-time 2 http://127.0.0.1:20087/api/v1/health >/dev/null 2>&1"
+            "curl -fsS --max-time 2 " + shellQuote(serviceManagerBaseUrl + "/api/v1/health") + " >/dev/null 2>&1"
                 + " && curl -fsS --max-time 2 http://127.0.0.1:22082/ >/dev/null 2>&1"
                 + " && curl -fsS --max-time 2 http://127.0.0.1:22000/ >/dev/null 2>&1"
         ).isSuccess();

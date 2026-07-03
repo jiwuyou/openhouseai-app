@@ -95,6 +95,8 @@ public final class OpenHouseInstallController {
     private volatile long observedProgressStageStartedAtMs;
     private volatile int autoRetryAttemptCount;
     private volatile boolean autoRetryInProgress;
+    private volatile OpenHouseInstallState.RetryMode currentRetryMode = OpenHouseInstallState.RetryMode.GENERAL;
+    private volatile int currentAttempt = 0;
 
     public interface Listener {
         void onInstallStateChanged(OpenHouseInstallState state);
@@ -143,10 +145,8 @@ public final class OpenHouseInstallController {
             if (hasFreshRunningMarker()) {
                 updateState(readRunningStateFromLog());
             } else {
-                updateState(new OpenHouseInstallState(
-                    false,
-                    false,
-                    true,
+                updateState(buildState(
+                    OpenHouseInstallState.Status.FAILED,
                     state.percent,
                     "初始化状态异常",
                     "安装进程状态已过期，请查看详细进度后重新初始化。",
@@ -166,11 +166,18 @@ public final class OpenHouseInstallController {
     }
 
     public boolean startOneClickInstall() {
-        return startOneClickInstallInternal(true);
+        return startOneClickInstall(OpenHouseInstallState.RetryMode.GENERAL);
     }
 
-    private boolean startOneClickInstallInternal(boolean resetAutoRetryCount) {
+    public boolean startOneClickInstall(OpenHouseInstallState.RetryMode retryMode) {
+        return startOneClickInstallInternal(true, retryMode, 0);
+    }
+
+    private boolean startOneClickInstallInternal(boolean resetAutoRetryCount,
+                                                OpenHouseInstallState.RetryMode retryMode,
+                                                int requestedAttempt) {
         synchronized (processLock) {
+            OpenHouseInstallState.RetryMode resolvedRetryMode = normalizeRetryMode(retryMode);
             if (resetAutoRetryCount) {
                 autoRetryAttemptCount = 0;
                 autoRetryInProgress = false;
@@ -183,7 +190,7 @@ public final class OpenHouseInstallController {
                     return false;
                 }
             }
-            if (currentProcess != null || (state.running && !autoRetryInProgress)) {
+            if (currentProcess != null || (state.running && !autoRetryInProgress && requestedAttempt <= 0)) {
                 return false;
             }
 
@@ -191,25 +198,26 @@ public final class OpenHouseInstallController {
                 return false;
             }
 
-            updateState(new OpenHouseInstallState(
-                true,
-                false,
-                false,
+            currentRetryMode = resolvedRetryMode;
+            currentAttempt = requestedAttempt > 0 ? requestedAttempt : nextAttemptForNewRun();
+
+            updateState(buildState(
+                autoRetryInProgress || currentAttempt > 1
+                    ? OpenHouseInstallState.Status.RETRYING
+                    : OpenHouseInstallState.Status.RUNNING,
                 1,
                 autoRetryInProgress ? "正在自动重试安装" : "准备初始化",
                 autoRetryInProgress
                     ? "系统正在第 " + autoRetryAttemptCount + "/" + MAX_AUTO_RETRY_ATTEMPTS + " 次自动重试，会从第一个未完成阶段继续。"
-                    : "正在生成一键初始化任务。",
+                    : retryModeStartDetail(currentRetryMode),
                 MANIFEST_FULL_SLUG
             ));
 
             try {
                 File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");
                 if (!bash.isFile()) {
-                    updateState(new OpenHouseInstallState(
-                        false,
-                        false,
-                        true,
+                    updateState(buildState(
+                        OpenHouseInstallState.Status.FAILED,
                         0,
                         "初始化失败",
                         "Termux 基础环境尚未安装完成，缺少 bash。",
@@ -250,10 +258,8 @@ public final class OpenHouseInstallController {
                 autoRetryInProgress = false;
                 appendCompletionMarkerIfMissing(1);
                 clearRunningMarker();
-                updateState(new OpenHouseInstallState(
-                    false,
-                    false,
-                    true,
+                updateState(buildState(
+                    OpenHouseInstallState.Status.FAILED,
                     state.percent,
                     "初始化失败",
                     "无法启动初始化任务：" + safeMessage(e),
@@ -265,12 +271,24 @@ public final class OpenHouseInstallController {
     }
 
     public boolean forceRestartOneClickInstall() {
+        return forceRestartOneClickInstall(currentRetryMode);
+    }
+
+    public boolean forceRestartOneClickInstall(OpenHouseInstallState.RetryMode retryMode) {
         synchronized (processLock) {
+            int nextAttempt = Math.max(1, Math.max(currentAttempt, state.attempt) + 1);
+            currentRetryMode = normalizeRetryMode(retryMode);
             stopTrackedInstallProcess();
             terminateExistingInstallProcesses();
             clearRunningMarker();
-            updateState(OpenHouseInstallState.idle());
-            return startOneClickInstallInternal(true);
+            updateState(buildState(
+                OpenHouseInstallState.Status.RETRYING,
+                Math.max(1, state.percent),
+                "正在强制重试当前阶段",
+                "只会终止卡住的安装任务并清理运行标记，不会删除用户数据、模型配置或工作目录。",
+                state.currentStageSlug
+            ));
+            return startOneClickInstallInternal(true, currentRetryMode, nextAttempt);
         }
     }
 
@@ -284,10 +302,8 @@ public final class OpenHouseInstallController {
         if (statusRepository.isCoreDeploymentComplete()) {
             autoRetryAttemptCount = 0;
             autoRetryInProgress = false;
-            OpenHouseInstallState completedState = new OpenHouseInstallState(
-                false,
-                true,
-                false,
+            OpenHouseInstallState completedState = buildState(
+                OpenHouseInstallState.Status.SKIPPED,
                 100,
                 "初始化安装完成",
                 "已检测到 Linux 环境、Node.js、pi-agent、pi-web 和 service-manager 控制平面安装完成，无需再次执行初始化。",
@@ -309,10 +325,8 @@ public final class OpenHouseInstallController {
             }
 
             currentProcess.destroy();
-            updateState(new OpenHouseInstallState(
-                false,
-                false,
-                true,
+            updateState(buildState(
+                OpenHouseInstallState.Status.FAILED,
                 state.percent,
                 "初始化已停止",
                 "一键初始化已停止，可稍后重新执行。",
@@ -454,10 +468,12 @@ public final class OpenHouseInstallController {
 
             autoRetryAttemptCount++;
             autoRetryInProgress = true;
-            updateState(new OpenHouseInstallState(
-                true,
-                false,
-                false,
+            currentRetryMode = state.retryMode == null
+                ? currentRetryMode
+                : state.retryMode;
+            currentAttempt = Math.max(2, Math.max(currentAttempt, state.attempt) + 1);
+            updateState(buildState(
+                OpenHouseInstallState.Status.RETRYING,
                 Math.max(1, state.percent),
                 "系统正在确认安装状态",
                 reason + "正在进行第 " + autoRetryAttemptCount + "/" + MAX_AUTO_RETRY_ATTEMPTS + " 次自动重试。",
@@ -466,13 +482,11 @@ public final class OpenHouseInstallController {
             stopTrackedInstallProcess();
             terminateExistingInstallProcesses();
             clearRunningMarker();
-            boolean started = startOneClickInstallInternal(false);
+            boolean started = startOneClickInstallInternal(false, currentRetryMode, currentAttempt);
             if (!started) {
                 autoRetryInProgress = false;
-                updateState(new OpenHouseInstallState(
-                    false,
-                    false,
-                    true,
+                updateState(buildState(
+                    OpenHouseInstallState.Status.FAILED,
                     Math.max(1, state.percent),
                     "自动重试未能启动",
                     "系统已尝试自动恢复安装，但未能重新启动任务。请查看详细进度，或确认后使用“强制重启并继续”。",
@@ -490,7 +504,13 @@ public final class OpenHouseInstallController {
         }
         Integer exitCode = readLastExitCode(logTail);
         if (exitCode == null) {
-            return OpenHouseInstallState.idle();
+            return buildState(
+                OpenHouseInstallState.Status.PENDING,
+                0,
+                "等待初始化",
+                "点击“一键初始化”后会开始准备 Linux 环境和安装 AI 工具。",
+                MANIFEST_FULL_SLUG
+            );
         }
         return buildFinishedState(logTail, exitCode);
     }
@@ -504,6 +524,12 @@ public final class OpenHouseInstallController {
         }
 
         RunningMarker runningMarker = readRunningMarker();
+        if (runningMarker.retryMode != null) {
+            currentRetryMode = runningMarker.retryMode;
+        }
+        if (runningMarker.attempt > 0) {
+            currentAttempt = runningMarker.attempt;
+        }
         StageMarkerInfo stageMarkerInfo = inferCurrentStageMarker(logTail);
         Stage stage = stageMarkerInfo.found
             ? stageMarkerInfo.stage
@@ -518,13 +544,17 @@ public final class OpenHouseInstallController {
         }
         int percent = Math.max(simulateRunningPercent(stage, runningMarker), currentRunningPercentFloor());
         return new OpenHouseInstallState(
-            true,
-            false,
-            false,
+            autoRetryInProgress
+                ? OpenHouseInstallState.Status.RETRYING
+                : OpenHouseInstallState.Status.RUNNING,
             percent,
             stage.phaseLabel,
             detail,
-            stage.slug
+            stage.slug,
+            currentRetryMode,
+            Math.max(1, currentAttempt),
+            getManifestLogPath(),
+            ""
         );
     }
 
@@ -536,10 +566,8 @@ public final class OpenHouseInstallController {
 
     private OpenHouseInstallState buildFinishedState(String logTail, int exitCode) {
         if (exitCode == 0) {
-            return new OpenHouseInstallState(
-                false,
-                true,
-                false,
+            return buildState(
+                OpenHouseInstallState.Status.SUCCEEDED,
                 100,
                 "初始化安装完成",
                 "Ubuntu、Node.js、pi-agent、pi-web 和 OpenHouse 基础运行栈已安装完成；Codex、Claude Code、CloudCLI 可稍后由 pi-agent 引导安装配置。",
@@ -558,10 +586,8 @@ public final class OpenHouseInstallController {
                 + detail
                 + " 如确认长时间没有变化，可使用“强制重启并继续”。";
         }
-        return new OpenHouseInstallState(
-            false,
-            false,
-            true,
+        return buildState(
+            OpenHouseInstallState.Status.FAILED,
             failurePercent(stage),
             "初始化失败",
             detail,
@@ -827,6 +853,54 @@ public final class OpenHouseInstallController {
         });
     }
 
+    private OpenHouseInstallState buildState(OpenHouseInstallState.Status status,
+                                             int percent,
+                                             String phaseLabel,
+                                             String detailText,
+                                             String currentStageSlug) {
+        OpenHouseInstallState.Status resolvedStatus = status == null
+            ? OpenHouseInstallState.Status.PENDING
+            : status;
+        String safeDetail = redactSecrets(detailText == null ? "" : detailText);
+        return new OpenHouseInstallState(
+            resolvedStatus,
+            percent,
+            phaseLabel,
+            safeDetail,
+            currentStageSlug,
+            currentRetryMode,
+            resolvedStatus == OpenHouseInstallState.Status.PENDING ? 0 : Math.max(1, currentAttempt),
+            getManifestLogPath(),
+            resolvedStatus == OpenHouseInstallState.Status.FAILED ? safeDetail : ""
+        );
+    }
+
+    private OpenHouseInstallState.RetryMode normalizeRetryMode(OpenHouseInstallState.RetryMode retryMode) {
+        return retryMode == null ? OpenHouseInstallState.RetryMode.GENERAL : retryMode;
+    }
+
+    private int nextAttemptForNewRun() {
+        OpenHouseInstallState current = state;
+        if (current == null || current.status == OpenHouseInstallState.Status.PENDING) {
+            return Math.max(1, currentAttempt <= 0 ? 1 : currentAttempt);
+        }
+        if (current.failed || current.status == OpenHouseInstallState.Status.RETRYING) {
+            return Math.max(1, Math.max(currentAttempt, current.attempt) + 1);
+        }
+        return Math.max(1, current.attempt > 0 ? current.attempt : currentAttempt > 0 ? currentAttempt : 1);
+    }
+
+    private String retryModeStartDetail(OpenHouseInstallState.RetryMode retryMode) {
+        if (retryMode == OpenHouseInstallState.RetryMode.CN) {
+            return "正在生成国内网络重试任务，会使用固定国内镜像路径并从第一个未完成阶段继续。";
+        }
+        return "正在生成常规安装任务，会复用已有缓存并从第一个未完成阶段继续。";
+    }
+
+    private String shellRetryMode(OpenHouseInstallState.RetryMode retryMode) {
+        return retryMode == OpenHouseInstallState.RetryMode.CN ? "cn" : "normal";
+    }
+
     private File ensureLogDir() {
         File logDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".maintainer-logs");
         if (!logDir.exists()) {
@@ -837,6 +911,10 @@ public final class OpenHouseInstallController {
 
     private File getManifestLogFile() {
         return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".maintainer-logs/" + MANIFEST_FULL_SLUG + ".log");
+    }
+
+    private String getManifestLogPath() {
+        return getManifestLogFile().getAbsolutePath();
     }
 
     private File getRunningMarkerFile() {
@@ -854,6 +932,9 @@ public final class OpenHouseInstallController {
         long stageStartedAtMs = 0L;
         boolean remoteSchedule = false;
         Stage stage = null;
+        OpenHouseInstallState.RetryMode retryMode = OpenHouseInstallState.RetryMode.GENERAL;
+        int attempt = 0;
+        String logPath = getManifestLogPath();
         String content = readSmallFile(marker, 4096);
         String[] lines = content.split("\\r?\\n");
         for (String rawLine : lines) {
@@ -881,13 +962,20 @@ public final class OpenHouseInstallController {
                 stage = Stage.fromSlug(value);
             } else if ("remote_schedule".equals(key)) {
                 remoteSchedule = "1".equals(value) || "true".equalsIgnoreCase(value);
+            } else if ("retry_mode".equals(key)) {
+                retryMode = OpenHouseInstallState.RetryMode.fromValue(value);
+            } else if ("attempt".equals(key)) {
+                long parsedAttempt = parsePositiveLong(value);
+                attempt = parsedAttempt > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) parsedAttempt;
+            } else if ("log_path".equals(key)) {
+                logPath = value;
             }
         }
 
         if (startedAtMs <= 0L) {
             startedAtMs = lastModifiedAtMs;
         }
-        return new RunningMarker(true, startedAtMs, stage, stageStartedAtMs, lastModifiedAtMs, remoteSchedule);
+        return new RunningMarker(true, startedAtMs, stage, stageStartedAtMs, lastModifiedAtMs, remoteSchedule, retryMode, attempt, logPath);
     }
 
     private String readSmallFile(File file, int byteLimit) {
@@ -923,6 +1011,9 @@ public final class OpenHouseInstallController {
             outputStream.write("stage_slug=prepare\n".getBytes(StandardCharsets.UTF_8));
             outputStream.write(("stage_started_at_ms=" + startedAtMs + "\n").getBytes(StandardCharsets.UTF_8));
             outputStream.write("remote_schedule=1\n".getBytes(StandardCharsets.UTF_8));
+            outputStream.write(("retry_mode=" + currentRetryMode.value + "\n").getBytes(StandardCharsets.UTF_8));
+            outputStream.write(("attempt=" + Math.max(1, currentAttempt) + "\n").getBytes(StandardCharsets.UTF_8));
+            outputStream.write(("log_path=" + getManifestLogPath() + "\n").getBytes(StandardCharsets.UTF_8));
         }
     }
 
@@ -963,6 +1054,8 @@ public final class OpenHouseInstallController {
         }
         try (FileOutputStream outputStream = new FileOutputStream(logFile, false)) {
             outputStream.write("开始执行 SmallPhoneAI 一键初始化。\n".getBytes(StandardCharsets.UTF_8));
+            String modeLine = "重试模式：" + currentRetryMode.label + "；尝试次数：" + Math.max(1, currentAttempt) + "\n";
+            outputStream.write(modeLine.getBytes(StandardCharsets.UTF_8));
             if (autoRetryAttemptCount > 0) {
                 String retryLine = "系统正在第 " + autoRetryAttemptCount + "/" + MAX_AUTO_RETRY_ATTEMPTS
                     + " 次自动重试，会从第一个未完成阶段继续。\n";
@@ -983,6 +1076,21 @@ public final class OpenHouseInstallController {
         environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
         environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
         environment.put("OPENHOUSE_RUN_STARTED_AT_MS", Long.toString(startedAtMs));
+        String shellRetryMode = shellRetryMode(currentRetryMode);
+        environment.put("OPENHOUSE_RETRY_MODE", shellRetryMode);
+        environment.put("OPENHOUSEAI_RETRY_MODE", shellRetryMode);
+        environment.put("SMALLPHONEAI_RETRY_MODE", shellRetryMode);
+        environment.put("OPENHOUSE_INSTALL_ATTEMPT", Integer.toString(Math.max(1, currentAttempt)));
+        environment.put("OPENHOUSE_INSTALL_LOG_PATH", getManifestLogPath());
+        if (currentRetryMode == OpenHouseInstallState.RetryMode.CN) {
+            environment.put("OPENHOUSEAI_TERMUX_MAIN_REPO", "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main");
+            environment.put("SMALLPHONEAI_TERMUX_MAIN_REPO", "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main");
+            environment.put("OPENHOUSEAI_UBUNTU_ROOTFS_URL", "https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz");
+            environment.put("OPENHOUSEAI_NODE_DIST_BASE", "https://cdn.npmmirror.com/binaries/node/latest-v24.x");
+            environment.put("SMALLPHONEAI_NODE_DIST_BASE", "https://cdn.npmmirror.com/binaries/node/latest-v24.x");
+            environment.put("NPM_REGISTRY", "https://registry.npmmirror.com/");
+            environment.put("NPM_CONFIG_REGISTRY", "https://registry.npmmirror.com/");
+        }
         if (runtimeSync != null) {
             environment.put("SMALLPHONEAI_BOOTSTRAP", runtimeSync.bootstrapFile.getAbsolutePath());
             environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_DIR", runtimeSync.payloadDir.getAbsolutePath());
@@ -1064,6 +1172,11 @@ public final class OpenHouseInstallController {
         builder.append("export TERM=\"xterm-256color\"\n");
         builder.append("export OPENHOUSEAI_NO_AUTO_UBUNTU=1\n");
         builder.append("export TERMUX_NO_AUTO_UBUNTU=1\n");
+        builder.append("export OPENHOUSE_RETRY_MODE=\"${OPENHOUSE_RETRY_MODE:-normal}\"\n");
+        builder.append("export OPENHOUSEAI_RETRY_MODE=\"${OPENHOUSEAI_RETRY_MODE:-$OPENHOUSE_RETRY_MODE}\"\n");
+        builder.append("export SMALLPHONEAI_RETRY_MODE=\"${SMALLPHONEAI_RETRY_MODE:-$OPENHOUSE_RETRY_MODE}\"\n");
+        builder.append("export OPENHOUSE_INSTALL_ATTEMPT=\"${OPENHOUSE_INSTALL_ATTEMPT:-1}\"\n");
+        builder.append("export OPENHOUSE_INSTALL_LOG_PATH=\"${OPENHOUSE_INSTALL_LOG_PATH:-$HOME/.maintainer-logs/").append(MANIFEST_FULL_SLUG).append(".log}\"\n");
         builder.append("export SMALLPHONEAI_BOOTSTRAP=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n");
         builder.append("export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n");
         builder.append("if [ -f \"$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST:-$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json}\"; fi\n");
@@ -1078,7 +1191,7 @@ public final class OpenHouseInstallController {
         builder.append("current_epoch_ms(){ local seconds; seconds=\"$(date +%s 2>/dev/null || true)\"; if [ -n \"$seconds\" ]; then printf '%s000' \"$seconds\"; else printf '0'; fi; }\n");
         builder.append("RUN_STARTED_AT_MS=\"${OPENHOUSE_RUN_STARTED_AT_MS:-$(current_epoch_ms)}\"\n");
         builder.append("REMOTE_SCHEDULE_ACTIVE=0\n");
-        builder.append("mark_stage_marker(){ case \"$1\" in __OPENHOUSE_INSTALL_STAGE__:*) local payload=\"${1#__OPENHOUSE_INSTALL_STAGE__:}\"; local stage_slug=\"${payload%%:*}\"; local now_ms=\"$(current_epoch_ms)\"; { printf 'started_at_ms=%s\\n' \"$RUN_STARTED_AT_MS\"; printf 'stage_slug=%s\\n' \"$stage_slug\"; printf 'stage_started_at_ms=%s\\n' \"$now_ms\"; printf 'remote_schedule=%s\\n' \"${REMOTE_SCHEDULE_ACTIVE:-1}\"; } > \"$RUNNING_FILE\" || true;; esac; }\n");
+        builder.append("mark_stage_marker(){ case \"$1\" in __OPENHOUSE_INSTALL_STAGE__:*) local payload=\"${1#__OPENHOUSE_INSTALL_STAGE__:}\"; local stage_slug=\"${payload%%:*}\"; local now_ms=\"$(current_epoch_ms)\"; { printf 'started_at_ms=%s\\n' \"$RUN_STARTED_AT_MS\"; printf 'stage_slug=%s\\n' \"$stage_slug\"; printf 'stage_started_at_ms=%s\\n' \"$now_ms\"; printf 'remote_schedule=%s\\n' \"${REMOTE_SCHEDULE_ACTIVE:-1}\"; printf 'retry_mode=%s\\n' \"${OPENHOUSE_RETRY_MODE:-normal}\"; printf 'attempt=%s\\n' \"${OPENHOUSE_INSTALL_ATTEMPT:-1}\"; printf 'log_path=%s\\n' \"${OPENHOUSE_INSTALL_LOG_PATH:-$LOG_FILE}\"; } > \"$RUNNING_FILE\" || true;; esac; }\n");
         builder.append("log(){ printf '%s\\n' \"$1\" | tee -a \"$LOG_FILE\"; mark_stage_marker \"$1\"; }\n");
         builder.append("run_logged(){ local status=0; set +e; \"$@\" 2>&1 | tee -a \"$LOG_FILE\"; status=${PIPESTATUS[0]}; set -e; return \"$status\"; }\n");
         builder.append("is_termux(){ [ -n \"${PREFIX:-}\" ] && [ -d \"${PREFIX:-}/bin\" ] && [ -d \"/data/data/com.termux/files\" ]; }\n");
@@ -1245,18 +1358,32 @@ public final class OpenHouseInstallController {
         final long stageStartedAtMs;
         final long lastModifiedAtMs;
         final boolean remoteSchedule;
+        final OpenHouseInstallState.RetryMode retryMode;
+        final int attempt;
+        final String logPath;
 
-        RunningMarker(boolean exists, long startedAtMs, Stage stage, long stageStartedAtMs, long lastModifiedAtMs, boolean remoteSchedule) {
+        RunningMarker(boolean exists,
+                      long startedAtMs,
+                      Stage stage,
+                      long stageStartedAtMs,
+                      long lastModifiedAtMs,
+                      boolean remoteSchedule,
+                      OpenHouseInstallState.RetryMode retryMode,
+                      int attempt,
+                      String logPath) {
             this.exists = exists;
             this.startedAtMs = startedAtMs;
             this.stage = stage;
             this.stageStartedAtMs = stageStartedAtMs;
             this.lastModifiedAtMs = lastModifiedAtMs;
             this.remoteSchedule = remoteSchedule;
+            this.retryMode = retryMode == null ? OpenHouseInstallState.RetryMode.GENERAL : retryMode;
+            this.attempt = Math.max(0, attempt);
+            this.logPath = logPath == null ? "" : logPath;
         }
 
         static RunningMarker missing() {
-            return new RunningMarker(false, 0L, null, 0L, 0L, false);
+            return new RunningMarker(false, 0L, null, 0L, 0L, false, OpenHouseInstallState.RetryMode.GENERAL, 0, "");
         }
     }
 

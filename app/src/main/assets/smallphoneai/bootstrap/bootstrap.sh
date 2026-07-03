@@ -5,6 +5,11 @@ SMALLPHONEAI_DIR="${SMALLPHONEAI_DIR:-$HOME/.smallphoneai-bootstrap}"
 SMALLPHONEAI_RAW_BASE="${SMALLPHONEAI_RAW_BASE:-https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+if [ -f "$SCRIPT_DIR/scripts/_retry-profile.sh" ]; then
+  # shellcheck source=scripts/_retry-profile.sh
+  . "$SCRIPT_DIR/scripts/_retry-profile.sh"
+fi
+
 log() {
   printf '[SmallPhoneAI] %s\n' "$*"
 }
@@ -60,6 +65,11 @@ write_termux_main_repo() {
 }
 
 termux_main_repo_candidates() {
+  if command -v smallphoneai_is_cn_retry >/dev/null 2>&1 && smallphoneai_is_cn_retry; then
+    smallphoneai_cn_termux_main_repo_candidates
+    return 0
+  fi
+
   cat <<'EOF'
 https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main
 https://mirrors.ustc.edu.cn/termux/apt/termux-main
@@ -233,6 +243,12 @@ termux_repo_retry_order() {
   override="${OPENHOUSEAI_TERMUX_MAIN_REPO:-${SMALLPHONEAI_TERMUX_MAIN_REPO:-}}"
   if [ -n "$override" ]; then
     printf '%s\n' "$override"
+    if command -v smallphoneai_is_cn_retry >/dev/null 2>&1 && smallphoneai_is_cn_retry; then
+      for repo in $(termux_main_repo_candidates); do
+        [ "$repo" = "$override" ] && continue
+        printf '%s\n' "$repo"
+      done
+    fi
     return 0
   fi
 
@@ -419,6 +435,12 @@ ensure_local_layout() {
   ensure_termux_curl
 
   log "正在从 $SMALLPHONEAI_RAW_BASE 下载当前动作需要的阶段脚本"
+  download_file "$SMALLPHONEAI_RAW_BASE/scripts/_retry-profile.sh" "$SMALLPHONEAI_DIR/scripts/_retry-profile.sh" || true
+  chmod +x "$SMALLPHONEAI_DIR/scripts/_retry-profile.sh" 2>/dev/null || true
+  if ! command -v smallphoneai_apply_retry_profile >/dev/null 2>&1 && [ -f "$SMALLPHONEAI_DIR/scripts/_retry-profile.sh" ]; then
+    # shellcheck source=scripts/_retry-profile.sh
+    . "$SMALLPHONEAI_DIR/scripts/_retry-profile.sh"
+  fi
   for name in $(required_stage_scripts "$command"); do
     download_file "$SMALLPHONEAI_RAW_BASE/scripts/$name" "$SMALLPHONEAI_DIR/scripts/$name"
     chmod +x "$SMALLPHONEAI_DIR/scripts/$name"
@@ -452,10 +474,37 @@ run_stage() {
   [ -f "$path" ] || die "缺少阶段脚本：$path"
   chmod +x "$path"
   log "开始：$name"
+  cleanup_stage_retry_temp "$name"
   SMALLPHONEAI_ROOT="$root" \
+    OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+    SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
     SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
     bash "$path" "$@"
   log "完成：$name"
+}
+
+cleanup_stage_retry_temp() {
+  local name="$1"
+  local requested="${OPENHOUSE_FORCE_RETRY_STAGE:-${SMALLPHONEAI_FORCE_RETRY_STAGE:-}}"
+  local force="${OPENHOUSE_FORCE_RETRY:-${SMALLPHONEAI_FORCE_RETRY:-0}}"
+
+  [ "$force" = "1" ] || return 0
+  if [ -n "$requested" ] && [ "$requested" != "$name" ] && [ "$requested" != "${name%.sh}" ]; then
+    return 0
+  fi
+
+  log "强制重试当前阶段：只清理 $name 的临时文件，不删除用户数据、配置、日志或已完成 payload。"
+  case "$name" in
+    20-install-ubuntu.sh)
+      rm -f "$HOME/.smallphoneai-bootstrap/smallphoneai-env-probe-ubuntu.sh" 2>/dev/null || true
+      ;;
+    38-install-node.sh)
+      rm -rf "$HOME/.local/node-download" 2>/dev/null || true
+      ;;
+    50-install-runtime-components.sh)
+      find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'smallphoneai-payload.*' -exec rm -rf {} + 2>/dev/null || true
+      ;;
+  esac
 }
 
 run_machine_stage() {
@@ -467,7 +516,10 @@ run_machine_stage() {
   root="$(root_path)"
   [ -f "$path" ] || die "缺少阶段脚本：$path"
   chmod +x "$path"
-  SMALLPHONEAI_ROOT="$root" bash "$path" "$@"
+  SMALLPHONEAI_ROOT="$root" \
+    OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+    SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+    bash "$path" "$@"
 }
 
 run_full_install() {
@@ -513,6 +565,16 @@ EOF
 }
 
 main() {
+  if [ $# -ge 2 ]; then
+    export OPENHOUSE_RETRY_MODE="$2"
+    export SMALLPHONEAI_RETRY_MODE="$2"
+  fi
+  if command -v smallphoneai_log_retry_profile >/dev/null 2>&1; then
+    smallphoneai_log_retry_profile '[SmallPhoneAI]'
+  else
+    export OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}"
+    export SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-$OPENHOUSE_RETRY_MODE}"
+  fi
   ensure_supported_runtime
   ensure_local_layout "${1:-full}" || die "未知命令：${1:-}"
 

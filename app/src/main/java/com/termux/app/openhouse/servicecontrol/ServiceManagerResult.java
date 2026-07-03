@@ -22,8 +22,8 @@ public final class ServiceManagerResult {
     private ServiceManagerResult(Builder builder) {
         this.success = builder.success;
         this.code = builder.code;
-        this.body = builder.body == null ? "" : builder.body;
-        this.message = builder.message == null ? "" : builder.message;
+        this.body = ServiceManagerRedactor.redact(builder.body);
+        this.message = ServiceManagerRedactor.redact(builder.message);
         this.serviceId = builder.serviceId == null ? "" : builder.serviceId;
         this.action = builder.action == null ? "" : builder.action;
         this.state = builder.state == null ? "" : builder.state;
@@ -71,7 +71,7 @@ public final class ServiceManagerResult {
     }
 
     private static String extractErrorMessage(String body, String fallbackMessage) {
-        String trimmed = body == null ? "" : body.trim();
+        String trimmed = ServiceManagerRedactor.redact(body == null ? "" : body.trim());
         if (!trimmed.isEmpty()) {
             return trimmed;
         }

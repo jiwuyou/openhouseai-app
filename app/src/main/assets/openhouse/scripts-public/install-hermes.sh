@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_openhouse-postinstall-common.sh
 . "$SCRIPT_DIR/_openhouse-postinstall-common.sh"
 
-HERMES_REPO_URL="${OPENHOUSE_HERMES_REPO_URL:-https://github.com/nesquena/hermes-webui.git}"
+HERMES_REPO_URL="$(oh_maybe_rewrite_github_url "${OPENHOUSE_HERMES_REPO_URL:-https://github.com/nesquena/hermes-webui.git}")"
 HERMES_DIR="${OPENHOUSE_HERMES_DIR:-/root/.local/share/openhouseai/hermes-webui}"
 
 oh_log "开始准备 Hermes WebUI 可选安装环境。"

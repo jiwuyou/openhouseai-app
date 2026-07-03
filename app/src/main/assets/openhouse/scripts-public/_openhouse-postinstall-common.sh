@@ -14,6 +14,63 @@ oh_die() {
   exit 1
 }
 
+oh_retry_mode() {
+  local raw
+  raw="${OPENHOUSE_RETRY_MODE:-${SMALLPHONEAI_RETRY_MODE:-normal}}"
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    cn|china|mainland|domestic|china-mainland)
+      printf 'cn'
+      ;;
+    general|normal|default|standard|'')
+      printf 'normal'
+      ;;
+    *)
+      printf 'normal'
+      ;;
+  esac
+}
+
+oh_apply_retry_profile() {
+  local mode
+  mode="$(oh_retry_mode)"
+  export OPENHOUSE_RETRY_MODE="$mode"
+  export SMALLPHONEAI_RETRY_MODE="$mode"
+  if [ "$mode" = "cn" ]; then
+    : "${OPENHOUSEAI_TERMUX_MAIN_REPO:=https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main}"
+    : "${SMALLPHONEAI_TERMUX_MAIN_REPO:=$OPENHOUSEAI_TERMUX_MAIN_REPO}"
+    : "${SMALLPHONEAI_UBUNTU_APT_MIRROR:=https://mirrors.ustc.edu.cn/ubuntu-ports}"
+    : "${SMALLPHONEAI_NODE_DIST_BASE:=https://cdn.npmmirror.com/binaries/node/latest-v24.x}"
+    : "${NPM_REGISTRY:=https://registry.npmmirror.com}"
+    : "${NPM_CONFIG_REGISTRY:=$NPM_REGISTRY}"
+    : "${SMALLPHONEAI_NPM_FETCH_RETRIES:=8}"
+    : "${SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT:=20000}"
+    : "${SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT:=180000}"
+    : "${SMALLPHONEAI_NPM_FETCH_TIMEOUT:=900000}"
+    export OPENHOUSEAI_TERMUX_MAIN_REPO SMALLPHONEAI_TERMUX_MAIN_REPO
+    export SMALLPHONEAI_UBUNTU_APT_MIRROR SMALLPHONEAI_NODE_DIST_BASE
+    export NPM_REGISTRY NPM_CONFIG_REGISTRY
+    export SMALLPHONEAI_NPM_FETCH_RETRIES SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT
+    export SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT SMALLPHONEAI_NPM_FETCH_TIMEOUT
+  fi
+}
+
+oh_maybe_rewrite_github_url() {
+  local url="$1"
+  local prefix="${SMALLPHONEAI_GITHUB_PROXY_PREFIX:-${OPENHOUSE_GITHUB_PROXY_PREFIX:-}}"
+  if [ "$(oh_retry_mode)" = "cn" ] && [ -n "$prefix" ]; then
+    case "$url" in
+      https://github.com/*|https://raw.githubusercontent.com/*)
+        printf '%s%s\n' "$prefix" "$url"
+        return 0
+        ;;
+    esac
+  fi
+  printf '%s\n' "$url"
+}
+
+oh_apply_retry_profile
+
 oh_is_current_ubuntu() {
   [ -r /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release
 }
@@ -56,7 +113,22 @@ oh_run_bootstrap() {
   bootstrap="$(oh_require_bootstrap)"
   chmod +x "$bootstrap" 2>/dev/null || true
   oh_log "执行 bootstrap 阶段：$command_name"
-  bash "$bootstrap" "$command_name"
+  env \
+    OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+    SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+    OPENHOUSEAI_TERMUX_MAIN_REPO="${OPENHOUSEAI_TERMUX_MAIN_REPO:-}" \
+    SMALLPHONEAI_TERMUX_MAIN_REPO="${SMALLPHONEAI_TERMUX_MAIN_REPO:-}" \
+    SMALLPHONEAI_UBUNTU_APT_MIRROR="${SMALLPHONEAI_UBUNTU_APT_MIRROR:-}" \
+    SMALLPHONEAI_NODE_DIST_BASE="${SMALLPHONEAI_NODE_DIST_BASE:-}" \
+    NPM_REGISTRY="${NPM_REGISTRY:-}" \
+    NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-${NPM_REGISTRY:-}}" \
+    SMALLPHONEAI_NPM_FETCH_RETRIES="${SMALLPHONEAI_NPM_FETCH_RETRIES:-}" \
+    SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT:-}" \
+    SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT:-}" \
+    SMALLPHONEAI_NPM_FETCH_TIMEOUT="${SMALLPHONEAI_NPM_FETCH_TIMEOUT:-}" \
+    SMALLPHONEAI_GITHUB_PROXY_PREFIX="${SMALLPHONEAI_GITHUB_PROXY_PREFIX:-}" \
+    OPENHOUSE_GITHUB_PROXY_PREFIX="${OPENHOUSE_GITHUB_PROXY_PREFIX:-}" \
+    bash "$bootstrap" "$command_name"
 }
 
 oh_run_ubuntu_bash() {

@@ -274,6 +274,11 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private void renderInstallStep() {
+        if (installState.failed) {
+            renderInstallFailedStep();
+            return;
+        }
+
         String title = getInstallProgressTitle();
         addStatusCard(title, "将安装 Ubuntu、Node.js、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。");
         addStatusCard("网络提醒", "初始化安装预计会下载约 500M 的文件内容，推荐在 Wi-Fi 网络下进行。");
@@ -290,6 +295,11 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private void renderWaitingInstallStep() {
+        if (installState.failed) {
+            renderInstallFailedStep();
+            return;
+        }
+
         addStatusCard(
             "正在安装核心运行环境",
             "请保持应用在后台可运行。这里不会要求你填写模型或 Key，安装完成后再按需要配置。"
@@ -300,6 +310,29 @@ public final class OpenHouseOnboardingOverlay {
         );
         addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
         addReadingGuide(true, false);
+        addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
+        addForceRestartInstallButtonIfNeeded();
+    }
+
+    private void renderInstallFailedStep() {
+        addStatusCard(
+            "安装没有完成",
+            installState.safeError.isEmpty()
+                ? getDisplayedInstallDetail()
+                : installState.safeError
+        );
+        addStatusCard(
+            "选择重试方式",
+            "常规重试会沿用默认路径和已有缓存；国内网络重试会把安装任务切到固定国内镜像路径。两种方式都只继续安装流程，不会删除用户数据、模型配置或工作目录。"
+        );
+        addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
+        if (!installState.logPath.isEmpty()) {
+            addStatusCard("日志位置", installState.logPath);
+        }
+        addActionButton("常规重试", true, true,
+            v -> startInstallAsync(true, OpenHouseInstallState.RetryMode.GENERAL));
+        addActionButton("国内网络重试", true, false,
+            v -> startInstallAsync(true, OpenHouseInstallState.RetryMode.CN));
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
         addForceRestartInstallButtonIfNeeded();
     }
@@ -360,7 +393,7 @@ public final class OpenHouseOnboardingOverlay {
             return;
         }
 
-        startInstallAsync(true);
+        startInstallAsync(true, OpenHouseInstallState.RetryMode.GENERAL);
     }
 
     private void maybeAutoStartInstall() {
@@ -376,39 +409,75 @@ public final class OpenHouseOnboardingOverlay {
         }
 
         autoStartInstallRequested = true;
-        startInstallAsync(false);
+        startInstallAsync(false, OpenHouseInstallState.RetryMode.GENERAL);
     }
 
-    private void startInstallAsync(boolean showToast) {
+    private void startInstallAsync(boolean showToast, OpenHouseInstallState.RetryMode retryMode) {
         actionBusy = true;
         installState = new OpenHouseInstallState(
-            true,
-            false,
-            false,
+            installState.failed || installState.attempt > 0
+                ? OpenHouseInstallState.Status.RETRYING
+                : OpenHouseInstallState.Status.RUNNING,
             Math.max(1, getDisplayedInstallPercent()),
             "正在启动安装",
-            "正在启动一键初始化任务，请保持应用可后台运行。",
-            "manifest_full"
+            retryMode == OpenHouseInstallState.RetryMode.CN
+                ? "正在启动国内网络重试，请保持应用可后台运行。"
+                : "正在启动一键初始化任务，请保持应用可后台运行。",
+            "manifest_full",
+            retryMode,
+            Math.max(1, installState.attempt + 1),
+            installState.logPath,
+            ""
         );
         currentStep = Step.WAITING_INSTALL;
         persistStep();
         render();
-        runtime.startOneClickInstall(result -> {
-            actionBusy = false;
-            installState = runtime.getInstallState();
-            if (showToast || !result.success) {
-                Toast.makeText(activity, result.message, result.success ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+        Thread starter = new Thread(() -> {
+            boolean started = false;
+            OpenHouseInstallState current;
+            String message;
+            try {
+                started = runtime.getInstallController().startOneClickInstall(retryMode);
+                current = runtime.getInstallState();
+                boolean usable = !current.failed && (started || current.running || current.completed);
+                if (current.failed) {
+                    message = current.safeError.isEmpty()
+                        ? "初始化启动失败，请进入详细进度查看日志。"
+                        : current.safeError;
+                } else if (current.completed) {
+                    message = "核心运行环境已安装完成。";
+                } else if (current.running) {
+                    message = started ? "安装已开始，请等待完成。" : "安装已经在运行。";
+                } else {
+                    message = usable ? "安装控制器已检查状态。" : "安装任务尚未启动，请进入详细进度查看状态。";
+                }
+            } catch (Exception e) {
+                current = runtime.getInstallState();
+                message = "无法启动初始化任务：" + safeMessage(e);
             }
-            refreshStatus();
-        });
+
+            OpenHouseInstallState finalCurrent = current;
+            String finalMessage = message;
+            boolean finalStarted = started;
+            rootView.post(() -> {
+                actionBusy = false;
+                installState = finalCurrent;
+                boolean success = !finalCurrent.failed && (finalStarted || finalCurrent.running || finalCurrent.completed);
+                if (showToast || !success) {
+                    Toast.makeText(activity, finalMessage, success ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+                }
+                refreshStatus();
+            });
+        }, "openhouse-install-start");
+        starter.start();
     }
 
     private void confirmForceRestartInstall() {
         if (actionBusy) return;
 
         new AlertDialog.Builder(activity)
-            .setTitle("强制重启并继续安装")
-            .setMessage("只有确认安装已经长时间没有变化时才使用。\n\n这会终止当前卡住的一键初始化任务，清理运行标记，然后重新触发安装。已完成的阶段会按状态检测跳过，从第一个未完成阶段继续。")
+            .setTitle("强制重试当前阶段")
+            .setMessage("只有确认安装已经长时间没有变化时才使用。\n\n这会终止当前卡住的一键初始化任务，清理运行标记，然后重新触发安装。不会删除用户数据、模型配置或工作目录。已完成的阶段会按状态检测跳过，从第一个未完成阶段继续。")
             .setNegativeButton("取消", null)
             .setPositiveButton("强制重启并继续", (dialog, which) -> forceRestartInstall())
             .show();
@@ -419,13 +488,25 @@ public final class OpenHouseOnboardingOverlay {
 
         actionBusy = true;
         render();
-        runtime.forceRestartOneClickInstall(result -> {
-            actionBusy = false;
-            installState = runtime.getInstallState();
-            Toast.makeText(activity, result.message, result.success ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
-            setCurrentStep(Step.WAITING_INSTALL);
-            refreshStatus();
-        });
+        OpenHouseInstallState.RetryMode retryMode = installState.retryMode == null
+            ? OpenHouseInstallState.RetryMode.GENERAL
+            : installState.retryMode;
+        Thread starter = new Thread(() -> {
+            boolean started = runtime.getInstallController().forceRestartOneClickInstall(retryMode);
+            OpenHouseInstallState current = runtime.getInstallState();
+            rootView.post(() -> {
+                actionBusy = false;
+                installState = current;
+                Toast.makeText(
+                    activity,
+                    started ? "已强制重试当前阶段，会从第一个未完成阶段继续。" : "无法重新启动初始化，请进入详细进度查看日志。",
+                    started ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG
+                ).show();
+                setCurrentStep(Step.WAITING_INSTALL);
+                refreshStatus();
+            });
+        }, "openhouse-install-force-retry");
+        starter.start();
     }
 
     private void confirmSkipCurrentStep() {
@@ -869,6 +950,17 @@ public final class OpenHouseOnboardingOverlay {
 
     private int dp(int value) {
         return Math.round(value * activity.getResources().getDisplayMetrics().density);
+    }
+
+    private String safeMessage(Throwable throwable) {
+        String message = throwable == null || throwable.getMessage() == null
+            ? "未知错误"
+            : throwable.getMessage().trim();
+        if (message.isEmpty()) {
+            return "未知错误";
+        }
+        String redacted = message.replaceAll("(?i)\\b(api[_-]?key|authorization|bearer|token|password)([=:\"' ]+)([^\\s\"']{8,})", "$1$2***");
+        return redacted.replaceAll("\\bsk-[A-Za-z0-9_-]{12,}\\b", "sk-***");
     }
 
     private enum Step {

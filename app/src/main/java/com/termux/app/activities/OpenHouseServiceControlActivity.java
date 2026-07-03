@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -12,15 +14,19 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
 import com.termux.R;
+import com.termux.app.openhouse.OpenHouseExitAllController;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
+import com.termux.app.openhouse.OpenHouseRuntimeSupervisor;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerActionResult;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerLogEntry;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerRedactor;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerService;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceStatus;
 import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
@@ -54,11 +60,20 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private static final String LOCKED_DISABLED_BUTTON_TAG = "openhouse_locked_disabled";
     private static final int LOG_LIMIT = 80;
     private static final int STATUS_TEXT_LIMIT = 10000;
+    private static final long FOREGROUND_MAINTENANCE_INTERVAL_MS = 30_000L;
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, ServiceCard> serviceCards = new LinkedHashMap<>();
+    private final Handler foregroundHandler = new Handler(Looper.getMainLooper());
+    private final Runnable foregroundMaintenanceRunnable = new Runnable() {
+        @Override
+        public void run() {
+            runScheduledForegroundMaintenance();
+        }
+    };
 
     private ServiceManagerControlClient controlClient;
+    private OpenHouseRuntimeSupervisor runtimeSupervisor;
     private ScrollView rootScrollView;
     private LinearLayout contentView;
     private LinearLayout serviceListView;
@@ -70,6 +85,8 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private GuidedTutorialOverlay ccCodexTutorialOverlay;
     private boolean allMode;
     private boolean ccCodexTutorialStarted;
+    private boolean foregroundMaintenanceEnabled;
+    private boolean foregroundMaintenanceTaskRunning;
     private String componentId = "";
     private String componentTitle = "";
     private String componentUrl = "";
@@ -79,9 +96,22 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         controlClient = new ServiceManagerControlClient(this);
+        runtimeSupervisor = new OpenHouseRuntimeSupervisor(this);
         parseIntent(getIntent());
         buildContentView();
         loadInitialServices();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        startForegroundMaintenance();
+    }
+
+    @Override
+    protected void onPause() {
+        stopForegroundMaintenance();
+        super.onPause();
     }
 
     @Override
@@ -91,6 +121,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             ccCodexTutorialOverlay.destroy();
             ccCodexTutorialOverlay = null;
         }
+        stopForegroundMaintenance();
         backgroundExecutor.shutdownNow();
     }
 
@@ -189,7 +220,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         TextView title = sectionTitle("批量控制");
         panel.addView(title);
 
-        TextView note = bodyText("全部关闭和全部重启会跳过 service-manager，避免先关掉控制中枢。");
+        TextView note = bodyText("全部关闭和全部重启会跳过 service-manager；“全部退出”会停止 service-manager 和 OpenHouse 拉起的长期进程，保留用户数据和配置。");
         panel.addView(note, topMarginParams(8));
 
         addButtonRow(panel,
@@ -198,6 +229,9 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         addButtonRow(panel,
             actionButton("全部重启", v -> runBulkAction(ACTION_RESTART)),
             actionButton("刷新", v -> loadInitialServices()));
+        addButtonRow(panel,
+            actionButton("恢复默认核心服务", v -> runDefaultCoreServiceMaintenance()),
+            actionButton("全部退出", v -> confirmExitAll()));
     }
 
     private void loadInitialServices() {
@@ -665,7 +699,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             "状态：" + stateLabel(snapshot.state)
                 + "\nprovider：" + firstNonBlank(snapshot.provider, "-")
                 + "\npid：" + pid
-                + "\n消息：" + firstNonBlank(snapshot.message, "-"));
+                + "\n消息：" + ServiceManagerRedactor.redact(firstNonBlank(snapshot.message, "-")));
     }
 
     private void updateTutorialActionButton(ServiceCard card, ServiceSnapshot snapshot) {
@@ -727,6 +761,119 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         } catch (Exception e) {
             Toast.makeText(this, "无法打开浏览器：" + safeErrorMessage(e), Toast.LENGTH_LONG).show();
         }
+    }
+
+    private void startForegroundMaintenance() {
+        foregroundMaintenanceEnabled = true;
+        foregroundHandler.removeCallbacks(foregroundMaintenanceRunnable);
+        foregroundHandler.postDelayed(foregroundMaintenanceRunnable, 1200L);
+    }
+
+    private void stopForegroundMaintenance() {
+        foregroundMaintenanceEnabled = false;
+        foregroundHandler.removeCallbacks(foregroundMaintenanceRunnable);
+    }
+
+    private void runScheduledForegroundMaintenance() {
+        if (!foregroundMaintenanceEnabled || isFinishing() || backgroundExecutor.isShutdown()) {
+            return;
+        }
+        if (foregroundMaintenanceTaskRunning) {
+            foregroundHandler.postDelayed(foregroundMaintenanceRunnable, FOREGROUND_MAINTENANCE_INTERVAL_MS);
+            return;
+        }
+        foregroundMaintenanceTaskRunning = true;
+        backgroundExecutor.execute(() -> {
+            OpenHouseRuntimeSupervisor.MaintenanceReport report;
+            try {
+                report = runtimeSupervisor.runForegroundMaintenanceTick();
+            } catch (Exception e) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Foreground runtime maintenance failed", e);
+                report = null;
+            }
+            final OpenHouseRuntimeSupervisor.MaintenanceReport finalReport = report;
+            runOnUiThread(() -> {
+                foregroundMaintenanceTaskRunning = false;
+                applyForegroundMaintenanceReport(finalReport, false);
+            });
+        });
+        foregroundHandler.postDelayed(foregroundMaintenanceRunnable, FOREGROUND_MAINTENANCE_INTERVAL_MS);
+    }
+
+    private void runDefaultCoreServiceMaintenance() {
+        setBusy(true);
+        setControlPlaneStatus("控制中枢：正在恢复默认核心服务...");
+        setStatus("正在恢复默认核心服务。\n会轻量检查 service-manager，并确保 smallphone、pi-agent 和 cloudcli 默认长期服务可用。");
+        hideMaintenanceFallback();
+        backgroundExecutor.execute(() -> {
+            OpenHouseRuntimeSupervisor.MaintenanceReport report =
+                runtimeSupervisor.ensureDefaultLongRunningServices();
+            runOnUiThread(() -> {
+                setBusy(false);
+                applyForegroundMaintenanceReport(report, true);
+                if (report != null && report.success) {
+                    loadInitialServices();
+                }
+            });
+        });
+    }
+
+    private void applyForegroundMaintenanceReport(
+        OpenHouseRuntimeSupervisor.MaintenanceReport report,
+        boolean userVisible
+    ) {
+        if (report == null) {
+            return;
+        }
+        if (report.skipped && !userVisible) {
+            return;
+        }
+        if (report.controlPlaneReachable && report.failedCount == 0) {
+            setControlPlaneStatus("控制中枢：已连接（service-manager）。默认核心服务由前台保活轻量检查。");
+            if (!userVisible && report.startedCount == 0 && !report.repairAttempted) {
+                return;
+            }
+        }
+        if (report.success) {
+            hideMaintenanceFallback();
+            if (userVisible || report.startedCount > 0 || report.repairAttempted) {
+                setStatus(report.message);
+            }
+            return;
+        }
+        setControlPlaneStatus(report.userActionRequired
+            ? "控制中枢：连续多次不可达，请点击“修复控制中枢”或“恢复默认核心服务”。"
+            : "控制中枢：暂不可达，前台保活会按节流策略继续尝试。");
+        showMaintenanceFallback();
+        if (userVisible || report.userActionRequired) {
+            setStatus(report.message);
+        }
+    }
+
+    private void confirmExitAll() {
+        new AlertDialog.Builder(this)
+            .setTitle("全部退出")
+            .setMessage("将停止 service-manager 管理的长期服务、service-manager 本身，以及 OpenHouse 拉起的 Termux/Ubuntu 长期进程。用户文件、模型配置、日志和已安装 payload 会保留。再次打开 App 或点击恢复默认核心服务后可重新拉起。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("全部退出", (dialog, which) -> runExitAll())
+            .show();
+    }
+
+    private void runExitAll() {
+        stopForegroundMaintenance();
+        foregroundMaintenanceTaskRunning = false;
+        setBusy(true);
+        setStatus("正在全部退出。\n会停止 OpenHouse 长期服务和控制中枢，但保留用户数据、模型配置、日志和 payload。");
+        setControlPlaneStatus("控制中枢：正在停止...");
+        backgroundExecutor.execute(() -> {
+            OpenHouseExitAllController.ExitReport report = new OpenHouseExitAllController(this).exitAll();
+            runOnUiThread(() -> {
+                setBusy(false);
+                setControlPlaneStatus("控制中枢：未运行。点击“恢复默认核心服务”或重新打开 App 后恢复。");
+                setStatus(report.message);
+                showMaintenanceFallback();
+            });
+        });
     }
 
     private void runControlPlaneRepair() {
@@ -970,7 +1117,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
 
     private void setControlPlaneStatus(String text) {
         if (controlPlaneStatusView != null) {
-            controlPlaneStatusView.setText(trimForStatus(text));
+            controlPlaneStatusView.setText(trimForStatus(ServiceManagerRedactor.redact(text)));
         }
     }
 
@@ -1026,7 +1173,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                 .append(' ')
                 .append(safeTrim(entry.stream()))
                 .append(" | ")
-                .append(safeTrim(entry.message()));
+                .append(ServiceManagerRedactor.redact(safeTrim(entry.message())));
         }
         return trimForStatus(builder.toString());
     }
@@ -1056,7 +1203,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
 
     private void setStatus(String text) {
         if (statusView != null) {
-            statusView.setText(trimForStatus(text));
+            statusView.setText(trimForStatus(ServiceManagerRedactor.redact(text)));
         }
     }
 
@@ -1225,11 +1372,11 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         if (message.isEmpty() && e != null) {
             message = e.getClass().getSimpleName();
         }
-        return message;
+        return ServiceManagerRedactor.redact(message);
     }
 
     private String formatMaintainerOutput(String output) {
-        String cleanOutput = safeTrim(output);
+        String cleanOutput = ServiceManagerRedactor.redact(safeTrim(output));
         return cleanOutput.isEmpty() ? "" : "\n\n最近输出：\n" + cleanOutput;
     }
 
@@ -1250,7 +1397,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     }
 
     private String trimForStatus(String value) {
-        String text = value == null ? "" : value;
+        String text = ServiceManagerRedactor.redact(value == null ? "" : value);
         if (text.length() <= STATUS_TEXT_LIMIT) {
             return text;
         }

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/_retry-profile.sh" ]; then
+  # shellcheck source=_retry-profile.sh
+  . "$SCRIPT_DIR/_retry-profile.sh"
+fi
+
 log() {
   printf '[SmallPhoneAI] %s\n' "$*"
 }
@@ -20,15 +26,31 @@ is_current_ubuntu() {
 
 run_ubuntu_logged() {
   if is_current_ubuntu; then
-    run_logged "$@"
+    run_logged env \
+      OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+      SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+      SMALLPHONEAI_NODE_DIST_BASE="${SMALLPHONEAI_NODE_DIST_BASE:-}" \
+      NPM_REGISTRY="${NPM_REGISTRY:-}" \
+      NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-${NPM_REGISTRY:-}}" \
+      "$@"
   else
-    run_logged proot-distro login ubuntu -- "$@"
+    run_logged proot-distro login ubuntu -- env \
+      OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
+      SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+      SMALLPHONEAI_NODE_DIST_BASE="${SMALLPHONEAI_NODE_DIST_BASE:-}" \
+      NPM_REGISTRY="${NPM_REGISTRY:-}" \
+      NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-${NPM_REGISTRY:-}}" \
+      "$@"
   fi
 }
 
 if ! is_current_ubuntu && { ! command -v proot-distro >/dev/null 2>&1 || ! proot-distro login ubuntu -- true >/dev/null 2>&1; }; then
   log "Ubuntu 不可用，请先运行：bash bootstrap.sh ubuntu"
   exit 2
+fi
+
+if command -v smallphoneai_log_retry_profile >/dev/null 2>&1; then
+  smallphoneai_log_retry_profile '[SmallPhoneAI]'
 fi
 
 log "正在 Ubuntu 内安装或检查 Node.js 24 LTS。"
@@ -78,13 +100,19 @@ NODE_TMP="$HOME/.local/node-download"
 mkdir -p "$NODE_TMP" "$HOME/.local"
 
 echo "正在安装 Node.js 24 LTS 到 $NODE_ROOT"
-NODE_TARBALL="$(curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors "$NODE_DIST_BASE/SHASUMS256.txt" | awk "/linux-arm64.tar.gz\$/ { print \$2; exit }")"
+NODE_SHASUMS="$NODE_TMP/SHASUMS256.txt"
+curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors "$NODE_DIST_BASE/SHASUMS256.txt" -o "$NODE_SHASUMS"
+NODE_TARBALL="$(awk "/linux-arm64.tar.gz\$/ { print \$2; exit }" "$NODE_SHASUMS")"
 if [ -z "$NODE_TARBALL" ]; then
   echo "未能从 $NODE_DIST_BASE 找到 linux-arm64 Node.js 包。" >&2
   exit 5
 fi
 
 download_with_retry "$NODE_DIST_BASE/$NODE_TARBALL" "$NODE_TMP/$NODE_TARBALL"
+(
+  cd "$NODE_TMP"
+  grep -F " $NODE_TARBALL" "$NODE_SHASUMS" | sha256sum -c -
+)
 rm -rf "$NODE_ROOT"
 mkdir -p "$NODE_ROOT"
 tar -xzf "$NODE_TMP/$NODE_TARBALL" -C "$NODE_ROOT" --strip-components=1

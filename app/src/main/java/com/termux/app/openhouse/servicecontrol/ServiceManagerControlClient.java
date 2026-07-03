@@ -25,6 +25,10 @@ public final class ServiceManagerControlClient {
         return result.services;
     }
 
+    public ServiceManagerResult healthCheck() {
+        return client.healthCheck();
+    }
+
     public ServiceManagerServiceStatus getStatus(String serviceId) {
         String cleanServiceId = ServiceManagerClient.sanitizeServiceId(serviceId);
         ServiceManagerResult result = client.getStatus(cleanServiceId);
@@ -40,6 +44,10 @@ public final class ServiceManagerControlClient {
 
     public ServiceManagerActionResult runAction(String serviceId, String action) {
         return new ServiceManagerActionResult(client.runAction(serviceId, action));
+    }
+
+    public ServiceManagerActionResult runGroupAction(String groupId, String action) {
+        return new ServiceManagerActionResult(client.runGroupAction(groupId, action));
     }
 
     public List<ServiceManagerLogEntry> getLogs(String serviceId, int limit) {
