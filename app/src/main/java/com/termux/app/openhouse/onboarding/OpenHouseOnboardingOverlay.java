@@ -479,18 +479,18 @@ public final class OpenHouseOnboardingOverlay {
             .setTitle("强制重试当前阶段")
             .setMessage("只有确认安装已经长时间没有变化时才使用。\n\n这会终止当前卡住的一键初始化任务，清理运行标记，然后重新触发安装。不会删除用户数据、模型配置或工作目录。已完成的阶段会按状态检测跳过，从第一个未完成阶段继续。")
             .setNegativeButton("取消", null)
-            .setPositiveButton("强制重启并继续", (dialog, which) -> forceRestartInstall())
+            .setPositiveButton(OpenHouseInstallState.RetryMode.GENERAL.label,
+                (dialog, which) -> forceRestartInstall(OpenHouseInstallState.RetryMode.GENERAL))
+            .setNeutralButton(OpenHouseInstallState.RetryMode.CN.label,
+                (dialog, which) -> forceRestartInstall(OpenHouseInstallState.RetryMode.CN))
             .show();
     }
 
-    private void forceRestartInstall() {
+    private void forceRestartInstall(OpenHouseInstallState.RetryMode retryMode) {
         if (actionBusy) return;
 
         actionBusy = true;
         render();
-        OpenHouseInstallState.RetryMode retryMode = installState.retryMode == null
-            ? OpenHouseInstallState.RetryMode.GENERAL
-            : installState.retryMode;
         Thread starter = new Thread(() -> {
             boolean started = runtime.getInstallController().forceRestartOneClickInstall(retryMode);
             OpenHouseInstallState current = runtime.getInstallState();

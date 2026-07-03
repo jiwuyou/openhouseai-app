@@ -38,6 +38,7 @@ import com.termux.R;
 import com.termux.app.ClaudeCodeUiSettings;
 import com.termux.app.TermuxActivity;
 import com.termux.app.openhouse.OpenHouseBundledRuntimeSync;
+import com.termux.app.openhouse.OpenHouseInstallState;
 import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
 import com.termux.app.openhouse.release.OpenHouseReleaseDownloader;
@@ -1716,36 +1717,46 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
 
         new AlertDialog.Builder(this)
-            .setTitle("强制重启并继续安装")
-            .setMessage("只有确认安装已经长时间没有变化时才使用。\n\n这会终止当前卡住的一键初始化任务，清理运行标记，然后重新触发安装。已完成的阶段会按状态检测跳过，从第一个未完成阶段继续。")
+            .setTitle("选择强制重试模式")
+            .setMessage("只有确认安装已经长时间没有变化时才使用。\n\n这会终止当前卡住的一键初始化任务，清理运行标记，然后按所选网络模式重新触发安装。已完成的阶段会按状态检测跳过，从第一个未完成阶段继续。")
             .setNegativeButton("取消", null)
-            .setPositiveButton("强制重启并继续", (dialog, which) -> forceRestartSharedInstall())
+            .setPositiveButton(OpenHouseInstallState.RetryMode.GENERAL.label,
+                (dialog, which) -> forceRestartSharedInstall(OpenHouseInstallState.RetryMode.GENERAL))
+            .setNeutralButton(OpenHouseInstallState.RetryMode.CN.label,
+                (dialog, which) -> forceRestartSharedInstall(OpenHouseInstallState.RetryMode.CN))
             .show();
     }
 
-    private void forceRestartSharedInstall() {
+    private void forceRestartSharedInstall(OpenHouseInstallState.RetryMode retryMode) {
         if (sharedInstallController == null || commandInFlight || oneClickStagesInFlight || oneClickRemoteProbeInFlight) {
             Toast.makeText(this, R.string.command_busy, Toast.LENGTH_SHORT).show();
             return;
         }
 
+        OpenHouseInstallState.RetryMode resolvedRetryMode = retryMode == null
+            ? OpenHouseInstallState.RetryMode.GENERAL
+            : retryMode;
         if (forceRestartSharedInstallButton != null) {
             forceRestartSharedInstallButton.setEnabled(false);
             forceRestartSharedInstallButton.setAlpha(0.7f);
         }
         setSharedInstallText(
             "详细进度：正在重启安装任务",
-            "正在终止卡住的安装任务，随后会从第一个未完成阶段继续。"
+            "正在按“" + resolvedRetryMode.label + "”终止卡住的安装任务，随后会从第一个未完成阶段继续。"
         );
 
         backgroundExecutor.execute(() -> {
             boolean restarted = false;
             try {
-                Method method = findMethod(sharedInstallController.getClass(), "forceRestartOneClickInstall");
+                Method method = findMethod(
+                    sharedInstallController.getClass(),
+                    "forceRestartOneClickInstall",
+                    OpenHouseInstallState.RetryMode.class
+                );
                 if (method == null) {
-                    throw new NoSuchMethodException("OpenHouseInstallController.forceRestartOneClickInstall()");
+                    throw new NoSuchMethodException("OpenHouseInstallController.forceRestartOneClickInstall(RetryMode)");
                 }
-                Object value = method.invoke(sharedInstallController);
+                Object value = method.invoke(sharedInstallController, resolvedRetryMode);
                 restarted = value instanceof Boolean && (Boolean) value;
             } catch (Throwable throwable) {
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to force restart shared install", throwable);
@@ -1755,7 +1766,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 Toast.makeText(
                     this,
-                    finalRestarted ? "已强制重启安装任务，会从第一个未完成阶段继续。" : "无法重启安装，请查看日志。",
+                    finalRestarted
+                        ? "已按“" + resolvedRetryMode.label + "”强制重启安装任务，会从第一个未完成阶段继续。"
+                        : "无法重启安装，请查看日志。",
                     finalRestarted ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG
                 ).show();
                 refreshSharedInstallState();

@@ -70,10 +70,9 @@ public class OpenHouseAgreementActivity extends AppCompatActivity {
     }
 
     private void returnToTerminal() {
-        if (SmallPhoneFirstLaunchGate.isFirstLaunchSource(getIntent())) {
-            ActivityUtils.startActivity(this,
-                SmallPhoneFirstLaunchGate.newSmallPhoneHostIntent(this));
-        }
+        Intent intent = new Intent(this, TermuxActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        ActivityUtils.startActivity(this, intent);
         finish();
     }
 
