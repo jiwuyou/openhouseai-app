@@ -270,10 +270,10 @@ public final class OpenHouseComponentRegistry {
             true,
             true,
             "builtin",
-            Arrays.asList("pi-agent", "pi-web"),
+            Arrays.asList("pi-web", "pi-agent"),
             Arrays.asList(
-                "service-manager://services/pi-agent",
-                "service-manager://services/pi-web")));
+                "service-manager://services/pi-web",
+                "service-manager://services/pi-agent")));
         components.add(createComponent(
             "cloudcli",
             "cc/codex",
