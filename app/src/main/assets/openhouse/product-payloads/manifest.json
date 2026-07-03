@@ -24,22 +24,22 @@
       "id": "smallphone",
       "archive": "smallphone.tar",
       "targetDir": "smallphone-active",
-      "sha256": "dd250243e08b3222f79b7e12419bc829fafb2426394eb1e83b70d7ed771ac99f",
-      "size": 1914880
+      "sha256": "d82d5e644f8286e42dca5a27233e489f8f484a8253b953235f063fc9a9f56b7d",
+      "size": 1925120
     },
     {
       "id": "pi-agent",
       "archive": "pi-agent.tar",
       "targetDir": "pi-agent",
-      "sha256": "f4c47b5c1c3e287eef4eae6f056961e492cb830a0dfeb4586f6284436c8e3056",
+      "sha256": "93a327b247f35a4a2d1ec0932dd0147e8894f535f4f85fd7bb0534b2d81dbd81",
       "size": 6123520
     },
     {
       "id": "pi-web",
       "archive": "pi-web.tar",
       "targetDir": "pi-web",
-      "sha256": "43bf60f27216efdf0a9b0c9b3dec27c602c8e650b7719f02eba9f09827c66eba",
-      "size": 123484160
+      "sha256": "d72729dd1c653ac366de3f58c51025b92630b598b07f37b906b471e626d0cf35",
+      "size": 114452480
     }
   ]
 }

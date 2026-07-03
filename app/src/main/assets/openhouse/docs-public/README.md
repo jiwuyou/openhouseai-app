@@ -14,15 +14,23 @@ OpenHouseAI 是一个面向人机协作的移动端 AI 运行平台。它基于 
 
 `/root/openhouse/docs` 是面向用户和 AI 的推荐入口；`/root/openhouseai-docs/official` 是兼容旧路径。pi-web 默认提示词和 pi-agent 的首次配置任务应引用这些稳定路径，例如：
 
+- `/root/openhouse/docs/openhouse-overview.md`
+- `/root/openhouse/docs/ai-reference-index.md`
+- `/root/openhouse/docs/implementation-acceptance-checklist.md`
 - `/root/openhouse/docs/START_HERE.md`
 - `/root/openhouse/docs/PRODUCT_OVERVIEW.md`
 - `/root/openhouse/docs/CAPABILITIES_MAP.md`
-- `/root/openhouse/docs/OPENHOUSE_FIRST_CONFIGURATION.md`
-- `/root/openhouse/docs/WORKBENCH_OPTIONS.md`
-- `/root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md`
-- `/root/openhouse/docs/SERVICE_MANAGER.md`
-- `/root/openhouse/docs/RECOVERY.md`
-- `/root/openhouse/docs/AI_AGENT_REFERENCE.md`
+- `/root/openhouse/docs/openhouse-install-flow.md`
+- `/root/openhouse/docs/openhouse-cn-network-retry.md`
+- `/root/openhouse/docs/first-use-tutorial.md`
+- `/root/openhouse/docs/pi-agent-first-use.md`
+- `/root/openhouse/docs/model-config-migration.md`
+- `/root/openhouse/docs/cloudcli-claude-code-setup.md`
+- `/root/openhouse/docs/codex-setup.md`
+- `/root/openhouse/docs/service-manager.md`
+- `/root/openhouse/docs/openhouse-runtime-policy.md`
+- `/root/openhouse/docs/openhouse-exit-all.md`
+- `/root/openhouse/docs/troubleshooting.md`
 
 ## 三层路径速览
 
@@ -41,6 +49,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 
 ### 1. 产品能做什么
 
+- `openhouse-overview.md`：给用户和 AI 的稳定小写概览，说明首次可用闭环、核心服务和文档入口。
 - `PRODUCT_OVERVIEW.md`：面向用户的产品定位和核心原则。
 - `CAPABILITIES_MAP.md`：完整能力地图，说明 Termux、Ubuntu、服务、浏览器、文件、模型、Shizuku 和网络检索。
 - `USER_SCENARIOS.md`：日常协作、智能操作系统、人生管理、知识库和人机编程等使用场景。
@@ -49,8 +58,16 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 
 ### 2. 运行环境和配置
 
+- `openhouse-install-flow.md`：首次安装状态机、阶段成功/失败条件、常规重试、强制重试和最终健康检查。
+- `openhouse-cn-network-retry.md`：国内网络重试固定路径、镜像策略、payload fallback 和 sha256 校验。
+- `first-use-tutorial.md`：首次教学脚本，明确界面、箭头、点击主体和 20 秒跳过规则；终端教学不进入首次教学。
 - `ENVIRONMENT.md`：Android、Termux、Ubuntu、路径和默认安装范围。
 - `MODEL_API_SETUP.md`：Codex、Claude Code 和 CloudCLI 的登录/API 配置。
+- `model-config-migration.md`：pi-web 模型配置迁移到 Claude Code、Codex、CloudCLI 的规则。
+- `pi-agent-first-use.md`：pi-agent 作为首次配置助手的目标、提示词和验收。
+- `cloudcli-claude-code-setup.md`：CloudCLI / Claude Code 后置配置、端口、权限模式和实测标准。
+- `codex-setup.md`：Codex 后置配置和实测标准。
+- `cc-switch.md`：cc-switch 作为 provider 配置执行器的定位和边界。
 - `OPENHOUSE_FIRST_CONFIGURATION.md`：pi-web 模型可用后，由 pi-agent 完成首次 OpenHouse 配置的流程。
 - `AI_TOOL_POSTINSTALL.md`：Codex、Claude Code、CloudCLI、Hermes 的后置安装脚本入口和检查规则。
 - `CLOUDCLI_CLAUDE_CODE.md`：让 pi-agent 配置并测通 CloudCLI 中的 Claude Code。
@@ -63,8 +80,18 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 
 ### 3. AI 可以参考的操作手册
 
+- `ai-reference-index.md`：AI 任务索引，说明遇到不同任务应先读哪份文档。
+- `implementation-acceptance-checklist.md`：下一轮代码实现的唯一放行清单。
 - `AI_AGENT_REFERENCE.md`：AI agent 的默认操作规则和安全边界。
+- `terminal-guide.md`：独立终端教学，说明 Termux、Ubuntu、路径和跨层调用。
 - `TERMINAL_PROFILES.md`：Termux 终端、Ubuntu 终端和自定义终端的分工。
+- `service-manager.md`：service-manager 的稳定小写入口，强调安装完成后的运行控制平面。
+- `openhouse-runtime-policy.md`：App 前台自动保活和默认长期服务策略。
+- `openhouse-exit-all.md`：全部退出的停止范围、保留范围和恢复行为。
+- `openhouse-runtime-repair.md`：修复运行控制、注册表、端口健康和重复服务的规则。
+- `troubleshooting.md`：排障入口，覆盖安装、运行、模型配置、安全日志和失败边界。
+- `permissions.md`：后台、通知、存储、Shizuku、无障碍等权限和降级行为。
+- `failure-boundaries.md`：自动修复、需用户确认、建议重置或重装的边界。
 - `SERVICE_MANAGER.md`：安装完成后的服务控制平面说明。
 - `BROWSER_AND_WEBVIEW.md`：内置浏览器、本地页面、WebView 差异和调试建议。
 - `ANDROID_CONTROL_SHIZUKU.md`：Shizuku 可选授权后的 Android 侧增强能力和边界。

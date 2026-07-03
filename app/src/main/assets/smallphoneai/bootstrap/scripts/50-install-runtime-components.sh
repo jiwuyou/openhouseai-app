@@ -261,6 +261,12 @@ payload_dir_needs_refresh() {
   local payload_name="$2"
 
   case "$payload_name" in
+    pi-agent)
+      [ -f "$source/scripts/register-service.sh" ] || return 0
+      grep -Fq '"command": ["sh", "-lc", "openhouse-pi-agent-sentinel"]' "$source/scripts/register-service.sh" \
+        && grep -Fq '/api/v1/registry/apply' "$source/scripts/register-service.sh" \
+        || return 0
+      ;;
     openhouse-connect)
       [ -f "$source/scripts/register-service.sh" ] \
         && grep -Fq 'CC_CONNECT_BRIDGE_PORT' "$source/scripts/register-service.sh" \
@@ -273,7 +279,12 @@ payload_dir_needs_refresh() {
       ;;
     smallphone)
       [ -f "$source/scripts/install.sh" ] \
+        && [ -f "$source/scripts/register-service.sh" ] \
         && grep -Fq 'SMALLPHONE_SKIP_DEP_INSTALL' "$source/scripts/install.sh" \
+        && grep -Fq 'persist_service_spec' "$source/scripts/register-service.sh" \
+        && grep -Fq 'read_openhouse_sm_token' "$source/scripts/register-service.sh" \
+        && grep -Fq 'duplicate_service_ids' "$source/scripts/register-service.sh" \
+        && grep -Fq '/api/v1/registry/apply' "$source/scripts/register-service.sh" \
         && ! grep -Fq 'Offline/local dependency installation is disabled' "$source/scripts/install.sh" \
         || return 0
       ;;
@@ -296,6 +307,10 @@ payload_dir_needs_refresh() {
 
       grep -Fq 'OPENHOUSE_PI_WEB_RUNTIME_DIR' "$source/bin/openhouse-pi-web-start" \
         && grep -Fq 'exec node server.js' "$source/bin/openhouse-pi-web-start" \
+        || return 0
+
+      grep -Fq '"command": ["sh", "-lc", "openhouse-pi-web-start"]' "$source/scripts/register-service.sh" \
+        && grep -Fq '/api/v1/registry/apply' "$source/scripts/register-service.sh" \
         || return 0
       ;;
   esac

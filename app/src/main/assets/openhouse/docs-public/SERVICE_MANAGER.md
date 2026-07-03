@@ -48,7 +48,7 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
   "name": "pi-web",
   "description": "pi-agent 本地页面运行时",
   "provider": "process",
-  "command": ["openhouse-pi-web-start"],
+  "command": ["sh", "-lc", "openhouse-pi-web-start"],
   "working_dir": "/root/.local/share/openhouseai/pi-web",
   "env": {
     "OPENHOUSE_PI_WEB_RUNTIME_DIR": "/root/.local/share/openhouseai/pi-web",
@@ -81,7 +81,8 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 - `name` 是服务 ID，只使用字母、数字、`.`、`_`、`-`。
 - `provider: "process"` 表示 service-manager 直接启动本地前台进程；需要进入 Ubuntu/proot 的服务才使用对应 provider。
 - `command` 是结构化 argv 数组，不是 shell 字符串。
-- 被管理命令必须是前台长进程；如果使用包装脚本，脚本最后要 `exec` 到真实服务，例如 `openhouse-pi-web-start` 最终 `exec node server.js`。
+- 被管理命令必须是前台长进程。脚本型服务推荐注册为 `["sh", "-lc", "openhouse-pi-web-start"]`，让 service-manager 跟踪稳定的 shell 进程组。
+- 不要把脚本型服务注册成 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。如果脚本内部 `exec node server.js`，process provider 的 PID/cmdline 校验会把它判成 `stale pidfile` 或 `cmdline mismatch`，导致 Android 运行控制无法真实启动、停止或重启。
 - `PATH` 必须包含 wrapper 所在目录和运行时依赖目录，pi-web 默认需要 `/root/.local/bin` 和 `/root/.local/node/bin`。
 - `tags` 里用 `group:<name>` 表示服务分组，例如 `group:local-stack`。
 

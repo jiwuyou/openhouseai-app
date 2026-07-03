@@ -150,6 +150,16 @@ pi-web 组件入口应使用 WebView：
 
 组件清单只描述 UI 入口和 service-manager 引用。命令、工作目录、环境变量和停止方式必须放在 service-manager 服务定义中。
 
+脚本型 pi 服务应使用稳定的 process provider 命令形式：
+
+```json
+{
+  "command": ["sh", "-lc", "openhouse-pi-web-start"]
+}
+```
+
+不要注册为 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。pi-web 启动脚本最终会进入 `node server.js`；如果 service-manager 跟踪的 PID cmdline 变化，会出现 `stale pidfile` 或 `cmdline mismatch`，Android 运行控制就不能真实控制 pi-agent 页面。
+
 ## First Install Scope
 
 首次安装链路应完成：

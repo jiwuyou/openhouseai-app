@@ -9,12 +9,14 @@ oh_log "开始后置安装/检查 Claude Code。"
 oh_run_bootstrap node
 oh_run_bootstrap claude-code
 
-oh_log "Claude Code 检查结果："
+oh_log "Claude Code native path 检查结果："
+oh_ensure_claude_native_path
 oh_check_tool_version claude "claude --version"
 
 cat <<'EOF'
 
 Claude Code 已完成后置安装入口检查。
+CloudCLI 需要的 Claude Code 路径已检查：/root/.local/bin/claude。
 使用官方登录请执行 claude login；使用 API key 或兼容端点时，请按 /root/openhouse/docs/MODEL_API_SETUP.md 配置。
 如果目标是 CloudCLI 网页中的 Claude Code，请继续运行 /root/openhouse/scripts/install-cloudcli.sh。
 EOF

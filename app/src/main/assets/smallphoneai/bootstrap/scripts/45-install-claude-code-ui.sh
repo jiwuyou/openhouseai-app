@@ -10,6 +10,8 @@ run_logged() {
   "$@"
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 is_current_ubuntu() {
   [ -f /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release
 }
@@ -25,6 +27,13 @@ run_ubuntu_logged() {
 if ! is_current_ubuntu && { ! command -v proot-distro >/dev/null 2>&1 || ! proot-distro login ubuntu -- true >/dev/null 2>&1; }; then
   log "Ubuntu 不可用，请先运行：bash bootstrap.sh ubuntu"
   exit 2
+fi
+
+if [ -f "$SCRIPT_DIR/44-install-claude-code.sh" ]; then
+  log "先检查 CloudCLI 依赖的 Claude Code native path。"
+  run_logged bash "$SCRIPT_DIR/44-install-claude-code.sh"
+else
+  log "未找到 44-install-claude-code.sh，继续安装 CloudCLI，但 Claude Code 可能需要单独安装。"
 fi
 
 log "正在 Ubuntu 内安装或检查 ClaudeCodeUI / CloudCLI。"
@@ -191,6 +200,8 @@ fi
 export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
 export WORKSPACES_ROOT="${WORKSPACES_ROOT:-$HOME}"
 export DATABASE_PATH="${DATABASE_PATH:-$HOME/.cloudcli/openhouse-auth.db}"
+test -x "$HOME/.local/bin/claude"
+"$HOME/.local/bin/claude" --version || true
 patch_cloudcli_workspace_policy
 seed_cloudcli_default_project
 command -v cloudcli

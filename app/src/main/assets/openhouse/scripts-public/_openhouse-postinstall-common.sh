@@ -80,6 +80,43 @@ oh_check_tool_version() {
   oh_run_ubuntu_bash "set -e; export PATH=\"\$HOME/.local/node/bin:\$HOME/.npm-global/bin:\$HOME/.local/bin:/usr/local/bin:\$PATH\"; command -v $tool_name; $version_command || true"
 }
 
+oh_ensure_claude_native_path() {
+  oh_run_ubuntu_bash 'set -euo pipefail
+export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+mkdir -p "$HOME/.local/bin"
+
+if [ -x "$HOME/.local/bin/claude" ] && "$HOME/.local/bin/claude" --version >/dev/null 2>&1; then
+  printf "%s\n" "$HOME/.local/bin/claude"
+  "$HOME/.local/bin/claude" --version || true
+  exit 0
+fi
+
+rm -f "$HOME/.local/bin/claude"
+candidate=""
+for path in \
+  "$HOME/.npm-global/bin/claude" \
+  "$HOME/.local/node/bin/claude" \
+  "/usr/local/bin/claude"; do
+  if [ -x "$path" ]; then
+    candidate="$path"
+    break
+  fi
+done
+
+if [ -z "$candidate" ]; then
+  candidate="$(command -v claude 2>/dev/null || true)"
+fi
+
+if [ -z "$candidate" ]; then
+  echo "Claude Code command not found. Run /root/openhouse/scripts/install-claude-code.sh first." >&2
+  exit 1
+fi
+
+ln -sf "$candidate" "$HOME/.local/bin/claude"
+printf "%s -> %s\n" "$HOME/.local/bin/claude" "$candidate"
+"$HOME/.local/bin/claude" --version'
+}
+
 oh_next_docs() {
   cat <<'EOF'
 

@@ -102,6 +102,16 @@ $HOME/.config/openhouseai/components.d/pi-agent.json
 
 组件注册只描述 UI 入口和 service-manager 引用。命令、脚本、工作目录、环境变量和停止方式必须放在 service-manager 的服务清单中。
 
+脚本型 pi 服务应使用稳定的 process provider 命令形式：
+
+```json
+{
+  "command": ["sh", "-lc", "openhouse-pi-web-start"]
+}
+```
+
+不要注册为 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。pi-web 启动脚本最终会进入 `node server.js`；如果 service-manager 跟踪的 PID cmdline 变化，会出现 `stale pidfile` 或 `cmdline mismatch`，Android 运行控制就不能真实控制 pi-agent 页面。
+
 ## 安装网络要求
 
 pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动；不要通过 `npm install -g` 安装 pi-web tgz，也不要把 pi-web 首装描述为需要 npm registry。Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络。Codex、Claude Code、CloudCLI 和 Hermes 的网络安装放到 pi-agent 后置引导阶段，因此它们失败不应阻塞首次进入 pi-agent。

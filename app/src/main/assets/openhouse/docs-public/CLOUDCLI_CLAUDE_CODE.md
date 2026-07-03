@@ -19,6 +19,22 @@ pi-web 默认提示词应引用这个路径，而不是引用源码目录。
 
 再继续本文档的模型配置和测通步骤。
 
+CloudCLI 的 Claude Code 模式会检查固定路径：
+
+```text
+/root/.local/bin/claude
+```
+
+如果页面或日志出现 `Claude Code native binary not found at /root/.local/bin/claude`，不要手工猜路径，直接执行：
+
+```bash
+/root/openhouse/scripts/install-claude-code.sh
+/root/openhouse/scripts/install-cloudcli.sh
+/root/openhouse/scripts/check-ai-tools.sh
+```
+
+脚本会在 npm 全局安装路径存在 `claude` 时自动补齐 `/root/.local/bin/claude`。
+
 ## 用户需要先提供
 
 让用户在第一条消息里一次性给出：

@@ -20,11 +20,16 @@ OpenHouse 首次安装只建立控制平面：Termux / Ubuntu、Node、文档、
 | --- | --- |
 | `/root/openhouse/scripts/install-codex.sh` | 后置安装或检查 Codex CLI。 |
 | `/root/openhouse/scripts/install-claude-code.sh` | 后置安装或检查 Claude Code。 |
-| `/root/openhouse/scripts/install-cloudcli.sh` | 后置安装或检查 CloudCLI / ClaudeCodeUI，并刷新服务注册。 |
+| `/root/openhouse/scripts/install-cloudcli.sh` | 后置安装或检查 CloudCLI / ClaudeCodeUI，刷新服务注册，并只尝试启动 `cloudcli` 本服务。 |
 | `/root/openhouse/scripts/install-hermes.sh` | 准备 Hermes WebUI 的独立 uv 环境；前台测通后再注册服务。 |
 | `/root/openhouse/scripts/check-ai-tools.sh` | 检查 Node、Codex、Claude Code、CloudCLI、文档、脚本和基础运行栈。 |
 
 这些脚本必须可以反复执行。已经安装时应检查版本和路径；缺失时再安装；失败时输出下一步，不应删除用户项目、清理 Ubuntu 或覆盖密钥。
+
+Claude Code 的后置检查必须同时满足两点：
+
+- `claude --version` 可执行。
+- `/root/.local/bin/claude --version` 可执行，因为 CloudCLI 的 Claude Code 模式会读取这个固定路径。
 
 ## pi-agent 推荐顺序
 

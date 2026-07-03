@@ -929,8 +929,10 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         ServiceSnapshot controlPlane = findControlPlaneSnapshot(snapshots);
         if (controlPlane == null) {
             if (allMode) {
-                setControlPlaneStatus("控制中枢：未在服务列表中找到 service-manager。若运行控制不可用，请点击“修复控制中枢”。");
-                showMaintenanceFallback();
+                int serviceCount = snapshots == null ? 0 : snapshots.size();
+                setControlPlaneStatus("控制中枢：已连接（service-manager）\n已读取 " + serviceCount
+                    + " 个服务。service-manager 是控制进程，不要求出现在自己的服务列表中。");
+                hideMaintenanceFallback();
             }
             return;
         }

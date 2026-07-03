@@ -14,6 +14,41 @@ OpenHouseAI 是一个装在手机里的人机协作平台。它不是单纯的�
 
 pi-web 默认提示词应优先引用 `/root/openhouse/docs` 下的稳定文档路径；`/root/openhouseai-docs/official` 是兼容旧路径。源码里的同名 Markdown 文件会被同步到运行期文档目录。
 
+## 如果你只想开始使用
+
+普通用户首次使用优先阅读：
+
+1. `openhouse-overview.md`
+   - 用最短路径理解 OpenHouse 是什么、默认核心服务是什么、pi-agent 和 cc/codex 分别做什么。
+2. `first-use-tutorial.md`
+   - 了解首次教学会指向哪里、哪些动作需要用户点击、哪些只是说明。
+3. `pi-agent-first-use.md`
+   - 进入 pi-agent 后，按它的提示配置模型、Claude 或 Codex。
+4. `model-config-migration.md`
+   - 准备 `base_url`、`key/token`、`model id` 和协议类型。
+5. `cloudcli-claude-code-setup.md` 或 `codex-setup.md`
+   - 根据你要先使用 Claude 还是 Codex，完成后置配置和实测。
+
+普通用户不需要先学习终端。终端教学在 `terminal-guide.md`，需要时再看。
+
+## 如果你是 AI agent
+
+AI agent 优先阅读：
+
+1. `ai-reference-index.md`
+2. `openhouse-overview.md`
+3. `AI_AGENT_REFERENCE.md`
+4. `service-manager.md`
+5. `troubleshooting.md`
+
+如果你要实现或审查下一轮代码改动，还必须阅读：
+
+1. `implementation-acceptance-checklist.md`
+2. `openhouse-install-flow.md`
+3. `openhouse-cn-network-retry.md`
+4. `openhouse-runtime-policy.md`
+5. `openhouse-exit-all.md`
+
 ## 先认清当前在哪一层
 
 OpenHouse 有三层常见路径，不要混用：
@@ -36,37 +71,42 @@ openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
 
 如果 `pwd` 或 `$HOME` 是 `/root`，通常在 Ubuntu 内。如果 `$HOME` 是 `/data/data/com.termux/files/home`，通常在 Termux 外层。如果 `cat /etc/os-release` 显示 Ubuntu，则当前命令环境是 Ubuntu。
 
-1. `PRODUCT_OVERVIEW.md`
+1. `openhouse-overview.md`
+   - 给用户和 AI 的稳定小写概览，说明首次可用闭环和默认核心服务。
+2. `PRODUCT_OVERVIEW.md`
    - 先了解这个产品是什么，以及为什么强调人和 AI 共同使用软件。
-2. `CAPABILITIES_MAP.md`
+3. `CAPABILITIES_MAP.md`
    - 了解 OpenHouse 能使用哪些能力：Termux、Ubuntu、服务、模型、浏览器、文件、Shizuku 和网络检索。
-3. `USER_SCENARIOS.md`
+4. `USER_SCENARIOS.md`
    - 了解日常协作、智能操作系统、人生管理、知识库和人机编程等场景。
-4. `WORKBENCH_OPTIONS.md`
+5. `WORKBENCH_OPTIONS.md`
    - 了解为什么 pi-agent 不是唯一主工作台，以及 Claude Code、Codex、Hermes Web 和开源项目如何成为用户自己的工作台。
-5. `ENVIRONMENT.md`
+6. `first-use-tutorial.md`
+   - 了解首次教学脚本，终端教学为什么后置。
+7. `ENVIRONMENT.md`
    - 确认当前 Android、Termux、Ubuntu 和默认安装范围。
-6. `PI_AGENT_PLUGIN_SYSTEM.md`
+8. `PI_AGENT_PLUGIN_SYSTEM.md`
    - 了解 pi、pi-web、插件目录和默认搜索插件。
-7. `AI_TOOL_POSTINSTALL.md`
+9. `AI_TOOL_POSTINSTALL.md`
    - 需要后置安装 Codex、Claude Code、CloudCLI 或 Hermes 时，先看这里的脚本入口。
-8. `MODEL_API_SETUP.md`
+10. `MODEL_API_SETUP.md`
    - 需要使用 Codex、Claude Code 或 CloudCLI 时，再配置登录或模型 API。
-9. `OPENHOUSE_FIRST_CONFIGURATION.md`
+11. `OPENHOUSE_FIRST_CONFIGURATION.md`
    - pi-web 模型可用后，让 pi-agent 完成模型迁移、CloudCLI/Claude Code 配置和连通测试。
-10. `CLOUDCLI_CLAUDE_CODE.md`
+12. `CLOUDCLI_CLAUDE_CODE.md`
    - 需要让 pi-agent 配置 CloudCLI 中的 Claude Code 时阅读。
-11. `HERMES_SETUP.md`
+13. `HERMES_SETUP.md`
    - 需要安装 Hermes 时阅读。Hermes 是可选高级能力，安装和配置会花比较久。
 
 ## 给 AI agent 的入口
 
 如果你是 AI agent，优先阅读：
 
-1. `AI_AGENT_REFERENCE.md`
-2. `TERMINAL_PROFILES.md`
-3. `SERVICE_MANAGER.md`
-4. `RECOVERY.md`
+1. `ai-reference-index.md`
+2. `AI_AGENT_REFERENCE.md`
+3. `terminal-guide.md`
+4. `service-manager.md`
+5. `troubleshooting.md`
 
 这些文档说明了默认终端选择、服务控制、故障诊断和禁止操作。
 

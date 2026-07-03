@@ -1,20 +1,135 @@
 # OpenHouse 概览
 
-这是给 pi-agent 和其他 AI 工作台使用的稳定小写入口。完整说明见同目录：
+OpenHouse 是一个面向人机协作的移动端 AI 运行平台。它把 Android、Termux、Ubuntu、服务控制、本地 Web 工作台、文件、浏览器、模型工具和 AI 文档放在同一个可管理环境里，让用户和 AI 可以围绕同一套软件能力协作。
+
+最高产品目标很简单：用户安装 APK 后，不需要理解 Termux、Ubuntu、Node、service-manager，也能顺利完成首次安装，并成功使用 Claude 或 Codex 收到回复。
+
+## 这个产品要解决什么
+
+OpenHouse 不是单纯聊天软件，也不是把终端塞进手机。它要提供一个人和 AI 都能使用的软件环境：
+
+- 用户通过菜单、按钮、页面、日志和教学使用系统。
+- AI 通过文档、插件、终端、API、service-manager 和脚本使用同一套能力。
+- 用户可以随时查看、接管、暂停、修复或全部退出。
+- AI 可以在授权范围内帮助配置模型、安装工具、管理服务、整理文件、检索资料、运行项目和构建工作台。
+
+这个设计的核心是“同一能力，双入口”。人看到的是界面，AI 看到的是工具和文档，但两者操作的是同一个环境。
+
+## 首次可用闭环
+
+OpenHouse 的首次可用闭环不是“脚本执行完成”，而是：
+
+1. APK 安装完成。
+2. Termux / Ubuntu 基础环境可用。
+3. `/root/openhouse/docs` 已同步。
+4. pi-agent / pi-web 可打开。
+5. service-manager 可用。
+6. SmallPhone 兼容服务可用。
+7. CloudCLI 或后置 AI 工具入口可用。
+8. 用户能配置模型。
+9. Claude 或 Codex 至少一个能真实发消息并收到回复。
+10. 用户知道如何重新进入教学、修复问题或全部退出。
+
+文档和实现都应围绕这个闭环组织。没有通过真实 Claude/Codex 回复测试，就不能认为产品已经彻底可用。
+
+## 默认核心服务
+
+App 在前台时，默认应保持这些能力运行：
+
+- `service-manager`
+- `smallphone`
+- `pi-agent`
+- `cloudcli`
+
+`service-manager` 是安装完成后的运行控制平面。Android 侧负责轻量检测 service-manager；service-manager 负责检查和修复长期服务。新增长期服务也应该注册进 service-manager，而不是绕过它直接后台运行。
+
+前台默认可用会牺牲一部分资源，但换来普通用户无需学习服务控制。真正省资源的入口是“全部退出”：它必须停止 OpenHouse 管理的所有长期服务和由 OpenHouse 拉起的 Termux/Ubuntu 长期进程，但保留用户数据、模型配置、日志和安装产物。
+
+## 入口定位
+
+主菜单/侧边栏的一级服务入口至少包括：
+
+| 入口 | 定位 |
+| --- | --- |
+| `SmallPhone` | 手机侧能力、基础入口和兼容服务。 |
+| `pi-agent` | 首次配置助手、文档索引员和配置迁移执行者。 |
+| `cc/codex` | CloudCLI / Claude Code / Codex 的统一入口。 |
+
+`pi-agent` 不是唯一主工作台。它首先负责把系统配置好，让用户能开始使用 Claude 或 Codex。用户后续可以选择 Claude Code、Codex、Hermes Web、pi-web，或者让 AI 搜索和改造其它开源项目作为长期工作台。
+
+`cc/codex` 是统一入口，不应在新手阶段把 CloudCLI、Claude Code、Codex 拆成多个需要理解的一级概念。
+
+## 分层环境
+
+OpenHouse 同时存在 Android App、Termux 外层和 Ubuntu in Termux：
+
+| 层级 | 常见路径 | 用途 |
+| --- | --- | --- |
+| Android App | 菜单、教学、维护中心、WebView | 权限、入口、状态展示、显式控制。 |
+| Termux 外层 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | 底座、bootstrap、Termux 包、proot-distro、Ubuntu 修复。 |
+| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/projects` | 主要工作区、pi-agent/pi-web、开发工具、Claude/Codex/CloudCLI。 |
+
+普通用户首次使用不需要理解这些层级。AI 和高级排障文档必须写清楚层级，避免在 Ubuntu 内误改 Termux prefix，或在 Termux 外层误以为自己位于 `/root`。
+
+## 教学策略
+
+首次教学只讲最短使用闭环：
+
+- 菜单在哪里。
+- pi-agent 是配置助手。
+- cc/codex 是主要 AI 工具入口。
+- 核心服务会在前台自动运行。
+- 一般不需要使用终端。
+- 需要时可以单独打开终端教学。
+- 可以通过“全部退出”停止后台运行。
+
+终端教学必须单独入口，不进入首次教学。需要用户真实点击的教学动作，首次 20 秒内不允许跳过；不需要点击的步骤只显示“下一步”。
+
+## 模型和工具配置
+
+用户只需要提供这些信息：
+
+- `base_url`
+- `key` 或 `token`
+- `model id`
+- 协议类型
+
+协议必须按目标工具判断，不能只按 provider 品牌判断。DeepSeek 等 provider 可能同一个密钥对应不同协议或 endpoint；迁移到 Claude Code、Codex、CloudCLI 时必须分别确认。
+
+可选内置 `cc-switch` arm64 预编译二进制时，它的定位是模型配置工具箱和 provider 配置执行器。它不是长期服务，不替代 service-manager，不安装 Claude Code 本体，也不替代 pi-agent 的解释和引导职责。
+
+## 文档入口
+
+运行期推荐文档目录：
+
+```text
+/root/openhouse/docs
+```
+
+AI 应优先阅读：
+
+- `ai-reference-index.md`
+- `implementation-acceptance-checklist.md`
+- `openhouse-install-flow.md`
+- `openhouse-cn-network-retry.md`
+- `first-use-tutorial.md`
+- `pi-agent-first-use.md`
+- `model-config-migration.md`
+- `cloudcli-claude-code-setup.md`
+- `codex-setup.md`
+- `service-manager.md`
+- `openhouse-runtime-policy.md`
+- `openhouse-exit-all.md`
+- `troubleshooting.md`
+
+完整产品说明仍可参考同目录的大写文档：
 
 - `PRODUCT_OVERVIEW.md`
 - `CAPABILITIES_MAP.md`
 - `USER_SCENARIOS.md`
 - `WORKBENCH_OPTIONS.md`
+- `AI_AGENT_REFERENCE.md`
 
-OpenHouseAI 是一个面向人机协作的移动端 AI 运行平台。它把 Android、Termux、Ubuntu、服务控制、文件、内置浏览器、本地 Web 工作台和 AI 工具放在同一个可管理环境里，让用户和 AI 能围绕同一套能力协作。
+## 安全底线
 
-首次安装的核心目标是建立控制平面：Termux / Ubuntu、Node、文档、pi-agent / pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。Codex、Claude Code、CloudCLI、Hermes 等是后置工作能力，由 pi-agent 根据用户目标和文档引导安装。
-
-重要定位：
-
-- `pi-agent` 是首次配置助手、文档索引员和配置迁移执行者，不是唯一主工作台。
-- 用户可以选择 Claude Code、Codex、Hermes Web，或让 AI 搜索、安装和改造其他开源项目作为长期工作台。
-- `service-manager` 是安装完成后的运行控制平面。
-- `cc/codex` 是 CloudCLI / Claude Code / Codex 的统一入口；未安装时应提示用户先进入 pi-agent 完成后置配置。
-
+任何 UI、日志、诊断报告、截图、文档和聊天内容都不得输出完整 key/token。需要展示时只能脱敏，例如 `sk-****abcd`。自动诊断和复制日志前必须先脱敏，不能直接打印 service JSON 的 `env` 字段。

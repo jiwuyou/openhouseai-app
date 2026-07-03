@@ -108,6 +108,7 @@ oh_termux_home(){ if oh_is_current_ubuntu; then printf '%s\n' /data/data/com.ter
 oh_bootstrap(){ local home; home="$(oh_termux_home)"; for p in "${OPENHOUSE_BOOTSTRAP:-}" "${SMALLPHONEAI_BOOTSTRAP:-}" "$home/.smallphoneai-bootstrap/bootstrap.sh" "$HOME/.smallphoneai-bootstrap/bootstrap.sh"; do [ -n "$p" ] && [ -f "$p" ] && { printf '%s\n' "$p"; return 0; }; done; return 1; }
 oh_run_bootstrap(){ local b; b="$(oh_bootstrap)" || oh_die "找不到 bootstrap.sh，请先完成 OpenHouse 首次安装。"; chmod +x "$b" 2>/dev/null || true; oh_log "执行 bootstrap 阶段：$1"; bash "$b" "$1"; }
 oh_run_ubuntu_bash(){ if oh_is_current_ubuntu; then bash -lc "$1"; else command -v proot-distro >/dev/null 2>&1 || oh_die "缺少 proot-distro。"; proot-distro login ubuntu -- bash -lc "$1"; fi; }
+oh_ensure_claude_native_path(){ oh_run_ubuntu_bash 'set -euo pipefail; export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; mkdir -p "$HOME/.local/bin"; if [ -x "$HOME/.local/bin/claude" ] && "$HOME/.local/bin/claude" --version >/dev/null 2>&1; then "$HOME/.local/bin/claude" --version; exit 0; fi; rm -f "$HOME/.local/bin/claude"; candidate=""; for path in "$HOME/.npm-global/bin/claude" "$HOME/.local/node/bin/claude" "/usr/local/bin/claude"; do [ -x "$path" ] && { candidate="$path"; break; }; done; [ -n "$candidate" ] || candidate="$(command -v claude 2>/dev/null || true)"; [ -n "$candidate" ] || { echo "Claude Code command not found" >&2; exit 1; }; ln -sf "$candidate" "$HOME/.local/bin/claude"; "$HOME/.local/bin/claude" --version'; }
 oh_next_docs(){ cat <<'DOCS'
 
 下一步建议：
@@ -138,6 +139,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_openhouse-postinstall-common.sh"
 oh_run_bootstrap node
 oh_run_bootstrap claude-code
+oh_ensure_claude_native_path
 oh_run_ubuntu_bash 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v claude; claude --version || true'
 oh_next_docs
 EOF
@@ -148,11 +150,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_openhouse-postinstall-common.sh"
 oh_run_bootstrap node
+oh_run_bootstrap claude-code
+oh_ensure_claude_native_path
 oh_run_bootstrap cloudcli
 oh_run_bootstrap sync-registry || true
-oh_run_bootstrap start || true
 oh_run_ubuntu_bash 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v cloudcli; cloudcli version || cloudcli --version || true'
-printf '%s\n' 'CloudCLI 默认本机账号密码：admin / 123456。请按 /root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md 测通 Claude Code。'
+printf '%s\n' 'CloudCLI 默认本机账号密码：admin / 123456。请在 Android 运行控制页启动 cc/codex，或按 /root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md 测通 Claude Code。'
 oh_next_docs
 EOF
 
@@ -176,6 +179,7 @@ check(){ label="$1"; cmd="$2"; if oh_run_ubuntu_bash "$cmd"; then printf '[ok] %
 check Node 'export PATH="$HOME/.local/node/bin:$PATH"; command -v node && node -v'
 check Codex 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v codex && codex --version'
 check Claude-Code 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v claude && claude --version'
+check Claude-Code-native 'test -x "$HOME/.local/bin/claude" && "$HOME/.local/bin/claude" --version'
 check CloudCLI 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v cloudcli && (cloudcli version || cloudcli --version)'
 check Docs 'test -d /root/openhouse/docs && test -f /root/openhouse/docs/START_HERE.md'
 check Scripts 'test -d /root/openhouse/scripts && test -f /root/openhouse/scripts/install-codex.sh'

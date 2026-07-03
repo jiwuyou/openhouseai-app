@@ -28,6 +28,7 @@ check_in_ubuntu "Node.js" 'export PATH="$HOME/.local/node/bin:$PATH"; command -v
 check_in_ubuntu "npm" 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$PATH"; command -v npm && npm -v'
 check_in_ubuntu "Codex CLI" 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v codex && codex --version'
 check_in_ubuntu "Claude Code" 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v claude && claude --version'
+check_in_ubuntu "Claude Code native path for CloudCLI" 'test -x "$HOME/.local/bin/claude" && "$HOME/.local/bin/claude" --version'
 check_in_ubuntu "CloudCLI" 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v cloudcli && (cloudcli version || cloudcli --version)'
 check_in_ubuntu "OpenHouse docs" 'test -d /root/openhouse/docs && ls /root/openhouse/docs/START_HERE.md /root/openhouse/docs/SERVICE_MANAGER.md >/dev/null && printf "%s\n" /root/openhouse/docs'
 check_in_ubuntu "OpenHouse scripts" 'test -d /root/openhouse/scripts && ls /root/openhouse/scripts/install-codex.sh /root/openhouse/scripts/check-ai-tools.sh >/dev/null && printf "%s\n" /root/openhouse/scripts'
@@ -43,7 +44,7 @@ cat <<'EOF'
 
 缺什么就补什么：
 - Codex 缺失：/root/openhouse/scripts/install-codex.sh
-- Claude Code 缺失：/root/openhouse/scripts/install-claude-code.sh
+- Claude Code 或 /root/.local/bin/claude 缺失：/root/openhouse/scripts/install-claude-code.sh
 - CloudCLI 缺失：/root/openhouse/scripts/install-cloudcli.sh
 - Hermes：可选高级能力，使用 /root/openhouse/scripts/install-hermes.sh 准备环境后继续按文档注册。
 EOF

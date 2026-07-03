@@ -102,11 +102,63 @@ install_npm_global() {
   return 1
 }
 
+ensure_claude_native_path() {
+  mkdir -p "$HOME/.local/bin"
+
+  if [ -x "$HOME/.local/bin/claude" ] && "$HOME/.local/bin/claude" --version >/dev/null 2>&1; then
+    echo "Claude Code native path 已就绪：$HOME/.local/bin/claude"
+    "$HOME/.local/bin/claude" --version || true
+    return 0
+  fi
+
+  rm -f "$HOME/.local/bin/claude"
+  local candidate=""
+  local path
+  for path in \
+    "$HOME/.npm-global/bin/claude" \
+    "$HOME/.local/node/bin/claude" \
+    "/usr/local/bin/claude"; do
+    if [ -x "$path" ]; then
+      candidate="$path"
+      break
+    fi
+  done
+
+  if [ -z "$candidate" ]; then
+    candidate="$(command -v claude 2>/dev/null || true)"
+  fi
+
+  if [ -z "$candidate" ]; then
+    echo "Claude Code 命令不存在，无法创建 $HOME/.local/bin/claude。" >&2
+    return 1
+  fi
+
+  ln -sf "$candidate" "$HOME/.local/bin/claude"
+  echo "$HOME/.local/bin/claude -> $candidate"
+  "$HOME/.local/bin/claude" --version
+}
+
+write_agent_tool_path() {
+  local path_line
+  path_line="export PATH=\"\$HOME/.local/node/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:\$PATH\""
+  for PROFILE_FILE in "$HOME/.profile" "$HOME/.bashrc"; do
+    touch "$PROFILE_FILE"
+    if ! grep -Fq "$path_line" "$PROFILE_FILE"; then
+      {
+        printf "\n# SmallPhoneAI agent tools\n"
+        printf "%s\n" "$path_line"
+      } >> "$PROFILE_FILE"
+    fi
+  done
+}
+
 require_node_24
 
 if command -v claude >/dev/null 2>&1; then
   echo "Claude Code 已安装：$(command -v claude)"
   claude --version || true
+  ensure_claude_native_path
+  write_agent_tool_path
   exit 0
 fi
 
@@ -115,19 +167,11 @@ configure_npm_network
 install_npm_global @anthropic-ai/claude-code
 
 export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
+ensure_claude_native_path
 command -v claude
 claude --version || true
 
-PATH_LINE="export PATH=\"\$HOME/.local/node/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:\$PATH\""
-for PROFILE_FILE in "$HOME/.profile" "$HOME/.bashrc"; do
-  touch "$PROFILE_FILE"
-  if ! grep -Fq "$PATH_LINE" "$PROFILE_FILE"; then
-    {
-      printf "\n# SmallPhoneAI agent tools\n"
-      printf "%s\n" "$PATH_LINE"
-    } >> "$PROFILE_FILE"
-  fi
-done
+write_agent_tool_path
 EOF
 }
 
