@@ -5,7 +5,6 @@ import android.app.Application;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 
 import com.termux.shared.logger.Logger;
 
@@ -17,7 +16,6 @@ public final class OpenHouseForegroundRuntimeKeeper implements Application.Activ
     private static final String LOG_TAG = "OpenHouseForegroundRuntime";
     private static final long FIRST_TICK_DELAY_MS = 1_500L;
     private static final long FOREGROUND_TICK_INTERVAL_MS = 30_000L;
-    private static final long EXIT_ALL_BACKGROUND_RESET_MS = 1_000L;
 
     private static boolean registered;
 
@@ -35,7 +33,6 @@ public final class OpenHouseForegroundRuntimeKeeper implements Application.Activ
     private int startedActivityCount;
     private boolean foreground;
     private boolean maintenanceRunning;
-    private long lastBackgroundAtMs;
 
     private OpenHouseForegroundRuntimeKeeper(Application application) {
         this.application = application;
@@ -55,7 +52,6 @@ public final class OpenHouseForegroundRuntimeKeeper implements Application.Activ
         startedActivityCount++;
         if (startedActivityCount == 1) {
             foreground = true;
-            maybeClearExitAllForNewForegroundSession();
             scheduleMaintenance(FIRST_TICK_DELAY_MS);
         }
     }
@@ -65,7 +61,6 @@ public final class OpenHouseForegroundRuntimeKeeper implements Application.Activ
         startedActivityCount = Math.max(0, startedActivityCount - 1);
         if (startedActivityCount == 0) {
             foreground = false;
-            lastBackgroundAtMs = SystemClock.elapsedRealtime();
             mainHandler.removeCallbacks(maintenanceRunnable);
         }
     }
@@ -91,16 +86,6 @@ public final class OpenHouseForegroundRuntimeKeeper implements Application.Activ
 
     @Override
     public void onActivityDestroyed(Activity activity) {
-    }
-
-    private void maybeClearExitAllForNewForegroundSession() {
-        if (!OpenHouseRuntimeSupervisor.isExitAllRequested(application)) {
-            return;
-        }
-        long now = SystemClock.elapsedRealtime();
-        if (lastBackgroundAtMs == 0L || now - lastBackgroundAtMs >= EXIT_ALL_BACKGROUND_RESET_MS) {
-            OpenHouseRuntimeSupervisor.clearExitAllRequested(application);
-        }
     }
 
     private void runMaintenanceTick() {

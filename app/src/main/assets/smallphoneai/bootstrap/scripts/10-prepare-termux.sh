@@ -796,7 +796,7 @@ EOF
 cat > "$DOC_DIR/ENVIRONMENT.md" <<'EOF'
 # 运行环境说明
 
-SmallPhoneAI 运行在 Android Termux 中，并通过 `proot-distro` 提供 Ubuntu。默认核心能力是 Termux/Ubuntu 基础环境、Node.js、OpenHouse 文档、pi-agent、pi-web、service-manager、cc-connect/openhouse-connect 和 SmallPhone 兼容服务。Codex CLI、Claude Code、CloudCLI 和 Hermes 是后置 AI 工作能力，由 pi-agent 按 `/root/openhouse/docs` 和 `/root/openhouse/scripts` 引导安装、检查和注册。
+SmallPhoneAI 运行在 Android Termux 中，并通过 `proot-distro` 提供 Ubuntu。默认核心能力是 Termux/Ubuntu 基础环境、Node.js、OpenHouse 文档、pi-agent、pi-web、service-manager 和 SmallPhone 兼容服务。cc-connect/openhouse-connect 会保留为可安装、可注册、可诊断、可修复的可选连接服务，但不作为首次 readiness 必需项。Codex CLI、Claude Code、CloudCLI 和 Hermes 是后置 AI 工作能力，由 pi-agent 按 `/root/openhouse/docs` 和 `/root/openhouse/scripts` 引导安装、检查和注册。
 
 外部可选工具不作为内置组件打包进 APK，也不是首次安装默认阶段。如需自行下载、配置或迁移旧工具，请参考产品手册 `official/OPTIONAL_EXTERNAL_TOOLS.md`。
 

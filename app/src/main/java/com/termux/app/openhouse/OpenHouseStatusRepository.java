@@ -13,6 +13,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -27,6 +29,7 @@ public final class OpenHouseStatusRepository {
     private static final String KEY_OVERLAY_STEP = "step";
     private static final String KEY_OVERLAY_BATTERY_SKIPPED = "battery_skipped";
     private static final String KEY_OVERLAY_GUIDE_DISMISSED = "guide_dismissed";
+    private static final String PI_WEB_DEFAULT_URL = "http://127.0.0.1:30141/";
 
     private final Context context;
 
@@ -50,12 +53,15 @@ public final class OpenHouseStatusRepository {
         boolean claudeCodeInstalled = ubuntuInstalled && runUbuntuCheck("command -v claude >/dev/null 2>&1", 12);
         boolean cloudCliInstalled = ubuntuInstalled && runUbuntuCheck("command -v cloudcli >/dev/null 2>&1 && test -s \"$HOME/.config/openhouseai/claude-code-ui-port\" && test -s \"$HOME/.config/openhouseai/claude-code-ui-url\"", 12);
         boolean serviceManagerInstalled = ubuntuInstalled && runUbuntuCheck("command -v service-manager >/dev/null 2>&1 || test -x \"$HOME/smallphoneai-repos/service-manager/service-manager\" || test -x \"$HOME/smallphoneai-repos/service-manager/target/release/service-manager\" || test -x \"$HOME/smallphoneai-repos/service-manager/target/debug/service-manager\"", 12);
+        boolean piAgentInstalled = ubuntuInstalled && runUbuntuCheck("{ test -d \"$HOME/smallphoneai-repos/pi-agent\" && { test -f \"$HOME/smallphoneai-repos/pi-agent/scripts/register-service.sh\" || test -x \"$HOME/smallphoneai-repos/pi-agent/bin/openhouse-pi-agent-sentinel\" || test -f \"$HOME/smallphoneai-repos/pi-agent/package.json\"; }; } || command -v pi >/dev/null 2>&1", 12);
+        boolean piWebInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/pi-web\" && { test -f \"$HOME/smallphoneai-repos/pi-web/runtime/pi-web/server.js\" || test -f \"$HOME/smallphoneai-repos/pi-web/server.js\" || test -x \"$HOME/smallphoneai-repos/pi-web/bin/openhouse-pi-web-start\" || test -f \"$HOME/smallphoneai-repos/pi-web/scripts/register-service.sh\"; }", 12);
         boolean openhouseConnectInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/openhouse-connect\" && { test -f \"$HOME/smallphoneai-repos/openhouse-connect/scripts/register-service.sh\" || test -f \"$HOME/smallphoneai-repos/openhouse-connect/package.json\" || test -f \"$HOME/smallphoneai-repos/openhouse-connect/Makefile\"; }", 12);
         boolean smallPhoneRuntimeInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/smallphone-active\" && { test -d \"$HOME/smallphoneai-repos/smallphone-active/openhouse-components\" || test -d \"$HOME/smallphoneai-repos/smallphone-active/standalone-apps\" || test -f \"$HOME/smallphoneai-repos/smallphone-active/package.json\"; }", 12);
         boolean registrySynced = termuxReady && isRegistrySynced();
 
         SmallPhoneRuntime.Status runtimeStatus = new SmallPhoneRuntime(context).loadStatus();
         boolean serviceManagerReachable = runtimeStatus.serviceManager.reachable;
+        boolean piWebReachable = probeUrl(PI_WEB_DEFAULT_URL);
         boolean openhouseConnectReachable = runtimeStatus.ccConnect.reachable || runtimeStatus.ccConnectDisabled;
         boolean smallPhoneReachable = runtimeStatus.smallPhone.reachable && runtimeStatus.smallPhoneCore.reachable;
 
@@ -71,10 +77,13 @@ public final class OpenHouseStatusRepository {
             claudeCodeInstalled,
             cloudCliInstalled,
             serviceManagerInstalled,
+            piAgentInstalled,
+            piWebInstalled,
             openhouseConnectInstalled,
             smallPhoneRuntimeInstalled,
             registrySynced,
             serviceManagerReachable,
+            piWebReachable,
             openhouseConnectReachable,
             smallPhoneReachable,
             getOnboardingPrefs().getBoolean(KEY_LAUNCH_CONFIRMED, false),
@@ -87,20 +96,19 @@ public final class OpenHouseStatusRepository {
     }
 
     public static boolean isCoreDeploymentComplete(OpenHouseStatus status) {
-        return status != null
-            && status.termuxReady
-            && status.productPrepared
-            && status.ubuntuInstalled
-            && status.officialDocsSynced
-            && status.entryUbuntuConfigured
-            && status.nodeInstalled
-            && status.serviceManagerInstalled
-            && status.openhouseConnectInstalled
-            && status.smallPhoneRuntimeInstalled
-            && status.registrySynced
-            && status.serviceManagerReachable
-            && status.openhouseConnectReachable
-            && status.smallPhoneReachable;
+        return isFirstUseReady(status);
+    }
+
+    public boolean isFirstUseReady() {
+        return isFirstUseReady(loadStatus());
+    }
+
+    public static boolean isFirstUseReady(OpenHouseStatus status) {
+        return status != null && status.piWebReachable;
+    }
+
+    public boolean isPiWebReachable() {
+        return probeUrl(PI_WEB_DEFAULT_URL);
     }
 
     public OpenHouseOnboardingState loadOnboardingState() {
@@ -184,6 +192,14 @@ public final class OpenHouseStatusRepository {
     }
 
     public OpenHouseOnboardingState markOneClickInstallCompleted() {
+        if (!isOneClickInstallCompleted()) {
+            getOnboardingPrefs().edit()
+                .putInt(KEY_CURRENT_STEP, OpenHouseOnboardingState.Step.WAITING_INSTALL.number)
+                .putString(KEY_OVERLAY_STEP, toOverlayStepName(OpenHouseOnboardingState.Step.WAITING_INSTALL))
+                .apply();
+            return loadOnboardingState();
+        }
+
         getOnboardingPrefs().edit()
             .putInt(KEY_CURRENT_STEP, OpenHouseOnboardingState.Step.READY_TO_USE.number)
             .putString(KEY_OVERLAY_STEP, toOverlayStepName(OpenHouseOnboardingState.Step.READY_TO_USE))
@@ -275,15 +291,12 @@ public final class OpenHouseStatusRepository {
         boolean installRunning = installState != null && installState.running;
         boolean installDone = isInstallDone(installState, status);
 
-        if (launchConfirmed) {
-            return OpenHouseOnboardingState.Step.READY_TO_USE;
-        }
-
         if (installDone) {
             return OpenHouseOnboardingState.Step.READY_TO_USE;
         }
 
         if (installRunning
+            || launchConfirmed
             || effectiveStep.number >= OpenHouseOnboardingState.Step.WAITING_INSTALL.number) {
             return OpenHouseOnboardingState.Step.WAITING_INSTALL;
         }
@@ -324,16 +337,14 @@ public final class OpenHouseStatusRepository {
     private boolean isOneClickInstallCompleted() {
         try {
             OpenHouseStatus status = loadStatus();
-            return isCoreDeploymentComplete(status)
-                || (OpenHouseInstallController.getInstance(context).getState().completed && isCoreDeploymentComplete(status));
+            return isFirstUseReady(status);
         } catch (Exception e) {
             return false;
         }
     }
 
     private boolean isInstallDone(OpenHouseInstallState installState, OpenHouseStatus status) {
-        return (installState != null && installState.completed)
-            || isCoreDeploymentComplete(status);
+        return installState != null && installState.completed || isFirstUseReady(status);
     }
 
     private OpenHouseOnboardingState.Step readStoredStep(SharedPreferences preferences) {
@@ -395,6 +406,26 @@ public final class OpenHouseStatusRepository {
     private boolean runUbuntuCheck(String script, int timeoutSeconds) {
         String path = "export PATH=\"$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"; ";
         return runTermuxCommand("proot-distro login ubuntu -- bash -lc " + shellQuote(path + script), timeoutSeconds).isSuccess();
+    }
+
+    private boolean probeUrl(String url) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setConnectTimeout(1200);
+            connection.setReadTimeout(1800);
+            connection.setUseCaches(false);
+            connection.setInstanceFollowRedirects(false);
+            connection.setRequestMethod("GET");
+            int code = connection.getResponseCode();
+            return code >= 200 && code < 400;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
     }
 
     private ShellCheckResult runTermuxCommand(String command, int timeoutSeconds) {

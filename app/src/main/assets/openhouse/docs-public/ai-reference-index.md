@@ -38,7 +38,7 @@
 | Codex | `codex-setup.md`, `MODEL_API_SETUP.md` | 配置并实测 Codex。 |
 | service-manager | `service-manager.md`, `SERVICE_MANAGER.md` | 注册、启动、停止、修复长期服务。 |
 | 前台保活 | `openhouse-runtime-policy.md` | 理解 Android 和 service-manager 的分工。 |
-| 全部退出 | `openhouse-exit-all.md` | 明确停止范围、保留范围和恢复行为。 |
+| 停止运行栈 / 全部退出 | `openhouse-exit-all.md` | 明确停止范围、界面行为、保留范围和恢复行为。 |
 | 故障排查 | `troubleshooting.md`, `RECOVERY.md` | 按症状选择最小修复步骤。 |
 | cc-switch | `cc-switch.md` | 作为模型配置执行器使用，不把它当服务。 |
 | 权限和降级 | `permissions.md` | 区分必需权限、可选权限和缺失时降级。 |

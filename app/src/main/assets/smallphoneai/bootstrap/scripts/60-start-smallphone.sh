@@ -41,6 +41,77 @@ is_current_ubuntu() {
   [ -f /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release
 }
 
+read_openhouse_service_manager_endpoint() {
+  local config key value
+  for config in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    for key in listen_addr listenAddr base_url baseUrl baseURL url; do
+      value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
+      if [ -n "$value" ]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+normalize_service_manager_bind() {
+  local value="${1:-}"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+  esac
+  value="${value%%/*}"
+  case "$value" in
+    "") return 1 ;;
+    :*) printf '127.0.0.1%s\n' "$value"; return 0 ;;
+    0.0.0.0) printf '127.0.0.1\n'; return 0 ;;
+    0.0.0.0:*) printf '127.0.0.1:%s\n' "${value#0.0.0.0:}"; return 0 ;;
+    "::"|"[::]") printf '127.0.0.1\n'; return 0 ;;
+    "[::]:"*) printf '127.0.0.1:%s\n' "${value#"[::]:"}"; return 0 ;;
+    :::*) printf '127.0.0.1:%s\n' "${value#:::}"; return 0 ;;
+    *[!0-9]*) printf '%s\n' "$value"; return 0 ;;
+    *) printf '127.0.0.1:%s\n' "$value"; return 0 ;;
+  esac
+}
+
+configured_service_manager_bind() {
+  local endpoint
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -n "$endpoint" ] && normalize_service_manager_bind "$endpoint"; then
+    return
+  fi
+  if [ -n "${SERVICE_MANAGER_URL:-}" ] && normalize_service_manager_bind "$SERVICE_MANAGER_URL"; then
+    return
+  fi
+  if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    normalize_service_manager_bind "$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+    return
+  fi
+  printf '127.0.0.1:20087\n'
+}
+
+configured_service_manager_url() {
+  local endpoint scheme bind
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -z "$endpoint" ]; then
+    endpoint="${SERVICE_MANAGER_URL:-}"
+  fi
+  if [ -z "$endpoint" ] && [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    endpoint="$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+  fi
+  case "$endpoint" in
+    https://*) scheme="https" ;;
+    *) scheme="http" ;;
+  esac
+  bind="$(normalize_service_manager_bind "${endpoint:-$(configured_service_manager_bind)}")" || bind="127.0.0.1:20087"
+  printf '%s://%s\n' "$scheme" "$bind"
+}
+
 if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
   if command -v proot-distro >/dev/null 2>&1 && proot-distro login ubuntu -- true >/dev/null 2>&1; then
     runtime_dir="${SMALLPHONEAI_TERMUX_RUNTIME_DIR:-$HOME/.smallphoneai/runtime}"
@@ -70,7 +141,7 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
         SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
         OPENHOUSE_PI_AGENT_DIR="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-}}" \
         OPENHOUSE_PI_WEB_DIR="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-}}" \
-        SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
+        SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" \
         SMALLPHONEAI_CC_CONNECT_DISABLED="${SMALLPHONEAI_CC_CONNECT_DISABLED:-}" \
         SMALLPHONEAI_DISABLE_CC_CONNECT="${SMALLPHONEAI_DISABLE_CC_CONNECT:-}" \
         SMALLPHONEAI_CC_CONNECT_HOST="${SMALLPHONEAI_CC_CONNECT_HOST:-}" \
@@ -99,7 +170,7 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
         ;;
     esac
 
-    sm_probe_url="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}"
+    sm_probe_url="$(configured_service_manager_url)"
     cc_bridge_host="${SMALLPHONEAI_CC_CONNECT_HOST:-127.0.0.1}"
     cc_bridge_port="${SMALLPHONEAI_CC_CONNECT_BRIDGE_PORT:-21010}"
     cc_management_port="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-21020}"
@@ -114,7 +185,7 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
         ;;
     esac
 
-    log "等待 Ubuntu runtime supervisor 达到 pi 主线就绪条件（最长 ${timeout}s）。"
+    log "等待 Ubuntu runtime supervisor 达到 pi 主线核心就绪条件（最长 ${timeout}s）。"
     waited=0
     while [ "$waited" -le "$timeout" ]; do
       missing=""
@@ -124,12 +195,16 @@ if is_termux && [ "${SMALLPHONEAI_START_IN_UBUNTU:-1}" = "1" ]; then
       if ! command -v curl >/dev/null 2>&1 || ! curl -fsS --max-time 2 "$pi_web_probe_url" >/dev/null 2>&1; then
         missing="${missing:+$missing, }pi-web($pi_web_probe_url)"
       fi
-      if [ "$cc_disabled" != "1" ] && { ! probe_tcp "$cc_bridge_host" "$cc_bridge_port" || ! probe_tcp "$cc_bridge_host" "$cc_management_port"; }; then
-        missing="${missing:+$missing, }cc-connect($cc_probe_label)"
+      if ! command -v curl >/dev/null 2>&1 || ! curl -fsS --max-time 2 "$phone_probe_url" >/dev/null 2>&1; then
+        missing="${missing:+$missing, }SmallPhone($phone_probe_url)"
+      fi
+      if ! command -v curl >/dev/null 2>&1 || ! curl -fsS --max-time 2 "$core_probe_url" >/dev/null 2>&1; then
+        missing="${missing:+$missing, }SmallPhone core($core_probe_url)"
       fi
       if [ -z "$missing" ]; then
         log "Ubuntu runtime supervisor 已就绪。"
         log "入口：service-manager=$sm_probe_url, pi-web=$pi_web_probe_url, SmallPhone(兼容)=$phone_probe_url, SmallPhone core(兼容)=$core_probe_url, cc-connect=$cc_probe_label"
+        log "cc-connect/openhouse-connect 为可修复的可选服务，不阻塞首次进入 pi-agent。"
         exit 0
       fi
       if [ "$waited" -eq 0 ] || [ $((waited % 10)) -eq 0 ]; then
@@ -218,8 +293,8 @@ cc_connect_dir="$(component_dir_from_env "${SMALLPHONEAI_CC_CONNECT_DIR:-}" open
 smallphone_dir="$(component_dir_from_env "${SMALLPHONEAI_SMALLPHONE_DIR:-}" smallphone-active /root/projects/smallphone/smallphone-active)"
 pi_agent_dir="$(component_dir_from_env "${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-}}" pi-agent /root/projects/pi)"
 pi_web_dir="$(component_dir_from_env "${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-}}" pi-web /root/projects/pi-web)"
-bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
-sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
+bind="$(configured_service_manager_bind)"
+sm_url="$(configured_service_manager_url)"
 cc_host="${SMALLPHONEAI_CC_CONNECT_HOST:-127.0.0.1}"
 cc_bridge_port="${SMALLPHONEAI_CC_CONNECT_BRIDGE_PORT:-21010}"
 cc_management_port="${SMALLPHONEAI_CC_CONNECT_MANAGEMENT_PORT:-21020}"
@@ -443,8 +518,11 @@ is_final_readiness_ready() {
   if ! probe_url "$pi_web_url"; then
     append_readiness_missing "pi-web($pi_web_url)"
   fi
-  if [ "$cc_connect_disabled" != "1" ] && { ! probe_tcp "$cc_host" "$cc_bridge_port" || ! probe_tcp "$cc_host" "$cc_management_port"; }; then
-    append_readiness_missing "cc-connect($cc_url)"
+  if ! probe_url "$smallphone_url"; then
+    append_readiness_missing "SmallPhone($smallphone_url)"
+  fi
+  if ! probe_url "$smallphone_core_url"; then
+    append_readiness_missing "SmallPhone core($smallphone_core_url)"
   fi
 
   [ -z "$readiness_missing" ]
@@ -561,12 +639,24 @@ trap cleanup EXIT INT HUP TERM
 curl_cfg="$work_dir/curl.cfg"
 printf 'header = "Authorization: Bearer %s"\n' "$sm_token" > "$curl_cfg"
 
+start_service_if_present() {
+  local service_id="$1"
+  if curl -q -fsS --max-time 10 -X POST -K "$curl_cfg" "$sm_url/api/v1/services/$service_id/start" >/dev/null 2>&1; then
+    log "service-manager: 已请求启动 $service_id。"
+  else
+    warn "service-manager: 无法单独启动 $service_id，继续等待核心状态。"
+  fi
+}
+
 log "正在通过 service-manager 启动 group:local-stack。"
 if curl -q -fsS --max-time 10 -X POST -K "$curl_cfg" "$sm_url/api/v1/groups/local-stack/start" >/dev/null; then
   log "pi 主线运行栈启动请求已提交。"
 else
-  warn "group:local-stack 启动失败；请确认组件已注册。"
-  exit 1
+  warn "group:local-stack 启动失败；将单独尝试启动 pi 主线核心服务。"
+  start_service_if_present "pi-agent"
+  start_service_if_present "pi-web"
+  start_service_if_present "smallphone-core"
+  start_service_if_present "smallphone-frontend-beta"
 fi
 
 if ! wait_for_final_readiness; then

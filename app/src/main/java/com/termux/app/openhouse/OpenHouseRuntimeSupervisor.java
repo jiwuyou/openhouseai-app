@@ -1,10 +1,10 @@
 package com.termux.app.openhouse;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.os.SystemClock;
 
 import com.termux.app.openhouse.servicecontrol.ServiceManagerActionResult;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerRedactor;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerResult;
@@ -12,17 +12,17 @@ import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceStatus;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.io.File;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public final class OpenHouseRuntimeSupervisor {
 
     private static final String LOG_TAG = "OpenHouseRuntimeSupervisor";
-    private static final String PREFS_NAME = "openhouse_runtime_control";
-    private static final String KEY_EXIT_ALL_REQUESTED = "exit_all_requested";
     private static final String[] DEFAULT_LONG_RUNNING_SERVICES = new String[] {
         "smallphone-frontend-beta",
         "smallphone-core",
@@ -39,6 +39,7 @@ public final class OpenHouseRuntimeSupervisor {
     private static long lastServiceCheckMs;
     private static long lastRepairMs;
     private static int consecutiveControlPlaneFailures;
+    private static boolean runtimeStackStoppedForSession;
 
     private final Context context;
     private final ServiceManagerControlClient controlClient;
@@ -53,26 +54,36 @@ public final class OpenHouseRuntimeSupervisor {
     }
 
     public MaintenanceReport ensureDefaultLongRunningServices() {
-        clearExitAllRequested(context);
+        clearRuntimeStackStoppedForSession(context);
         return maintainDefaultServices(true);
     }
 
     public static boolean isExitAllRequested(Context context) {
-        if (context == null) {
-            return false;
-        }
-        return prefs(context).getBoolean(KEY_EXIT_ALL_REQUESTED, false);
+        return isRuntimeStackStoppedForSession(context);
     }
 
     public static void setExitAllRequested(Context context, boolean requested) {
-        if (context == null) {
-            return;
-        }
-        prefs(context).edit().putBoolean(KEY_EXIT_ALL_REQUESTED, requested).apply();
+        setRuntimeStackStoppedForSession(context, requested);
     }
 
     public static void clearExitAllRequested(Context context) {
-        setExitAllRequested(context, false);
+        clearRuntimeStackStoppedForSession(context);
+    }
+
+    public static boolean isRuntimeStackStoppedForSession(Context context) {
+        synchronized (LOCK) {
+            return runtimeStackStoppedForSession;
+        }
+    }
+
+    public static void setRuntimeStackStoppedForSession(Context context, boolean stopped) {
+        synchronized (LOCK) {
+            runtimeStackStoppedForSession = stopped;
+        }
+    }
+
+    public static void clearRuntimeStackStoppedForSession(Context context) {
+        setRuntimeStackStoppedForSession(context, false);
     }
 
     private MaintenanceReport maintainDefaultServices(boolean userInitiated) {
@@ -80,8 +91,11 @@ public final class OpenHouseRuntimeSupervisor {
         if (!userInitiated && !isForegroundMaintenanceEligible()) {
             return MaintenanceReport.skipped("核心运行栈尚未完成安装，前台保活本次跳过。");
         }
-        if (!userInitiated && isExitAllRequested(context)) {
-            return MaintenanceReport.skipped("已执行全部退出；本次前台保活暂停，重新打开 App 或点击恢复默认核心服务后再拉起。");
+        if (!userInitiated && !OpenHouseRuntimePreferences.isServiceManagerKeepAliveEnabled(context)) {
+            return MaintenanceReport.skipped("前台自动保活已在高级设置中关闭。");
+        }
+        if (!userInitiated && isRuntimeStackStoppedForSession(context)) {
+            return MaintenanceReport.skipped("已停止运行栈；本次 App 进程内前台保活暂停，重新打开 App 进程或点击恢复默认核心服务后再拉起。");
         }
         if (!userInitiated && shouldSkipForegroundTick(now)) {
             return MaintenanceReport.skipped("前台保活已节流，跳过本次轻量检查。");
@@ -95,7 +109,7 @@ public final class OpenHouseRuntimeSupervisor {
             appendLine(message, "连续失败次数：" + failureCount);
             boolean repairAttempted = false;
             boolean repairSuccess = false;
-            if (failureCount >= 2 && shouldAttemptRepair(now)) {
+            if (shouldAttemptRepair(now)) {
                 repairAttempted = true;
                 OpenHouseMaintainerRunner.Result repair = runControlPlaneRepair();
                 repairSuccess = repair.isSuccess();
@@ -199,7 +213,20 @@ public final class OpenHouseRuntimeSupervisor {
             lastRepairMs = SystemClock.elapsedRealtime();
         }
         return new OpenHouseMaintainerRunner(context)
-            .run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0);
+            .run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0, controlPlaneRepairEnvironment());
+    }
+
+    private Map<String, String> controlPlaneRepairEnvironment() {
+        Map<String, String> environment = new HashMap<>();
+        String baseUrl = safeTrim(ServiceManagerClient.resolveConfiguredBaseUrl());
+        if (!baseUrl.isEmpty()) {
+            environment.put("SERVICE_MANAGER_URL", baseUrl);
+        }
+        String listenAddr = safeTrim(ServiceManagerClient.resolveConfiguredListenAddr());
+        if (!listenAddr.isEmpty()) {
+            environment.put("SMALLPHONEAI_SERVICE_MANAGER_BIND", listenAddr);
+        }
+        return environment;
     }
 
     private boolean isForegroundMaintenanceEligible() {
@@ -240,7 +267,7 @@ public final class OpenHouseRuntimeSupervisor {
 
     private static boolean shouldAttemptRepair(long now) {
         synchronized (LOCK) {
-            return now - lastRepairMs >= MIN_REPAIR_INTERVAL_MS;
+            return lastRepairMs == 0L || now - lastRepairMs >= MIN_REPAIR_INTERVAL_MS;
         }
     }
 
@@ -264,10 +291,6 @@ public final class OpenHouseRuntimeSupervisor {
             || "up".equals(normalized)
             || "healthy".equals(normalized)
             || "ready".equals(normalized);
-    }
-
-    private static SharedPreferences prefs(Context context) {
-        return context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
     private static List<String> copyDefaultServices() {

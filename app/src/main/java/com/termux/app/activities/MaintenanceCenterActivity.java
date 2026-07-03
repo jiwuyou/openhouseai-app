@@ -40,6 +40,7 @@ import com.termux.app.TermuxActivity;
 import com.termux.app.openhouse.OpenHouseBundledRuntimeSync;
 import com.termux.app.openhouse.OpenHouseInstallState;
 import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
+import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
 import com.termux.app.openhouse.release.OpenHouseReleaseDownloader;
 import com.termux.app.openhouse.release.OpenHouseReleaseException;
@@ -108,6 +109,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final long TERMINAL_COMPLETION_SCAN_MIN_INTERVAL_MS = 500;
     private static final long TERMINAL_COMPLETION_POLL_INTERVAL_MS = 1000;
     private static final long ONE_CLICK_STATUS_REFRESH_INTERVAL_MS = 5000;
+    private static final long STATUS_CARD_AUTO_REFRESH_INTERVAL_MS = 20000;
     private static final long SHARED_INSTALL_PROGRESS_REFRESH_INTERVAL_MS = 1200;
     private static final int SHARED_INSTALL_LOG_CHAR_LIMIT = 16000;
     private static final Pattern DONE_PATTERN = Pattern.compile("__TERMUX_MAINT_DONE__:([a-zA-Z0-9_-]+):(\\d+)");
@@ -222,6 +224,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean sharedInstallRunning;
     private boolean sharedInstallStarted;
     private boolean sharedInstallCompleted;
+    private boolean sharedInstallFailed;
     private boolean sharedInstallAutoStartRequested;
     private boolean sharedInstallCompletionReturnedToOnboarding;
     private boolean releaseUpdateInFlight;
@@ -243,6 +246,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private Object sharedInstallController;
     private Object sharedInstallListener;
     private Class<?> sharedInstallListenerClass;
+    private boolean sharedInstallCoreVerified;
+    private boolean sharedInstallCoreVerificationInFlight;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable sharedInstallProgressRefreshRunnable = new Runnable() {
@@ -253,6 +258,18 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             }
             refreshSharedInstallState();
             scheduleSharedInstallProgressRefresh();
+        }
+    };
+    private final Runnable statusCardAutoRefreshRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isFinishing() || isDestroyed()) {
+                return;
+            }
+
+            refreshSharedInstallStateForStatusCard();
+            requestStageStatusCardRefresh();
+            scheduleStatusCardAutoRefresh();
         }
     };
     private final Object terminalUpdateLock = new Object();
@@ -384,11 +401,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         updateReleaseUpdateCard();
         refreshStatus();
         requestStageStatusRefresh();
+        scheduleStatusCardAutoRefresh();
         scheduleTerminalCompletionPoll();
     }
 
     @Override
     protected void onPause() {
+        stopStatusCardAutoRefresh();
         stopSharedInstallObservation();
         super.onPause();
     }
@@ -396,6 +415,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         stopSharedInstallObservation();
+        stopStatusCardAutoRefresh();
         mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
         maintenanceSessionInitPosted = false;
         terminalCompletionPollScheduled = false;
@@ -412,6 +432,34 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to finish maintenance terminal session on destroy", throwable);
         }
         super.onDestroy();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (!shouldReturnToOnboarding()) {
+            super.onBackPressed();
+            return;
+        }
+
+        refreshSharedInstallStateForStatusCard();
+        if (shouldBlockBackToOnboardingDuringInstall()) {
+            Toast.makeText(this, "安装中，请不要退出界面", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        returnToOnboarding();
+    }
+
+    private void scheduleStatusCardAutoRefresh() {
+        mainHandler.removeCallbacks(statusCardAutoRefreshRunnable);
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
+        mainHandler.postDelayed(statusCardAutoRefreshRunnable, STATUS_CARD_AUTO_REFRESH_INTERVAL_MS);
+    }
+
+    private void stopStatusCardAutoRefresh() {
+        mainHandler.removeCallbacks(statusCardAutoRefreshRunnable);
     }
 
     private void bindStageButtons() {
@@ -1849,7 +1897,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
 
         if (shouldReturnToOnboarding()) {
-            finish();
+            returnToOnboarding();
             return;
         }
 
@@ -1862,6 +1910,28 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean shouldReturnToOnboarding() {
         Intent intent = getIntent();
         return intent != null && intent.getBooleanExtra(EXTRA_RETURN_TO_ONBOARDING, false);
+    }
+
+    private boolean shouldBlockBackToOnboardingDuringInstall() {
+        if (!shouldReturnToOnboarding()) {
+            return false;
+        }
+
+        if (sharedInstallRunning || commandInFlight || oneClickStagesInFlight || oneClickRemoteProbeInFlight) {
+            return true;
+        }
+
+        return isOnboardingWaitingForInstall()
+            && sharedInstallStarted
+            && !sharedInstallCompleted
+            && !sharedInstallFailed;
+    }
+
+    private void returnToOnboarding() {
+        Intent intent = new Intent(this, OpenHouseOnboardingActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        ActivityUtils.startActivity(this, intent);
+        finish();
     }
 
     private void initializeSharedInstallController() {
@@ -1964,6 +2034,14 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void refreshSharedInstallState() {
+        refreshSharedInstallState(true);
+    }
+
+    private void refreshSharedInstallStateForStatusCard() {
+        refreshSharedInstallState(false);
+    }
+
+    private void refreshSharedInstallState(boolean allowFlowActions) {
         if (sharedInstallController == null) {
             return;
         }
@@ -1974,13 +2052,17 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 throw new NoSuchMethodException("OpenHouseInstallController.getState()");
             }
             Object state = getStateMethod.invoke(sharedInstallController);
-            applySharedInstallState(state);
+            applySharedInstallState(state, allowFlowActions);
         } catch (Throwable throwable) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read shared install state", throwable);
         }
     }
 
     private void applySharedInstallState(Object state) {
+        applySharedInstallState(state, true);
+    }
+
+    private void applySharedInstallState(Object state, boolean allowFlowActions) {
         if (isFinishing() || isDestroyed()) {
             return;
         }
@@ -1989,12 +2071,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             sharedInstallRunning = false;
             sharedInstallStarted = false;
             sharedInstallCompleted = false;
+            sharedInstallFailed = false;
             setSharedInstallText(
                 "详细进度：等待主界面安装状态",
                 "后台权限处理完成后，点击开始安装即可。首次安装会准备 Ubuntu、Node、pi-agent、pi-web 和 service-manager 控制平面；不需要现在填写模型或 API Key。"
             );
             refreshSharedInstallLogTail(false);
-            mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
+            if (allowFlowActions) {
+                mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
+            }
             updateExecutionModeViews();
             return;
         }
@@ -2010,12 +2095,19 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         sharedInstallRunning = running;
         sharedInstallCompleted = completed;
+        sharedInstallFailed = failed;
+        if (running || failed || !completed) {
+            sharedInstallCoreVerified = false;
+            sharedInstallCoreVerificationInFlight = false;
+        }
         sharedInstallStarted = running || completed || failed || percent > 0;
         String stateLabel;
         if (running) {
             stateLabel = "执行中";
-        } else if (completed) {
+        } else if (completed && sharedInstallCoreVerified) {
             stateLabel = "已完成";
+        } else if (completed) {
+            stateLabel = "待确认";
         } else if (failed) {
             stateLabel = "失败";
         } else {
@@ -2040,8 +2132,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             detail.append(detailText.trim());
         } else if (running) {
             detail.append("主界面安装正在运行，本页只观察同一个安装过程。");
-        } else if (completed) {
+        } else if (completed && sharedInstallCoreVerified) {
             detail.append("安装已完成。service-manager 会作为控制平面管理后台服务；可返回主界面进入 pi-agent 完成首次配置。");
+        } else if (completed) {
+            detail.append("安装脚本已经退出，正在确认 Ubuntu、Node、service-manager、pi-web 和 SmallPhone 核心服务是否都已可用。未确认前不会进入使用说明。");
         } else if (failed) {
             detail.append("安装失败。请查看下方共享日志或维护终端输出。");
         } else {
@@ -2055,28 +2149,62 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         setSharedInstallText(progress.toString(), detail.toString());
         refreshSharedInstallLogTail(running || completed || failed);
         updateExecutionModeViews();
-        maybeReturnToOnboardingAfterSharedInstallCompleted(completed);
-        maybeAutoStartSharedInstallFromOnboarding();
-        if (running) {
-            scheduleSharedInstallProgressRefresh();
-        } else {
-            mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
+        if (allowFlowActions) {
+            maybeReturnToOnboardingAfterSharedInstallCompleted(completed);
+            maybeAutoStartSharedInstallFromOnboarding();
+            if (running) {
+                scheduleSharedInstallProgressRefresh();
+            } else {
+                mainHandler.removeCallbacks(sharedInstallProgressRefreshRunnable);
+            }
         }
     }
 
     private void maybeReturnToOnboardingAfterSharedInstallCompleted(boolean completed) {
         if (!completed
             || sharedInstallCompletionReturnedToOnboarding
+            || sharedInstallCoreVerificationInFlight
             || !shouldReturnToOnboarding()
             || isFinishing()
             || isDestroyed()) {
             return;
         }
 
-        sharedInstallCompletionReturnedToOnboarding = true;
-        markOnboardingReadyToUse();
-        Toast.makeText(this, "安装已完成，正在返回使用说明。", Toast.LENGTH_SHORT).show();
-        mainHandler.postDelayed(this::returnToHome, 350L);
+        sharedInstallCoreVerificationInFlight = true;
+        backgroundExecutor.execute(() -> {
+            boolean coreComplete = false;
+            try {
+                coreComplete = new OpenHouseStatusRepository(getApplicationContext()).isCoreDeploymentComplete();
+            } catch (Throwable throwable) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to verify shared install completion", throwable);
+            }
+
+            boolean finalCoreComplete = coreComplete;
+            runOnUiThread(() -> {
+                sharedInstallCoreVerificationInFlight = false;
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+
+                if (!finalCoreComplete) {
+                    sharedInstallCoreVerified = false;
+                    markOnboardingWaitingForInstall();
+                    setSharedInstallText(
+                        "详细进度：安装未完全就绪",
+                        "安装脚本已经退出，但核心服务可用性检查未通过。请返回引导页选择常规重试或国内网络重试，继续补齐未完成阶段。"
+                    );
+                    Toast.makeText(this, "安装未完全就绪，请选择重试方式继续。", Toast.LENGTH_LONG).show();
+                    updateExecutionModeViews();
+                    return;
+                }
+
+                sharedInstallCoreVerified = true;
+                sharedInstallCompletionReturnedToOnboarding = true;
+                markOnboardingReadyToUse();
+                Toast.makeText(this, "安装已完成，正在返回使用说明。", Toast.LENGTH_SHORT).show();
+                mainHandler.postDelayed(this::returnToHome, 350L);
+            });
+        });
     }
 
     private void markOnboardingReadyToUse() {
@@ -2084,6 +2212,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             .edit()
             .putString(PREF_ONBOARDING_STEP, "LAUNCH_CONFIG")
             .putInt(PREF_ONBOARDING_CURRENT_STEP, 4)
+            .putBoolean(PREF_ONBOARDING_GUIDE_DISMISSED, false)
+            .apply();
+    }
+
+    private void markOnboardingWaitingForInstall() {
+        getSharedPreferences(PREFS_ONBOARDING, MODE_PRIVATE)
+            .edit()
+            .putString(PREF_ONBOARDING_STEP, "WAITING_INSTALL")
+            .putInt(PREF_ONBOARDING_CURRENT_STEP, 3)
             .putBoolean(PREF_ONBOARDING_GUIDE_DISMISSED, false)
             .apply();
     }
@@ -2098,6 +2235,14 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             || oneClickStagesInFlight
             || oneClickRemoteProbeInFlight
             || !isOnboardingWaitingForInstall()) {
+            return;
+        }
+        if (shouldReturnToOnboarding()) {
+            setSharedInstallText(
+                "详细进度：正在观察安装任务",
+                "这里仅显示主界面启动的同一个安装过程，不会因为进入详细进度而重新开始安装。"
+            );
+            refreshSharedInstallLogTail(true);
             return;
         }
 
@@ -2141,6 +2286,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private void showSharedInstallControllerUnavailable() {
         sharedInstallRunning = false;
+        sharedInstallFailed = false;
         setSharedInstallText(
             "详细进度：等待主界面安装状态",
             "共享安装控制器尚未接入；接入后这里会显示主界面启动的同一个安装过程。首次安装不要求模型或 API Key。"
@@ -3691,7 +3837,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private String buildPostRemoteOneClickScript() throws IOException {
         StringBuilder scriptBody = new StringBuilder();
-        scriptBody.append("log '远程一键安装完成。安装完成后由 service-manager 管理 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容服务。'\n");
+        scriptBody.append("log '远程一键安装完成。安装完成后由 service-manager 管理 pi-agent、pi-web 和 SmallPhone 兼容服务；openhouse-connect 作为可修复连接服务保留。'\n");
         return scriptBody.toString();
     }
 
@@ -4071,9 +4217,19 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private void requestStageStatusRefresh() {
+        requestStageStatusRefresh(true);
+    }
+
+    private void requestStageStatusCardRefresh() {
+        requestStageStatusRefresh(false);
+    }
+
+    private void requestStageStatusRefresh(boolean allowFollowUpActions) {
         if (backgroundExecutor.isShutdown()) return;
         if (stageStatusCheckInFlight) {
-            stageStatusCheckQueued = true;
+            if (allowFollowUpActions) {
+                stageStatusCheckQueued = true;
+            }
             return;
         }
 
@@ -4094,13 +4250,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 }
                 applyStagePresentations();
                 refreshStatus();
-                if (!commandInFlight && pendingStageAction != null) {
+                if (allowFollowUpActions && !commandInFlight && pendingStageAction != null) {
                     StageAction stageAction = pendingStageAction;
                     pendingStageAction = null;
                     runStage(stageAction, true);
                     return;
                 }
-                if (!commandInFlight && oneClickStagesInFlight) {
+                if (allowFollowUpActions && !commandInFlight && oneClickStagesInFlight) {
                     continueOneClickStages();
                     return;
                 }
@@ -4159,7 +4315,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean ubuntuInstalled = termuxPackagesComplete && (isUbuntuInstalled() || isLastExitSuccess(installUbuntuExitCode));
         boolean ubuntuPackagesComplete = ubuntuInstalled && (isUbuntuPackagesStageComplete() || isLastExitSuccess(ubuntuPackagesExitCode));
         boolean entryUbuntuConfigured = ubuntuPackagesComplete && (isEntryUbuntuConfigured() || isLastExitSuccess(configureEntryUbuntuExitCode));
-        boolean nodeInstalled = entryUbuntuConfigured && (isNodeInstalled() || isLastExitSuccess(installNodeExitCode));
+        boolean nodeInstalled = ubuntuPackagesComplete && (isNodeInstalled() || isLastExitSuccess(installNodeExitCode));
         boolean officialDocsSynced = nodeInstalled && (isOfficialDocsSynced() || isLastExitSuccess(syncOfficialDocsExitCode));
         boolean codexInstalled = nodeInstalled && (isCodexInstalled() || isLastExitSuccess(installCodexExitCode));
         boolean claudeCodeInstalled = nodeInstalled && (isClaudeCodeInstalled() || isLastExitSuccess(installClaudeCodeExitCode));
@@ -4234,7 +4390,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             StageAction.INSTALL_NODE,
             nodeInstalled
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_install_node_complete))
-                : (!entryUbuntuConfigured
+                : (!ubuntuPackagesComplete
                     ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_node_blocked))
                     : failedOrReady(installNodeExitCode,
                         getString(R.string.stage_detail_install_node_failed),
@@ -4277,12 +4433,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.RUNTIME_COMPONENTS,
             runtimeComponentsInstalled
-                ? StagePresentation.complete(this, "service-manager、openhouse-connect、pi 与 pi-web 已安装或已完成。")
+                ? StagePresentation.complete(this, "service-manager、pi-agent、pi-web 与 SmallPhone 兼容组件已安装；openhouse-connect 可后续修复配置。")
                 : (!officialDocsSynced
                     ? StagePresentation.blocked(this, "请先完成同步官方文档阶段。")
                     : failedOrReady(runtimeComponentsExitCode,
                         "运行组件安装失败，请查看该阶段日志。",
-                        "准备安装 pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容组件。"))
+                        "准备安装 pi-agent、pi-web、service-manager 和 SmallPhone 兼容组件；openhouse-connect 会作为可修复服务注册。"))
         );
 
         snapshot.presentations.put(
@@ -4290,7 +4446,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             openHouseRegistrySynced
                 ? StagePresentation.complete(this, "OpenHouseAI registry 已同步到 Termux canonical。")
                 : (!runtimeComponentsInstalled
-                    ? StagePresentation.blocked(this, "请先安装 service-manager、openhouse-connect、pi 与 pi-web 运行组件。")
+                    ? StagePresentation.blocked(this, "请先安装 service-manager、pi-agent、pi-web 与 SmallPhone 兼容运行组件。")
                     : failedOrReady(syncOpenHouseRegistryExitCode,
                         "OpenHouseAI registry 同步失败，请查看该阶段日志。",
                         "准备同步 components.d、service-manager/services.d 和 AI docs，安装完成后交给 service-manager 管理。"))
@@ -4413,7 +4569,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private boolean isRuntimeComponentsInstalled() {
         return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc 'test -x \"$HOME/smallphoneai-repos/service-manager/service-manager\" -o -x \"$HOME/smallphoneai-repos/service-manager/target/release/service-manager\"; test -d \"$HOME/smallphoneai-repos/openhouse-connect\"; test -d \"$HOME/smallphoneai-repos/smallphone-active\"'"
+            "proot-distro login ubuntu -- bash -lc '{ test -x \"$HOME/smallphoneai-repos/service-manager/service-manager\" || test -x \"$HOME/smallphoneai-repos/service-manager/target/release/service-manager\"; } && test -d \"$HOME/smallphoneai-repos/pi-agent\" && test -d \"$HOME/smallphoneai-repos/pi-web\" && test -d \"$HOME/smallphoneai-repos/smallphone-active\"'"
         ).isSuccess();
     }
 

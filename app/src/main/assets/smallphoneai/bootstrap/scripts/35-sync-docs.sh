@@ -294,7 +294,7 @@ SmallPhoneAI 文档分为两部分：
 
 1. `ENVIRONMENT.md`：说明当前 Android、Termux、Ubuntu、路径和安装范围。
 2. `MODEL_API_SETUP.md`：说明 Codex CLI、Claude Code 和 CloudCLI 如何登录，或如何配置大模型 API。
-3. `RUNTIME_COMPONENTS.md`：说明 SmallPhone、cc-connect/openhouse-connect 与 service-manager 的安装、启动和状态入口。
+3. `RUNTIME_COMPONENTS.md`：说明 SmallPhone、service-manager 与可选 cc-connect/openhouse-connect 的安装、启动、修复和状态入口。
 
 建议顺序：
 - 先读 `ENVIRONMENT.md`，确认当前运行在哪里。
@@ -311,7 +311,7 @@ SmallPhoneAI 运行在 Android 手机上，结构如下：
 - Ubuntu 通过 `proot-distro` 安装在 Termux 内，是主要运行域。
 - Node.js、Codex CLI、Claude Code、CloudCLI 安装在 Ubuntu 内。
 - service-manager 默认运行在 Ubuntu/proot 内，是本机运行控制面。
-- cc-connect/openhouse-connect 默认运行在 Ubuntu/proot 内，提供 Agent bridge 和 Web client。
+- cc-connect/openhouse-connect 默认运行在 Ubuntu/proot 内，提供 Agent bridge 和 Web client；它是可修复/可选连接服务，不是首次 readiness 必需项。
 - SmallPhone 默认运行在 Ubuntu/proot 内，是产品应用栈。
 
 ## 安装范围
@@ -321,9 +321,9 @@ SmallPhoneAI bootstrap 首装负责安装、检查、注册和启动：
 - Ubuntu proot
 - Node.js 24 LTS
 - service-manager
-- cc-connect/openhouse-connect
 - SmallPhone
 - pi-agent / pi-web
+- cc-connect/openhouse-connect（可选连接服务，失败时进入诊断/修复，不阻塞首次进入）
 
 Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 是后置能力，由 pi-agent 按 `/root/openhouse/scripts` 和 `/root/openhouse/docs` 引导安装。
 
@@ -344,7 +344,7 @@ Node.js 24 LTS 是单独可见阶段，后置 AI 工具只检查并使用该 Nod
 9. 解包 pi-agent / pi-web。
 10. 安装并配置 service-manager。
 11. 注册并启动 pi-agent / pi-web。
-12. 安装 openhouse-connect 和 SmallPhone 兼容服务。
+12. 安装 SmallPhone 兼容服务，并尝试安装 openhouse-connect 可选连接服务。
 13. 同步 OpenHouseAI registry 和 service-manager 服务配置。
 14. 在 Ubuntu/proot 内启动 service-manager，并通过 `group:local-stack` 启动已注册服务。
 15. 输出最终状态 JSON，供 App Shell 做健康判断。
@@ -394,12 +394,13 @@ EOF
 cat > "$OFFICIAL_DOC_DIR/RUNTIME_COMPONENTS.md" <<'EOF'
 # SmallPhoneAI 运行组件
 
-SmallPhoneAI bootstrap 只编排组件，不复制组件内部安装逻辑。默认组件是：
+SmallPhoneAI bootstrap 只编排组件，不复制组件内部安装逻辑。默认核心组件是：
 
 - `service-manager`
-- `cc-connect` / `openhouse-connect`
 - `SmallPhone`
 - `smallphone-likegirl` control test
+
+`cc-connect` / `openhouse-connect` 会保留为可安装、可注册、可诊断、可修复的可选连接服务；它不参与首次 readiness 必需项。
 
 每个组件仓库需要提供可重复执行的入口：
 
@@ -442,7 +443,7 @@ bash bootstrap.sh status
 | smallphone-likegirl | `http://127.0.0.1:23003/` |
 | smallphone-likegirl clone | `http://127.0.0.1:23008/` |
 
-`cc-connect` 默认是 readiness 必需项。只有显式设置 `SMALLPHONEAI_CC_CONNECT_DISABLED=1` 或 `SMALLPHONEAI_DISABLE_CC_CONNECT=1` 时，状态 JSON 才会把 cc-connect 标记为 disabled 并允许跳过该项。
+首次 readiness 必需项是 service-manager、pi-agent、pi-web、SmallPhone frontend 和 SmallPhone core API。`cc-connect` / `openhouse-connect` 会在状态 JSON 中作为可选诊断项显示；不可达时应进入服务控制/修复流程，但不阻塞首次进入。
 
 ## 默认路径
 

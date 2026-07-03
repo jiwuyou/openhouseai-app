@@ -22,6 +22,77 @@ is_current_ubuntu() {
   [ -f /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release
 }
 
+read_openhouse_service_manager_endpoint() {
+  local config key value
+  for config in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    for key in listen_addr listenAddr base_url baseUrl baseURL url; do
+      value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
+      if [ -n "$value" ]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+normalize_service_manager_bind() {
+  local value="${1:-}"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+  esac
+  value="${value%%/*}"
+  case "$value" in
+    "") return 1 ;;
+    :*) printf '127.0.0.1%s\n' "$value"; return 0 ;;
+    0.0.0.0) printf '127.0.0.1\n'; return 0 ;;
+    0.0.0.0:*) printf '127.0.0.1:%s\n' "${value#0.0.0.0:}"; return 0 ;;
+    "::"|"[::]") printf '127.0.0.1\n'; return 0 ;;
+    "[::]:"*) printf '127.0.0.1:%s\n' "${value#"[::]:"}"; return 0 ;;
+    :::*) printf '127.0.0.1:%s\n' "${value#:::}"; return 0 ;;
+    *[!0-9]*) printf '%s\n' "$value"; return 0 ;;
+    *) printf '127.0.0.1:%s\n' "$value"; return 0 ;;
+  esac
+}
+
+configured_service_manager_bind() {
+  local endpoint
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -n "$endpoint" ] && normalize_service_manager_bind "$endpoint"; then
+    return
+  fi
+  if [ -n "${SERVICE_MANAGER_URL:-}" ] && normalize_service_manager_bind "$SERVICE_MANAGER_URL"; then
+    return
+  fi
+  if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    normalize_service_manager_bind "$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+    return
+  fi
+  printf '127.0.0.1:20087\n'
+}
+
+configured_service_manager_url() {
+  local endpoint scheme bind
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -z "$endpoint" ]; then
+    endpoint="${SERVICE_MANAGER_URL:-}"
+  fi
+  if [ -z "$endpoint" ] && [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    endpoint="$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+  fi
+  case "$endpoint" in
+    https://*) scheme="https" ;;
+    *) scheme="http" ;;
+  esac
+  bind="$(normalize_service_manager_bind "${endpoint:-$(configured_service_manager_bind)}")" || bind="127.0.0.1:20087"
+  printf '%s://%s\n' "$scheme" "$bind"
+}
+
 find_python() {
   if command -v python3 >/dev/null 2>&1; then
     command -v python3
@@ -368,7 +439,9 @@ if is_termux && [ "${SMALLPHONEAI_SYNC_REGISTRY_IN_UBUNTU:-1}" = "1" ]; then
         OPENHOUSEAI_TERMUX_CONFIG_DIR="${OPENHOUSEAI_TERMUX_CONFIG_DIR:-}" \
         SMALLPHONEAI_COMPONENT_REPO_ROOT="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-/root/smallphoneai-repos}" \
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
-        SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
+        SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" \
+        SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+        SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-${OPENHOUSEAI_TERMUX_HOME:-/data/data/com.termux/files/home}}" \
         SMALLPHONEAI_REGISTRY_SYNC_USE_API="${SMALLPHONEAI_REGISTRY_SYNC_USE_API:-1}" \
         SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" \
         SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-}" \
@@ -382,8 +455,8 @@ fi
 home_dir="${HOME:-/root}"
 repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$home_dir/smallphoneai-repos}"
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$repo_root/service-manager}"
-service_manager_bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
-service_manager_url="${SERVICE_MANAGER_URL:-http://$service_manager_bind}"
+service_manager_bind="$(configured_service_manager_bind)"
+service_manager_url="$(configured_service_manager_url)"
 config_dir="${OPENHOUSEAI_CONFIG_DIR:-$home_dir/.config/openhouseai}"
 termux_home="${OPENHOUSEAI_TERMUX_HOME:-/data/data/com.termux/files/home}"
 termux_config_dir="${OPENHOUSEAI_TERMUX_CONFIG_DIR:-$termux_home/.config/openhouseai}"

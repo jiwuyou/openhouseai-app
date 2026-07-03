@@ -39,6 +39,77 @@ warn() {
   printf '[SmallPhoneAI] WARN: %s\n' "$*" >&2
 }
 
+read_openhouse_service_manager_endpoint() {
+  local config key value
+  for config in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    for key in listen_addr listenAddr base_url baseUrl baseURL url; do
+      value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
+      if [ -n "$value" ]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+normalize_service_manager_bind() {
+  local value="${1:-}"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+  esac
+  value="${value%%/*}"
+  case "$value" in
+    "") return 1 ;;
+    :*) printf '127.0.0.1%s\n' "$value"; return 0 ;;
+    0.0.0.0) printf '127.0.0.1\n'; return 0 ;;
+    0.0.0.0:*) printf '127.0.0.1:%s\n' "${value#0.0.0.0:}"; return 0 ;;
+    "::"|"[::]") printf '127.0.0.1\n'; return 0 ;;
+    "[::]:"*) printf '127.0.0.1:%s\n' "${value#"[::]:"}"; return 0 ;;
+    :::*) printf '127.0.0.1:%s\n' "${value#:::}"; return 0 ;;
+    *[!0-9]*) printf '%s\n' "$value"; return 0 ;;
+    *) printf '127.0.0.1:%s\n' "$value"; return 0 ;;
+  esac
+}
+
+configured_service_manager_bind() {
+  local endpoint
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -n "$endpoint" ] && normalize_service_manager_bind "$endpoint"; then
+    return
+  fi
+  if [ -n "${SERVICE_MANAGER_URL:-}" ] && normalize_service_manager_bind "$SERVICE_MANAGER_URL"; then
+    return
+  fi
+  if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    normalize_service_manager_bind "$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+    return
+  fi
+  printf '127.0.0.1:20087\n'
+}
+
+configured_service_manager_url() {
+  local endpoint scheme bind
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -z "$endpoint" ]; then
+    endpoint="${SERVICE_MANAGER_URL:-}"
+  fi
+  if [ -z "$endpoint" ] && [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    endpoint="$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+  fi
+  case "$endpoint" in
+    https://*) scheme="https" ;;
+    *) scheme="http" ;;
+  esac
+  bind="$(normalize_service_manager_bind "${endpoint:-$(configured_service_manager_bind)}")" || bind="127.0.0.1:20087"
+  printf '%s://%s\n' "$scheme" "$bind"
+}
+
 repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
 default_path() {
   local dev_path="$1"
@@ -55,8 +126,8 @@ cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path /root/cc-connect-f
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path /root/projects/smallphone/smallphone-active smallphone-active)}"
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path /root/projects/pi pi-agent)}}"
 pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path /root/projects/pi-web pi-web)}}"
-bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
-sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
+bind="$(configured_service_manager_bind)"
+sm_url="$(configured_service_manager_url)"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
 smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
 pi_web_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
@@ -109,7 +180,8 @@ service_manager_ready() {
 stack_ready() {
   service_manager_ready \
     && probe_url "$pi_web_url" \
-    && { cc_connect_disabled || probe_url "$cc_url"; }
+    && probe_url "$smallphone_url" \
+    && probe_url "$smallphone_core_url"
 }
 
 json_escape() {
@@ -283,7 +355,8 @@ curl -q -fsS --max-time 10 -X POST -K "$work_dir/curl.cfg" "$sm_url/api/v1/group
 
 for _ in $(seq 1 45); do
   if stack_ready; then
-    log "SmallPhoneAI 运行栈已就绪：pi-web=$pi_web_url service-manager=$sm_url cc-connect=$cc_url"
+    log "SmallPhoneAI 运行栈已就绪：pi-web=$pi_web_url service-manager=$sm_url SmallPhone=$smallphone_url SmallPhone core=$smallphone_core_url"
+    log "cc-connect/openhouse-connect 为可修复的可选服务：$cc_url"
     exit 0
   fi
   sleep 1

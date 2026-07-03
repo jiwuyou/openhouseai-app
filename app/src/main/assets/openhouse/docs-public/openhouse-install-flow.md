@@ -258,7 +258,7 @@ reason
 | Ubuntu | `proot-distro login ubuntu -- true`。 |
 | Node | Ubuntu 内 `node --version`、`npm --version`。 |
 | 文档 | `/root/openhouse/docs` 存在且 P0 文档可读。 |
-| service-manager | OpenHouse 专用配置中的 `listen_addr` / `base_url` 对应 API 可访问；默认通常是 `http://127.0.0.1:20087`。 |
+| service-manager | OpenHouse 专用配置中的 `listen_addr` / `base_url` 对应 API 可访问；endpoint 应从配置/env/default 解析，默认 fallback 通常是 `http://127.0.0.1:20087`，但端口不能写死。 |
 | pi-agent | service-manager 状态和本地端口健康检查一致。 |
 | cloudcli | 目标端口 `23083` 可访问，未配置模型时返回可解释页面或状态。 |
 | smallphone | service-manager 状态和本地健康端口一致。 |
@@ -331,6 +331,7 @@ Authorization: Bearer ****abcd
 9. Claude 或 Codex 至少一个能真实发送消息并收到回复。
 10. UI 状态、service-manager 状态、端口健康一致。
 11. 日志不泄露 key/token。
-12. 点击“全部退出”后核心服务停止，重新打开 App 后可恢复。
+12. 点击“停止运行栈”后核心服务停止，App 界面保留，本次会话自动保活暂停。
+13. 点击“全部退出 OpenHouse”后核心服务停止，OpenHouse 界面关闭，并请求关闭 Termux 前台服务和终端会话；重新打开 App 后可按前台策略恢复。
 
 只有上述全部通过，才能认为首次安装链路达到“彻底可用”的最低标准。

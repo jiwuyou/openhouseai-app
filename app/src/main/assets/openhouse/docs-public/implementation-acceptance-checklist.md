@@ -16,6 +16,9 @@
 - 常规重试。
 - 国内网络重试。
 - 前台自动保持核心服务运行。
+- 高级设置关闭自动保活。
+- service-manager 端口和 endpoint 可配置。
+- 停止运行栈。
 - 全部退出。
 - 首次教学入口和脚本。
 - 终端教学独立入口。
@@ -126,10 +129,40 @@ App 前台时，默认核心服务必须可用：
 - service-manager 存活后检查核心服务。
 - 服务拉起必须节流，避免 CPU 拉满。
 - UI 状态、service-manager 状态和端口健康必须一致。
+- 高级设置关闭自动保活后，App 前台不得自动拉起 service-manager。
 
 新增长期服务默认进入 service-manager 托管，除非显式标记为手动服务。
 
-## 全部退出验收
+## service-manager 端口验收
+
+service-manager endpoint 必须支持更改。Android、脚本和文档中的访问地址必须按以下顺序解析：
+
+1. OpenHouse 专用 service-manager 配置中的 `base_url` 或 `listen_addr`。
+2. `SERVICE_MANAGER_URL`。
+3. `SMALLPHONEAI_SERVICE_MANAGER_BIND`。
+4. 默认 fallback：`127.0.0.1:20087`。
+
+验收要求：
+
+- `20087` 只能作为默认 fallback 出现，不能写成不可变端口。
+- 如果监听地址是 `0.0.0.0` 或通配地址，Android 和本机 HTTP 访问必须转换为 `127.0.0.1`。
+- UI 状态、service-manager 状态和端口健康必须使用同一个解析后的 endpoint。
+- 修改配置或环境变量后，运行控制和修复脚本访问的是新 endpoint。
+
+## 停止运行栈和全部退出验收
+
+点击“停止运行栈”后，必须停止：
+
+- service-manager 管理的长期服务。
+- service-manager 本身。
+- OpenHouse 拉起的 Termux 长期进程。
+- OpenHouse 拉起的 Ubuntu 长期进程。
+- `smallphone`
+- `pi-agent`
+- `cloudcli`
+- `openhouse-connect`
+
+停止运行栈后必须保留当前 App 界面，并暂停本次 App 会话的自动保活。用户点击“恢复默认核心服务”后，才应重新拉起默认核心服务。
 
 点击“全部退出”后，必须停止：
 
@@ -142,6 +175,8 @@ App 前台时，默认核心服务必须可用：
 - `cloudcli`
 - `openhouse-connect`
 
+全部退出 OpenHouse 在停止运行栈后，还必须关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。不要把它描述成会终止所有非 OpenHouse 用户任务。
+
 必须保留：
 
 - 用户文件。
@@ -153,7 +188,7 @@ App 前台时，默认核心服务必须可用：
 - pi-agent / pi-web 数据。
 - Claude / Codex 配置。
 
-退出后 UI 应显示未运行。再次打开 App 后，应重新启动 service-manager，并恢复默认长期服务。
+停止运行栈后 UI 应显示未运行，但 App 界面保留。全部退出 OpenHouse 后 UI 关闭；再次打开 App 后，应按前台策略重新启动 service-manager，并恢复默认长期服务。若高级设置已关闭自动保活，则只展示状态和修复入口。
 
 ## 首次教学验收
 
@@ -219,8 +254,9 @@ pi-agent 不能被表达为唯一主工作台。
 7. CloudCLI `23083` 可访问。
 8. service-manager 服务状态正确。
 9. UI 状态、service-manager 状态、端口健康一致。
-10. 点击全部退出后核心端口不可达。
-11. 重新打开 App 后核心服务自动恢复。
+10. 点击停止运行栈后核心端口不可达，App 界面保留。
+11. 点击全部退出后核心端口不可达，OpenHouse 界面关闭，并已请求关闭 Termux 前台服务和终端会话。
+12. 重新打开 App 后核心服务自动恢复，除非高级设置关闭了自动保活。
 
 ## 真机测试矩阵
 
@@ -238,6 +274,9 @@ pi-agent 不能被表达为唯一主工作台。
 - pi-web WebView 打开异常。
 - 全部退出。
 - 全部退出后重新打开。
+- 停止运行栈后恢复默认核心服务。
+- 高级设置关闭自动保活。
+- service-manager endpoint 改成非默认端口。
 - 模型配置错误。
 - Claude/Codex 实测失败。
 
@@ -287,7 +326,7 @@ manifest 是唯一可信源。任何 payload 或二进制发生变化，都必�
 - 常规重试可用。
 - 国内网络重试可用。
 - 前台核心服务自动可用。
-- 全部退出真实停止服务。
+- 全部退出 OpenHouse 真实停止运行栈、关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。
 - 首次教学不要求用户学习终端。
 - pi-agent 能引导配置 Claude 或 Codex。
 - Claude 或 Codex 至少一个真实回复。

@@ -58,6 +58,77 @@ is_current_ubuntu() {
   [ -f /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release
 }
 
+read_openhouse_service_manager_endpoint() {
+  local config key value
+  for config in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    for key in listen_addr listenAddr base_url baseUrl baseURL url; do
+      value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
+      if [ -n "$value" ]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+normalize_service_manager_bind() {
+  local value="${1:-}"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+  esac
+  value="${value%%/*}"
+  case "$value" in
+    "") return 1 ;;
+    :*) printf '127.0.0.1%s\n' "$value"; return 0 ;;
+    0.0.0.0) printf '127.0.0.1\n'; return 0 ;;
+    0.0.0.0:*) printf '127.0.0.1:%s\n' "${value#0.0.0.0:}"; return 0 ;;
+    "::"|"[::]") printf '127.0.0.1\n'; return 0 ;;
+    "[::]:"*) printf '127.0.0.1:%s\n' "${value#"[::]:"}"; return 0 ;;
+    :::*) printf '127.0.0.1:%s\n' "${value#:::}"; return 0 ;;
+    *[!0-9]*) printf '%s\n' "$value"; return 0 ;;
+    *) printf '127.0.0.1:%s\n' "$value"; return 0 ;;
+  esac
+}
+
+configured_service_manager_bind() {
+  local endpoint
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -n "$endpoint" ] && normalize_service_manager_bind "$endpoint"; then
+    return
+  fi
+  if [ -n "${SERVICE_MANAGER_URL:-}" ] && normalize_service_manager_bind "$SERVICE_MANAGER_URL"; then
+    return
+  fi
+  if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    normalize_service_manager_bind "$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+    return
+  fi
+  printf '127.0.0.1:20087\n'
+}
+
+configured_service_manager_url() {
+  local endpoint scheme bind
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -z "$endpoint" ]; then
+    endpoint="${SERVICE_MANAGER_URL:-}"
+  fi
+  if [ -z "$endpoint" ] && [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    endpoint="$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+  fi
+  case "$endpoint" in
+    https://*) scheme="https" ;;
+    *) scheme="http" ;;
+  esac
+  bind="$(normalize_service_manager_bind "${endpoint:-$(configured_service_manager_bind)}")" || bind="127.0.0.1:20087"
+  printf '%s://%s\n' "$scheme" "$bind"
+}
+
 detect_smallphoneai_runtime() {
   if is_current_ubuntu; then
     printf 'ubuntu'
@@ -105,7 +176,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
         OPENHOUSE_GITHUB_PROXY_PREFIX="${OPENHOUSE_GITHUB_PROXY_PREFIX:-}" \
         SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-$HOME}" \
         SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
-        SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
+        SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
         SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
         SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
@@ -747,6 +818,44 @@ validate_bundle_local_install_source() {
   log "$name: bundle/local 安装将使用 payload 内可执行文件：$local_binary"
 }
 
+prepare_pi_agent_npm_global_reinstall() {
+  local global_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+  local global_modules="$global_prefix/lib/node_modules"
+  local scoped_dir="$global_prefix/lib/node_modules/@earendil-works"
+  local pkg
+
+  export NPM_CONFIG_PREFIX="$global_prefix"
+  export PATH="$global_prefix/bin:$HOME/.local/node/bin:$HOME/.local/bin:$PATH"
+
+  mkdir -p "$global_prefix/bin" "$global_modules"
+  npm config set prefix "$global_prefix" >/dev/null 2>&1 || true
+
+  log "pi-agent: preparing idempotent npm global reinstall at $global_prefix"
+  for pkg in pi-agent-core pi-ai pi-coding-agent pi-tui; do
+    rm -rf "$scoped_dir/$pkg"
+  done
+  if [ -d "$scoped_dir" ]; then
+    find "$scoped_dir" -mindepth 1 -maxdepth 1 \
+      \( -name '.pi-agent-core-*' \
+        -o -name '.pi-ai-*' \
+        -o -name '.pi-coding-agent-*' \
+        -o -name '.pi-tui-*' \
+        -o -name '.npm-*' \
+        -o -name '.staging' \) \
+      -exec rm -rf {} + 2>/dev/null || true
+    rmdir "$scoped_dir" 2>/dev/null || true
+  fi
+  find "$global_modules" -mindepth 1 -maxdepth 1 \
+    \( -name '.npm-*' -o -name '.staging' \) \
+    -exec rm -rf {} + 2>/dev/null || true
+  rm -f \
+    "$global_prefix/bin/pi" \
+    "$global_prefix/bin/pi-agent" \
+    "$global_prefix/bin/pi-coding-agent" \
+    "$global_prefix/bin/pi-tui"
+  npm cache verify >/dev/null 2>&1 || npm cache clean --force >/dev/null 2>&1 || true
+}
+
 run_repo_script_command() {
   local payload_name="$1"
   local dir="$2"
@@ -770,6 +879,10 @@ run_repo_script_command() {
         CC_CONNECT_LOCAL_INSTALL=1 \
         CC_CONNECT_OFFLINE_INSTALL=1 \
         "./$script"
+      ;;
+    bundle:pi-agent:scripts/install.sh)
+      prepare_pi_agent_npm_global_reinstall
+      run_logged "./$script"
       ;;
     bundle:smallphone:scripts/install.sh)
       ensure_smallphone_node_runtime
@@ -1181,8 +1294,8 @@ cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path openhouse-connect)
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path smallphone-active)}"
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path pi-agent)}}"
 pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path pi-web)}}"
-service_manager_bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
-service_manager_url="${SERVICE_MANAGER_URL:-http://$service_manager_bind}"
+service_manager_bind="$(configured_service_manager_bind)"
+service_manager_url="$(configured_service_manager_url)"
 
 log "SmallPhoneAI 运行组件入口由各子仓库维护。"
 log "当前运行环境：$(detect_smallphoneai_runtime)"

@@ -87,7 +87,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `TERMINAL_PROFILES.md`：Termux 终端、Ubuntu 终端和自定义终端的分工。
 - `service-manager.md`：service-manager 的稳定小写入口，强调安装完成后的运行控制平面。
 - `openhouse-runtime-policy.md`：App 前台自动保活和默认长期服务策略。
-- `openhouse-exit-all.md`：全部退出的停止范围、保留范围和恢复行为。
+- `openhouse-exit-all.md`：停止运行栈和全部退出 OpenHouse 的停止范围、界面行为、保留范围和恢复行为。
 - `openhouse-runtime-repair.md`：修复运行控制、注册表、端口健康和重复服务的规则。
 - `troubleshooting.md`：排障入口，覆盖安装、运行、模型配置、安全日志和失败边界。
 - `permissions.md`：后台、通知、存储、Shizuku、无障碍等权限和降级行为。

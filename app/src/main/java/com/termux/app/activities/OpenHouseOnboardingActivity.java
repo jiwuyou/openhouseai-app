@@ -1,18 +1,28 @@
 package com.termux.app.activities;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.termux.R;
 import com.termux.app.TermuxActivity;
+import com.termux.app.openhouse.OpenHouseInstallController;
+import com.termux.app.openhouse.OpenHouseInstallState;
 import com.termux.app.openhouse.onboarding.OpenHouseOnboardingOverlay;
 import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.shared.activity.ActivityUtils;
 
 public class OpenHouseOnboardingActivity extends AppCompatActivity {
+
+    private static final String ONBOARDING_PREFS_NAME = "openhouse_onboarding";
+    private static final String KEY_CURRENT_STEP = "current_step";
+    private static final int STEP_WAITING_INSTALL = 3;
 
     private OpenHouseOnboardingOverlay onboarding;
     private boolean returnToSmallPhoneHost;
@@ -48,6 +58,12 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
         });
         onboarding.attach();
         onboarding.revealFromMenu();
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                handleBackNavigation();
+            }
+        });
     }
 
     @Override
@@ -69,11 +85,34 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
+        handleBackNavigation();
+    }
+
+    private void handleBackNavigation() {
+        if (shouldBlockBackDuringInstall()) {
+            Toast.makeText(this, "安装中，请不要退出界面", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (returnToSmallPhoneHost) {
             openSmallPhoneHost();
             return;
         }
         openTerminal(false, false);
+    }
+
+    private boolean shouldBlockBackDuringInstall() {
+        if (onboarding != null && onboarding.shouldBlockBackNavigation()) {
+            return true;
+        }
+
+        OpenHouseInstallState installState = OpenHouseInstallController.getInstance(this).getState();
+        if (installState.running) {
+            return true;
+        }
+
+        SharedPreferences preferences = getSharedPreferences(ONBOARDING_PREFS_NAME, Context.MODE_PRIVATE);
+        boolean waitingInstallStep = preferences.getInt(KEY_CURRENT_STEP, 0) == STEP_WAITING_INSTALL;
+        return waitingInstallStep && !installState.completed && !installState.failed;
     }
 
     private void openSmallPhoneHost() {

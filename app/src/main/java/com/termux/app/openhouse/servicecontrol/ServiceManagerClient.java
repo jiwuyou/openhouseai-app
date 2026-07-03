@@ -57,6 +57,10 @@ public final class ServiceManagerClient {
         this.baseUrl = normalizeBaseUrl(baseUrl);
     }
 
+    public String baseUrl() {
+        return baseUrl;
+    }
+
     public ServiceManagerResult listServices() {
         try {
             HttpResponse response = request("GET", "/api/v1/services");
@@ -241,7 +245,7 @@ public final class ServiceManagerClient {
     }
 
     public static String resolveConfiguredBaseUrl() {
-        for (ServiceManagerConfigCandidate candidate : configCandidates()) {
+        for (ServiceManagerConfigCandidate candidate : openHouseConfigCandidates()) {
             if (!candidate.file.isFile()) {
                 continue;
             }
@@ -257,7 +261,39 @@ public final class ServiceManagerClient {
                 // Stale or half-written config. Try the next candidate.
             }
         }
+        for (String endpoint : environmentEndpointValues()) {
+            String baseUrl = normalizeBaseUrl(endpoint);
+            if (!baseUrl.isEmpty()) {
+                return baseUrl;
+            }
+        }
         return DEFAULT_BASE_URL;
+    }
+
+    public static String resolveConfiguredListenAddr() {
+        for (ServiceManagerConfigCandidate candidate : openHouseConfigCandidates()) {
+            if (!candidate.file.isFile()) {
+                continue;
+            }
+            try {
+                JSONObject json = new JSONObject(readTextFile(candidate.file));
+                for (String endpoint : endpointValuesFromConfig(json)) {
+                    String listenAddr = normalizeListenAddr(endpoint);
+                    if (!listenAddr.isEmpty()) {
+                        return listenAddr;
+                    }
+                }
+            } catch (IOException | JSONException ignored) {
+                // Stale or half-written config. Try the next candidate.
+            }
+        }
+        for (String endpoint : environmentEndpointValues()) {
+            String listenAddr = normalizeListenAddr(endpoint);
+            if (!listenAddr.isEmpty()) {
+                return listenAddr;
+            }
+        }
+        return normalizeListenAddr(DEFAULT_BASE_URL);
     }
 
     public static ServiceManagerTarget parseServiceManagerRef(String ref) {
@@ -412,21 +448,51 @@ public final class ServiceManagerClient {
     }
 
     private static ServiceManagerConfigCandidate[] configCandidates() {
-        return new ServiceManagerConfigCandidate[] {
-            new ServiceManagerConfigCandidate(
-                new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/openhouseai/service-manager/config.json"),
+        List<ServiceManagerConfigCandidate> candidates = new ArrayList<>();
+        Collections.addAll(candidates, openHouseConfigCandidates());
+        candidates.add(new ServiceManagerConfigCandidate(
+            new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH,
+                "var/lib/proot-distro/installed-rootfs/ubuntu/root/.config/service-manager/config.json"),
+            false
+        ));
+        candidates.add(new ServiceManagerConfigCandidate(
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/service-manager/config.json"),
+            false
+        ));
+        return candidates.toArray(new ServiceManagerConfigCandidate[0]);
+    }
+
+    private static ServiceManagerConfigCandidate[] openHouseConfigCandidates() {
+        List<ServiceManagerConfigCandidate> candidates = new ArrayList<>();
+        String explicitConfig = safeTrim(System.getenv("SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG"));
+        if (!explicitConfig.isEmpty()) {
+            candidates.add(new ServiceManagerConfigCandidate(new File(explicitConfig), true));
+        }
+        candidates.add(new ServiceManagerConfigCandidate(
+            new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/openhouseai/service-manager/config.json"),
+            true
+        ));
+        String termuxHome = safeTrim(System.getenv("SMALLPHONEAI_TERMUX_HOME"));
+        if (!termuxHome.isEmpty()) {
+            candidates.add(new ServiceManagerConfigCandidate(
+                new File(termuxHome, ".config/openhouseai/service-manager/config.json"),
                 true
-            ),
-            new ServiceManagerConfigCandidate(
-                new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH,
-                    "var/lib/proot-distro/installed-rootfs/ubuntu/root/.config/service-manager/config.json"),
-                false
-            ),
-            new ServiceManagerConfigCandidate(
-                new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/service-manager/config.json"),
-                false
-            )
-        };
+            ));
+        }
+        return candidates.toArray(new ServiceManagerConfigCandidate[0]);
+    }
+
+    private static List<String> environmentEndpointValues() {
+        List<String> endpoints = new ArrayList<>();
+        String serviceManagerUrl = safeTrim(System.getenv("SERVICE_MANAGER_URL"));
+        if (!serviceManagerUrl.isEmpty()) {
+            endpoints.add(serviceManagerUrl);
+        }
+        String serviceManagerBind = safeTrim(System.getenv("SMALLPHONEAI_SERVICE_MANAGER_BIND"));
+        if (!serviceManagerBind.isEmpty()) {
+            endpoints.add(serviceManagerBind);
+        }
+        return endpoints;
     }
 
     private static boolean configMatchesBaseUrl(
@@ -496,10 +562,60 @@ public final class ServiceManagerClient {
 
     private static String addressForUrl(String value) {
         String trimmed = safeTrim(value);
-        return trimmed.startsWith(":") ? "127.0.0.1" + trimmed : trimmed;
+        if ("::".equals(trimmed) || "[::]".equals(trimmed)) {
+            return "127.0.0.1";
+        }
+        if (trimmed.startsWith("[::]:")) {
+            return "127.0.0.1" + trimmed.substring("[::]".length());
+        }
+        if (trimmed.startsWith(":::")) {
+            return "127.0.0.1:" + trimmed.substring(3);
+        }
+        if (trimmed.startsWith(":")) {
+            return "127.0.0.1" + trimmed;
+        }
+        if (trimmed.startsWith("0.0.0.0:")) {
+            return "127.0.0.1" + trimmed.substring("0.0.0.0".length());
+        }
+        if ("0.0.0.0".equals(trimmed)) {
+            return "127.0.0.1";
+        }
+        return trimmed;
     }
 
-    private static int extractTrailingPort(String value) {
+    private static String normalizeListenAddr(String value) {
+        String trimmed = safeTrim(value);
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        if (isValidPort(trimmed)) {
+            return "127.0.0.1:" + trimmed;
+        }
+        try {
+            URL url = new URL(trimmed.contains("://") ? trimmed : "http://" + addressForUrl(trimmed));
+            String host = safeTrim(url.getHost());
+            int port = url.getPort();
+            if (port <= 0) {
+                port = url.getDefaultPort();
+            }
+            if (host.isEmpty() || port <= 0) {
+                return "";
+            }
+            return formatHostPort(host, port);
+        } catch (IOException ignored) {
+            String address = stripAddressSuffix(trimmed);
+            if (address.startsWith(":")) {
+                return "127.0.0.1" + address;
+            }
+            if (isValidPort(address)) {
+                return "127.0.0.1:" + address;
+            }
+            int port = extractTrailingPort(address);
+            return port > 0 && address.contains(":") ? address : "";
+        }
+    }
+
+    private static String stripAddressSuffix(String value) {
         String trimmed = safeTrim(value);
         int end = trimmed.length();
         for (int i = 0; i < trimmed.length(); i++) {
@@ -509,7 +625,31 @@ public final class ServiceManagerClient {
                 break;
             }
         }
-        String address = trimmed.substring(0, end);
+        return trimmed.substring(0, end);
+    }
+
+    private static boolean isValidPort(String value) {
+        try {
+            int port = Integer.parseInt(safeTrim(value));
+            return port > 0 && port <= 65535;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+    }
+
+    private static String formatHostPort(String host, int port) {
+        String cleanHost = safeTrim(host);
+        if ("0.0.0.0".equals(cleanHost) || "::".equals(cleanHost)) {
+            cleanHost = "127.0.0.1";
+        }
+        if (cleanHost.indexOf(':') >= 0 && !cleanHost.startsWith("[") && !cleanHost.endsWith("]")) {
+            cleanHost = "[" + cleanHost + "]";
+        }
+        return cleanHost + ":" + port;
+    }
+
+    private static int extractTrailingPort(String value) {
+        String address = stripAddressSuffix(value);
         int colonIndex = address.lastIndexOf(':');
         String portText = colonIndex >= 0 ? address.substring(colonIndex + 1) : address;
         try {
@@ -784,6 +924,24 @@ public final class ServiceManagerClient {
         }
         if (normalized.startsWith("https://0.0.0.0")) {
             return "https://127.0.0.1" + normalized.substring("https://0.0.0.0".length());
+        }
+        if (normalized.startsWith("http://[::]")) {
+            return "http://127.0.0.1" + normalized.substring("http://[::]".length());
+        }
+        if (normalized.startsWith("https://[::]")) {
+            return "https://127.0.0.1" + normalized.substring("https://[::]".length());
+        }
+        if ("http://::".equals(normalized)) {
+            return "http://127.0.0.1";
+        }
+        if ("https://::".equals(normalized)) {
+            return "https://127.0.0.1";
+        }
+        if (normalized.startsWith("http://:::")) {
+            return "http://127.0.0.1:" + normalized.substring("http://:::".length());
+        }
+        if (normalized.startsWith("https://:::")) {
+            return "https://127.0.0.1:" + normalized.substring("https://:::".length());
         }
         return normalized;
     }

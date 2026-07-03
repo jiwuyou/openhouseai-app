@@ -201,11 +201,22 @@ service-manager status pi-web
 
 ## 默认地址和配置
 
-默认 API：
+service-manager endpoint 支持更改。调用方必须先读取配置或环境变量，最后才使用默认 fallback。
+
+解析顺序：
+
+1. OpenHouse 专用配置里的 `base_url` 或 `listen_addr`。
+2. `SERVICE_MANAGER_URL`。
+3. `SMALLPHONEAI_SERVICE_MANAGER_BIND`。
+4. 默认 fallback。
+
+默认 fallback：
 
 ```text
 http://127.0.0.1:20087
 ```
+
+`20087` 不是不可变端口。如果配置里监听 `0.0.0.0` 或通配地址，本机和 Android 侧访问时应转换为 `127.0.0.1`。
 
 优先配置文件：
 
@@ -369,7 +380,7 @@ bash bootstrap.sh repair
 2. 停止上层入口，例如 pi-web、CloudCLI、pi-agent、MCP 服务。
 3. 停止桥接服务，例如 cc-connect。
 4. 保留或停止 service-manager 取决于用户要求：
-   - 用户只要求关闭 AI/后台任务：可以保留 service-manager，方便再次启动。
+   - 用户只要求关闭 OpenHouse AI 服务：可以保留 service-manager，方便再次启动。
    - 用户要求“一点不占 CPU 和内存”：在确认没有服务需要托管后，也应停止 service-manager 本身或通过 App 侧关闭运行栈。
 5. 再次检查状态和残留进程。
 

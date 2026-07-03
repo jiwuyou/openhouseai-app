@@ -36,6 +36,8 @@ public final class OpenHouseInstallController {
     private static final String DEFAULT_CLAUDE_CODE_UI_PORT = "23083";
     private static final long POLL_INTERVAL_MS = 2000L;
     private static final long STALE_RUNNING_MARKER_MS = 6 * 60 * 60 * 1000L;
+    private static final long FINAL_PI_WEB_READY_TIMEOUT_MS = 3 * 60 * 1000L;
+    private static final long FINAL_PI_WEB_READY_POLL_INTERVAL_MS = 3000L;
     private static final int MAX_AUTO_RETRY_ATTEMPTS = 3;
     private static final long GENERAL_STUCK_NO_LOG_MS = 30L * 60L * 1000L;
     private static final long TOTAL_INSTALL_DURATION_MS = 30L * 60L * 1000L;
@@ -141,6 +143,11 @@ public final class OpenHouseInstallController {
         if (autoRetryInProgress) {
             return state;
         }
+        if (!state.completed && (currentProcess == null || !state.running) && hasFreshRunningMarker()) {
+            updateState(readRunningStateFromLog());
+            schedulePollIfRunning();
+            return state;
+        }
         if (state.running && currentProcess == null) {
             if (hasFreshRunningMarker()) {
                 updateState(readRunningStateFromLog());
@@ -153,12 +160,18 @@ public final class OpenHouseInstallController {
                     state.currentStageSlug
                 ));
             }
-            if (state.running) {
-                mainHandler.removeCallbacks(pollRunnable);
-                mainHandler.postDelayed(pollRunnable, POLL_INTERVAL_MS);
-            }
+            schedulePollIfRunning();
         }
         return state;
+    }
+
+    private void schedulePollIfRunning() {
+        if (!state.running) {
+            return;
+        }
+
+        mainHandler.removeCallbacks(pollRunnable);
+        mainHandler.postDelayed(pollRunnable, POLL_INTERVAL_MS);
     }
 
     public OpenHouseOnboardingState getOnboardingState() {
@@ -293,12 +306,6 @@ public final class OpenHouseInstallController {
     }
 
     private boolean markCompletedIfAlreadyDeployed() {
-        if (state.completed) {
-            statusRepository.markOneClickInstallCompleted();
-            updateState(state);
-            return true;
-        }
-
         if (statusRepository.isCoreDeploymentComplete()) {
             autoRetryAttemptCount = 0;
             autoRetryInProgress = false;
@@ -512,7 +519,7 @@ public final class OpenHouseInstallController {
                 MANIFEST_FULL_SLUG
             );
         }
-        return buildFinishedState(logTail, exitCode);
+        return buildFinishedState(logTail, exitCode, VerificationMode.CHECK_ONCE);
     }
 
     private OpenHouseInstallState readRunningStateFromLog() {
@@ -520,7 +527,7 @@ public final class OpenHouseInstallController {
         Integer exitCode = readLastExitCode(logTail);
         if (exitCode != null) {
             clearRunningMarker();
-            return buildFinishedState(logTail, exitCode);
+            return buildFinishedState(logTail, exitCode, VerificationMode.CHECK_ONCE);
         }
 
         RunningMarker runningMarker = readRunningMarker();
@@ -561,16 +568,33 @@ public final class OpenHouseInstallController {
     private OpenHouseInstallState readFinishedStateFromLog(int processExitCode) {
         String logTail = readLogTail(24000);
         Integer markerExitCode = readLastExitCode(logTail);
-        return buildFinishedState(logTail, markerExitCode == null ? processExitCode : markerExitCode);
+        return buildFinishedState(logTail, markerExitCode == null ? processExitCode : markerExitCode, VerificationMode.WAIT_BRIEFLY);
     }
 
-    private OpenHouseInstallState buildFinishedState(String logTail, int exitCode) {
+    private OpenHouseInstallState buildFinishedState(String logTail, int exitCode, VerificationMode verificationMode) {
         if (exitCode == 0) {
+            if (!verifyCoreDeploymentComplete(verificationMode)) {
+                StageMarkerInfo stageMarkerInfo = inferCurrentStageMarker(logTail);
+                Stage stage = resolveMonotonicStage(stageMarkerInfo.stage, stageMarkerInfo, null);
+                String detail = latestReadableLogLine(logTail);
+                if (detail.isEmpty()) {
+                    detail = "安装脚本已经退出，但 3 分钟内没有确认 pi-web 可访问。请等待状态刷新；如果仍停留在这里，请选择常规重试或国内网络重试。";
+                } else {
+                    detail = "安装脚本已经退出，但 3 分钟内没有确认 pi-web 可访问。最后日志：" + detail + "。请选择常规重试或国内网络重试继续补齐未完成阶段。";
+                }
+                return buildState(
+                    OpenHouseInstallState.Status.FAILED,
+                    Math.max(90, failurePercent(stage)),
+                    "初始化未完全就绪",
+                    detail,
+                    stage.slug
+                );
+            }
             return buildState(
                 OpenHouseInstallState.Status.SUCCEEDED,
                 100,
                 "初始化安装完成",
-                "Ubuntu、Node.js、pi-agent、pi-web 和 OpenHouse 基础运行栈已安装完成；Codex、Claude Code、CloudCLI 可稍后由 pi-agent 引导安装配置。",
+                "pi-web 已可访问，首次安装完成；SmallPhone、openhouse-connect 等附属服务可稍后在运行控制中查看或修复。",
                 MANIFEST_FULL_SLUG
             );
         }
@@ -593,6 +617,38 @@ public final class OpenHouseInstallController {
             detail,
             stage.slug
         );
+    }
+
+    private boolean verifyCoreDeploymentComplete(VerificationMode mode) {
+        long deadlineMs = mode == VerificationMode.WAIT_BRIEFLY
+            ? System.currentTimeMillis() + FINAL_PI_WEB_READY_TIMEOUT_MS
+            : System.currentTimeMillis();
+        while (true) {
+            try {
+                if (statusRepository.isPiWebReachable()) {
+                    return true;
+                }
+            } catch (Exception e) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to verify OpenHouseAI pi-web readiness", e);
+            }
+
+            long remainingMs = deadlineMs - System.currentTimeMillis();
+            if (mode != VerificationMode.WAIT_BRIEFLY || remainingMs <= 0L) {
+                return false;
+            }
+
+            try {
+                Thread.sleep(Math.min(FINAL_PI_WEB_READY_POLL_INTERVAL_MS, remainingMs));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+    }
+
+    private enum VerificationMode {
+        CHECK_ONCE,
+        WAIT_BRIEFLY
     }
 
     private Integer readLastExitCode(String logContent) {
@@ -1134,7 +1190,7 @@ public final class OpenHouseInstallController {
 
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("log '开始执行 SmallPhoneAI 一键初始化。'\n");
-        scriptBody.append("log '安装过程中会准备 Linux 环境，安装 pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。'\n");
+        scriptBody.append("log '安装过程中会准备 Linux 环境，安装 pi-agent、pi-web、service-manager 和 SmallPhone 兼容服务；openhouse-connect 会作为可修复连接服务注册。'\n");
         scriptBody.append(bundledBody);
         if (!bundledBody.toString().endsWith("\n")) {
             scriptBody.append('\n');
@@ -1395,9 +1451,9 @@ public final class OpenHouseInstallController {
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh", "安装 Linux 基础工具", "正在安装 curl、git 等基础工具。"),
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh", "设置启动方式", "正在配置默认进入 Ubuntu。"),
         INSTALL_NODE("install_node", "install-node.sh", "安装 Node.js 24 LTS", "正在安装或检查 Node.js 24 LTS，pi-agent 和 pi-web 会复用这一套 Node 运行时。"),
-        RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装本机 Agent 运行栈", "正在从 APK 内置组件包安装 pi-agent、pi-web、service-manager、cc-connect 和 SmallPhone 兼容组件。"),
+        RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装本机 Agent 运行栈", "正在从 APK 内置组件包安装 pi-agent、pi-web、service-manager 和 SmallPhone 兼容组件；cc-connect 作为可修复连接服务处理。"),
         SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh", "同步 OpenHouseAI 注册表", "正在把 Ubuntu mirror 同步到 Termux canonical，供 App、SmallPhone 和 AI 读取。"),
-        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动本机 pi-agent", "正在启动 service-manager 管理的 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容服务。"),
+        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动本机 pi-agent", "正在启动 service-manager 管理的 pi-agent、pi-web 和 SmallPhone 兼容服务，并尝试拉起 openhouse-connect。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),
         INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh", "安装 AI 工具：ClaudeCodeUI", "正在安装 ClaudeCodeUI / CloudCLI，并固定端口 23083。");

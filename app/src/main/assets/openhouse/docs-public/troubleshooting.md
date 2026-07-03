@@ -43,7 +43,7 @@ bash bootstrap.sh hooks
 | CloudCLI 不可达 | `cloudcli-claude-code-setup.md` | 检查 `cloudcli` 稳定服务 ID 和端口 `23083`。 |
 | Claude Code native binary 缺失 | `cloudcli-claude-code-setup.md` | 重新执行安装脚本补齐 `/root/.local/bin/claude`。 |
 | Codex 配置失败 | `codex-setup.md`, `model-config-migration.md` | 区分官方登录和 API 模式，按协议配置。 |
-| 用户想彻底停止后台 | `openhouse-exit-all.md` | 执行全部退出，而不是只返回页面。 |
+| 用户想暂时省资源或结束本次使用 | `openhouse-exit-all.md` | 区分“停止运行栈”和“全部退出 OpenHouse”，不要只返回页面。 |
 | 权限缺失 | `permissions.md` | 判断是否阻塞当前目标，缺失可选权限时降级。 |
 | 自动修复失败 | `failure-boundaries.md` | 判断是否需要用户确认重置或重装。 |
 
@@ -87,9 +87,9 @@ bash bootstrap.sh hooks
 
 如果服务列表中出现同名随机服务 ID，应按 `openhouse-runtime-repair.md` 清理重复记录，并保留稳定服务 ID。
 
-## 全部退出后恢复
+## 停止运行栈或全部退出后恢复
 
-全部退出后，核心端口不可达是正常结果。再次打开 App 时，应重新启动 service-manager，并恢复默认长期服务。
+停止运行栈或全部退出 OpenHouse 后，核心端口不可达是正常结果。停止运行栈会保留当前 App 界面，并暂停本次会话自动保活；用户可以点击“恢复默认核心服务”重新拉起。全部退出 OpenHouse 会关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。再次打开 App 时，若高级设置没有关闭自动保活，应重新启动 service-manager，并恢复默认长期服务。
 
 如果再次打开后没有恢复，检查：
 

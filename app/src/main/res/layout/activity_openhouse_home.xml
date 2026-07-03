@@ -448,5 +448,14 @@
             android:text="@string/openhouse_nav_terminal"
             android:textAllCaps="false"
             android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/buttonNavAiRescue"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/openhouse_nav_ai_rescue"
+            android:textAllCaps="false"
+            android:textStyle="bold" />
     </LinearLayout>
 </androidx.drawerlayout.widget.DrawerLayout>

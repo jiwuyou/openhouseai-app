@@ -220,7 +220,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         TextView title = sectionTitle("批量控制");
         panel.addView(title);
 
-        TextView note = bodyText("全部关闭和全部重启会跳过 service-manager；“全部退出”会停止 service-manager 和 OpenHouse 拉起的长期进程，保留用户数据和配置。");
+        TextView note = bodyText("全部关闭和全部重启会跳过 service-manager；“停止运行栈”会停掉 service-manager 和 OpenHouse 长期服务并留在当前页；“全部退出 OpenHouse”会在停止运行栈后关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。");
         panel.addView(note, topMarginParams(8));
 
         addButtonRow(panel,
@@ -231,7 +231,8 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             actionButton("刷新", v -> loadInitialServices()));
         addButtonRow(panel,
             actionButton("恢复默认核心服务", v -> runDefaultCoreServiceMaintenance()),
-            actionButton("全部退出", v -> confirmExitAll()));
+            actionButton("停止运行栈", v -> confirmStopRuntimeStack()));
+        addFullWidthButton(panel, actionButton("全部退出 OpenHouse", v -> confirmExitAll()));
     }
 
     private void loadInitialServices() {
@@ -801,6 +802,9 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     }
 
     private void runDefaultCoreServiceMaintenance() {
+        OpenHouseRuntimeSupervisor.clearExitAllRequested(this);
+        foregroundMaintenanceTaskRunning = false;
+        startForegroundMaintenance();
         setBusy(true);
         setControlPlaneStatus("控制中枢：正在恢复默认核心服务...");
         setStatus("正在恢复默认核心服务。\n会轻量检查 service-manager，并确保 smallphone、pi-agent 和 cloudcli 默认长期服务可用。");
@@ -850,12 +854,39 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         }
     }
 
+    private void confirmStopRuntimeStack() {
+        new AlertDialog.Builder(this)
+            .setTitle("停止运行栈")
+            .setMessage("将停止 service-manager 管理的 OpenHouse 长期服务、service-manager 本身，以及 OpenHouse 拉起的 Termux/Ubuntu 长期进程。\n\nApp 会留在当前界面；本次会话会暂停自动保活。用户文件、模型配置、日志和已安装 payload 会保留。之后可点击“恢复默认核心服务”重新拉起。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("停止运行栈", (dialog, which) -> runStopRuntimeStack())
+            .show();
+    }
+
+    private void runStopRuntimeStack() {
+        stopForegroundMaintenance();
+        foregroundMaintenanceTaskRunning = false;
+        setBusy(true);
+        setStatus("正在停止运行栈。\n会停止 OpenHouse 长期服务和控制中枢；App 会留在当前界面，用户数据会保留。");
+        setControlPlaneStatus("控制中枢：正在停止运行栈...");
+        backgroundExecutor.execute(() -> {
+            OpenHouseExitAllController.ExitReport report =
+                new OpenHouseExitAllController(this).stopRuntimeStack();
+            runOnUiThread(() -> {
+                setBusy(false);
+                setControlPlaneStatus("控制中枢：运行栈已停止。点击“恢复默认核心服务”可恢复默认核心服务。");
+                setStatus(report.message);
+                showMaintenanceFallback();
+            });
+        });
+    }
+
     private void confirmExitAll() {
         new AlertDialog.Builder(this)
-            .setTitle("全部退出")
-            .setMessage("将停止 service-manager 管理的长期服务、service-manager 本身，以及 OpenHouse 拉起的 Termux/Ubuntu 长期进程。用户文件、模型配置、日志和已安装 payload 会保留。再次打开 App 或点击恢复默认核心服务后可重新拉起。")
+            .setTitle("全部退出 OpenHouse")
+            .setMessage("将先执行“停止运行栈”，再关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。\n\n用户文件、模型配置、日志和已安装 payload 会保留。再次打开 App 后可重新拉起。")
             .setNegativeButton("取消", null)
-            .setPositiveButton("全部退出", (dialog, which) -> runExitAll())
+            .setPositiveButton("全部退出 OpenHouse", (dialog, which) -> runExitAll())
             .show();
     }
 
@@ -863,17 +894,31 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         stopForegroundMaintenance();
         foregroundMaintenanceTaskRunning = false;
         setBusy(true);
-        setStatus("正在全部退出。\n会停止 OpenHouse 长期服务和控制中枢，但保留用户数据、模型配置、日志和 payload。");
-        setControlPlaneStatus("控制中枢：正在停止...");
+        setStatus("正在全部退出 OpenHouse。\n会先停止运行栈，再关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。用户数据会保留。");
+        setControlPlaneStatus("控制中枢：正在停止运行栈...");
         backgroundExecutor.execute(() -> {
             OpenHouseExitAllController.ExitReport report = new OpenHouseExitAllController(this).exitAll();
             runOnUiThread(() -> {
                 setBusy(false);
-                setControlPlaneStatus("控制中枢：未运行。点击“恢复默认核心服务”或重新打开 App 后恢复。");
+                setControlPlaneStatus("控制中枢：运行栈已停止。OpenHouse 界面即将关闭。");
                 setStatus(report.message);
-                showMaintenanceFallback();
+                closeOpenHouseInterfacesAfterExit(report);
             });
         });
+    }
+
+    private void closeOpenHouseInterfacesAfterExit(OpenHouseExitAllController.ExitReport report) {
+        Toast.makeText(this,
+            report != null && report.success
+                ? "全部退出 OpenHouse 已提交"
+                : "全部退出 OpenHouse 已提交，部分停止项需要检查",
+            Toast.LENGTH_LONG).show();
+        View anchor = rootScrollView != null ? rootScrollView : contentView;
+        if (anchor != null) {
+            anchor.postDelayed(this::finishAffinity, 350L);
+        } else {
+            finishAffinity();
+        }
     }
 
     private void runControlPlaneRepair() {
@@ -1250,6 +1295,14 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         secondParams.leftMargin = dp(8);
         row.addView(second, secondParams);
         parent.addView(row, topMarginParams(8));
+    }
+
+    private void addFullWidthButton(LinearLayout parent, Button button) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(44));
+        params.topMargin = dp(8);
+        parent.addView(button, params);
     }
 
     private void updateOpenButton(Button button, String url) {

@@ -3,6 +3,7 @@ package com.termux.app.smallphone;
 import android.content.Context;
 
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
@@ -13,8 +14,6 @@ import java.net.URL;
 
 public final class SmallPhoneRuntime {
 
-    public static final String SERVICE_MANAGER_URL = "http://127.0.0.1:20087";
-    public static final String SERVICE_MANAGER_HEALTH_URL = SERVICE_MANAGER_URL + "/api/v1/health";
     public static final String SMALLPHONE_URL = "http://127.0.0.1:22082/";
     public static final String SMALLPHONE_CORE_URL = "http://127.0.0.1:22000/";
     public static final String SMALLPHONE_CORE_HEALTH_URL = SMALLPHONE_CORE_URL + "health";
@@ -32,7 +31,8 @@ public final class SmallPhoneRuntime {
     }
 
     public Status loadStatus() {
-        Endpoint serviceManager = probe("service-manager", SERVICE_MANAGER_HEALTH_URL);
+        String serviceManagerUrl = ServiceManagerClient.resolveConfiguredBaseUrl();
+        Endpoint serviceManager = probe("service-manager", serviceManagerUrl + "/api/v1/health", serviceManagerUrl + "/health");
         Endpoint smallPhone = probe("SmallPhone", SMALLPHONE_URL);
         Endpoint smallPhoneCore = probe("SmallPhone core", SMALLPHONE_CORE_HEALTH_URL);
         boolean ccDisabled = isCcConnectDisabled();
@@ -143,8 +143,7 @@ public final class SmallPhoneRuntime {
         public boolean isHealthy() {
             return serviceManager.reachable
                 && smallPhone.reachable
-                && smallPhoneCore.reachable
-                && (ccConnect.reachable || ccConnectDisabled);
+                && smallPhoneCore.reachable;
         }
 
         public String headline() {
@@ -160,12 +159,15 @@ public final class SmallPhoneRuntime {
             if (!smallPhoneCore.reachable) {
                 return "SmallPhone Core API 未就绪";
             }
-            return "cc-connect 未就绪";
+            return "SmallPhone 运行栈已就绪";
         }
 
         public String detail() {
             if (isHealthy()) {
-                return "已通过 service-manager、SmallPhone 和 cc-connect 健康门禁。";
+                if (ccConnect.reachable || ccConnectDisabled) {
+                    return "已通过 service-manager 和 SmallPhone 健康门禁；cc-connect/openhouse-connect 为可选诊断服务。";
+                }
+                return "SmallPhone 已可用；cc-connect/openhouse-connect 尚未响应，可在服务控制中修复，不阻塞入口使用。";
             }
             if (!serviceManager.reachable) {
                 return "请启动或修复 SmallPhoneAI 运行栈；service-manager 是核心服务控制面。";
@@ -176,7 +178,7 @@ public final class SmallPhoneRuntime {
             if (!smallPhoneCore.reachable) {
                 return "SmallPhone 页面可访问，但核心 API 还没有响应。";
             }
-            return "SmallPhone 可访问，但 cc-connect 尚未响应；如确需禁用，可在 ~/.smallphoneai/cc-connect.disabled 放置禁用标记。";
+            return "SmallPhone 运行栈正在检查。";
         }
     }
 

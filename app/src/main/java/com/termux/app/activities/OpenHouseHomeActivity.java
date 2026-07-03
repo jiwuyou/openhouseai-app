@@ -13,11 +13,13 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -46,6 +48,8 @@ import com.termux.app.browser.ControlledBrowserRuntime;
 import com.termux.app.browser.ControlledBrowserView;
 import com.termux.app.openhouse.OpenHouseClaudeCodeUiController;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
+import com.termux.app.openhouse.OpenHousePiWebRescueController;
+import com.termux.app.openhouse.OpenHouseRuntimePreferences;
 import com.termux.app.openhouse.components.OpenHouseComponent;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
 import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
@@ -62,7 +66,9 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -73,6 +79,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String LOG_TAG = "OpenHouseHome";
     private static final String PREFS_NAME = "openhouse_home";
     private static final String PREF_HOME_PAGE = "home_page";
+    private static final String PREF_AI_RESCUE_PORT = "ai_rescue_port";
+    private static final int MIN_AI_RESCUE_PORT = 1024;
+    private static final int MAX_AI_RESCUE_PORT = 65535;
     private static final String PAGE_HOME = "home";
     private static final String PAGE_PI_WEB = "pi-web";
     private static final String PAGE_AI = "ai";
@@ -87,6 +96,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PAGE_LOGS = "logs";
     private static final String PAGE_ADVANCED = "advanced";
     private static final String PAGE_USAGE_TUTORIAL = "usage_tutorial";
+    private static final String PAGE_AI_RESCUE = "ai_rescue";
     private static final String PAGE_COMPONENT_PREFIX = "component:";
     private static final String EXTRA_SERVICE_CONTROL_COMPONENT_ID = "openhouse_component_id";
     private static final String EXTRA_SERVICE_CONTROL_TITLE = "openhouse_component_title";
@@ -145,6 +155,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private LinearLayout piWebFallbackView;
     private TextView piWebStatusView;
     private boolean piWebLoadFailed = false;
+    private LinearLayout aiRescuePageView;
+    private WebView aiRescueWebView;
+    private LinearLayout aiRescueFallbackView;
+    private TextView aiRescueStatusView;
+    private EditText aiRescuePortInput;
+    private boolean aiRescueLoadFailed = false;
+    private String renderedAiRescueUrl;
     private ControlledBrowserView controlledBrowserView;
     private LinearLayout dynamicWebPageView;
     private WebView dynamicWebView;
@@ -220,6 +237,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             piWebView.destroy();
             piWebView = null;
         }
+        if (aiRescueWebView != null) {
+            aiRescueWebView.destroy();
+            aiRescueWebView = null;
+        }
         if (controlledBrowserView != null) {
             controlledBrowserView.setExternalNavigationHandler(null);
             if (controlledBrowserView.getParent() instanceof ViewGroup) {
@@ -253,6 +274,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             smallPhoneController.onResume(false);
         } else if (PAGE_PI_WEB.equals(currentPage) && piWebView != null) {
             piWebView.onResume();
+        } else if (PAGE_AI_RESCUE.equals(currentPage) && aiRescueWebView != null) {
+            aiRescueWebView.onResume();
         } else if (PAGE_AI.equals(currentPage) && cloudCliWebView != null) {
             cloudCliWebView.onResume();
         } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
@@ -320,6 +343,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             cloudCliWebView.goBack();
             return;
         }
+        if (PAGE_AI_RESCUE.equals(currentPage)
+            && aiRescueWebView != null
+            && aiRescueWebView.canGoBack()) {
+            aiRescueWebView.goBack();
+            return;
+        }
         if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
             && isCurrentDynamicWebComponent(findControlledBrowserComponent())
             && dynamicWebView != null
@@ -370,6 +399,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavLogs).setOnClickListener(v -> selectPage(PAGE_LOGS));
         findViewById(R.id.buttonNavAdvanced).setOnClickListener(v -> selectPage(PAGE_ADVANCED));
         findViewById(R.id.buttonNavTerminal).setOnClickListener(v -> openTerminal(false));
+        findViewById(R.id.buttonNavAiRescue).setOnClickListener(v -> selectPage(PAGE_AI_RESCUE));
         if (setCurrentHomeButton != null) {
             setCurrentHomeButton.setOnClickListener(v -> setCurrentPageAsHome());
         }
@@ -455,7 +485,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             R.id.buttonNavRepair,
             R.id.buttonNavLogs,
             R.id.buttonNavAdvanced,
-            R.id.buttonNavTerminal
+            R.id.buttonNavTerminal,
+            R.id.buttonNavAiRescue
         };
         for (int id : fallbackButtonIds) {
             View view = findViewById(id);
@@ -603,6 +634,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 setHeader(getCcCodexTitle(), getCcCodexSubtitle("后置 AI 能力：请进入 pi-agent 完成安装配置"));
                 renderAiPage();
                 break;
+            case PAGE_AI_RESCUE:
+                setHeader("AI救援", "独立于 service-manager 的 pi-web 救援入口");
+                renderAiRescuePage();
+                break;
             case PAGE_SMALLPHONE:
                 setHeader(getSmallPhoneTitle(), getSmallPhoneSubtitle("小手机页面和运行栈修复"));
                 renderSmallPhonePage();
@@ -720,6 +755,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             openCcCodexControlOrToggle();
             return;
         }
+        if (PAGE_AI_RESCUE.equals(currentPage)) {
+            runPiWebRescueAction("status");
+            return;
+        }
         if (PAGE_PI_WEB.equals(currentPage)) {
             openPiWebControlOrAll();
             return;
@@ -734,6 +773,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         if (PAGE_AI.equals(currentPage)) {
             reloadCloudCliWebView();
+            return;
+        }
+        if (PAGE_AI_RESCUE.equals(currentPage)) {
+            reloadAiRescueWebView();
             return;
         }
         if (PAGE_SMALLPHONE.equals(currentPage)) {
@@ -771,6 +814,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         if (PAGE_AI.equals(currentPage)) {
             return getCcCodexUrl();
+        }
+        if (PAGE_AI_RESCUE.equals(currentPage)) {
+            return getAiRescueUrl();
         }
         if (PAGE_SMALLPHONE.equals(currentPage)) {
             OpenHouseComponent component = findSmallPhoneComponent();
@@ -1084,6 +1130,311 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void setPiWebStatus(String text) {
         if (piWebStatusView != null) {
             piWebStatusView.setText(text);
+        }
+    }
+
+    private void renderAiRescuePage() {
+        showEmbeddedContent();
+        if (embeddedContentView == null) {
+            return;
+        }
+        String rescueUrl = getAiRescueUrl();
+        if (aiRescuePageView == null || !rescueUrl.equals(renderedAiRescueUrl)) {
+            if (aiRescueWebView != null) {
+                aiRescueWebView.destroy();
+                aiRescueWebView = null;
+            }
+            aiRescuePageView = createAiRescuePageView();
+            renderedAiRescueUrl = rescueUrl;
+        }
+        attachEmbeddedView(aiRescuePageView);
+        if (aiRescueWebView != null) {
+            aiRescueWebView.onResume();
+            if (aiRescueWebView.getUrl() == null) {
+                reloadAiRescueWebView();
+            }
+        }
+    }
+
+    private LinearLayout createAiRescuePageView() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(10), dp(12), dp(12));
+        panel.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
+
+        aiRescueStatusView = new TextView(this);
+        aiRescueStatusView.setText("AI救援地址：" + getAiRescueUrl()
+            + "\n这个入口绕过 service-manager，只用于 service-manager 或正式 pi-web 不可用时临时启动 pi-web。");
+        aiRescueStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        aiRescueStatusView.setTextSize(13);
+        aiRescueStatusView.setLineSpacing(dp(2), 1.0f);
+        panel.addView(aiRescueStatusView);
+
+        TextView portLabel = new TextView(this);
+        portLabel.setText("救援端口");
+        portLabel.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        portLabel.setTextSize(13);
+        portLabel.setTypeface(portLabel.getTypeface(), android.graphics.Typeface.BOLD);
+        LinearLayout.LayoutParams portLabelParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        portLabelParams.setMargins(0, dp(10), 0, 0);
+        panel.addView(portLabel, portLabelParams);
+
+        LinearLayout portRow = new LinearLayout(this);
+        portRow.setOrientation(LinearLayout.HORIZONTAL);
+        portRow.setGravity(Gravity.CENTER_VERTICAL);
+        aiRescuePortInput = new EditText(this);
+        aiRescuePortInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        aiRescuePortInput.setSingleLine(true);
+        aiRescuePortInput.setSelectAllOnFocus(true);
+        aiRescuePortInput.setText(Integer.toString(getAiRescuePort()));
+        aiRescuePortInput.setHint(Integer.toString(OpenHousePiWebRescueController.DEFAULT_PORT));
+        aiRescuePortInput.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        aiRescuePortInput.setHintTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        portRow.addView(aiRescuePortInput, new LinearLayout.LayoutParams(0, dp(48), 1));
+        Button savePortButton = compactButton("保存端口", v -> saveAiRescuePortFromInput(true), true);
+        LinearLayout.LayoutParams savePortParams = new LinearLayout.LayoutParams(dp(112), dp(48));
+        savePortParams.setMargins(dp(8), 0, 0, 0);
+        portRow.addView(savePortButton, savePortParams);
+        LinearLayout.LayoutParams portRowParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        portRowParams.setMargins(0, dp(6), 0, 0);
+        panel.addView(portRow, portRowParams);
+
+        addButtonRow(panel,
+            compactButton("启动救援", v -> runPiWebRescueAction("start"), true),
+            compactButton("重启救援", v -> runPiWebRescueAction("restart"), true));
+        addButtonRow(panel,
+            compactButton("停止救援", v -> runPiWebRescueAction("stop"), true),
+            compactButton("检查状态", v -> runPiWebRescueAction("status"), true));
+        addButtonRow(panel,
+            compactButton("复制地址", v -> copyAiRescueUrlFromInput(), true),
+            compactButton("刷新页面", v -> reloadAiRescueWebView(), true));
+        page.addView(panel, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        FrameLayout browserHost = new FrameLayout(this);
+        aiRescueWebView = new WebView(this);
+        configureAiRescueWebView(aiRescueWebView);
+        browserHost.addView(aiRescueWebView, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+
+        aiRescueFallbackView = createAiRescueFallbackView();
+        aiRescueFallbackView.setVisibility(View.GONE);
+        browserHost.addView(aiRescueFallbackView, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+        page.addView(browserHost, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1));
+        return page;
+    }
+
+    private LinearLayout createAiRescueFallbackView() {
+        LinearLayout fallback = new LinearLayout(this);
+        fallback.setOrientation(LinearLayout.VERTICAL);
+        fallback.setGravity(Gravity.CENTER);
+        fallback.setPadding(dp(22), dp(22), dp(22), dp(22));
+        fallback.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
+        TextView title = new TextView(this);
+        title.setText("AI救援未连接");
+        title.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        title.setTextSize(20);
+        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
+        fallback.addView(title);
+
+        TextView body = new TextView(this);
+        body.setText("没有连接到 " + getAiRescueUrl()
+            + "。点击“启动救援”会绕过 service-manager，直接在 Ubuntu 中启动一个临时 pi-web。");
+        body.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        body.setTextSize(14);
+        body.setGravity(Gravity.CENTER);
+        body.setLineSpacing(dp(2), 1.0f);
+        LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        bodyParams.setMargins(0, dp(10), 0, dp(6));
+        fallback.addView(body, bodyParams);
+
+        addButtonRow(fallback,
+            compactButton("启动救援", v -> runPiWebRescueAction("start"), true),
+            compactButton("刷新", v -> reloadAiRescueWebView(), true));
+        fallback.addView(button("复制地址", v -> copyAiRescueUrlFromInput()));
+        return fallback;
+    }
+
+    private void configureAiRescueWebView(WebView webView) {
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                aiRescueLoadFailed = false;
+                setAiRescueFallbackVisible(false);
+                setAiRescueStatus("正在连接 AI救援：" + getAiRescueUrl());
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (!aiRescueLoadFailed) {
+                    setAiRescueFallbackVisible(false);
+                    setAiRescueStatus("AI救援已连接：" + url);
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request != null && request.isForMainFrame()) {
+                    showAiRescueUnavailable();
+                }
+            }
+
+            @SuppressWarnings("deprecation")
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                showAiRescueUnavailable();
+            }
+        });
+    }
+
+    private void reloadAiRescueWebView() {
+        Integer port = readAiRescuePortFromInput(true);
+        if (port == null) {
+            return;
+        }
+        aiRescueLoadFailed = false;
+        setAiRescueFallbackVisible(false);
+        String url = getAiRescueUrl(port);
+        setAiRescueStatus("正在刷新 AI救援：" + url);
+        if (aiRescueWebView != null) {
+            aiRescueWebView.loadUrl(url);
+        }
+    }
+
+    private void showAiRescueUnavailable() {
+        aiRescueLoadFailed = true;
+        setAiRescueStatus("AI救援未连接：" + getAiRescueUrl());
+        setAiRescueFallbackVisible(true);
+    }
+
+    private void setAiRescueFallbackVisible(boolean visible) {
+        if (aiRescueFallbackView != null) {
+            aiRescueFallbackView.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void setAiRescueStatus(String text) {
+        if (aiRescueStatusView != null) {
+            aiRescueStatusView.setText(text);
+        }
+    }
+
+    private void runPiWebRescueAction(String action) {
+        Integer port = readAiRescuePortFromInput(true);
+        if (port == null) {
+            return;
+        }
+        String url = getAiRescueUrl(port);
+        setAiRescueStatus("AI救援执行中：" + action + "\n地址：" + url);
+        Toast.makeText(this, "AI救援执行中，请稍候。", Toast.LENGTH_SHORT).show();
+        backgroundExecutor.execute(() -> {
+            OpenHouseMaintainerRunner.Result result = runPiWebRescueMaintainerAction(action, port);
+            runOnUiThread(() -> {
+                String output = result.output == null ? "" : result.output.trim();
+                if (output.length() > 700) {
+                    output = output.substring(output.length() - 700);
+                }
+                setAiRescueStatus((result.isSuccess() ? "AI救援完成：" : "AI救援失败：")
+                    + action
+                    + "\n地址：" + url
+                    + (isBlank(output) ? "" : "\n" + output));
+                if (result.isSuccess() && ("start".equals(action) || "restart".equals(action))) {
+                    reloadAiRescueWebView();
+                } else if (result.isSuccess() && "stop".equals(action)) {
+                    showAiRescueUnavailable();
+                }
+                Toast.makeText(this,
+                    result.isSuccess() ? "AI救援已完成" : "AI救援失败，请查看日志。",
+                    Toast.LENGTH_LONG).show();
+            });
+        });
+    }
+
+    private OpenHouseMaintainerRunner.Result runPiWebRescueMaintainerAction(String action, int port) {
+        Map<String, String> environment = new HashMap<>();
+        environment.put("OPENHOUSE_PI_WEB_RESCUE_ACTION", normalizeAiRescueAction(action));
+        environment.put("OPENHOUSE_PI_WEB_RESCUE_PORT", Integer.toString(port));
+        return new OpenHouseMaintainerRunner(this)
+            .run(OpenHouseMaintainerRunner.Action.PI_WEB_RESCUE, port, environment);
+    }
+
+    private String normalizeAiRescueAction(String action) {
+        if ("stop".equals(action) || "restart".equals(action) || "status".equals(action)) {
+            return action;
+        }
+        return "start";
+    }
+
+    private void saveAiRescuePortFromInput(boolean rebuildPage) {
+        Integer port = readAiRescuePortFromInput(true);
+        if (port == null) {
+            return;
+        }
+        Toast.makeText(this, "AI救援端口已保存：" + port, Toast.LENGTH_SHORT).show();
+        if (rebuildPage) {
+            renderedAiRescueUrl = null;
+            renderPage();
+        }
+    }
+
+    private void copyAiRescueUrlFromInput() {
+        Integer port = readAiRescuePortFromInput(false);
+        if (port == null) {
+            return;
+        }
+        copyText("AI救援地址", getAiRescueUrl(port));
+    }
+
+    private Integer readAiRescuePortFromInput(boolean persist) {
+        String value = aiRescuePortInput == null ? Integer.toString(getAiRescuePort()) : aiRescuePortInput.getText().toString();
+        Integer port = parseAiRescuePort(value);
+        if (port == null) {
+            Toast.makeText(this, "端口必须是 " + MIN_AI_RESCUE_PORT + "-" + MAX_AI_RESCUE_PORT + " 的数字。", Toast.LENGTH_LONG).show();
+            return null;
+        }
+        if (persist && port != getAiRescuePort()) {
+            getOpenHouseHomePrefs().edit().putInt(PREF_AI_RESCUE_PORT, port).apply();
+            renderedAiRescueUrl = null;
+        }
+        return port;
+    }
+
+    private Integer parseAiRescuePort(String value) {
+        if (isBlank(value)) {
+            return null;
+        }
+        try {
+            int port = Integer.parseInt(value.trim());
+            return isValidAiRescuePort(port) ? port : null;
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -1513,6 +1864,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             smallPhoneController.onPause();
         } else if (PAGE_PI_WEB.equals(currentPage) && piWebView != null) {
             piWebView.onPause();
+        } else if (PAGE_AI_RESCUE.equals(currentPage) && aiRescueWebView != null) {
+            aiRescueWebView.onPause();
         } else if (PAGE_AI.equals(currentPage) && cloudCliWebView != null) {
             cloudCliWebView.onPause();
         } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
@@ -1961,6 +2314,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             case "cloudcli":
             case "claude-code-ui":
                 return PAGE_AI;
+            case "ai-rescue":
+            case "pi-web-rescue":
+            case "rescue":
+                return PAGE_AI_RESCUE;
             case PAGE_SMALLPHONE:
                 return PAGE_SMALLPHONE;
             case "controlled-browser":
@@ -2232,6 +2589,25 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return component.url;
         }
         return PI_WEB_DEFAULT_URL;
+    }
+
+    private String getAiRescueUrl() {
+        return getAiRescueUrl(getAiRescuePort());
+    }
+
+    private String getAiRescueUrl(int port) {
+        return OpenHousePiWebRescueController.getInstance(this).getLoopbackUrl(port);
+    }
+
+    private int getAiRescuePort() {
+        int port = getOpenHouseHomePrefs().getInt(
+            PREF_AI_RESCUE_PORT,
+            OpenHousePiWebRescueController.DEFAULT_PORT);
+        return isValidAiRescuePort(port) ? port : OpenHousePiWebRescueController.DEFAULT_PORT;
+    }
+
+    private boolean isValidAiRescuePort(int port) {
+        return port >= MIN_AI_RESCUE_PORT && port <= MAX_AI_RESCUE_PORT;
     }
 
     private String getControlledBrowserTitle() {
@@ -2537,6 +2913,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_CONTROLLED_BROWSER.equals(normalized)) {
             return isComponentVisible(findControlledBrowserComponent()) ? PAGE_CONTROLLED_BROWSER : null;
         }
+        if ("ai-rescue".equals(normalized)
+            || "pi-web-rescue".equals(normalized)
+            || "rescue".equals(normalized)) {
+            return PAGE_AI_RESCUE;
+        }
         OpenHouseComponent builtin = findBuiltinComponent(normalized);
         if (builtin != null && isComponentVisible(builtin)) {
             String nativePage = resolveNativePage(builtin.nativePage);
@@ -2570,6 +2951,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_CONTROLLED_BROWSER.equals(page)) {
             return PAGE_CONTROLLED_BROWSER;
         }
+        if (PAGE_AI_RESCUE.equals(page)) {
+            return "ai-rescue";
+        }
         if (isComponentPage(page)) {
             return extractComponentId(page);
         }
@@ -2588,6 +2972,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             || PAGE_AI.equals(page)
             || PAGE_CONTROLLED_BROWSER.equals(page)) {
             return isComponentVisible(findBuiltinComponent(page));
+        }
+        if (PAGE_AI_RESCUE.equals(page)) {
+            return true;
         }
         if (isComponentPage(page)) {
             OpenHouseComponent component = findDynamicComponent(extractComponentId(page));
@@ -2620,6 +3007,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         if (PAGE_CONTROLLED_BROWSER.equals(page)) {
             return getControlledBrowserTitle();
+        }
+        if (PAGE_AI_RESCUE.equals(page)) {
+            return "AI救援";
         }
         if (isComponentPage(page)) {
             OpenHouseComponent component = findDynamicComponent(extractComponentId(page));
@@ -2690,7 +3080,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         LinearLayout panel = panel();
         addTitle(panel, usageCoreServicesMode ? "启动核心服务" : "使用教学", 19);
         if (usageCoreServicesMode) {
-            addBody(panel, "通常应用在前台会自动保持核心服务运行。这里保留手动启动入口，用于页面提示未运行或需要主动修复时使用。这个动作会拉起 service-manager、pi-agent/pi-web、openhouse-connect 和 SmallPhone 兼容入口；cc/codex 后续由 pi-agent 安装配置。");
+            addBody(panel, "通常应用在前台会自动保持核心服务运行。这里保留手动启动入口，用于页面提示未运行或需要主动修复时使用。这个动作会拉起 service-manager、pi-agent/pi-web 和 SmallPhone 兼容入口；openhouse-connect 会作为可修复连接服务尝试启动；cc/codex 后续由 pi-agent 安装配置。");
             usageCoreServicesProgressView = new TextView(this);
             usageCoreServicesProgressView.setText(usageCoreServicesFailed
                 ? "上次启动没有完成。请重试启动核心服务，或返回菜单稍后从运行控制处理。"
@@ -2725,7 +3115,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void renderManualPage() {
         addManualSection("安装时建议阅读",
-            "第一次安装通常需要 10 分钟到半小时，期间会下载较大的运行环境，建议在 Wi-Fi 下进行。openhouse ai 会准备 Ubuntu、Node、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。");
+            "第一次安装通常需要 10 分钟到半小时，期间会下载较大的运行环境，建议在 Wi-Fi 下进行。openhouse ai 会准备 Ubuntu、Node、pi-agent、pi-web、service-manager 和 SmallPhone 兼容服务；openhouse-connect 保留为可修复连接服务。");
         addManualSection("首次安装之后",
             "安装链路只负责把环境装好。安装完成后，service-manager 才是运行控制平面，用于查看、启动、停止和修复内置服务。");
         addManualSection("终端里的 AI 怎么用",
@@ -2817,6 +3207,15 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addStatusRow(panel, "控制平面", "service-manager");
         addStatusRow(panel, "菜单注册", registryResult.toShortStatusText());
         addBody(panel, registryResult.toDiagnosticText());
+        CheckBox keepAliveToggle = checkbox("自动保持控制中枢运行", OpenHouseRuntimePreferences.isServiceManagerKeepAliveEnabled(this));
+        keepAliveToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            OpenHouseRuntimePreferences.setServiceManagerKeepAliveEnabled(this, isChecked);
+            Toast.makeText(this,
+                isChecked ? "已开启 service-manager 自动保活。" : "已关闭自动保活，可手动恢复默认核心服务。",
+                Toast.LENGTH_SHORT).show();
+        });
+        panel.addView(keepAliveToggle);
+        addBody(panel, "默认开启。关闭后，App 在前台也不会自动拉起 service-manager；运行控制里的“恢复默认核心服务”和“修复控制中枢”仍可手动使用。");
         CheckBox hintToggle = checkbox("在终端显示半透明小字提示", TermuxActivity.isOpenHouseTerminalHintVisible(this));
         hintToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             TermuxActivity.setOpenHouseTerminalHintVisible(this, isChecked);
@@ -2855,7 +3254,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             usageCoreServicesStartButton.setEnabled(false);
             usageCoreServicesStartButton.setText("启动中...");
         }
-        setUsageCoreServicesProgress("正在启动 service-manager、openhouse-connect、pi-agent、pi-web 和 SmallPhone 兼容入口...");
+        setUsageCoreServicesProgress("正在启动 service-manager、pi-agent、pi-web 和 SmallPhone 兼容入口，并尝试拉起 openhouse-connect...");
         backgroundExecutor.execute(() -> {
             OpenHouseMaintainerRunner runner = new OpenHouseMaintainerRunner(this);
             OpenHouseMaintainerRunner.Result stackResult =

@@ -3,9 +3,82 @@ set -euo pipefail
 log "正在轻量修复控制中枢：只恢复 service-manager 与 OpenHouse 专用 token。"
 require_ubuntu
 
+read_openhouse_service_manager_endpoint() {
+  local config key value
+  for config in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    for key in listen_addr listenAddr base_url baseUrl baseURL url; do
+      value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
+      if [ -n "$value" ]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+normalize_service_manager_bind() {
+  local value="${1:-}"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+  esac
+  value="${value%%/*}"
+  case "$value" in
+    "") return 1 ;;
+    :*) printf '127.0.0.1%s\n' "$value"; return 0 ;;
+    0.0.0.0) printf '127.0.0.1\n'; return 0 ;;
+    0.0.0.0:*) printf '127.0.0.1:%s\n' "${value#0.0.0.0:}"; return 0 ;;
+    "::"|"[::]") printf '127.0.0.1\n'; return 0 ;;
+    "[::]:"*) printf '127.0.0.1:%s\n' "${value#"[::]:"}"; return 0 ;;
+    :::*) printf '127.0.0.1:%s\n' "${value#:::}"; return 0 ;;
+    *[!0-9]*) printf '%s\n' "$value"; return 0 ;;
+    *) printf '127.0.0.1:%s\n' "$value"; return 0 ;;
+  esac
+}
+
+configured_service_manager_bind() {
+  local endpoint
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -n "$endpoint" ] && normalize_service_manager_bind "$endpoint"; then
+    return
+  fi
+  if [ -n "${SERVICE_MANAGER_URL:-}" ] && normalize_service_manager_bind "$SERVICE_MANAGER_URL"; then
+    return
+  fi
+  if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    normalize_service_manager_bind "$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+    return
+  fi
+  printf '127.0.0.1:20087\n'
+}
+
+configured_service_manager_url() {
+  local endpoint scheme bind
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -z "$endpoint" ]; then
+    endpoint="${SERVICE_MANAGER_URL:-}"
+  fi
+  if [ -z "$endpoint" ] && [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    endpoint="$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+  fi
+  case "$endpoint" in
+    https://*) scheme="https" ;;
+    *) scheme="http" ;;
+  esac
+  bind="$(normalize_service_manager_bind "${endpoint:-$(configured_service_manager_bind)}")" || bind="127.0.0.1:20087"
+  printf '%s://%s\n' "$scheme" "$bind"
+}
+
 start_ubuntu_service_manager_from_termux() {
-  local bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
-  local sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
+  local bind
+  local sm_url
+  bind="$(configured_service_manager_bind)"
+  sm_url="$(configured_service_manager_url)"
   local launcher_dir="$HOME/.smallphoneai/service-manager"
   local launcher="$launcher_dir/service-manager-proot-launcher.sh"
 
@@ -18,15 +91,76 @@ start_ubuntu_service_manager_from_termux() {
     return 0
   fi
 
-  cat > "$launcher" <<'SMALLPHONEAI_SERVICE_MANAGER_LAUNCHER'
+cat > "$launcher" <<'SMALLPHONEAI_SERVICE_MANAGER_LAUNCHER'
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
-bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
-exec proot-distro login ubuntu -- bash -lc '
+read_openhouse_service_manager_endpoint() {
+  local config key value
+  for config in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    for key in listen_addr listenAddr base_url baseUrl baseURL url; do
+      value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
+      if [ -n "$value" ]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+normalize_service_manager_bind() {
+  local value="${1:-}"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+  esac
+  value="${value%%/*}"
+  case "$value" in
+    "") return 1 ;;
+    :*) printf '127.0.0.1%s\n' "$value"; return 0 ;;
+    0.0.0.0) printf '127.0.0.1\n'; return 0 ;;
+    0.0.0.0:*) printf '127.0.0.1:%s\n' "${value#0.0.0.0:}"; return 0 ;;
+    "::"|"[::]") printf '127.0.0.1\n'; return 0 ;;
+    "[::]:"*) printf '127.0.0.1:%s\n' "${value#"[::]:"}"; return 0 ;;
+    :::*) printf '127.0.0.1:%s\n' "${value#:::}"; return 0 ;;
+    *[!0-9]*) printf '%s\n' "$value"; return 0 ;;
+    *) printf '127.0.0.1:%s\n' "$value"; return 0 ;;
+  esac
+}
+
+configured_service_manager_bind() {
+  local endpoint
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -n "$endpoint" ] && normalize_service_manager_bind "$endpoint"; then
+    return
+  fi
+  if [ -n "${SERVICE_MANAGER_URL:-}" ] && normalize_service_manager_bind "$SERVICE_MANAGER_URL"; then
+    return
+  fi
+  if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    normalize_service_manager_bind "$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+    return
+  fi
+  printf '127.0.0.1:20087\n'
+}
+
+bind="$(configured_service_manager_bind)"
+export SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind"
+exec proot-distro login ubuntu -- env \
+  SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" \
+  SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind" \
+  SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+  SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-${HOME:-/data/data/com.termux/files/home}}" \
+  bash -lc '
 set -euo pipefail
 
-bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
+bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}"
+[ -n "$bind" ] || bind="127.0.0.1:20087"
 repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
 log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$repo_root/service-manager}"
@@ -62,9 +196,9 @@ SMALLPHONEAI_SERVICE_MANAGER_LAUNCHER
   chmod 700 "$launcher" >/dev/null 2>&1 || true
   log "正在从 Termux 侧拉起长期运行的 service-manager proot 会话：$bind"
   if command -v setsid >/dev/null 2>&1; then
-    (trap '' HUP; SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind" setsid -f "$launcher" > "$launcher_dir/proot-launcher.log" 2>&1 < /dev/null) || true
+    (trap '' HUP; SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind" SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-${HOME:-/data/data/com.termux/files/home}}" setsid -f "$launcher" > "$launcher_dir/proot-launcher.log" 2>&1 < /dev/null) || true
   else
-    (trap '' HUP; SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind" nohup "$launcher" > "$launcher_dir/proot-launcher.log" 2>&1 < /dev/null &)
+    (trap '' HUP; SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind" SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-${HOME:-/data/data/com.termux/files/home}}" nohup "$launcher" > "$launcher_dir/proot-launcher.log" 2>&1 < /dev/null &)
   fi
 
   for _ in $(seq 1 20); do
@@ -99,6 +233,77 @@ warn() {
   printf '[SmallPhoneAI control-plane] WARN: %s\n' "$*" >&2
 }
 
+read_openhouse_service_manager_endpoint() {
+  local config key value
+  for config in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    for key in listen_addr listenAddr base_url baseUrl baseURL url; do
+      value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
+      if [ -n "$value" ]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+normalize_service_manager_bind() {
+  local value="${1:-}"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+  esac
+  value="${value%%/*}"
+  case "$value" in
+    "") return 1 ;;
+    :*) printf '127.0.0.1%s\n' "$value"; return 0 ;;
+    0.0.0.0) printf '127.0.0.1\n'; return 0 ;;
+    0.0.0.0:*) printf '127.0.0.1:%s\n' "${value#0.0.0.0:}"; return 0 ;;
+    "::"|"[::]") printf '127.0.0.1\n'; return 0 ;;
+    "[::]:"*) printf '127.0.0.1:%s\n' "${value#"[::]:"}"; return 0 ;;
+    :::*) printf '127.0.0.1:%s\n' "${value#:::}"; return 0 ;;
+    *[!0-9]*) printf '%s\n' "$value"; return 0 ;;
+    *) printf '127.0.0.1:%s\n' "$value"; return 0 ;;
+  esac
+}
+
+configured_service_manager_bind() {
+  local endpoint
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -n "$endpoint" ] && normalize_service_manager_bind "$endpoint"; then
+    return
+  fi
+  if [ -n "${SERVICE_MANAGER_URL:-}" ] && normalize_service_manager_bind "$SERVICE_MANAGER_URL"; then
+    return
+  fi
+  if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    normalize_service_manager_bind "$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+    return
+  fi
+  printf '127.0.0.1:20087\n'
+}
+
+configured_service_manager_url() {
+  local endpoint scheme bind
+  endpoint="$(read_openhouse_service_manager_endpoint || true)"
+  if [ -z "$endpoint" ]; then
+    endpoint="${SERVICE_MANAGER_URL:-}"
+  fi
+  if [ -z "$endpoint" ] && [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
+    endpoint="$SMALLPHONEAI_SERVICE_MANAGER_BIND"
+  fi
+  case "$endpoint" in
+    https://*) scheme="https" ;;
+    *) scheme="http" ;;
+  esac
+  bind="$(normalize_service_manager_bind "${endpoint:-$(configured_service_manager_bind)}")" || bind="127.0.0.1:20087"
+  printf '%s://%s\n' "$scheme" "$bind"
+}
+
 repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
 default_path() {
   local dev_path="$1"
@@ -111,8 +316,8 @@ default_path() {
 }
 
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path /root/projects/service-manager service-manager)}"
-bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
-sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
+bind="$(configured_service_manager_bind)"
+sm_url="$(configured_service_manager_url)"
 log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
 
 export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$HOME/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:$PATH"

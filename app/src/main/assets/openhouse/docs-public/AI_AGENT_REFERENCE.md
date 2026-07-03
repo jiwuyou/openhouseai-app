@@ -298,7 +298,7 @@ pi-agent 的新手提示词必须能直接引用安装后的稳定文档路径�
 - 删除、清空或重建 `/data/data/com.termux/files/usr`。
 - `proot-distro reset/remove ubuntu` 或等价重装 Ubuntu。
 - 覆盖 `~/.bashrc`、`~/.profile`、`~/.config` 中已有用户配置。
-- 停止全部后台服务或杀掉大量进程。
+- 停止 OpenHouse 之外的服务，或批量终止大量进程。
 - 上传日志、截图、token、API key 或私有项目文件。
 - 对用户项目执行不可逆 Git 操作。
 

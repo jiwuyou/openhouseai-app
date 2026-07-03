@@ -15,6 +15,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -23,6 +24,10 @@ import com.termux.R;
 import com.termux.app.openhouse.OpenHouseInstallController;
 import com.termux.app.openhouse.OpenHouseInstallState;
 import com.termux.app.openhouse.OpenHouseStatus;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 
 public final class OpenHouseOnboardingOverlay {
 
@@ -40,6 +45,7 @@ public final class OpenHouseOnboardingOverlay {
     private static final int COLOR_BORDER = Color.rgb(202, 213, 204);
     private static final int COLOR_WARN = Color.rgb(143, 55, 42);
     private static final int COLOR_GOLD = Color.rgb(240, 216, 138);
+    private static final int INSTALL_LOG_TAIL_BYTES = 48 * 1024;
 
     private final Activity activity;
     private final SharedPreferences preferences;
@@ -71,9 +77,6 @@ public final class OpenHouseOnboardingOverlay {
         installState = state;
         if (state.completed) {
             refreshStatus();
-            if (currentStep == Step.WAITING_INSTALL) {
-                setCurrentStep(Step.LAUNCH_CONFIG);
-            }
         } else {
             render();
         }
@@ -144,6 +147,12 @@ public final class OpenHouseOnboardingOverlay {
 
     public boolean isShowing() {
         return rootView.getVisibility() == View.VISIBLE;
+    }
+
+    public boolean shouldBlockBackNavigation() {
+        return actionBusy
+            || isInstallRunning()
+            || (currentStep == Step.WAITING_INSTALL && !isInstallDone() && !installState.failed);
     }
 
     private void setupStaticActions() {
@@ -280,7 +289,13 @@ public final class OpenHouseOnboardingOverlay {
         }
 
         String title = getInstallProgressTitle();
-        addStatusCard(title, "将安装 Ubuntu、Node.js、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。");
+        addStatusCard(
+            title,
+            "将安装 Ubuntu、Node.js、pi-agent、pi-web、service-manager 和 SmallPhone 兼容核心入口；openhouse-connect 会注册为可修复连接服务，不阻塞首次进入 pi-agent。"
+        );
+        if (installState.running) {
+            addStatusCard("安装中，请不要退出界面", "初始化任务正在执行。请保持当前页面打开，并让手机保持亮屏或允许应用在后台继续运行。");
+        }
         addStatusCard("网络提醒", "初始化安装预计会下载约 500M 的文件内容，推荐在 Wi-Fi 网络下进行。");
         addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
         addReadingGuide(false, true);
@@ -291,6 +306,9 @@ public final class OpenHouseOnboardingOverlay {
             R.drawable.ic_openhouse_play,
             v -> startInstall());
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
+        if (installState.running || isInstallStarted()) {
+            addActionButton("查看安装日志", true, false, v -> showInstallLogDialog());
+        }
         addForceRestartInstallButtonIfNeeded();
     }
 
@@ -305,12 +323,17 @@ public final class OpenHouseOnboardingOverlay {
             "请保持应用在后台可运行。这里不会要求你填写模型或 Key，安装完成后再按需要配置。"
         );
         addStatusCard(
+            "安装中，请不要退出界面",
+            "初始化任务还在执行。请保持当前页面打开，并让手机保持亮屏或允许应用在后台继续运行。"
+        );
+        addStatusCard(
             "安装完成后怎么用",
             "service-manager 会负责后台服务；菜单侧边栏里 SmallPhone、pi-agent、运行控制和终端是基础入口。Codex、Claude Code 和 CloudCLI 稍后由 pi-agent 引导安装配置。"
         );
         addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
         addReadingGuide(true, false);
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
+        addActionButton("查看安装日志", true, false, v -> showInstallLogDialog());
         addForceRestartInstallButtonIfNeeded();
     }
 
@@ -334,13 +357,14 @@ public final class OpenHouseOnboardingOverlay {
         addActionButton("国内网络重试", true, false,
             v -> startInstallAsync(true, OpenHouseInstallState.RetryMode.CN));
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
+        addActionButton("查看安装日志", true, false, v -> showInstallLogDialog());
         addForceRestartInstallButtonIfNeeded();
     }
 
     private void renderLaunchConfigStep() {
         addStatusCard(
             "核心运行栈已安装完成",
-            "Ubuntu、Node.js、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务已作为默认核心栈就绪。"
+            "Ubuntu、Node.js、pi-agent、pi-web 和 service-manager 控制平面已就绪。openhouse-connect 与 SmallPhone 兼容服务如未就绪，可在运行控制中修复。"
         );
         addStatusCard(
             "service-manager 接管运行期",
@@ -486,10 +510,101 @@ public final class OpenHouseOnboardingOverlay {
             .show();
     }
 
+    private void showInstallLogDialog() {
+        LinearLayout panel = new LinearLayout(activity);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(16), dp(8), dp(16), dp(0));
+
+        TextView hint = smallBody("这里只读取安装日志尾部内容，不会停止或重启安装任务。");
+        panel.addView(hint);
+
+        TextView logView = new TextView(activity);
+        logView.setText(readInstallLogTail());
+        logView.setTextColor(COLOR_TEXT);
+        logView.setTextSize(11);
+        logView.setTypeface(Typeface.MONOSPACE);
+        logView.setLineSpacing(dp(2), 1.0f);
+        logView.setTextIsSelectable(true);
+        logView.setPadding(0, dp(8), 0, dp(8));
+
+        ScrollView scrollView = new ScrollView(activity);
+        scrollView.addView(logView, new ScrollView.LayoutParams(
+            ScrollView.LayoutParams.MATCH_PARENT,
+            ScrollView.LayoutParams.WRAP_CONTENT));
+        panel.addView(scrollView, topMarginParams(dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(320)));
+
+        AlertDialog dialog = new AlertDialog.Builder(activity)
+            .setTitle("安装日志")
+            .setView(panel)
+            .setNegativeButton("关闭", null)
+            .setPositiveButton("刷新日志", null)
+            .create();
+        dialog.setOnShowListener(shownDialog -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            .setOnClickListener(v -> {
+                logView.setText(readInstallLogTail());
+                scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+            }));
+        dialog.show();
+        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private String readInstallLogTail() {
+        String path = installState.logPath == null ? "" : installState.logPath.trim();
+        if (path.isEmpty()) {
+            return "安装日志还没有生成。请等待安装任务启动后再刷新。";
+        }
+
+        File logFile = new File(path);
+        if (!logFile.exists()) {
+            return "安装日志文件暂时不存在：\n" + path + "\n\n请等待安装任务写入日志后再刷新。";
+        }
+        if (!logFile.isFile()) {
+            return "安装日志路径不是普通文件：\n" + path;
+        }
+
+        try (RandomAccessFile file = new RandomAccessFile(logFile, "r")) {
+            long length = file.length();
+            long start = Math.max(0, length - INSTALL_LOG_TAIL_BYTES);
+            byte[] buffer = new byte[(int) (length - start)];
+            file.seek(start);
+            file.readFully(buffer);
+            String content = new String(buffer);
+            if (start > 0) {
+                content = "... 已省略前面的日志，只显示最后 " + (INSTALL_LOG_TAIL_BYTES / 1024) + "KB ...\n\n" + content;
+            }
+            return content.trim().isEmpty() ? "安装日志目前是空的。请稍后刷新。" : safeLogText(content);
+        } catch (IOException e) {
+            return "读取安装日志失败：\n" + safeMessage(e) + "\n\n日志路径：\n" + path;
+        }
+    }
+
+    private String safeLogText(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        String redacted = text.replaceAll("(?i)\\b(api[_-]?key|authorization|bearer|token|password)([=:\"' ]+)([^\\s\"']{8,})", "$1$2***");
+        return redacted.replaceAll("\\bsk-[A-Za-z0-9_-]{12,}\\b", "sk-***");
+    }
+
     private void forceRestartInstall(OpenHouseInstallState.RetryMode retryMode) {
         if (actionBusy) return;
 
         actionBusy = true;
+        installState = new OpenHouseInstallState(
+            OpenHouseInstallState.Status.RETRYING,
+            Math.max(1, getDisplayedInstallPercent()),
+            "正在强制重试当前阶段",
+            retryMode == OpenHouseInstallState.RetryMode.CN
+                ? "正在启动国内网络重试，请保持应用可后台运行。"
+                : "正在启动常规重试，请保持应用可后台运行。",
+            installState.currentStageSlug.isEmpty() ? "manifest_full" : installState.currentStageSlug,
+            retryMode,
+            Math.max(1, installState.attempt + 1),
+            installState.logPath,
+            ""
+        );
+        currentStep = Step.WAITING_INSTALL;
+        persistStep();
         render();
         Thread starter = new Thread(() -> {
             boolean started = runtime.getInstallController().forceRestartOneClickInstall(retryMode);
@@ -543,6 +658,12 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private void normalizeCurrentStep() {
+        if (isInstallRunning()) {
+            currentStep = Step.WAITING_INSTALL;
+            persistStep();
+            return;
+        }
+
         if (!isBatteryReady()) {
             currentStep = Step.PERMISSION;
             persistStep();
@@ -590,7 +711,9 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private boolean shouldShowGuide() {
-        return !isSetupComplete() || !preferences.getBoolean(KEY_GUIDE_DISMISSED, false);
+        return isInstallRunning()
+            || !isSetupComplete()
+            || !preferences.getBoolean(KEY_GUIDE_DISMISSED, false);
     }
 
     private boolean isBatterySkipped() {
@@ -602,7 +725,10 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private boolean isInstallDone() {
-        return installState.completed || isCoreDeploymentComplete();
+        if (isInstallRunning()) {
+            return false;
+        }
+        return isCoreDeploymentComplete();
     }
 
     private boolean isInstallStarted() {
@@ -610,7 +736,11 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private boolean isSetupComplete() {
-        return isBatteryReady() && isInstallDone();
+        return !isInstallRunning() && isBatteryReady() && isInstallDone();
+    }
+
+    private boolean isInstallRunning() {
+        return installState != null && installState.running;
     }
 
     private int getDisplayedInstallPercent() {
@@ -635,55 +765,15 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private boolean isCoreDeploymentComplete() {
-        return status.termuxReady
-            && status.productPrepared
-            && status.ubuntuInstalled
-            && status.entryUbuntuConfigured
-            && status.nodeInstalled
-            && status.officialDocsSynced
-            && status.serviceManagerInstalled
-            && status.openhouseConnectInstalled
-            && status.smallPhoneRuntimeInstalled
-            && status.registrySynced
-            && status.serviceManagerReachable
-            && status.openhouseConnectReachable
-            && status.smallPhoneReachable;
+        return status.isCoreDeploymentComplete();
     }
 
     private int getCoreProgressPercent() {
-        int done = 0;
-        int total = 13;
-        if (status.termuxReady) done++;
-        if (status.productPrepared) done++;
-        if (status.ubuntuInstalled) done++;
-        if (status.entryUbuntuConfigured) done++;
-        if (status.nodeInstalled) done++;
-        if (status.officialDocsSynced) done++;
-        if (status.serviceManagerInstalled) done++;
-        if (status.openhouseConnectInstalled) done++;
-        if (status.smallPhoneRuntimeInstalled) done++;
-        if (status.registrySynced) done++;
-        if (status.serviceManagerReachable) done++;
-        if (status.openhouseConnectReachable) done++;
-        if (status.smallPhoneReachable) done++;
-        return Math.round((done * 100f) / total);
+        return status.getProgressPercent();
     }
 
     private String getCoreNextStepLabel() {
-        if (!status.termuxReady) return "准备 Termux 基础环境";
-        if (!status.productPrepared) return "准备本机目录";
-        if (!status.ubuntuInstalled) return "准备 Linux 环境";
-        if (!status.entryUbuntuConfigured) return "设置启动方式";
-        if (!status.nodeInstalled) return "安装 Node.js";
-        if (!status.officialDocsSynced) return "同步使用文档";
-        if (!status.serviceManagerInstalled) return "安装 service-manager";
-        if (!status.openhouseConnectInstalled) return "安装 openhouse-connect";
-        if (!status.smallPhoneRuntimeInstalled) return "安装 SmallPhone 兼容服务";
-        if (!status.registrySynced) return "同步 service-manager 注册表";
-        if (!status.serviceManagerReachable) return "启动 service-manager";
-        if (!status.openhouseConnectReachable) return "启动 openhouse-connect";
-        if (!status.smallPhoneReachable) return "启动 SmallPhone 兼容服务";
-        return "核心控制平面已就绪，下一步进入 pi-agent";
+        return status.getNextStepLabel();
     }
 
     private ForceSkipInfo getForceSkipInfo(Step step) {
@@ -803,7 +893,7 @@ public final class OpenHouseOnboardingOverlay {
             addReadingSection(body, "会安装哪些核心能力",
                 "Ubuntu 是主要运行环境，Node.js 是 pi-agent 和 pi-web 的运行依赖。",
                 "service-manager 是安装完成后的控制平面，负责后台服务启动、停止和健康检查。",
-                "openhouse-connect、pi 和 pi-web 负责本机服务、pi-agent、插件体系和页面入口。");
+                "pi-agent 和 pi-web 负责首次配置助手、插件体系和页面入口；openhouse-connect 与 SmallPhone 兼容服务会作为可修复服务保留。");
             addReadingSection(body, "AI Agent 为什么后置安装",
                 "Codex、Claude Code、CloudCLI 和 Hermes 不再阻塞首次安装。",
                 "先让 pi-agent 可用，再由 pi-agent 读取内置文档，按用户选择安装和配置这些能力。");
