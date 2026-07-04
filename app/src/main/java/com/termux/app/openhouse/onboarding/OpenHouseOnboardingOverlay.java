@@ -34,7 +34,6 @@ public final class OpenHouseOnboardingOverlay {
     private static final String PREFS_NAME = "openhouse_onboarding";
     private static final String KEY_STEP = "step";
     private static final String KEY_CURRENT_STEP = "current_step";
-    private static final String KEY_BATTERY_SKIPPED = "battery_skipped";
     private static final String KEY_GUIDE_DISMISSED = "guide_dismissed";
 
     private static final int COLOR_PRIMARY = Color.rgb(30, 111, 82);
@@ -44,7 +43,6 @@ public final class OpenHouseOnboardingOverlay {
     private static final int COLOR_MUTED = Color.rgb(95, 108, 101);
     private static final int COLOR_BORDER = Color.rgb(202, 213, 204);
     private static final int COLOR_WARN = Color.rgb(143, 55, 42);
-    private static final int COLOR_GOLD = Color.rgb(240, 216, 138);
     private static final int INSTALL_LOG_TAIL_BYTES = 48 * 1024;
 
     private final Activity activity;
@@ -59,11 +57,6 @@ public final class OpenHouseOnboardingOverlay {
     private final TextView bodyView;
     private final LinearLayout contentView;
     private final LinearLayout actionsView;
-    private final MaterialButton previousButton;
-    private final TextView stepCountView;
-    private final MaterialButton nextButton;
-    private final TextView skipRiskView;
-    private final MaterialButton skipButton;
 
     private OpenHouseInstallState installState = OpenHouseInstallState.idle();
     private OpenHouseStatus status = OpenHouseStatus.checking();
@@ -71,11 +64,11 @@ public final class OpenHouseOnboardingOverlay {
     private boolean initialRevealElapsed;
     private boolean statusLoading;
     private boolean actionBusy;
-    private boolean autoStartInstallRequested;
+    private boolean networkCheckBusy;
 
     private final OpenHouseInstallController.Listener installListener = state -> {
         installState = state;
-        if (state.completed) {
+        if (state.completed || state.failed) {
             refreshStatus();
         } else {
             render();
@@ -104,17 +97,8 @@ public final class OpenHouseOnboardingOverlay {
         bodyView = rootView.findViewById(R.id.openhouse_onboarding_body);
         contentView = rootView.findViewById(R.id.openhouse_onboarding_content);
         actionsView = rootView.findViewById(R.id.openhouse_onboarding_actions);
-        previousButton = rootView.findViewById(R.id.openhouse_onboarding_previous);
-        stepCountView = rootView.findViewById(R.id.openhouse_onboarding_step_count);
-        nextButton = rootView.findViewById(R.id.openhouse_onboarding_next);
-        skipRiskView = rootView.findViewById(R.id.openhouse_onboarding_skip_risk);
-        skipButton = rootView.findViewById(R.id.openhouse_onboarding_skip);
 
         currentStep = readSavedStep();
-        setupStaticActions();
-        styleNavigationButton(previousButton);
-        styleNavigationButton(nextButton);
-        styleDangerButton(skipButton);
     }
 
     public void attach() {
@@ -150,27 +134,7 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     public boolean shouldBlockBackNavigation() {
-        return actionBusy
-            || isInstallRunning()
-            || (currentStep == Step.WAITING_INSTALL && !isInstallDone() && !installState.failed);
-    }
-
-    private void setupStaticActions() {
-        previousButton.setOnClickListener(v -> {
-            Step previous = getPreviousStep(currentStep);
-            if (previous != null) {
-                setCurrentStep(previous);
-            }
-        });
-
-        nextButton.setOnClickListener(v -> {
-            Step next = getNextStep(currentStep);
-            if (next != null) {
-                setCurrentStep(next);
-            }
-        });
-
-        skipButton.setOnClickListener(v -> confirmSkipCurrentStep());
+        return actionBusy || networkCheckBusy || isInstallRunning();
     }
 
     private void refreshStatus() {
@@ -183,7 +147,6 @@ public final class OpenHouseOnboardingOverlay {
             statusLoading = false;
             status = loadedStatus;
             normalizeCurrentStep();
-            maybeAutoStartInstall();
             render();
         });
     }
@@ -205,309 +168,334 @@ public final class OpenHouseOnboardingOverlay {
         actionsView.removeAllViews();
 
         renderProgress();
-        kickerView.setText((currentStep.ordinal() + 1) + "/" + Step.values().length + " " + currentStep.label);
-        titleView.setText(currentStep.title);
-        bodyView.setText(currentStep.body);
+        kickerView.setText("手动安装向导");
+        titleView.setText("安装 OpenHouse AI");
+        bodyView.setText("先允许后台运行，再准备运行环境、安装 AI 功能。每一步都由你手动开始。");
 
-        switch (currentStep) {
-            case PERMISSION:
-                renderPermissionStep();
-                break;
-            case INSTALL:
-                renderInstallStep();
-                break;
-            case WAITING_INSTALL:
-                renderWaitingInstallStep();
-                break;
-            case LAUNCH_CONFIG:
-                renderLaunchConfigStep();
-                break;
-            default:
-                break;
+        renderBackgroundRunPreflight();
+        renderNetworkLineRow();
+        renderInstallSteps();
+
+        if (isInstallRunning()) {
+            renderRunningStatus();
+        } else if (installState.failed) {
+            renderFailedStatus();
+        } else if (isAiFeaturesReady()) {
+            renderCompleteStatus();
         }
-
-        renderNavigation();
-        renderSkipPanel();
     }
 
     private void renderProgress() {
         progressContainer.removeAllViews();
-        Step[] steps = Step.values();
-        int rowCount = steps.length <= 4 ? 1 : 2;
-        for (int rowIndex = 0; rowIndex < rowCount; rowIndex++) {
-            LinearLayout row = new LinearLayout(activity);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER);
-            progressContainer.addView(row, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+        progressContainer.addView(row, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
 
-            int start = rowIndex == 0 ? 0 : 4;
-            int end = rowIndex == 0 ? Math.min(4, steps.length) : steps.length;
-            for (int i = start; i < end; i++) {
-                TextView chip = new TextView(activity);
-                chip.setText((i + 1) + ". " + steps[i].label);
-                chip.setSingleLine(true);
-                chip.setGravity(Gravity.CENTER);
-                chip.setTextSize(11);
-                chip.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-                chip.setIncludeFontPadding(false);
-                chip.setPadding(dp(6), dp(5), dp(6), dp(5));
-                applyProgressChipStyle(chip, i);
+        String[] labels = {"1. 后台运行权限", "2. 准备运行环境", "3. 安装 AI 功能"};
+        boolean[] done = {isBackgroundRunReady(), isRuntimeEnvironmentPrepared(), isAiFeaturesReady()};
+        boolean[] active = {
+            !done[0],
+            done[0] && !done[1] && (currentStep == Step.RUNTIME_ENVIRONMENT || currentStep == null),
+            done[1] && !done[2] && currentStep == Step.AI_FEATURES
+        };
+        for (int i = 0; i < labels.length; i++) {
+            TextView chip = new TextView(activity);
+            chip.setText(labels[i]);
+            chip.setSingleLine(true);
+            chip.setGravity(Gravity.CENTER);
+            chip.setTextSize(11);
+            chip.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            chip.setIncludeFontPadding(false);
+            chip.setPadding(dp(5), dp(6), dp(5), dp(6));
+            applyProgressChipStyle(chip, active[i], done[i]);
 
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-                params.setMargins(i == start ? 0 : dp(3), rowIndex == 0 ? 0 : dp(6), i == end - 1 ? 0 : dp(3), 0);
-                row.addView(chip, params);
-            }
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+            params.setMargins(i == 0 ? 0 : dp(3), 0, i == labels.length - 1 ? 0 : dp(3), 0);
+            row.addView(chip, params);
         }
     }
 
-    private void renderPermissionStep() {
-        boolean ready = isBatteryReady();
-        addStatusCard(
-            ready ? "后台权限已确认" : "等待系统授权",
-            isBatterySkipped()
-                ? "已手动跳过检测；如果系统实际未允许，安装可能被中断。"
-                : "先允许 openhouse 忽略电池优化，再进入启动管理/后台保活设置。启动管理无法由 Android 统一检测，返回后可继续。"
-        );
-        addPrimaryHeroButton(
-            ready ? "后台运行权限已开启" : "开启后台运行权限",
-            true,
-            ready ? R.drawable.ic_openhouse_toggle_on : R.drawable.ic_openhouse_toggle_off,
-            v -> runtime.openBatteryOptimizationSettings());
-        addStatusCard(
-            "启动管理/后台保活",
-            "请在厂商设置中允许自启动、后台运行或锁定后台。这个权限没有统一检测 API，因此这里只提供入口，不会阻塞初始化。"
-        );
-        addActionButton("打开启动管理/后台保活设置", true, true, v -> runtime.openStartupPermissionSettings());
-        addActionButton(ready ? "重新检查状态" : "我已允许，重新检查", true, true, v -> refreshStatus());
+    private void renderBackgroundRunPreflight() {
+        boolean ready = isBackgroundRunReady();
+
+        LinearLayout card = panel(R.drawable.openhouse_onboarding_panel);
+
+        LinearLayout header = new LinearLayout(activity);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView badge = new TextView(activity);
+        badge.setText("1");
+        badge.setGravity(Gravity.CENTER);
+        badge.setTextColor(Color.WHITE);
+        badge.setTextSize(12);
+        badge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        badge.setIncludeFontPadding(false);
+        badge.setBackground(roundRect(ready ? COLOR_PRIMARY_DARK : COLOR_PRIMARY, ready ? COLOR_PRIMARY_DARK : COLOR_PRIMARY, dp(16)));
+        header.addView(badge, new LinearLayout.LayoutParams(dp(28), dp(28)));
+
+        TextView title = new TextView(activity);
+        title.setText("获取后台运行权限");
+        title.setTextColor(COLOR_TEXT);
+        title.setTextSize(16);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        titleParams.setMargins(dp(10), 0, dp(8), 0);
+        header.addView(title, titleParams);
+
+        TextView state = new TextView(activity);
+        state.setText(ready ? "已完成" : "先完成");
+        state.setTextColor(ready ? COLOR_PRIMARY_DARK : COLOR_PRIMARY);
+        state.setTextSize(12);
+        state.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        state.setIncludeFontPadding(false);
+        header.addView(state);
+
+        card.addView(header);
+        card.addView(smallBody("允许应用在安装和运行时保持后台运行，避免息屏或切换应用后中断。"), topMarginParams(dp(9)));
+
+        if (ready) {
+            MaterialButton doneButton = createButton(runtime.getBackgroundRunStatusText(status), false, false);
+            card.addView(doneButton, topMarginParams(dp(12), LinearLayout.LayoutParams.MATCH_PARENT, dp(44)));
+        } else {
+            MaterialButton batteryButton = createButton("允许后台运行", !actionBusy && !networkCheckBusy && !isInstallRunning(), true);
+            batteryButton.setOnClickListener(v -> runtime.openBackgroundRunPermission());
+            card.addView(batteryButton, topMarginParams(dp(12), LinearLayout.LayoutParams.MATCH_PARENT, dp(44)));
+
+            LinearLayout secondaryRow = new LinearLayout(activity);
+            secondaryRow.setOrientation(LinearLayout.HORIZONTAL);
+
+            MaterialButton startupButton = createButton("打开后台设置", !actionBusy && !networkCheckBusy && !isInstallRunning(), false);
+            startupButton.setOnClickListener(v -> runtime.openStartupPermissionSettings());
+            secondaryRow.addView(startupButton, new LinearLayout.LayoutParams(0, dp(40), 1));
+
+            MaterialButton confirmButton = createButton("我已完成", !actionBusy && !networkCheckBusy && !isInstallRunning(), false);
+            confirmButton.setOnClickListener(v -> {
+                runtime.markBackgroundRunConfirmed();
+                refreshStatus();
+            });
+            LinearLayout.LayoutParams confirmParams = new LinearLayout.LayoutParams(0, dp(40), 1);
+            confirmParams.setMargins(dp(8), 0, 0, 0);
+            secondaryRow.addView(confirmButton, confirmParams);
+
+            card.addView(secondaryRow, topMarginParams(dp(8)));
+        }
+
+        contentView.addView(card, topMarginParams(dp(0)));
     }
 
-    private void renderInstallStep() {
-        if (installState.failed) {
-            renderInstallFailedStep();
-            return;
-        }
+    private void renderNetworkLineRow() {
+        LinearLayout row = panel(R.drawable.openhouse_onboarding_status_panel);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
 
-        String title = getInstallProgressTitle();
-        addStatusCard(
-            title,
-            "将安装 Ubuntu、Node.js、pi-agent、pi-web、service-manager 和 SmallPhone 兼容核心入口；openhouse-connect 会注册为可修复连接服务，不阻塞首次进入 pi-agent。"
-        );
-        if (installState.running) {
-            addStatusCard("安装中，请不要退出界面", "初始化任务正在执行。请保持当前页面打开，并让手机保持亮屏或允许应用在后台继续运行。");
-        }
-        addStatusCard("网络提醒", "初始化安装预计会下载约 500M 的文件内容，推荐在 Wi-Fi 网络下进行。");
+        LinearLayout copy = new LinearLayout(activity);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        TextView title = new TextView(activity);
+        title.setText("网络线路：" + runtime.getNetworkLine().label);
+        title.setTextColor(COLOR_TEXT);
+        title.setTextSize(14);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        copy.addView(title);
+        TextView hint = smallBody("默认适合国内网络。海外网络可切换为标准线路，切换前会先检测。");
+        copy.addView(hint, topMarginParams(dp(5)));
+
+        MaterialButton change = createButton("更改", !actionBusy && !networkCheckBusy && !isInstallRunning(), false);
+        change.setOnClickListener(v -> showNetworkLineDialog());
+
+        row.addView(copy, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(dp(74), dp(38));
+        buttonParams.setMargins(dp(10), 0, 0, 0);
+        row.addView(change, buttonParams);
+        contentView.addView(row, topMarginParams(contentView.getChildCount() == 0 ? dp(0) : dp(10)));
+    }
+
+    private void renderInstallSteps() {
+        addStepCard(Step.RUNTIME_ENVIRONMENT);
+        addStepCard(Step.AI_FEATURES);
+    }
+
+    private void addStepCard(Step step) {
+        LinearLayout card = panel(R.drawable.openhouse_onboarding_panel);
+
+        LinearLayout header = new LinearLayout(activity);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView badge = new TextView(activity);
+        badge.setText(step.number);
+        badge.setGravity(Gravity.CENTER);
+        badge.setTextColor(Color.WHITE);
+        badge.setTextSize(12);
+        badge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        badge.setIncludeFontPadding(false);
+        badge.setBackground(roundRect(getStepAccentColor(step), getStepAccentColor(step), dp(16)));
+        header.addView(badge, new LinearLayout.LayoutParams(dp(28), dp(28)));
+
+        TextView title = new TextView(activity);
+        title.setText(step.label);
+        title.setTextColor(COLOR_TEXT);
+        title.setTextSize(16);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        titleParams.setMargins(dp(10), 0, dp(8), 0);
+        header.addView(title, titleParams);
+
+        TextView state = new TextView(activity);
+        state.setText(getStepStatusLabel(step));
+        state.setTextColor(getStepAccentColor(step));
+        state.setTextSize(12);
+        state.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        state.setIncludeFontPadding(false);
+        header.addView(state);
+
+        card.addView(header);
+        card.addView(smallBody(step.body), topMarginParams(dp(9)));
+
+        MaterialButton button = createButton(getStepButtonText(step), isStepButtonEnabled(step), step == currentStep);
+        button.setOnClickListener(v -> startStep(step));
+        card.addView(button, topMarginParams(dp(12), LinearLayout.LayoutParams.MATCH_PARENT, dp(44)));
+
+        contentView.addView(card, topMarginParams(dp(10)));
+    }
+
+    private void renderRunningStatus() {
         addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
-        addReadingGuide(false, true);
-        boolean canStart = isBatteryReady() && !installState.running && !isInstallDone();
-        addPrimaryHeroButton(
-            isInstallDone() ? "安装已完成" : installState.running ? "正在安装中" : "开始安装",
-            canStart,
-            R.drawable.ic_openhouse_play,
-            v -> startInstall());
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
-        if (installState.running || isInstallStarted()) {
-            addActionButton("查看安装日志", true, false, v -> showInstallLogDialog());
-        }
-        addForceRestartInstallButtonIfNeeded();
+        addActionButton("查看详细日志", true, false, v -> showInstallLogDialog());
     }
 
-    private void renderWaitingInstallStep() {
-        if (installState.failed) {
-            renderInstallFailedStep();
-            return;
-        }
-
-        addStatusCard(
-            "正在安装核心运行环境",
-            "请保持应用在后台可运行。这里不会要求你填写模型或 Key，安装完成后再按需要配置。"
-        );
-        addStatusCard(
-            "安装中，请不要退出界面",
-            "初始化任务还在执行。请保持当前页面打开，并让手机保持亮屏或允许应用在后台继续运行。"
-        );
-        addStatusCard(
-            "安装完成后怎么用",
-            "service-manager 会负责后台服务；菜单侧边栏里 SmallPhone、pi-agent、运行控制和终端是基础入口。Codex、Claude Code 和 CloudCLI 稍后由 pi-agent 引导安装配置。"
-        );
-        addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
-        addReadingGuide(true, false);
+    private void renderFailedStatus() {
+        addStatusCard("安装没有完成", "可以重试当前步骤，或查看详细日志。");
+        addProgressBar(getDisplayedInstallPercent(), "当前步骤没有完成");
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
-        addActionButton("查看安装日志", true, false, v -> showInstallLogDialog());
-        addForceRestartInstallButtonIfNeeded();
+        addActionButton("查看详细日志", true, false, v -> showInstallLogDialog());
+        if (runtime.getNetworkLine() == OpenHouseOnboardingRuntime.NetworkLine.CN) {
+            addActionButton("检测并切换标准线路", true, false, v -> beginStandardLineCheck());
+        }
     }
 
-    private void renderInstallFailedStep() {
-        addStatusCard(
-            "安装没有完成",
-            installState.safeError.isEmpty()
-                ? getDisplayedInstallDetail()
-                : installState.safeError
-        );
-        addStatusCard(
-            "选择重试方式",
-            "常规重试会沿用默认路径和已有缓存；国内网络重试会把安装任务切到固定国内镜像路径。两种方式都只继续安装流程，不会删除用户数据、模型配置或工作目录。"
-        );
-        addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
-        if (!installState.logPath.isEmpty()) {
-            addStatusCard("日志位置", installState.logPath);
-        }
-        addActionButton("常规重试", true, true,
-            v -> startInstallAsync(true, OpenHouseInstallState.RetryMode.GENERAL));
-        addActionButton("国内网络重试", true, false,
-            v -> startInstallAsync(true, OpenHouseInstallState.RetryMode.CN));
-        addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
-        addActionButton("查看安装日志", true, false, v -> showInstallLogDialog());
-        addForceRestartInstallButtonIfNeeded();
-    }
-
-    private void renderLaunchConfigStep() {
-        addStatusCard(
-            "核心运行栈已安装完成",
-            "Ubuntu、Node.js、pi-agent、pi-web 和 service-manager 控制平面已就绪。openhouse-connect 与 SmallPhone 兼容服务如未就绪，可在运行控制中修复。"
-        );
-        addStatusCard(
-            "service-manager 接管运行期",
-            "首次安装阶段已经完成。之后后台服务的启动、停止和健康检查由 service-manager 管理。"
-        );
-        addStatusCard(
-            "终端只是备用入口",
-            "一般用户不需要直接使用终端。后续需要命令行时，可以从菜单单独查看终端详细教学，再回到菜单。"
-        );
-        addStatusCard(
-            "pi-agent 的作用",
-            "pi-agent 是首次配置助手和插件入口。接下来请进入 pi-agent，让它按内置文档引导你配置模型、安装 Codex、Claude Code、CloudCLI 或 Hermes。"
-        );
-        addStatusCard(
-            "菜单里的大服务",
-            "进入使用教学后先点击菜单。教学会带你认识 pi-agent、运行控制和终端；cc/codex 未安装时会提示先去 pi-agent 完成安装配置。"
-        );
-
-        addActionButton("进入使用教学", isSetupComplete(), true, v -> {
+    private void renderCompleteStatus() {
+        addStatusCard("安装完成", "OpenHouse AI 已准备好，可以开始使用。");
+        addActionButton("开始使用", true, true, v -> {
             dismissGuide();
             callbacks.onStartTerminalTutorial(true);
         });
-        addActionButton("进入 Ubuntu 终端", isSetupComplete(), false, v -> {
-            dismissGuide();
-            callbacks.onEnterTerminal(true);
-        });
+        addActionButton("查看运行控制", true, false, v -> callbacks.onOpenDetail());
     }
 
-    private void renderNavigation() {
-        Step previous = getPreviousStep(currentStep);
-        Step next = getNextStep(currentStep);
-        previousButton.setEnabled(previous != null);
-        nextButton.setEnabled(next != null);
-        stepCountView.setText((currentStep.ordinal() + 1) + " / " + Step.values().length);
-    }
-
-    private void renderSkipPanel() {
-        ForceSkipInfo info = getForceSkipInfo(currentStep);
-        skipRiskView.setText(info.risk);
-        skipButton.setText(info.label);
-        skipButton.setEnabled(info.enabled && !actionBusy);
-    }
-
-    private void startInstall() {
-        if (!isBatteryReady()) {
-            Toast.makeText(activity, "请先完成后台权限，或确认风险后跳过当前屏。", Toast.LENGTH_LONG).show();
+    private void startStep(Step step) {
+        if (!isStepButtonEnabled(step)) {
             return;
         }
-        if (actionBusy) {
+        if (!isBackgroundRunReady()) {
+            Toast.makeText(activity, "请先完成后台运行权限。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (step == Step.AI_FEATURES && !isRuntimeEnvironmentPrepared()) {
+            Toast.makeText(activity, "请先完成运行环境准备。", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        startInstallAsync(true, OpenHouseInstallState.RetryMode.GENERAL);
-    }
-
-    private void maybeAutoStartInstall() {
-        if (autoStartInstallRequested
-            || actionBusy
-            || !isBatteryReady()
-            || isInstallStarted()
-            || isInstallDone()) {
-            return;
-        }
-        if (currentStep != Step.INSTALL && currentStep != Step.WAITING_INSTALL) {
-            return;
-        }
-
-        autoStartInstallRequested = true;
-        startInstallAsync(false, OpenHouseInstallState.RetryMode.GENERAL);
-    }
-
-    private void startInstallAsync(boolean showToast, OpenHouseInstallState.RetryMode retryMode) {
         actionBusy = true;
+        currentStep = step;
+        persistStep();
         installState = new OpenHouseInstallState(
             installState.failed || installState.attempt > 0
                 ? OpenHouseInstallState.Status.RETRYING
                 : OpenHouseInstallState.Status.RUNNING,
             Math.max(1, getDisplayedInstallPercent()),
-            "正在启动安装",
-            retryMode == OpenHouseInstallState.RetryMode.CN
-                ? "正在启动国内网络重试，请保持应用可后台运行。"
-                : "正在启动一键初始化任务，请保持应用可后台运行。",
-            "manifest_full",
-            retryMode,
+            step.runningTitle,
+            step.runningDetail,
+            step.stageSlug,
+            runtime.getNetworkLine().retryMode,
             Math.max(1, installState.attempt + 1),
             installState.logPath,
             ""
         );
-        currentStep = Step.WAITING_INSTALL;
-        persistStep();
         render();
-        Thread starter = new Thread(() -> {
-            boolean started = false;
-            OpenHouseInstallState current;
-            String message;
-            try {
-                started = runtime.getInstallController().startOneClickInstall(retryMode);
-                current = runtime.getInstallState();
-                boolean usable = !current.failed && (started || current.running || current.completed);
-                if (current.failed) {
-                    message = current.safeError.isEmpty()
-                        ? "初始化启动失败，请进入详细进度查看日志。"
-                        : current.safeError;
-                } else if (current.completed) {
-                    message = "核心运行环境已安装完成。";
-                } else if (current.running) {
-                    message = started ? "安装已开始，请等待完成。" : "安装已经在运行。";
-                } else {
-                    message = usable ? "安装控制器已检查状态。" : "安装任务尚未启动，请进入详细进度查看状态。";
-                }
-            } catch (Exception e) {
-                current = runtime.getInstallState();
-                message = "无法启动初始化任务：" + safeMessage(e);
-            }
 
-            OpenHouseInstallState finalCurrent = current;
-            String finalMessage = message;
-            boolean finalStarted = started;
-            rootView.post(() -> {
-                actionBusy = false;
-                installState = finalCurrent;
-                boolean success = !finalCurrent.failed && (finalStarted || finalCurrent.running || finalCurrent.completed);
-                if (showToast || !success) {
-                    Toast.makeText(activity, finalMessage, success ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
-                }
-                refreshStatus();
-            });
-        }, "openhouse-install-start");
-        starter.start();
+        OpenHouseOnboardingRuntime.ResultCallback callback = result -> {
+            actionBusy = false;
+            installState = runtime.getInstallState();
+            if (!result.message.isEmpty()) {
+                Toast.makeText(activity, result.message, result.success ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+            }
+            refreshStatus();
+        };
+
+        if (step == Step.RUNTIME_ENVIRONMENT) {
+            runtime.startRuntimeEnvironmentInstall(callback);
+        } else if (step == Step.AI_FEATURES) {
+            runtime.startAiFeaturesInstall(callback);
+        }
     }
 
-    private void confirmForceRestartInstall() {
-        if (actionBusy) return;
-
-        new AlertDialog.Builder(activity)
-            .setTitle("强制重试当前阶段")
-            .setMessage("只有确认安装已经长时间没有变化时才使用。\n\n这会终止当前卡住的一键初始化任务，清理运行标记，然后重新触发安装。不会删除用户数据、模型配置或工作目录。已完成的阶段会按状态检测跳过，从第一个未完成阶段继续。")
+    private void showNetworkLineDialog() {
+        OpenHouseOnboardingRuntime.NetworkLine current = runtime.getNetworkLine();
+        showStyledDialog(new AlertDialog.Builder(activity)
+            .setTitle("选择网络线路")
+            .setMessage("当前线路：" + current.label + "\n\n国内加速：默认线路，适合国内网络。\n\n标准线路：适合海外网络，切换前会先检测。")
             .setNegativeButton("取消", null)
-            .setPositiveButton(OpenHouseInstallState.RetryMode.GENERAL.label,
-                (dialog, which) -> forceRestartInstall(OpenHouseInstallState.RetryMode.GENERAL))
-            .setNeutralButton(OpenHouseInstallState.RetryMode.CN.label,
-                (dialog, which) -> forceRestartInstall(OpenHouseInstallState.RetryMode.CN))
-            .show();
+            .setNeutralButton("国内加速", (dialog, which) -> {
+                runtime.setNetworkLine(OpenHouseOnboardingRuntime.NetworkLine.CN);
+                Toast.makeText(activity, "已使用国内加速。", Toast.LENGTH_SHORT).show();
+                render();
+            })
+            .setPositiveButton("标准线路", (dialog, which) -> beginStandardLineCheck()));
+    }
+
+    private void beginStandardLineCheck() {
+        if (networkCheckBusy || actionBusy || isInstallRunning()) {
+            return;
+        }
+
+        networkCheckBusy = true;
+        AlertDialog checkingDialog = new AlertDialog.Builder(activity)
+            .setTitle("正在检测标准线路")
+            .setMessage("最多 30 秒。检测完成后会告诉你是否推荐切换。")
+            .setCancelable(false)
+            .create();
+        showStyledDialog(checkingDialog);
+
+        runtime.checkStandardNetworkLine(result -> {
+            networkCheckBusy = false;
+            checkingDialog.dismiss();
+            showStandardLineCheckResult(result);
+            render();
+        });
+    }
+
+    private void showStandardLineCheckResult(OpenHouseOnboardingRuntime.NetworkCheckResult result) {
+        if (result.recommended) {
+            showStyledDialog(new AlertDialog.Builder(activity)
+                .setTitle("标准线路可用")
+                .setMessage(result.toUserMessage("检测通过，可以使用标准线路安装。"))
+                .setNegativeButton("取消", null)
+                .setPositiveButton("切换为标准线路", (dialog, which) -> {
+                    runtime.setNetworkLine(OpenHouseOnboardingRuntime.NetworkLine.STANDARD);
+                    Toast.makeText(activity, "已切换为标准线路。", Toast.LENGTH_SHORT).show();
+                    render();
+                }));
+            return;
+        }
+
+        showStyledDialog(new AlertDialog.Builder(activity)
+            .setTitle("标准线路检测不稳定")
+            .setMessage(result.toUserMessage("检测到部分下载来源连接失败或速度较慢。继续切换可能导致安装中断。"))
+            .setPositiveButton("保持国内加速", (dialog, which) -> {
+                runtime.setNetworkLine(OpenHouseOnboardingRuntime.NetworkLine.CN);
+                render();
+            })
+            .setNegativeButton("仍然切换标准线路", (dialog, which) -> {
+                runtime.setNetworkLine(OpenHouseOnboardingRuntime.NetworkLine.STANDARD);
+                Toast.makeText(activity, "已切换为标准线路。", Toast.LENGTH_SHORT).show();
+                render();
+            }));
     }
 
     private void showInstallLogDialog() {
@@ -515,7 +503,7 @@ public final class OpenHouseOnboardingOverlay {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(16), dp(8), dp(16), dp(0));
 
-        TextView hint = smallBody("这里只读取安装日志尾部内容，不会停止或重启安装任务。");
+        TextView hint = smallBody("这里只读取详细日志尾部内容，不会停止或重启安装任务。");
         panel.addView(hint);
 
         TextView logView = new TextView(activity);
@@ -534,7 +522,7 @@ public final class OpenHouseOnboardingOverlay {
         panel.addView(scrollView, topMarginParams(dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(320)));
 
         AlertDialog dialog = new AlertDialog.Builder(activity)
-            .setTitle("安装日志")
+            .setTitle("详细日志")
             .setView(panel)
             .setNegativeButton("关闭", null)
             .setPositiveButton("刷新日志", null)
@@ -544,22 +532,48 @@ public final class OpenHouseOnboardingOverlay {
                 logView.setText(readInstallLogTail());
                 scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
             }));
-        dialog.show();
+        showStyledDialog(dialog);
         scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private AlertDialog showStyledDialog(AlertDialog.Builder builder) {
+        AlertDialog dialog = builder.create();
+        return showStyledDialog(dialog);
+    }
+
+    private AlertDialog showStyledDialog(AlertDialog dialog) {
+        if (dialog == null) {
+            return null;
+        }
+        dialog.show();
+        applyDialogButtonColors(dialog);
+        return dialog;
+    }
+
+    private void applyDialogButtonColors(AlertDialog dialog) {
+        if (dialog.getButton(AlertDialog.BUTTON_POSITIVE) != null) {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(COLOR_PRIMARY_DARK);
+        }
+        if (dialog.getButton(AlertDialog.BUTTON_NEGATIVE) != null) {
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(COLOR_TEXT);
+        }
+        if (dialog.getButton(AlertDialog.BUTTON_NEUTRAL) != null) {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(COLOR_PRIMARY_DARK);
+        }
     }
 
     private String readInstallLogTail() {
         String path = installState.logPath == null ? "" : installState.logPath.trim();
         if (path.isEmpty()) {
-            return "安装日志还没有生成。请等待安装任务启动后再刷新。";
+            return "详细日志还没有生成。请等待安装任务启动后再刷新。";
         }
 
         File logFile = new File(path);
         if (!logFile.exists()) {
-            return "安装日志文件暂时不存在：\n" + path + "\n\n请等待安装任务写入日志后再刷新。";
+            return "详细日志文件暂时不存在：\n" + path + "\n\n请等待安装任务写入日志后再刷新。";
         }
         if (!logFile.isFile()) {
-            return "安装日志路径不是普通文件：\n" + path;
+            return "详细日志路径不是普通文件：\n" + path;
         }
 
         try (RandomAccessFile file = new RandomAccessFile(logFile, "r")) {
@@ -572,248 +586,203 @@ public final class OpenHouseOnboardingOverlay {
             if (start > 0) {
                 content = "... 已省略前面的日志，只显示最后 " + (INSTALL_LOG_TAIL_BYTES / 1024) + "KB ...\n\n" + content;
             }
-            return content.trim().isEmpty() ? "安装日志目前是空的。请稍后刷新。" : safeLogText(content);
+            return content.trim().isEmpty() ? "详细日志目前是空的。请稍后刷新。" : safeLogText(content);
         } catch (IOException e) {
-            return "读取安装日志失败：\n" + safeMessage(e) + "\n\n日志路径：\n" + path;
+            return "读取详细日志失败：\n" + safeMessage(e) + "\n\n日志路径：\n" + path;
         }
-    }
-
-    private String safeLogText(String text) {
-        if (text == null || text.isEmpty()) {
-            return "";
-        }
-        String redacted = text.replaceAll("(?i)\\b(api[_-]?key|authorization|bearer|token|password)([=:\"' ]+)([^\\s\"']{8,})", "$1$2***");
-        return redacted.replaceAll("\\bsk-[A-Za-z0-9_-]{12,}\\b", "sk-***");
-    }
-
-    private void forceRestartInstall(OpenHouseInstallState.RetryMode retryMode) {
-        if (actionBusy) return;
-
-        actionBusy = true;
-        installState = new OpenHouseInstallState(
-            OpenHouseInstallState.Status.RETRYING,
-            Math.max(1, getDisplayedInstallPercent()),
-            "正在强制重试当前阶段",
-            retryMode == OpenHouseInstallState.RetryMode.CN
-                ? "正在启动国内网络重试，请保持应用可后台运行。"
-                : "正在启动常规重试，请保持应用可后台运行。",
-            installState.currentStageSlug.isEmpty() ? "manifest_full" : installState.currentStageSlug,
-            retryMode,
-            Math.max(1, installState.attempt + 1),
-            installState.logPath,
-            ""
-        );
-        currentStep = Step.WAITING_INSTALL;
-        persistStep();
-        render();
-        Thread starter = new Thread(() -> {
-            boolean started = runtime.getInstallController().forceRestartOneClickInstall(retryMode);
-            OpenHouseInstallState current = runtime.getInstallState();
-            rootView.post(() -> {
-                actionBusy = false;
-                installState = current;
-                Toast.makeText(
-                    activity,
-                    started ? "已强制重试当前阶段，会从第一个未完成阶段继续。" : "无法重新启动初始化，请进入详细进度查看日志。",
-                    started ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG
-                ).show();
-                setCurrentStep(Step.WAITING_INSTALL);
-                refreshStatus();
-            });
-        }, "openhouse-install-force-retry");
-        starter.start();
-    }
-
-    private void confirmSkipCurrentStep() {
-        ForceSkipInfo info = getForceSkipInfo(currentStep);
-        if (!info.enabled) return;
-
-        new AlertDialog.Builder(activity)
-            .setTitle("确认跳过当前屏")
-            .setMessage("确定要" + info.label + "吗？\n\n风险：" + info.risk)
-            .setNegativeButton("返回", null)
-            .setPositiveButton("继续跳过", (dialog, which) -> applySkip(currentStep))
-            .show();
-    }
-
-    private void applySkip(Step step) {
-        SharedPreferences.Editor editor = preferences.edit().putBoolean(KEY_GUIDE_DISMISSED, false);
-        if (step == Step.PERMISSION) {
-            editor.putBoolean(KEY_BATTERY_SKIPPED, true);
-            editor.apply();
-            setCurrentStep(Step.INSTALL);
-            return;
-        }
-        editor.apply();
-    }
-
-    private void dismissGuide() {
-        if (!isSetupComplete()) {
-            return;
-        }
-
-        runtime.confirmLaunch();
-        preferences.edit().putBoolean(KEY_GUIDE_DISMISSED, true).apply();
-        render();
     }
 
     private void normalizeCurrentStep() {
+        if (isAiFeaturesReady()) {
+            currentStep = Step.COMPLETE;
+            persistStep();
+            return;
+        }
+
+        if (installState.failed) {
+            currentStep = getStateTaskStep();
+            persistStep();
+            return;
+        }
+
         if (isInstallRunning()) {
-            currentStep = Step.WAITING_INSTALL;
+            currentStep = getStateTaskStep();
             persistStep();
             return;
         }
 
-        if (!isBatteryReady()) {
-            currentStep = Step.PERMISSION;
-            persistStep();
-            return;
-        }
-
-        if (isSetupComplete()) {
-            currentStep = Step.LAUNCH_CONFIG;
-            persistStep();
-            return;
-        }
-
-        if (currentStep == Step.PERMISSION) {
-            currentStep = Step.INSTALL;
-        }
-        if (currentStep == Step.INSTALL && isInstallStarted() && !isInstallDone()) {
-            currentStep = Step.WAITING_INSTALL;
-        }
-        if (currentStep == Step.WAITING_INSTALL && isInstallDone()) {
-            currentStep = Step.LAUNCH_CONFIG;
-        }
-        if (currentStep == Step.LAUNCH_CONFIG && !isSetupComplete()) {
-            currentStep = firstIncompleteStep();
+        if (!isRuntimeEnvironmentPrepared()) {
+            currentStep = Step.RUNTIME_ENVIRONMENT;
+        } else if (currentStep == null || currentStep == Step.RUNTIME_ENVIRONMENT || currentStep == Step.COMPLETE) {
+            currentStep = Step.AI_FEATURES;
         }
         persistStep();
     }
 
-    private Step firstIncompleteStep() {
-        if (!isBatteryReady()) return Step.PERMISSION;
-        if (!isInstallStarted()) return Step.INSTALL;
-        if (!isInstallDone()) return Step.WAITING_INSTALL;
-        return Step.LAUNCH_CONFIG;
-    }
-
-    private Step getPreviousStep(Step step) {
-        int index = step.ordinal();
-        return index > 0 ? Step.values()[index - 1] : null;
-    }
-
-    private Step getNextStep(Step step) {
-        if (step == Step.PERMISSION) return isBatteryReady() ? Step.INSTALL : null;
-        if (step == Step.INSTALL) return isInstallStarted() ? Step.WAITING_INSTALL : null;
-        if (step == Step.WAITING_INSTALL) return isInstallDone() ? Step.LAUNCH_CONFIG : null;
-        return null;
+    private Step getStateTaskStep() {
+        OpenHouseOnboardingRuntime.InstallTask task = runtime.getInstallTask(installState);
+        if (task == OpenHouseOnboardingRuntime.InstallTask.AI_FEATURES) {
+            return Step.AI_FEATURES;
+        }
+        if (task == OpenHouseOnboardingRuntime.InstallTask.RUNTIME_ENVIRONMENT) {
+            return Step.RUNTIME_ENVIRONMENT;
+        }
+        return isRuntimeEnvironmentPrepared() ? Step.AI_FEATURES : Step.RUNTIME_ENVIRONMENT;
     }
 
     private boolean shouldShowGuide() {
         return isInstallRunning()
-            || !isSetupComplete()
+            || !isAiFeaturesReady()
             || !preferences.getBoolean(KEY_GUIDE_DISMISSED, false);
     }
 
-    private boolean isBatterySkipped() {
-        return preferences.getBoolean(KEY_BATTERY_SKIPPED, false);
+    private boolean isRuntimeEnvironmentPrepared() {
+        return runtime.isRuntimeEnvironmentPrepared(status);
     }
 
-    private boolean isBatteryReady() {
-        return status.batteryOptimizationIgnored || isBatterySkipped();
+    private boolean isAiFeaturesReady() {
+        return runtime.isAiFeaturesReady(status);
     }
 
-    private boolean isInstallDone() {
-        if (isInstallRunning()) {
-            return false;
-        }
-        return isCoreDeploymentComplete();
-    }
-
-    private boolean isInstallStarted() {
-        return installState.running || installState.completed || installState.failed || installState.percent > 0 || getCoreProgressPercent() > 0;
-    }
-
-    private boolean isSetupComplete() {
-        return !isInstallRunning() && isBatteryReady() && isInstallDone();
+    private boolean isBackgroundRunReady() {
+        return runtime.isBackgroundRunReady(status);
     }
 
     private boolean isInstallRunning() {
         return installState != null && installState.running;
     }
 
+    private boolean isStepRunning(Step step) {
+        return isInstallRunning() && currentStep == step;
+    }
+
+    private boolean isStepFailed(Step step) {
+        return installState.failed && currentStep == step;
+    }
+
+    private boolean isStepComplete(Step step) {
+        if (step == Step.RUNTIME_ENVIRONMENT) {
+            return isRuntimeEnvironmentPrepared();
+        }
+        if (step == Step.AI_FEATURES) {
+            return isAiFeaturesReady();
+        }
+        return isAiFeaturesReady();
+    }
+
+    private boolean isStepButtonEnabled(Step step) {
+        if (actionBusy || networkCheckBusy || isInstallRunning() || isStepComplete(step)) {
+            return false;
+        }
+        if (!isBackgroundRunReady()) {
+            return false;
+        }
+        if (step == Step.AI_FEATURES && !isRuntimeEnvironmentPrepared()) {
+            return false;
+        }
+        return currentStep == step || isStepFailed(step);
+    }
+
+    private String getStepButtonText(Step step) {
+        if (isStepComplete(step)) {
+            return step.completeButton;
+        }
+        if (isStepRunning(step)) {
+            return step.runningButton;
+        }
+        if (isStepFailed(step)) {
+            return "重试当前步骤";
+        }
+        if (!isBackgroundRunReady()) {
+            return "请先完成后台权限";
+        }
+        if (step == Step.AI_FEATURES && !isRuntimeEnvironmentPrepared()) {
+            return "请先完成运行环境准备";
+        }
+        return step.startButton;
+    }
+
+    private String getStepStatusLabel(Step step) {
+        if (isStepComplete(step)) {
+            return "已完成";
+        }
+        if (isStepRunning(step)) {
+            return "进行中";
+        }
+        if (isStepFailed(step)) {
+            return "未完成";
+        }
+        if (!isBackgroundRunReady()) {
+            return "等待权限";
+        }
+        if (step == Step.AI_FEATURES && !isRuntimeEnvironmentPrepared()) {
+            return "等待上一步";
+        }
+        return "可开始";
+    }
+
+    private int getStepAccentColor(Step step) {
+        if (isStepFailed(step)) {
+            return COLOR_WARN;
+        }
+        if (isStepComplete(step)) {
+            return COLOR_PRIMARY_DARK;
+        }
+        if (step == currentStep) {
+            return COLOR_PRIMARY;
+        }
+        return COLOR_MUTED;
+    }
+
     private int getDisplayedInstallPercent() {
         if (installState.running || installState.completed || installState.failed || installState.percent > 0) {
             return installState.percent;
         }
-        return getCoreProgressPercent();
+        if (currentStep == Step.AI_FEATURES) {
+            return runtime.getAiFeaturesProgressPercent(status);
+        }
+        return runtime.getRuntimeEnvironmentProgressPercent(status);
     }
 
     private String getInstallProgressTitle() {
-        if (isInstallDone()) return "安装完成";
-        if (installState.running) return installState.phaseLabel;
-        if (installState.failed) return installState.phaseLabel;
-        return "等待开始安装";
+        if (installState.failed) {
+            return "当前步骤未完成";
+        }
+        if (currentStep == Step.AI_FEATURES) {
+            return isAiFeaturesReady() ? "AI 功能已安装" : "正在安装 AI 功能";
+        }
+        return isRuntimeEnvironmentPrepared() ? "运行环境已准备好" : "正在准备运行环境";
     }
 
     private String getDisplayedInstallDetail() {
-        if (installState.running || installState.completed || installState.failed) {
-            return installState.detailText;
+        if (installState.failed) {
+            return "当前步骤没有完成";
         }
-        return getCoreNextStepLabel();
-    }
-
-    private boolean isCoreDeploymentComplete() {
-        return status.isCoreDeploymentComplete();
-    }
-
-    private int getCoreProgressPercent() {
-        return status.getProgressPercent();
-    }
-
-    private String getCoreNextStepLabel() {
-        return status.getNextStepLabel();
-    }
-
-    private ForceSkipInfo getForceSkipInfo(Step step) {
-        if (step == Step.PERMISSION) {
-            return new ForceSkipInfo(true, "强行跳过权限检测", "如果系统实际没有允许后台运行，初始化安装可能在息屏、切换应用或省电策略下中断。");
+        if (currentStep == Step.AI_FEATURES) {
+            return runtime.getAiFeaturesProgressText(status);
         }
-        if (step == Step.INSTALL) {
-            return new ForceSkipInfo(false, "先启动安装", "初始化安装不能直接跳过。请先点击开始安装；启动后会进入等待页面。");
-        }
-        if (step == Step.WAITING_INSTALL) {
-            return new ForceSkipInfo(false, "等待安装完成", "安装仍在进行，暂时不能跳过到使用说明。");
-        }
-        return new ForceSkipInfo(false, "已到最后一屏", "使用说明页不能再跳过；可以进入演示或 Ubuntu 终端。");
-    }
-
-    private void setCurrentStep(Step step) {
-        currentStep = step;
-        persistStep();
-        render();
+        return runtime.getRuntimeEnvironmentProgressText(status);
     }
 
     private Step readSavedStep() {
         if (preferences.contains(KEY_CURRENT_STEP)) {
-            Step step = stepFromNumber(preferences.getInt(KEY_CURRENT_STEP, Step.PERMISSION.ordinal() + 1));
+            Step step = stepFromNumber(preferences.getInt(KEY_CURRENT_STEP, Step.RUNTIME_ENVIRONMENT.ordinal() + 1));
             if (step != null) {
                 return step;
             }
         }
 
-        String saved = preferences.getString(KEY_STEP, Step.PERMISSION.name());
-        if ("READING_GUIDE".equals(saved)) {
-            return Step.WAITING_INSTALL;
+        String saved = preferences.getString(KEY_STEP, Step.RUNTIME_ENVIRONMENT.name());
+        if ("PERMISSION".equals(saved) || "INSTALL".equals(saved) || "WAITING_INSTALL".equals(saved) || "READING_GUIDE".equals(saved)) {
+            return Step.RUNTIME_ENVIRONMENT;
         }
         if ("LAUNCH_CONFIG".equals(saved)) {
-            return Step.LAUNCH_CONFIG;
+            return Step.AI_FEATURES;
         }
         try {
             return Step.valueOf(saved);
         } catch (Exception e) {
-            return Step.PERMISSION;
+            return Step.RUNTIME_ENVIRONMENT;
         }
     }
 
@@ -825,12 +794,23 @@ public final class OpenHouseOnboardingOverlay {
     }
 
     private Step stepFromNumber(int number) {
-        int index = number - 1;
-        Step[] steps = Step.values();
-        if (index >= 0 && index < steps.length) {
-            return steps[index];
+        if (number <= 1) {
+            return Step.RUNTIME_ENVIRONMENT;
         }
-        return null;
+        if (number == 2) {
+            return Step.AI_FEATURES;
+        }
+        return Step.COMPLETE;
+    }
+
+    private void dismissGuide() {
+        if (!isAiFeaturesReady()) {
+            return;
+        }
+
+        runtime.confirmLaunch();
+        preferences.edit().putBoolean(KEY_GUIDE_DISMISSED, true).apply();
+        render();
     }
 
     private void addStatusCard(String title, String body) {
@@ -844,7 +824,7 @@ public final class OpenHouseOnboardingOverlay {
         card.addView(titleView);
         TextView bodyText = smallBody(body);
         card.addView(bodyText, topMarginParams(dp(7)));
-        contentView.addView(card, topMarginParams(dp(0)));
+        contentView.addView(card, topMarginParams(dp(10)));
     }
 
     private void addProgressBar(int progress, String detail) {
@@ -852,7 +832,7 @@ public final class OpenHouseOnboardingOverlay {
         LinearLayout meta = new LinearLayout(activity);
         meta.setGravity(Gravity.CENTER_VERTICAL);
         TextView label = smallBody(getInstallProgressTitle());
-        TextView percent = smallBody(progress + "%");
+        TextView percent = smallBody(Math.max(0, Math.min(100, progress)) + "%");
         percent.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         percent.setTextColor(COLOR_PRIMARY_DARK);
         meta.addView(label, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -867,89 +847,10 @@ public final class OpenHouseOnboardingOverlay {
         contentView.addView(panel, topMarginParams(dp(10)));
     }
 
-    private void addReadingGuide(boolean openByDefault, boolean compact) {
-        LinearLayout card = panel(compact ? R.drawable.openhouse_onboarding_status_panel : R.drawable.openhouse_onboarding_panel);
-        TextView title = new TextView(activity);
-        title.setText("安装期间可以先了解");
-        title.setTextColor(COLOR_PRIMARY_DARK);
-        title.setTextSize(12);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        title.setIncludeFontPadding(false);
-        card.addView(title);
-        TextView summary = new TextView(activity);
-        summary.setText("安装完成后的基本使用方法");
-        summary.setTextColor(COLOR_TEXT);
-        summary.setTextSize(13);
-        summary.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        card.addView(summary, topMarginParams(dp(4)));
-
-        LinearLayout body = new LinearLayout(activity);
-        body.setOrientation(LinearLayout.VERTICAL);
-        card.addView(body, topMarginParams(dp(8)));
-
-        if (openByDefault) {
-            addReadingSection(body, "安装需要多久", "第一次安装通常需要 10 分钟到半小时。时间取决于手机性能、网络和包下载速度。");
-            addReadingSection(body, "这款软件会做什么", "OpenHouseAI 会帮你配置一套顶级 AI 编程环境。它到底能做什么，取决于你想让它帮你做什么。");
-            addReadingSection(body, "会安装哪些核心能力",
-                "Ubuntu 是主要运行环境，Node.js 是 pi-agent 和 pi-web 的运行依赖。",
-                "service-manager 是安装完成后的控制平面，负责后台服务启动、停止和健康检查。",
-                "pi-agent 和 pi-web 负责首次配置助手、插件体系和页面入口；openhouse-connect 与 SmallPhone 兼容服务会作为可修复服务保留。");
-            addReadingSection(body, "AI Agent 为什么后置安装",
-                "Codex、Claude Code、CloudCLI 和 Hermes 不再阻塞首次安装。",
-                "先让 pi-agent 可用，再由 pi-agent 读取内置文档，按用户选择安装和配置这些能力。");
-            addReadingSection(body, "安装时不用填 Key",
-                "首次安装只负责把控制平面装好，不要求现在选择模型或填写 API Key。",
-                "需要使用模型时，先进入 pi-agent，再由 pi-agent 引导迁移配置或安装工作台。");
-            addReadingSection(body, "安装完成后怎么开始",
-                "从菜单进入 pi-agent，点击首次使用提示，让它先阅读 /root/openhouse/docs。",
-                "后台服务由 service-manager 统一管理；终端只是后续排障和高级操作入口。");
-        } else {
-            addReadingSection(body, "安装完成后的基本使用方法", "等待页面会说明核心组件、service-manager、pi-agent 和后置 AI 能力的安装入口。");
-        }
-        contentView.addView(card, topMarginParams(dp(10)));
-    }
-
-    private void addReadingSection(LinearLayout parent, String title, String... paragraphs) {
-        TextView heading = new TextView(activity);
-        heading.setText(title);
-        heading.setTextColor(COLOR_TEXT);
-        heading.setTextSize(13);
-        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        parent.addView(heading, topMarginParams(dp(6)));
-        for (String paragraph : paragraphs) {
-            if (paragraph == null || paragraph.trim().isEmpty()) continue;
-            parent.addView(smallBody(paragraph), topMarginParams(dp(4)));
-        }
-    }
-
     private void addActionButton(String text, boolean enabled, boolean primary, View.OnClickListener listener) {
-        MaterialButton button = createButton(text, enabled && !actionBusy, primary);
+        MaterialButton button = createButton(text, enabled && !actionBusy && !networkCheckBusy, primary);
         button.setOnClickListener(listener);
-        actionsView.addView(button, topMarginParams(actionsView.getChildCount() == 0 ? 0 : dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
-    }
-
-    private void addForceRestartInstallButtonIfNeeded() {
-        if (isInstallDone() || !isInstallStarted()) {
-            return;
-        }
-
-        MaterialButton button = createButton("安装卡住？强制重启并继续", !actionBusy, false);
-        button.setTextColor(COLOR_WARN);
-        button.setStrokeColor(ColorStateList.valueOf(COLOR_WARN));
-        button.setOnClickListener(v -> confirmForceRestartInstall());
-        actionsView.addView(button, topMarginParams(actionsView.getChildCount() == 0 ? 0 : dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
-    }
-
-    private void addPrimaryHeroButton(String text, boolean enabled, int iconRes, View.OnClickListener listener) {
-        MaterialButton button = createButton(text, enabled && !actionBusy, true);
-        button.setTextSize(16);
-        button.setCornerRadius(dp(10));
-        button.setIconResource(iconRes);
-        button.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_END);
-        button.setIconPadding(dp(10));
-        button.setIconTint(ColorStateList.valueOf(Color.WHITE));
-        button.setOnClickListener(listener);
-        actionsView.addView(button, topMarginParams(actionsView.getChildCount() == 0 ? 0 : dp(10), LinearLayout.LayoutParams.MATCH_PARENT, dp(56)));
+        actionsView.addView(button, topMarginParams(actionsView.getChildCount() == 0 ? dp(2) : dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
     }
 
     private MaterialButton createButton(String text, boolean enabled, boolean primary) {
@@ -992,31 +893,11 @@ public final class OpenHouseOnboardingOverlay {
         return view;
     }
 
-    private void applyProgressChipStyle(TextView chip, int stepIndex) {
-        int currentIndex = currentStep.ordinal();
-        boolean done = stepIndex < currentIndex || (isSetupComplete() && stepIndex == Step.LAUNCH_CONFIG.ordinal());
-        boolean active = stepIndex == currentIndex;
+    private void applyProgressChipStyle(TextView chip, boolean active, boolean done) {
         int background = active ? COLOR_PRIMARY : done ? Color.rgb(185, 217, 200) : Color.rgb(227, 234, 228);
         int text = active ? Color.WHITE : done ? COLOR_PRIMARY_DARK : Color.rgb(82, 96, 88);
         chip.setTextColor(text);
         chip.setBackground(roundRect(background, background, dp(14)));
-    }
-
-    private void styleNavigationButton(MaterialButton button) {
-        button.setAllCaps(false);
-        button.setCornerRadius(dp(8));
-        button.setTextColor(COLOR_PRIMARY);
-        button.setBackgroundTintList(ColorStateList.valueOf(Color.WHITE));
-        button.setStrokeWidth(dp(1));
-        button.setStrokeColor(ColorStateList.valueOf(Color.rgb(199, 213, 203)));
-    }
-
-    private void styleDangerButton(MaterialButton button) {
-        button.setAllCaps(false);
-        button.setCornerRadius(dp(8));
-        button.setTextColor(Color.WHITE);
-        button.setBackgroundTintList(ColorStateList.valueOf(COLOR_WARN));
-        button.setStrokeWidth(0);
     }
 
     private GradientDrawable roundRect(int fill, int stroke, int radius) {
@@ -1053,32 +934,77 @@ public final class OpenHouseOnboardingOverlay {
         return redacted.replaceAll("\\bsk-[A-Za-z0-9_-]{12,}\\b", "sk-***");
     }
 
-    private enum Step {
-        PERMISSION("后台权限", "允许后台完成初始化", "初始化会安装 Ubuntu 和 AI 工具。请先允许忽略电池优化，并进入启动管理/后台保活设置，避免息屏或切换应用后中断。"),
-        INSTALL("开始安装", "开始安装核心运行环境", "点击后会安装 Ubuntu、Node.js、pi-agent、pi-web、service-manager 和兼容服务。"),
-        WAITING_INSTALL("等待安装", "等待安装完成", "安装继续在后台进行。这里会简要说明安装完成后的基本使用方法，不需要现在填写模型或 Key。"),
-        LAUNCH_CONFIG("使用说明", "开始使用 openhouse ai", "核心栈已安装完成。service-manager 会接管运行期服务，pi-agent 是默认 agent 和插件入口。");
-
-        final String label;
-        final String title;
-        final String body;
-
-        Step(String label, String title, String body) {
-            this.label = label;
-            this.title = title;
-            this.body = body;
+    private String safeLogText(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
         }
+        String redacted = text.replaceAll("(?i)\\b(api[_-]?key|authorization|bearer|token|password)([=:\"' ]+)([^\\s\"']{8,})", "$1$2***");
+        return redacted.replaceAll("\\bsk-[A-Za-z0-9_-]{12,}\\b", "sk-***");
     }
 
-    private static final class ForceSkipInfo {
-        final boolean enabled;
-        final String label;
-        final String risk;
+    private enum Step {
+        RUNTIME_ENVIRONMENT(
+            "2",
+            "准备运行环境",
+            "安装 AI 运行所需的基础环境。完成后，终端会自动进入运行环境。",
+            "开始准备",
+            "正在准备",
+            "运行环境已准备好",
+            "正在准备运行环境",
+            "正在准备基础组件，请保持应用可后台运行。",
+            "runtime_environment"
+        ),
+        AI_FEATURES(
+            "3",
+            "安装 AI 功能",
+            "安装 AI 助手、网页控制台、服务管理和 SmallPhone 运行组件。",
+            "继续安装 AI 功能",
+            "正在安装",
+            "AI 功能已安装",
+            "正在安装 AI 功能",
+            "正在安装 AI 功能，请保持应用可后台运行。",
+            "ai_features"
+        ),
+        COMPLETE(
+            "3",
+            "安装完成",
+            "OpenHouse AI 已准备好。",
+            "开始使用",
+            "正在完成",
+            "安装完成",
+            "安装完成",
+            "OpenHouse AI 已准备好。",
+            "complete"
+        );
 
-        ForceSkipInfo(boolean enabled, String label, String risk) {
-            this.enabled = enabled;
+        final String number;
+        final String label;
+        final String body;
+        final String startButton;
+        final String runningButton;
+        final String completeButton;
+        final String runningTitle;
+        final String runningDetail;
+        final String stageSlug;
+
+        Step(String number,
+             String label,
+             String body,
+             String startButton,
+             String runningButton,
+             String completeButton,
+             String runningTitle,
+             String runningDetail,
+             String stageSlug) {
+            this.number = number;
             this.label = label;
-            this.risk = risk;
+            this.body = body;
+            this.startButton = startButton;
+            this.runningButton = runningButton;
+            this.completeButton = completeButton;
+            this.runningTitle = runningTitle;
+            this.runningDetail = runningDetail;
+            this.stageSlug = stageSlug;
         }
     }
 }

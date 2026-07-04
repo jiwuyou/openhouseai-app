@@ -225,7 +225,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean sharedInstallStarted;
     private boolean sharedInstallCompleted;
     private boolean sharedInstallFailed;
-    private boolean sharedInstallAutoStartRequested;
     private boolean sharedInstallCompletionReturnedToOnboarding;
     private boolean releaseUpdateInFlight;
     private boolean serviceControlFocusPending;
@@ -2151,7 +2150,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         updateExecutionModeViews();
         if (allowFlowActions) {
             maybeReturnToOnboardingAfterSharedInstallCompleted(completed);
-            maybeAutoStartSharedInstallFromOnboarding();
+            maybeShowSharedInstallFromOnboarding();
             if (running) {
                 scheduleSharedInstallProgressRefresh();
             } else {
@@ -2225,9 +2224,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             .apply();
     }
 
-    private void maybeAutoStartSharedInstallFromOnboarding() {
-        if (sharedInstallAutoStartRequested
-            || sharedInstallController == null
+    private void maybeShowSharedInstallFromOnboarding() {
+        if (sharedInstallController == null
             || sharedInstallStarted
             || sharedInstallRunning
             || sharedInstallCompleted
@@ -2237,44 +2235,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             || !isOnboardingWaitingForInstall()) {
             return;
         }
-        if (shouldReturnToOnboarding()) {
-            setSharedInstallText(
-                "详细进度：正在观察安装任务",
-                "这里仅显示主界面启动的同一个安装过程，不会因为进入详细进度而重新开始安装。"
-            );
-            refreshSharedInstallLogTail(true);
-            return;
-        }
 
-        sharedInstallAutoStartRequested = true;
         setSharedInstallText(
-            "详细进度：正在启动安装任务",
-            "安装引导已进入等待安装阶段，正在启动同一个一键初始化任务。首次安装不需要填写模型或 API Key。"
+            "详细进度：等待手动开始安装",
+            "这里仅显示安装状态和日志，不会因为进入详细进度而自动开始安装。请返回安装引导页，手动选择当前步骤继续。"
         );
         refreshSharedInstallLogTail(true);
-
-        backgroundExecutor.execute(() -> {
-            boolean started = false;
-            try {
-                Method method = findMethod(sharedInstallController.getClass(), "startOneClickInstall");
-                if (method == null) {
-                    throw new NoSuchMethodException("OpenHouseInstallController.startOneClickInstall()");
-                }
-                Object value = method.invoke(sharedInstallController);
-                started = value instanceof Boolean && (Boolean) value;
-            } catch (Throwable throwable) {
-                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to auto-start shared install from onboarding state", throwable);
-            }
-
-            boolean finalStarted = started;
-            runOnUiThread(() -> {
-                if (!finalStarted) {
-                    Toast.makeText(this, "安装控制器已检查状态，请查看详细进度。", Toast.LENGTH_SHORT).show();
-                }
-                refreshSharedInstallState();
-                updateExecutionModeViews();
-            });
-        });
     }
 
     private boolean isOnboardingWaitingForInstall() {

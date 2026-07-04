@@ -1,8 +1,6 @@
 package com.termux.app.activities;
 
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.ViewGroup;
 import android.widget.Toast;
@@ -19,10 +17,6 @@ import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.shared.activity.ActivityUtils;
 
 public class OpenHouseOnboardingActivity extends AppCompatActivity {
-
-    private static final String ONBOARDING_PREFS_NAME = "openhouse_onboarding";
-    private static final String KEY_CURRENT_STEP = "current_step";
-    private static final int STEP_WAITING_INSTALL = 3;
 
     private OpenHouseOnboardingOverlay onboarding;
     private boolean returnToSmallPhoneHost;
@@ -106,13 +100,7 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
         }
 
         OpenHouseInstallState installState = OpenHouseInstallController.getInstance(this).getState();
-        if (installState.running) {
-            return true;
-        }
-
-        SharedPreferences preferences = getSharedPreferences(ONBOARDING_PREFS_NAME, Context.MODE_PRIVATE);
-        boolean waitingInstallStep = preferences.getInt(KEY_CURRENT_STEP, 0) == STEP_WAITING_INSTALL;
-        return waitingInstallStep && !installState.completed && !installState.failed;
+        return installState.running;
     }
 
     private void openSmallPhoneHost() {

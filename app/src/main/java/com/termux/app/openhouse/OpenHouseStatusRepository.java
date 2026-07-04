@@ -107,6 +107,22 @@ public final class OpenHouseStatusRepository {
         return status != null && status.piWebReachable;
     }
 
+    public boolean isRuntimeEnvironmentPrepared() {
+        return isRuntimeEnvironmentPrepared(loadStatus());
+    }
+
+    public static boolean isRuntimeEnvironmentPrepared(OpenHouseStatus status) {
+        return status != null && status.isRuntimeEnvironmentPrepared();
+    }
+
+    public boolean isAiFeaturesReady() {
+        return isAiFeaturesReady(loadStatus());
+    }
+
+    public static boolean isAiFeaturesReady(OpenHouseStatus status) {
+        return status != null && status.isAiFeaturesReady();
+    }
+
     public boolean isPiWebReachable() {
         return probeUrl(PI_WEB_DEFAULT_URL);
     }
@@ -344,7 +360,19 @@ public final class OpenHouseStatusRepository {
     }
 
     private boolean isInstallDone(OpenHouseInstallState installState, OpenHouseStatus status) {
-        return installState != null && installState.completed || isFirstUseReady(status);
+        return isOverallInstallTaskCompleted(installState) || isFirstUseReady(status);
+    }
+
+    private boolean isOverallInstallTaskCompleted(OpenHouseInstallState installState) {
+        if (installState == null || !installState.completed) {
+            return false;
+        }
+
+        OpenHouseInstallState.TaskScope taskScope = installState.taskScope == null
+            ? OpenHouseInstallState.TaskScope.FULL
+            : installState.taskScope;
+        return taskScope == OpenHouseInstallState.TaskScope.FULL
+            || taskScope == OpenHouseInstallState.TaskScope.AI_FEATURES;
     }
 
     private OpenHouseOnboardingState.Step readStoredStep(SharedPreferences preferences) {

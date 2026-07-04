@@ -89,6 +89,17 @@ public final class OpenHouseStatus {
         return piWebReachable;
     }
 
+    public boolean isRuntimeEnvironmentPrepared() {
+        return termuxReady
+            && productPrepared
+            && ubuntuInstalled
+            && entryUbuntuConfigured;
+    }
+
+    public boolean isAiFeaturesReady() {
+        return isFirstUseReady();
+    }
+
     public boolean isFullAiToolsDeploymentComplete() {
         return isCoreDeploymentComplete()
             && codexInstalled

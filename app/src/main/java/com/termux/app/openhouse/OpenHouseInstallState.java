@@ -54,6 +54,30 @@ public final class OpenHouseInstallState {
         }
     }
 
+    public enum TaskScope {
+        FULL("full"),
+        RUNTIME_ENVIRONMENT("runtime_environment"),
+        AI_FEATURES("ai_features");
+
+        public final String value;
+
+        TaskScope(String value) {
+            this.value = value;
+        }
+
+        public static TaskScope fromValue(String value) {
+            if (value == null) {
+                return FULL;
+            }
+            for (TaskScope scope : values()) {
+                if (scope.value.equalsIgnoreCase(value) || scope.name().equalsIgnoreCase(value)) {
+                    return scope;
+                }
+            }
+            return FULL;
+        }
+    }
+
     public final Status status;
     public final boolean running;
     public final boolean completed;
@@ -66,6 +90,7 @@ public final class OpenHouseInstallState {
     public final int attempt;
     public final String logPath;
     public final String safeError;
+    public final TaskScope taskScope;
 
     public OpenHouseInstallState(boolean running,
                                  boolean completed,
@@ -82,7 +107,8 @@ public final class OpenHouseInstallState {
             RetryMode.GENERAL,
             running || completed || failed ? 1 : 0,
             "",
-            failed ? detailText : "");
+            failed ? detailText : "",
+            TaskScope.FULL);
     }
 
     public OpenHouseInstallState(Status status,
@@ -94,6 +120,19 @@ public final class OpenHouseInstallState {
                                  int attempt,
                                  String logPath,
                                  String safeError) {
+        this(status, percent, phaseLabel, detailText, currentStageSlug, retryMode, attempt, logPath, safeError, TaskScope.FULL);
+    }
+
+    public OpenHouseInstallState(Status status,
+                                 int percent,
+                                 String phaseLabel,
+                                 String detailText,
+                                 String currentStageSlug,
+                                 RetryMode retryMode,
+                                 int attempt,
+                                 String logPath,
+                                 String safeError,
+                                 TaskScope taskScope) {
         Status resolvedStatus = status == null ? Status.PENDING : status;
         this.status = resolvedStatus;
         this.running = resolvedStatus == Status.RUNNING || resolvedStatus == Status.RETRYING;
@@ -107,6 +146,7 @@ public final class OpenHouseInstallState {
         this.attempt = Math.max(0, attempt);
         this.logPath = logPath == null ? "" : logPath;
         this.safeError = safeError == null ? "" : safeError;
+        this.taskScope = taskScope == null ? TaskScope.FULL : taskScope;
     }
 
     private static Status resolveStatus(boolean running, boolean completed, boolean failed) {
@@ -132,7 +172,8 @@ public final class OpenHouseInstallState {
             RetryMode.GENERAL,
             0,
             "",
-            ""
+            "",
+            TaskScope.FULL
         );
     }
 
@@ -186,5 +227,21 @@ public final class OpenHouseInstallState {
 
     public String getSafeError() {
         return safeError;
+    }
+
+    public TaskScope getTaskScope() {
+        return taskScope;
+    }
+
+    public boolean isRuntimeEnvironmentTask() {
+        return taskScope == TaskScope.RUNTIME_ENVIRONMENT;
+    }
+
+    public boolean isAiFeaturesTask() {
+        return taskScope == TaskScope.AI_FEATURES;
+    }
+
+    public boolean isFullInstallTask() {
+        return taskScope == TaskScope.FULL;
     }
 }
