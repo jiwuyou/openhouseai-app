@@ -46,6 +46,10 @@ public final class OpenHouseComponentRegistry {
         return loadWithDiagnostics().components;
     }
 
+    public static List<OpenHouseComponent> loadDesktopApps() {
+        return loadWithDiagnostics().desktopComponents;
+    }
+
     public static LoadResult loadWithDiagnostics() {
         File configDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, CONFIG_DIR);
         File dir = new File(configDir, COMPONENTS_DIR);
@@ -113,8 +117,10 @@ public final class OpenHouseComponentRegistry {
         if (!filesAreEmpty(files) && byId.isEmpty()) {
             warnings.add("没有可用的菜单注册项，继续显示内置菜单");
         }
+        List<OpenHouseComponent> desktopComponents = createDesktopComponents(components);
         return new LoadResult(
             components,
+            desktopComponents,
             registryState,
             dir,
             componentsDirExists,
@@ -122,6 +128,61 @@ public final class OpenHouseComponentRegistry {
             skippedFiles,
             warnings,
             overrides);
+    }
+
+    private static List<OpenHouseComponent> createDesktopComponents(List<OpenHouseComponent> components) {
+        if (components == null || components.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<OpenHouseComponent> desktopComponents = new ArrayList<>();
+        for (OpenHouseComponent component : components) {
+            if (component != null && component.isDesktopVisible()) {
+                desktopComponents.add(createDesktopSurfaceComponent(component));
+            }
+        }
+        Collections.sort(desktopComponents, new Comparator<OpenHouseComponent>() {
+            @Override
+            public int compare(OpenHouseComponent left, OpenHouseComponent right) {
+                int orderCompare = Integer.compare(left.desktopOrder, right.desktopOrder);
+                if (orderCompare != 0) {
+                    return orderCompare;
+                }
+                int sectionCompare = Integer.compare(sectionRank(left.section), sectionRank(right.section));
+                if (sectionCompare != 0) {
+                    return sectionCompare;
+                }
+                return left.title.compareToIgnoreCase(right.title);
+            }
+        });
+        return desktopComponents;
+    }
+
+    private static OpenHouseComponent createDesktopSurfaceComponent(OpenHouseComponent component) {
+        boolean visible = component.desktopVisible;
+        return createComponent(
+            component.id,
+            component.title,
+            component.subtitle,
+            component.section,
+            component.order,
+            component.iconKey,
+            component.iconLabel,
+            component.desktopOrder,
+            component.desktopPinned,
+            component.desktopHome,
+            component.desktopVisible,
+            component.entryType,
+            component.url,
+            component.nativePage,
+            component.activityClassName,
+            component.controlTitle,
+            visible,
+            component.desktopPinned,
+            component.desktopHome,
+            component.protectedEntry,
+            component.source,
+            component.serviceNames,
+            component.serviceRefs);
     }
 
     private static OpenHouseComponent parseComponent(String json) throws Exception {
@@ -161,6 +222,12 @@ public final class OpenHouseComponentRegistry {
         }
 
         ControlFields controlFields = parseControlFields(controlEntry, root);
+        if (controlFields == null
+            && controlEntry == null
+            && entryFields != null
+            && entryFields.entryType == OpenHouseComponent.EntryType.SERVICE_CONTROL) {
+            controlFields = parseControlFields(entry, root);
+        }
         if (controlEntry != null && controlFields == null) {
             return null;
         }
@@ -195,16 +262,38 @@ public final class OpenHouseComponentRegistry {
             menuLayer, smallphoneApp, root, "favorite", "pinned"), false);
         boolean home = readBoolean(firstPresentValue(
             menuLayer, smallphoneApp, root, "home"), false);
+        DesktopFields desktopFields = parseDesktopFields(
+            root,
+            menuLayer,
+            smallphoneApp,
+            id,
+            title,
+            section,
+            order,
+            defaultIconKey(id, section, entryFields == null ? null : entryFields.entryType),
+            defaultIconLabel(title),
+            order,
+            favorite,
+            visible,
+            visible,
+            entryFields == null ? null : entryFields.entryType);
 
-        OpenHouseComponent component = new OpenHouseComponent(
+        OpenHouseComponent component = createComponent(
             id,
             title,
             subtitle,
             section,
             order,
+            desktopFields.iconKey,
+            desktopFields.iconLabel,
+            desktopFields.order,
+            desktopFields.pinned,
+            desktopFields.home,
+            desktopFields.visible,
             entryFields == null ? null : entryFields.entryType,
             entryFields == null ? null : entryFields.url,
             entryFields == null ? null : entryFields.nativePage,
+            entryFields == null ? null : entryFields.activityClassName,
             controlFields == null ? "" : controlFields.controlTitle,
             visible,
             favorite,
@@ -345,7 +434,190 @@ public final class OpenHouseComponentRegistry {
             "builtin",
             Collections.singletonList("controlled-browser"),
             Collections.singletonList("service-manager://services/controlled-browser")));
+        components.add(createDesktopNativeComponent(
+            "openhouse-home",
+            "菜单总览",
+            "功能入口和使用状态概览",
+            "desktop",
+            1,
+            "home",
+            "home"));
+        components.add(createDesktopNativeComponent(
+            "openhouse-desktop",
+            "桌面",
+            "原生桌面壳",
+            "desktop",
+            2,
+            "grid",
+            "desktop"));
+        components.add(createDesktopServiceComponent(
+            "service-control",
+            "服务控制",
+            "启动、停止和重启本机服务",
+            "tools",
+            40,
+            "settings"));
+        components.add(createDesktopTerminalComponent(
+            "terminal",
+            "终端",
+            "打开 Termux 终端",
+            "tools",
+            45,
+            "terminal"));
+        components.add(createDesktopNativeComponent(
+            "setup",
+            "安装引导",
+            "首次配置和核心服务教学",
+            "tools",
+            60,
+            "sparkles",
+            "usage_tutorial"));
+        components.add(createDesktopNativeComponent(
+            "maintenance",
+            "维护中心",
+            "修复、重新安装和运行诊断",
+            "tools",
+            70,
+            "wrench",
+            "repair"));
+        components.add(createDesktopNativeComponent(
+            "logs",
+            "日志",
+            "安装、启动和维护日志",
+            "tools",
+            80,
+            "logs",
+            "logs"));
+        components.add(createDesktopNativeComponent(
+            "docs",
+            "文档",
+            "离线基础说明和在线手册入口",
+            "tools",
+            90,
+            "book",
+            "manual"));
+        components.add(createDesktopNativeComponent(
+            "permissions",
+            "权限",
+            "后台运行、文件访问和悬浮窗",
+            "tools",
+            100,
+            "shield",
+            "permissions"));
+        components.add(createDesktopNativeComponent(
+            "advanced-settings",
+            "高级设置",
+            "显示和兼容设置",
+            "tools",
+            110,
+            "sliders",
+            "advanced"));
+        components.add(createDesktopNativeComponent(
+            "ai-rescue",
+            "AI救援",
+            "独立于 service-manager 的 pi-web 救援入口",
+            "ai",
+            120,
+            "life-buoy",
+            "ai_rescue"));
         return components;
+    }
+
+    private static OpenHouseComponent createDesktopNativeComponent(String id,
+                                                                   String title,
+                                                                   String subtitle,
+                                                                   String section,
+                                                                   int desktopOrder,
+                                                                   String iconKey,
+                                                                   String nativePage) {
+        return createComponent(
+            id,
+            title,
+            subtitle,
+            section,
+            1000 + desktopOrder,
+            iconKey,
+            defaultIconLabel(title),
+            desktopOrder,
+            false,
+            true,
+            true,
+            OpenHouseComponent.EntryType.NATIVE_PAGE,
+            null,
+            nativePage,
+            null,
+            "",
+            false,
+            false,
+            false,
+            true,
+            "builtin",
+            Collections.emptyList(),
+            Collections.emptyList());
+    }
+
+    private static OpenHouseComponent createDesktopTerminalComponent(String id,
+                                                                     String title,
+                                                                     String subtitle,
+                                                                     String section,
+                                                                     int desktopOrder,
+                                                                     String iconKey) {
+        return createComponent(
+            id,
+            title,
+            subtitle,
+            section,
+            1000 + desktopOrder,
+            iconKey,
+            defaultIconLabel(title),
+            desktopOrder,
+            false,
+            true,
+            true,
+            OpenHouseComponent.EntryType.TERMINAL,
+            null,
+            null,
+            null,
+            "",
+            false,
+            false,
+            false,
+            true,
+            "builtin",
+            Collections.emptyList(),
+            Collections.emptyList());
+    }
+
+    private static OpenHouseComponent createDesktopServiceComponent(String id,
+                                                                    String title,
+                                                                    String subtitle,
+                                                                    String section,
+                                                                    int desktopOrder,
+                                                                    String iconKey) {
+        return createComponent(
+            id,
+            title,
+            subtitle,
+            section,
+            1000 + desktopOrder,
+            iconKey,
+            defaultIconLabel(title),
+            desktopOrder,
+            false,
+            true,
+            true,
+            OpenHouseComponent.EntryType.SERVICE_CONTROL,
+            null,
+            null,
+            null,
+            "控制",
+            false,
+            false,
+            false,
+            true,
+            "builtin",
+            Collections.emptyList(),
+            Collections.emptyList());
     }
 
     private static OpenHouseComponent createComponent(String id,
@@ -364,15 +636,71 @@ public final class OpenHouseComponentRegistry {
                                                       String source,
                                                       List<String> serviceNames,
                                                       List<String> serviceRefs) {
+        return createComponent(
+            id,
+            title,
+            subtitle,
+            section,
+            order,
+            defaultIconKey(id, section, entryType),
+            defaultIconLabel(title),
+            order,
+            favorite,
+            home || favorite,
+            visible,
+            entryType,
+            url,
+            nativePage,
+            null,
+            controlTitle,
+            visible,
+            favorite,
+            home,
+            protectedEntry,
+            source,
+            serviceNames,
+            serviceRefs);
+    }
+
+    private static OpenHouseComponent createComponent(String id,
+                                                      String title,
+                                                      String subtitle,
+                                                      String section,
+                                                      int order,
+                                                      String iconKey,
+                                                      String iconLabel,
+                                                      int desktopOrder,
+                                                      boolean desktopPinned,
+                                                      boolean desktopHome,
+                                                      boolean desktopVisible,
+                                                      OpenHouseComponent.EntryType entryType,
+                                                      String url,
+                                                      String nativePage,
+                                                      String activityClassName,
+                                                      String controlTitle,
+                                                      boolean visible,
+                                                      boolean favorite,
+                                                      boolean home,
+                                                      boolean protectedEntry,
+                                                      String source,
+                                                      List<String> serviceNames,
+                                                      List<String> serviceRefs) {
         return new OpenHouseComponent(
             id,
             title,
             subtitle,
             section,
             order,
+            sanitizeIconKey(iconKey, id, section, entryType),
+            sanitizeIconLabel(iconLabel, title),
+            desktopOrder,
+            desktopPinned,
+            desktopHome,
+            desktopVisible,
             entryType,
             url,
             nativePage,
+            sanitizeActivityClassName(activityClassName),
             controlTitle,
             visible,
             favorite,
@@ -394,9 +722,16 @@ public final class OpenHouseComponentRegistry {
             firstNonBlank(extension.subtitle, builtin.subtitle),
             firstNonBlank(extension.section, builtin.section),
             extension.order == 1000 ? builtin.order : extension.order,
+            firstNonBlank(extension.iconKey, builtin.iconKey),
+            firstNonBlank(extension.iconLabel, builtin.iconLabel),
+            extension.desktopOrder == 1000 ? builtin.desktopOrder : extension.desktopOrder,
+            builtin.desktopPinned || extension.desktopPinned,
+            builtin.desktopHome || extension.desktopHome,
+            builtin.desktopVisible || extension.desktopVisible,
             entryType,
             firstNonBlank(extension.url, builtin.url),
             firstNonBlank(extension.nativePage, builtin.nativePage),
+            firstNonBlank(extension.activityClassName, builtin.activityClassName),
             firstNonBlank(extension.controlTitle, builtin.controlTitle),
             builtin.visible || extension.visible,
             builtin.favorite || extension.favorite,
@@ -414,6 +749,8 @@ public final class OpenHouseComponentRegistry {
         boolean visible = component.visible;
         boolean favorite = component.favorite || overrides.matches(overrides.favorites, component);
         boolean home = isBlank(overrides.homeTarget) ? component.home : overrides.matchesHome(component);
+        boolean desktopVisible = component.desktopVisible;
+        boolean forceHidden = false;
 
         if (item != null) {
             String title = firstNonBlank(
@@ -435,21 +772,27 @@ public final class OpenHouseComponentRegistry {
 
             if (hasAnyKey(item, "visible")) {
                 visible = readBoolean(item.opt("visible"), visible);
+                desktopVisible = readBoolean(item.opt("visible"), desktopVisible);
             }
             if (hasAnyKey(shellMenu, "visible")) {
                 visible = readBoolean(shellMenu.opt("visible"), visible);
+                desktopVisible = readBoolean(shellMenu.opt("visible"), desktopVisible);
             }
             if (hasAnyKey(smallphoneApp, "visible")) {
                 visible = readBoolean(smallphoneApp.opt("visible"), visible);
+                desktopVisible = readBoolean(smallphoneApp.opt("visible"), desktopVisible);
             }
             if (hasAnyKey(item, "hidden") && readBoolean(item.opt("hidden"), false)) {
                 visible = false;
+                forceHidden = true;
             }
             if (hasAnyKey(shellMenu, "hidden") && readBoolean(shellMenu.opt("hidden"), false)) {
                 visible = false;
+                forceHidden = true;
             }
             if (hasAnyKey(smallphoneApp, "hidden") && readBoolean(smallphoneApp.opt("hidden"), false)) {
                 visible = false;
+                forceHidden = true;
             }
             if (hasAnyKey(item, "favorite", "pinned")) {
                 favorite = readBoolean(firstPresentValue(item, "favorite", "pinned"), favorite);
@@ -479,9 +822,26 @@ public final class OpenHouseComponentRegistry {
                 parseControlFields(shellMenu == null ? null : shellMenu.optJSONObject("controlEntry"), null),
                 parseControlFields(smallphoneApp == null ? null : smallphoneApp.optJSONObject("controlEntry"), null),
                 parseControlFields(item.optJSONObject("controlEntry"), null));
+            OpenHouseComponent.EntryType entryType = entryFields == null ? component.entryType : entryFields.entryType;
+            DesktopFields desktopFields = parseDesktopFields(
+                item,
+                shellMenu,
+                smallphoneApp,
+                component.id,
+                title,
+                section,
+                order,
+                component.iconKey,
+                component.iconLabel,
+                component.desktopOrder,
+                component.desktopPinned || favorite,
+                component.desktopHome,
+                desktopVisible,
+                entryType);
 
             if (overrides.matches(overrides.hidden, component)) {
                 visible = false;
+                forceHidden = true;
             }
             return createComponent(
                 component.id,
@@ -489,9 +849,16 @@ public final class OpenHouseComponentRegistry {
                 subtitle,
                 section,
                 order,
-                entryFields == null ? component.entryType : entryFields.entryType,
+                desktopFields.iconKey,
+                desktopFields.iconLabel,
+                desktopFields.order,
+                desktopFields.pinned,
+                desktopFields.home,
+                forceHidden ? false : desktopFields.visible,
+                entryType,
                 entryFields == null ? component.url : entryFields.url,
                 entryFields == null ? component.nativePage : entryFields.nativePage,
+                entryFields == null ? component.activityClassName : entryFields.activityClassName,
                 controlFields == null ? component.controlTitle : controlFields.controlTitle,
                 visible,
                 favorite,
@@ -504,6 +871,7 @@ public final class OpenHouseComponentRegistry {
 
         if (overrides.matches(overrides.hidden, component)) {
             visible = false;
+            desktopVisible = false;
         }
         return createComponent(
             component.id,
@@ -511,9 +879,16 @@ public final class OpenHouseComponentRegistry {
             component.subtitle,
             component.section,
             component.order,
+            component.iconKey,
+            component.iconLabel,
+            component.desktopOrder,
+            component.desktopPinned || favorite,
+            component.desktopHome,
+            desktopVisible,
             component.entryType,
             component.url,
             component.nativePage,
+            component.activityClassName,
             component.controlTitle,
             visible,
             favorite,
@@ -534,6 +909,87 @@ public final class OpenHouseComponentRegistry {
             }
         }
         return fallback;
+    }
+
+    private static int firstIntByKeys(int fallback, JSONObject[] objects, String... keys) {
+        if (objects == null || keys == null) {
+            return fallback;
+        }
+        for (JSONObject object : objects) {
+            if (object == null) {
+                continue;
+            }
+            for (String key : keys) {
+                if (!isBlank(key) && object.has(key)) {
+                    return object.optInt(key, fallback);
+                }
+            }
+        }
+        return fallback;
+    }
+
+    private static DesktopFields parseDesktopFields(JSONObject root,
+                                                    JSONObject menuLayer,
+                                                    JSONObject smallphoneApp,
+                                                    String id,
+                                                    String title,
+                                                    String section,
+                                                    int menuOrder,
+                                                    String defaultIconKey,
+                                                    String defaultIconLabel,
+                                                    int defaultDesktopOrder,
+                                                    boolean defaultPinned,
+                                                    boolean defaultHome,
+                                                    boolean defaultVisible,
+                                                    OpenHouseComponent.EntryType entryType) {
+        JSONObject desktop = firstObject(
+            menuLayer == null ? null : menuLayer.optJSONObject("desktop"),
+            smallphoneApp == null ? null : smallphoneApp.optJSONObject("desktop"),
+            root == null ? null : root.optJSONObject("desktop"));
+        JSONObject[] layers = new JSONObject[] {
+            desktop,
+            menuLayer,
+            smallphoneApp,
+            root
+        };
+        String iconKey = sanitizeIconKey(firstNonBlank(
+            readOptionalString(desktop, "iconKey", "icon_key", "icon"),
+            readOptionalString(menuLayer, "iconKey", "icon_key", "icon"),
+            readOptionalString(smallphoneApp, "iconKey", "icon_key", "icon"),
+            readOptionalString(root, "desktopIcon", "desktop_icon", "iconKey", "icon_key", "icon"),
+            defaultIconKey), id, section, entryType);
+        String iconLabel = sanitizeIconLabel(firstNonBlank(
+            readOptionalString(desktop, "iconLabel", "icon_label", "label"),
+            readOptionalString(menuLayer, "iconLabel", "icon_label"),
+            readOptionalString(smallphoneApp, "iconLabel", "icon_label"),
+            readOptionalString(root, "desktopIconLabel", "desktop_icon_label", "iconLabel", "icon_label"),
+            defaultIconLabel), title);
+        int order = firstIntByKeys(
+            defaultDesktopOrder,
+            layers,
+            "desktopOrder",
+            "desktop_order",
+            "order");
+        boolean pinned = readBoolean(firstPresentValueInObjects(
+            layers,
+            "desktopPinned",
+            "desktop_pinned",
+            "pinned",
+            "favorite"), defaultPinned);
+        boolean home = readBoolean(firstPresentValueInObjects(
+            layers,
+            "desktopHome",
+            "desktop_home",
+            "home"), defaultHome);
+        boolean visible = readBoolean(firstPresentValueInObjects(
+            layers,
+            "desktopVisible",
+            "desktop_visible",
+            "visible"), defaultVisible);
+        if (menuOrder != defaultDesktopOrder && order == defaultDesktopOrder && desktop == null) {
+            order = menuOrder;
+        }
+        return new DesktopFields(iconKey, iconLabel, order, pinned, home, visible);
     }
 
     private static EntryFields firstEntryFields(EntryFields... entries) {
@@ -576,6 +1032,7 @@ public final class OpenHouseComponentRegistry {
         }
         String url = null;
         String nativePage = null;
+        String activityClassName = null;
         if (entryType == OpenHouseComponent.EntryType.WEBVIEW) {
             url = normalizeWebUrl(firstNonBlank(
                 entry.optString("url", ""),
@@ -595,8 +1052,18 @@ public final class OpenHouseComponentRegistry {
             if (isBlank(nativePage)) {
                 return null;
             }
+        } else if (entryType == OpenHouseComponent.EntryType.ANDROID_ACTIVITY) {
+            activityClassName = sanitizeActivityClassName(firstNonBlank(
+                entry.optString("className", ""),
+                entry.optString("class", ""),
+                entry.optString("activity", ""),
+                entry.optString("activityClass", ""),
+                entry.optString("activity_class", "")));
+            if (isBlank(activityClassName)) {
+                return null;
+            }
         }
-        return new EntryFields(entryType, url, nativePage);
+        return new EntryFields(entryType, url, nativePage, activityClassName);
     }
 
     private static EntryFields parseTopLevelWebEntryFields(JSONObject item) {
@@ -610,7 +1077,7 @@ public final class OpenHouseComponentRegistry {
         if (isBlank(url)) {
             return null;
         }
-        return new EntryFields(OpenHouseComponent.EntryType.WEBVIEW, url, null);
+        return new EntryFields(OpenHouseComponent.EntryType.WEBVIEW, url, null, null);
     }
 
     private static ControlFields parseControlFields(JSONObject controlEntry, JSONObject root) {
@@ -673,6 +1140,16 @@ public final class OpenHouseComponentRegistry {
         }
         if ("terminal".equals(normalized)) {
             return OpenHouseComponent.EntryType.TERMINAL;
+        }
+        if (CONTROL_ENTRY_TYPE_SERVICE_CONTROL.equals(normalized)
+            || "servicecontrol".equals(normalized)
+            || "services".equals(normalized)) {
+            return OpenHouseComponent.EntryType.SERVICE_CONTROL;
+        }
+        if ("android-activity".equals(normalized)
+            || "activity".equals(normalized)
+            || "android".equals(normalized)) {
+            return OpenHouseComponent.EntryType.ANDROID_ACTIVITY;
         }
         return null;
     }
@@ -943,6 +1420,19 @@ public final class OpenHouseComponentRegistry {
         return firstPresentValue(third, keys);
     }
 
+    private static Object firstPresentValueInObjects(JSONObject[] objects, String... keys) {
+        if (objects == null) {
+            return null;
+        }
+        for (JSONObject object : objects) {
+            Object value = firstPresentValue(object, keys);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private static boolean readBoolean(Object value, boolean fallback) {
         if (value instanceof Boolean) {
             return (Boolean) value;
@@ -971,6 +1461,94 @@ public final class OpenHouseComponentRegistry {
             }
         }
         return fallback;
+    }
+
+    private static String defaultIconKey(String id, String section, OpenHouseComponent.EntryType entryType) {
+        String normalizedId = normalizeId(id);
+        if (normalizedId.contains("aionui")) {
+            return "sparkles";
+        }
+        if (normalizedId.contains("pi")) {
+            return "brain";
+        }
+        if (normalizedId.contains("cloudcli") || normalizedId.contains("codex")) {
+            return "code";
+        }
+        if (normalizedId.contains("smallphone") || normalizedId.contains("messages")) {
+            return "smartphone";
+        }
+        if (normalizedId.contains("browser")) {
+            return "globe";
+        }
+        if (entryType == OpenHouseComponent.EntryType.TERMINAL) {
+            return "terminal";
+        }
+        if (entryType == OpenHouseComponent.EntryType.SERVICE_CONTROL) {
+            return "settings";
+        }
+        if (entryType == OpenHouseComponent.EntryType.ANDROID_ACTIVITY) {
+            return "app-window";
+        }
+        String normalizedSection = normalizeId(section);
+        if ("ai".equals(normalizedSection)) {
+            return "sparkles";
+        }
+        if ("tools".equals(normalizedSection)) {
+            return "tool";
+        }
+        if ("desktop".equals(normalizedSection)) {
+            return "grid";
+        }
+        return "app";
+    }
+
+    private static String defaultIconLabel(String title) {
+        if (isBlank(title)) {
+            return "";
+        }
+        String trimmed = title.trim();
+        return trimmed.length() <= 2 ? trimmed : trimmed.substring(0, 1);
+    }
+
+    private static String sanitizeIconKey(String value,
+                                          String id,
+                                          String section,
+                                          OpenHouseComponent.EntryType entryType) {
+        String fallback = defaultIconKey(id, section, entryType);
+        String cleanValue = sanitizeId(value);
+        if (isBlank(cleanValue)) {
+            cleanValue = sanitizeId(fallback);
+        }
+        return isBlank(cleanValue) ? "app" : cleanValue.toLowerCase(Locale.US).replace('_', '-');
+    }
+
+    private static String sanitizeIconLabel(String value, String title) {
+        String cleanValue = firstNonBlank(value, defaultIconLabel(title));
+        if (isBlank(cleanValue)) {
+            return "";
+        }
+        cleanValue = cleanValue.trim();
+        return cleanValue.length() > 4 ? cleanValue.substring(0, 4) : cleanValue;
+    }
+
+    private static String sanitizeActivityClassName(String value) {
+        if (isBlank(value)) {
+            return null;
+        }
+        String trimmed = value.trim();
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < trimmed.length(); i++) {
+            char current = trimmed.charAt(i);
+            if ((current >= 'a' && current <= 'z')
+                || (current >= 'A' && current <= 'Z')
+                || (current >= '0' && current <= '9')
+                || current == '_'
+                || current == '.'
+                || current == '$') {
+                builder.append(current);
+            }
+        }
+        return builder.length() == 0 ? null : builder.toString();
     }
 
     private static boolean isBlank(String value) {
@@ -1156,15 +1734,35 @@ public final class OpenHouseComponentRegistry {
         return text.length() > 360 ? text.substring(0, 360) + "..." : text;
     }
 
+    private static final class DesktopFields {
+        final String iconKey;
+        final String iconLabel;
+        final int order;
+        final boolean pinned;
+        final boolean home;
+        final boolean visible;
+
+        DesktopFields(String iconKey, String iconLabel, int order, boolean pinned, boolean home, boolean visible) {
+            this.iconKey = iconKey;
+            this.iconLabel = iconLabel;
+            this.order = order;
+            this.pinned = pinned;
+            this.home = home;
+            this.visible = visible;
+        }
+    }
+
     private static final class EntryFields {
         final OpenHouseComponent.EntryType entryType;
         final String url;
         final String nativePage;
+        final String activityClassName;
 
-        EntryFields(OpenHouseComponent.EntryType entryType, String url, String nativePage) {
+        EntryFields(OpenHouseComponent.EntryType entryType, String url, String nativePage, String activityClassName) {
             this.entryType = entryType;
             this.url = url;
             this.nativePage = nativePage;
+            this.activityClassName = activityClassName;
         }
     }
 
@@ -1284,6 +1882,7 @@ public final class OpenHouseComponentRegistry {
 
     public static final class LoadResult {
         public final List<OpenHouseComponent> components;
+        public final List<OpenHouseComponent> desktopComponents;
         public final RegistryState registryState;
         public final String homeTarget;
         public final File menuOverridesFile;
@@ -1297,6 +1896,7 @@ public final class OpenHouseComponentRegistry {
         public final List<String> warnings;
 
         private LoadResult(List<OpenHouseComponent> components,
+                           List<OpenHouseComponent> desktopComponents,
                            RegistryState registryState,
                            File componentsDir,
                            boolean componentsDirExists,
@@ -1307,6 +1907,9 @@ public final class OpenHouseComponentRegistry {
             this.components = components == null
                 ? Collections.emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(components));
+            this.desktopComponents = desktopComponents == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(desktopComponents));
             this.registryState = registryState == null ? RegistryState.missing(null) : registryState;
             MenuOverrides overrides = menuOverrides == null ? MenuOverrides.empty(null) : menuOverrides;
             this.homeTarget = isBlank(overrides.homeTarget) ? DEFAULT_HOME_TARGET : overrides.homeTarget;

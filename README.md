@@ -8,6 +8,7 @@ OpenHouseAI 文档：
 
 - [OpenHouseAI 概览](docs/OPENHOUSEAI.md)
 - [架构设计](docs/ARCHITECTURE.md)
+- [原生桌面壳](docs/OPENHOUSE_DESKTOP.md)
 - [运行分层](docs/RUNTIME_LAYERING.md)
 - [pi agent 与插件体系](docs/PI_AGENT_PLUGIN_SYSTEM.md)
 - [Operit 可选 Android 构建说明](docs/OPERIT_ROLE.md)
@@ -18,6 +19,7 @@ OpenHouseAI 文档：
 ## 当前范围
 
 - Android App 入口、权限引导、安装引导、状态展示和维护中心。
+- 原生桌面壳作为独立桌面页；现有首页功能页保留，默认启动页可设为桌面、现有首页或上次退出页。
 - Termux 宿主层、终端底座、Ubuntu 启停和救援控制面。
 - Ubuntu proot runtime，承载 pi、pi-web、Codex、Claude Code、CloudCLI、MCP、agent 和开发工具链。
 - service-manager 作为安装完成后的控制平面。

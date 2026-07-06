@@ -155,7 +155,7 @@ pi-web 组件入口应使用 WebView：
 
 组件清单只描述 UI 入口和 service-manager 引用。命令、工作目录、环境变量和停止方式必须放在 service-manager 服务定义中。
 
-AionUi 本地页面的 service id 是 `aionui-web`。Android 菜单入口应只打开 `http://127.0.0.1:25808/` 的 WebView，并通过 `service-manager://services/aionui-web` 暴露控制入口；它不能由 Android UI 或安装后的菜单逻辑直接长期启动。
+AionUi 本地页面的 service id 是 `aionui-web`。Android 桌面/菜单入口应只打开 `http://127.0.0.1:25808/` 的 WebView，并通过 `service-manager://services/aionui-web` 暴露控制入口；它不能由 Android UI 或安装后的菜单逻辑直接长期启动。
 
 脚本型 pi 服务应使用稳定的 process provider 命令形式：
 
@@ -178,7 +178,7 @@ AionUi 本地页面的 service id 是 `aionui-web`。Android 菜单入口应只�
 5. 解压并校验 APK 内置的 pi-web 完整 runtime。
 6. 同步默认扩展，例如 `multi-platform-search.ts`。
 7. 注册 `pi-agent` 和 `pi-web`。
-8. 注册 pi-web 主菜单/侧边栏入口。
+8. 注册 pi-web 桌面/主菜单/侧边栏入口。
 9. 启动 `pi-agent` 和 `pi-web`。
 
 pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动；不要通过 `npm install -g` 安装 pi-web tgz，也不要把 pi-web 首装描述为需要 npm registry。Codex、Claude Code、CloudCLI、Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络，因此文档和产品文案也不能把整个首次安装描述成完全离线或网络可选安装。

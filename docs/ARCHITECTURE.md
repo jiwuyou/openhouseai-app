@@ -11,6 +11,7 @@ OpenHouseAI 是一个运行在 Android 手机上的人机协作 AI 平台。它�
 ```text
 Android App / com.termux
   - product shell, permissions, onboarding, status, entry points
+  - native desktop page and existing home function page
   - Termux bootstrap, first install, maintenance, recovery UI
   - pi-web and AionUi WebView entries and service controls
   - optional withOperit Android-hosted Operit feature
@@ -137,6 +138,24 @@ PI_CODING_AGENT_DIR=/root/.pi
 The default search extension is `multi-platform-search.ts`. Existing pi-web sessions may need a new conversation after extension changes because tool lists can be captured when the session starts.
 
 See `PI_AGENT_PLUGIN_SYSTEM.md` for the detailed contract.
+
+## Native Desktop Position
+
+OpenHouse has a native desktop page and the existing home function page as separate front-end routes. The word "home" should be treated as the startup-page strategy: users may choose to open the native desktop, the existing home function page, or the last page from the previous session.
+
+The native desktop is not an all-WebView multi-window shell. It renders a simple Android-native app grid, with icons and names only by default. Status badges are intentionally omitted from app icons; app state is shown through long press, explicit status surfaces, or launch failure recovery.
+
+Desktop app entries are registry-backed and may point to:
+
+- `webview`
+- `native-page`
+- `terminal`
+- `service-control`
+- `android-activity`
+
+Short press opens the app through the launcher. Long press opens the app status sheet. If launch or WebView main-frame loading fails, the same status sheet is shown automatically so the user can retry, restart, inspect logs, open service control, or go to maintenance.
+
+The existing home function page remains available as a native page and fallback. Desktop work must not remove it, collapse it into the desktop route, or require multiple WebViews to stay resident.
 
 ## Operit Optional Build Position
 

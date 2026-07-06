@@ -31,7 +31,7 @@ service-manager 负责：
 - 维护服务健康状态。
 - 暴露服务日志和运行状态。
 - 给 Android 运行控制页提供真实状态。
-- 给 OpenHouse 主菜单和侧边栏提供服务绑定。
+- 给 OpenHouse 桌面、主菜单和侧边栏提供服务绑定。
 
 service-manager 不负责：
 
@@ -51,7 +51,7 @@ service-manager 不负责：
 - 同名服务只能有一个有效记录。
 - 重复随机 ID 服务必须被清理或覆盖，避免 UI 显示正常但实际控制旧服务。
 - 服务命令、环境变量、工作目录、健康检查写入 `ServiceSpec`。
-- 侧边栏组件只写 UI 入口和 service-manager 引用，不写命令、脚本和参数。
+- 桌面/侧边栏组件只写 UI 入口和 service-manager 引用，不写命令、脚本和参数。
 - 服务应该以前台长进程形式运行，让 service-manager 能跟踪进程组。
 - 健康检查必须能验证真实可用性，不能只判断 pid 存在。
 

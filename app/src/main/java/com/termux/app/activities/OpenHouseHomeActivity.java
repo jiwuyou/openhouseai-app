@@ -31,6 +31,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.app.ActivityCompat;
@@ -52,6 +53,12 @@ import com.termux.app.openhouse.OpenHousePiWebRescueController;
 import com.termux.app.openhouse.OpenHouseRuntimePreferences;
 import com.termux.app.openhouse.components.OpenHouseComponent;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
+import com.termux.app.openhouse.desktop.DesktopAppAction;
+import com.termux.app.openhouse.desktop.DesktopAppActionResult;
+import com.termux.app.openhouse.desktop.DesktopAppDescriptor;
+import com.termux.app.openhouse.desktop.DesktopAppLaunchIntent;
+import com.termux.app.openhouse.desktop.DesktopAppLauncher;
+import com.termux.app.openhouse.desktop.DesktopAppStatusSheetModel;
 import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
 import com.termux.app.operit.OperitHomeIntegration;
 import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
@@ -80,10 +87,17 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String LOG_TAG = "OpenHouseHome";
     private static final String PREFS_NAME = "openhouse_home";
     private static final String PREF_HOME_PAGE = "home_page";
+    private static final String PREF_START_PAGE_MODE = "start_page_mode";
+    private static final String PREF_LAST_PAGE = "last_page";
     private static final String PREF_AI_RESCUE_PORT = "ai_rescue_port";
     private static final int MIN_AI_RESCUE_PORT = 1024;
     private static final int MAX_AI_RESCUE_PORT = 65535;
+    private static final String START_MODE_DESKTOP = "desktop";
+    private static final String START_MODE_HOME = "home";
+    private static final String START_MODE_LAST = "last";
+    private static final String START_MODE_PAGE = "page";
     private static final String PAGE_HOME = "home";
+    private static final String PAGE_DESKTOP = "desktop";
     private static final String PAGE_PI_WEB = "pi-web";
     private static final String PAGE_AI = "ai";
     private static final String PAGE_SMALLPHONE = "smallphone";
@@ -122,6 +136,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String HOME_USAGE_TUTORIAL_TAG = "openhouse_home_usage_tutorial";
     private static final String HOME_CORE_SERVICES_BUTTON_TAG = "openhouse_core_services_start";
     private static final String AI_FRIEND_HELP_ENTRY_TAG = "ai_friend_help_entry";
+    private static final String DESKTOP_DRAWER_ENTRY_TAG = "openhouse_desktop_drawer_entry";
+    private static final String OPERIT_DESKTOP_APP_ID = "operit-help";
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -148,7 +164,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private Button aiFriendHelpHomeCloseButton;
     private String currentPage = PAGE_HOME;
     private List<OpenHouseComponent> dynamicComponents = Collections.emptyList();
+    private List<OpenHouseComponent> desktopComponents = Collections.emptyList();
     private OpenHouseComponentRegistry.LoadResult dynamicRegistryResult;
+    private DesktopAppLauncher desktopAppLauncher;
     private final String cloudCliUrl = ClaudeCodeUiSettings.getLoopbackUrl();
     private SmallPhoneHostController smallPhoneController;
     private View smallPhoneView;
@@ -189,6 +207,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private long aiFriendHelpLaunchRequestedAtMs;
     private long aiFriendHelpShutdownRequestedAtMs;
     private boolean aiFriendHelpLaunchFailureNotified;
+    private String pendingDesktopOpenAppId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -213,6 +232,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         refreshCurrentButton = findViewById(R.id.buttonRefreshCurrent);
         pageTitleView = findViewById(R.id.openhousePageTitle);
         pageSubtitleView = findViewById(R.id.openhousePageSubtitle);
+        desktopAppLauncher = new DesktopAppLauncher(this);
 
         findViewById(R.id.buttonOpenDrawer).setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
         findViewById(R.id.buttonCloseDrawer).setOnClickListener(v -> drawerLayout.closeDrawer(GravityCompat.START));
@@ -387,15 +407,16 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             dynamicWebView.goBack();
             return;
         }
-        String configuredHomePage = getConfiguredHomePage();
-        if (!PAGE_HOME.equals(currentPage) && !currentPage.equals(configuredHomePage)) {
-            selectConfiguredHomePage();
+        String backTargetPage = getBackTargetPage();
+        if (!currentPage.equals(backTargetPage)) {
+            selectPage(backTargetPage);
             return;
         }
         super.onBackPressed();
     }
 
     private void bindNavigation() {
+        addDesktopDrawerEntry();
         findViewById(R.id.buttonNavHome).setOnClickListener(v -> selectPage(PAGE_HOME));
         findViewById(R.id.buttonNavAi).setOnClickListener(
             v -> openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI));
@@ -456,13 +477,46 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void refreshDynamicComponents() {
         dynamicRegistryResult = OpenHouseComponentRegistry.loadWithDiagnostics();
         dynamicComponents = dynamicRegistryResult.components;
+        desktopComponents = dynamicRegistryResult.desktopComponents;
         setFallbackNavigationVisible(dynamicRegistryResult.shouldShowFallbackNavigation());
         updateBuiltinNavigationLabels();
+        updateStaticNavigationLabels();
         refreshAiFriendHelpEntryState();
         renderDynamicQuickNavigation();
         renderDynamicNavigation();
+        if (PAGE_DESKTOP.equals(currentPage)) {
+            renderPage();
+        }
         updateHomePreferenceViews();
         updateTopActionState();
+    }
+
+    private void addDesktopDrawerEntry() {
+        View anchor = findViewById(R.id.buttonNavHome);
+        if (anchor == null || !(anchor.getParent() instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout parent = (LinearLayout) anchor.getParent();
+        if (parent.findViewWithTag(DESKTOP_DRAWER_ENTRY_TAG) != null) {
+            return;
+        }
+        Button desktopButton = new Button(this);
+        desktopButton.setTag(DESKTOP_DRAWER_ENTRY_TAG);
+        desktopButton.setText("桌面");
+        desktopButton.setAllCaps(false);
+        desktopButton.setOnClickListener(v -> selectPage(PAGE_DESKTOP));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(52));
+        params.setMargins(0, dp(8), 0, 0);
+        parent.addView(desktopButton, parent.indexOfChild(anchor), params);
+    }
+
+    private void updateStaticNavigationLabels() {
+        View homeButton = findViewById(R.id.buttonNavHome);
+        if (homeButton instanceof Button) {
+            ((Button) homeButton).setText(getDesktopNativePageTitle(PAGE_HOME, "菜单总览"));
+        }
     }
 
     private void updateBuiltinNavigationLabels() {
@@ -653,6 +707,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             pauseCurrentEmbeddedPage();
         }
         currentPage = page;
+        rememberLastOpenHousePage(page);
         drawerLayout.closeDrawer(GravityCompat.START);
         renderPage();
         updateHomePreferenceViews();
@@ -693,6 +748,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             case PAGE_CONTROLLED_BROWSER:
                 setHeader(getControlledBrowserTitle(), getControlledBrowserSubtitle("多标签，可由 Termux 命令控制"));
                 renderControlledBrowserPage();
+                break;
+            case PAGE_DESKTOP:
+                showScrollContent();
+                setHeader("桌面", "OpenHouse apps");
+                renderDesktopPage();
                 break;
             case PAGE_MANUAL:
                 showScrollContent();
@@ -1838,6 +1898,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 if (!dynamicWebLoadFailed) {
                     setDynamicWebFallbackVisible(false);
                     setDynamicWebStatus("已连接：" + url);
+                    clearPendingDesktopOpenIfMatches(dynamicWebComponent);
                 }
             }
 
@@ -1873,6 +1934,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             setDynamicWebStatus("未连接：" + dynamicWebComponent.url);
         }
         setDynamicWebFallbackVisible(true);
+        notifyDesktopOpenFailedIfNeeded(dynamicWebComponent, "网页没有响应，可以重启服务或进入服务控制查看状态。");
     }
 
     private void setDynamicWebFallbackVisible(boolean visible) {
@@ -1948,6 +2010,20 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         if (component.entryType == OpenHouseComponent.EntryType.TERMINAL) {
             openTerminal(false);
+            return;
+        }
+        if (component.entryType == OpenHouseComponent.EntryType.SERVICE_CONTROL) {
+            if (component.hasControlEntry()) {
+                openComponentControl(component);
+            } else {
+                openAllServiceControl();
+            }
+            return;
+        }
+        if (component.entryType == OpenHouseComponent.EntryType.ANDROID_ACTIVITY) {
+            Intent intent = new Intent();
+            intent.setClassName(this, component.activityClassName);
+            openAndroidActivityComponent(component, intent);
         }
     }
 
@@ -1977,6 +2053,15 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return true;
         }
         if (component.entryType == OpenHouseComponent.EntryType.TERMINAL) {
+            openComponent(component);
+            return true;
+        }
+        if (component.entryType == OpenHouseComponent.EntryType.SERVICE_CONTROL) {
+            openComponent(component);
+            return true;
+        }
+        if (component.entryType == OpenHouseComponent.EntryType.ANDROID_ACTIVITY
+            && !isBlank(component.activityClassName)) {
             openComponent(component);
             return true;
         }
@@ -2350,7 +2435,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         String normalized = page.trim().toLowerCase(java.util.Locale.US).replace('_', '-');
         switch (normalized) {
+            case PAGE_DESKTOP:
+            case "openhouse-desktop":
+                return PAGE_DESKTOP;
             case PAGE_HOME:
+            case "openhouse-home":
                 return PAGE_HOME;
             case PAGE_PI_WEB:
             case "pi-agent":
@@ -2787,24 +2876,80 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void selectConfiguredHomePage() {
-        selectPage(getConfiguredHomePage());
+        selectPage(getLaunchPage());
+    }
+
+    private String getBackTargetPage() {
+        String mode = getStartPageMode();
+        if (START_MODE_HOME.equals(mode)) {
+            return PAGE_HOME;
+        }
+        return PAGE_DESKTOP;
+    }
+
+    private String getLaunchPage() {
+        String mode = getStartPageMode();
+        if (START_MODE_HOME.equals(mode)) {
+            return PAGE_HOME;
+        }
+        if (START_MODE_LAST.equals(mode)) {
+            String lastPage = getOpenHouseHomePrefs().getString(PREF_LAST_PAGE, PAGE_DESKTOP);
+            return isLaunchCandidate(lastPage) ? lastPage : PAGE_DESKTOP;
+        }
+        if (START_MODE_PAGE.equals(mode)) {
+            String page = getConfiguredHomePage();
+            return isLaunchCandidate(page) ? page : PAGE_DESKTOP;
+        }
+        return PAGE_DESKTOP;
+    }
+
+    private String getStartPageMode() {
+        String mode = getOpenHouseHomePrefs().getString(PREF_START_PAGE_MODE, START_MODE_DESKTOP);
+        if (START_MODE_HOME.equals(mode)
+            || START_MODE_LAST.equals(mode)
+            || START_MODE_PAGE.equals(mode)) {
+            return mode;
+        }
+        return START_MODE_DESKTOP;
+    }
+
+    private void setStartPageMode(String mode) {
+        String normalizedMode = START_MODE_HOME.equals(mode)
+            || START_MODE_LAST.equals(mode)
+            || START_MODE_PAGE.equals(mode)
+            ? mode
+            : START_MODE_DESKTOP;
+        getOpenHouseHomePrefs().edit()
+            .putString(PREF_START_PAGE_MODE, normalizedMode)
+            .apply();
+        updateHomePreferenceViews();
+        if (PAGE_ADVANCED.equals(currentPage) || PAGE_DESKTOP.equals(currentPage)) {
+            renderPage();
+        }
+        Toast.makeText(this, "默认打开已设为：" + getLaunchModeDisplayTitle(), Toast.LENGTH_SHORT).show();
+    }
+
+    private void rememberLastOpenHousePage(String page) {
+        if (isLaunchCandidate(page)) {
+            getOpenHouseHomePrefs().edit().putString(PREF_LAST_PAGE, page).apply();
+        }
     }
 
     private String getConfiguredHomePage() {
+        String localPage = getOpenHouseHomePrefs().getString(PREF_HOME_PAGE, null);
+        if (isLaunchCandidate(localPage)) {
+            return localPage;
+        }
         String configuredTarget = readConfiguredHomeTarget();
         String configured = homeTargetToPage(configuredTarget);
-        if (isHomeCandidate(configured)) {
-            return configured;
-        }
-        configured = getOpenHouseHomePrefs().getString(PREF_HOME_PAGE, null);
-        if (isHomeCandidate(configured)) {
+        if (isLaunchCandidate(configured)) {
             return configured;
         }
         return firstVisibleHomePage();
     }
 
     private String firstVisibleHomePage() {
-        if (isHomeCandidate(PAGE_PI_WEB)) {
+        if (isLaunchCandidate(PAGE_PI_WEB)) {
             return PAGE_PI_WEB;
         }
         if (isComponentVisible(findCcCodexComponent())) {
@@ -2835,32 +2980,33 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void setCurrentPageAsHome() {
-        if (!isHomeCandidate(currentPage)) {
-            Toast.makeText(this, "当前页面不能设为首页。", Toast.LENGTH_SHORT).show();
+        if (!isLaunchCandidate(currentPage)) {
+            Toast.makeText(this, "当前页面不能设为默认打开。", Toast.LENGTH_SHORT).show();
             updateHomePreferenceViews();
             return;
         }
-        setHomePage(currentPage);
+        setLaunchPage(currentPage);
     }
 
-    private void setHomePage(String page) {
-        if (!isHomeCandidate(page)) {
-            Toast.makeText(this, "这个入口暂时不能设为首页。", Toast.LENGTH_SHORT).show();
+    private void setLaunchPage(String page) {
+        if (!isLaunchCandidate(page)) {
+            Toast.makeText(this, "这个入口暂时不能设为默认打开。", Toast.LENGTH_SHORT).show();
             return;
         }
-        String homeTarget = pageToHomeTarget(page);
-        boolean wroteUnifiedConfig = !isBlank(homeTarget) && writeConfiguredHomeTarget(homeTarget);
-        if (wroteUnifiedConfig) {
-            getOpenHouseHomePrefs().edit().remove(PREF_HOME_PAGE).apply();
-            refreshDynamicComponents();
-        } else {
-            getOpenHouseHomePrefs().edit().putString(PREF_HOME_PAGE, page).apply();
-            updateHomePreferenceViews();
+        if (PAGE_DESKTOP.equals(page)) {
+            setStartPageMode(START_MODE_DESKTOP);
+            return;
         }
-        String message = "首页已设为：" + getHomeDisplayTitle(page);
-        if (!wroteUnifiedConfig) {
-            message += "（已保存到本地兜底配置）";
+        if (PAGE_HOME.equals(page)) {
+            setStartPageMode(START_MODE_HOME);
+            return;
         }
+        getOpenHouseHomePrefs().edit()
+            .putString(PREF_START_PAGE_MODE, START_MODE_PAGE)
+            .putString(PREF_HOME_PAGE, page)
+            .apply();
+        updateHomePreferenceViews();
+        String message = "默认打开已设为：" + getHomeDisplayTitle(page);
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
@@ -2940,6 +3086,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (isBlank(normalized)) {
             return null;
         }
+        if (PAGE_DESKTOP.equals(normalized) || "openhouse-desktop".equals(normalized)) {
+            return PAGE_DESKTOP;
+        }
+        if (PAGE_HOME.equals(normalized) || "openhouse-home".equals(normalized)) {
+            return PAGE_HOME;
+        }
         if (PAGE_PI_WEB.equals(normalized)
             || "pi-agent".equals(normalized)
             || "pi".equals(normalized)
@@ -3002,15 +3154,24 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_AI_RESCUE.equals(page)) {
             return "ai-rescue";
         }
+        if (PAGE_DESKTOP.equals(page)) {
+            return PAGE_DESKTOP;
+        }
+        if (PAGE_HOME.equals(page)) {
+            return PAGE_HOME;
+        }
         if (isComponentPage(page)) {
             return extractComponentId(page);
         }
         return null;
     }
 
-    private boolean isHomeCandidate(String page) {
+    private boolean isLaunchCandidate(String page) {
         if (isBlank(page)) {
             return false;
+        }
+        if (PAGE_DESKTOP.equals(page) || PAGE_HOME.equals(page)) {
+            return true;
         }
         if (PAGE_PI_WEB.equals(page)) {
             OpenHouseComponent component = findPiWebComponent();
@@ -3032,18 +3193,24 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void updateHomePreferenceViews() {
-        String homePage = getConfiguredHomePage();
+        String launchPage = getLaunchPage();
         if (homeStatusView != null) {
-            homeStatusView.setText("当前首页：" + getHomeDisplayTitle(homePage));
+            homeStatusView.setText("默认打开：" + getLaunchModeDisplayTitle());
         }
         if (setCurrentHomeButton != null) {
-            boolean canSet = isHomeCandidate(currentPage);
+            boolean canSet = isLaunchCandidate(currentPage);
             setCurrentHomeButton.setEnabled(canSet);
-            setCurrentHomeButton.setText(canSet && currentPage.equals(homePage) ? "已是首页" : "设当前页为首页");
+            setCurrentHomeButton.setText(canSet && currentPage.equals(launchPage) ? "已是默认打开" : "设当前页为默认打开");
         }
     }
 
     private String getHomeDisplayTitle(String page) {
+        if (PAGE_DESKTOP.equals(page)) {
+            return getDesktopComponentTitle("openhouse-desktop", "桌面");
+        }
+        if (PAGE_HOME.equals(page)) {
+            return getDesktopNativePageTitle(PAGE_HOME, "菜单总览");
+        }
         if (PAGE_PI_WEB.equals(page)) {
             return getPiWebTitle();
         }
@@ -3065,7 +3232,21 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 return component.title;
             }
         }
-        return getPiWebTitle();
+        return "桌面";
+    }
+
+    private String getLaunchModeDisplayTitle() {
+        String mode = getStartPageMode();
+        if (START_MODE_HOME.equals(mode)) {
+            return getHomeDisplayTitle(PAGE_HOME);
+        }
+        if (START_MODE_LAST.equals(mode)) {
+            return "上次退出页（当前：" + getHomeDisplayTitle(getLaunchPage()) + "）";
+        }
+        if (START_MODE_PAGE.equals(mode)) {
+            return getHomeDisplayTitle(getLaunchPage());
+        }
+        return "桌面";
     }
 
     private String joinValues(List<String> values) {
@@ -3089,6 +3270,475 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return value == null || value.trim().isEmpty();
     }
 
+    private void renderDesktopPage() {
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        grid.setPadding(0, dp(4), 0, dp(4));
+
+        List<OpenHouseComponent> apps = getDesktopAppsForDisplay();
+        int column = 0;
+        LinearLayout row = null;
+        for (OpenHouseComponent app : apps) {
+            if (column == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+                rowParams.setMargins(0, 0, 0, dp(10));
+                grid.addView(row, rowParams);
+            }
+            addDesktopAppTile(row, app);
+            column = (column + 1) % 3;
+        }
+        if (OperitHomeIntegration.isAvailable()) {
+            if (column == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+                rowParams.setMargins(0, 0, 0, dp(10));
+                grid.addView(row, rowParams);
+            }
+            addOperitDesktopTile(row);
+            column = (column + 1) % 3;
+        }
+        if (row != null && column != 0) {
+            while (column < 3) {
+                View spacer = new View(this);
+                row.addView(spacer, new LinearLayout.LayoutParams(0, dp(104), 1));
+                column++;
+            }
+        }
+
+        if (grid.getChildCount() == 0) {
+            LinearLayout empty = panel();
+            addTitle(empty, "桌面", 19);
+            addBody(empty, "没有可显示的桌面应用。可以从菜单进入" + getHomeDisplayTitle(PAGE_HOME) + "或高级设置检查组件注册。");
+            empty.addView(button("进入" + getHomeDisplayTitle(PAGE_HOME), v -> selectPage(PAGE_HOME)));
+            contentView.addView(empty);
+            return;
+        }
+        contentView.addView(grid);
+    }
+
+    private List<OpenHouseComponent> getDesktopAppsForDisplay() {
+        List<OpenHouseComponent> source = getDesktopComponentSource();
+        List<OpenHouseComponent> out = new ArrayList<>();
+        for (OpenHouseComponent app : source) {
+            if (app == null
+                || "openhouse-desktop".equals(normalizeId(app.id))) {
+                continue;
+            }
+            out.add(app);
+        }
+        return out;
+    }
+
+    private List<OpenHouseComponent> getDesktopComponentSource() {
+        if (dynamicRegistryResult != null && dynamicRegistryResult.desktopComponents != null) {
+            return dynamicRegistryResult.desktopComponents;
+        }
+        if (desktopComponents != null && !desktopComponents.isEmpty()) {
+            return desktopComponents;
+        }
+        return OpenHouseComponentRegistry.loadDesktopApps();
+    }
+
+    private String getDesktopComponentTitle(String id, String fallback) {
+        OpenHouseComponent component = findDesktopComponentById(id);
+        return component != null && !isBlank(component.title) ? component.title : fallback;
+    }
+
+    private String getDesktopNativePageTitle(String page, String fallback) {
+        OpenHouseComponent component = findDesktopComponentForNativePage(page);
+        return component != null && !isBlank(component.title) ? component.title : fallback;
+    }
+
+    private OpenHouseComponent findDesktopComponentById(String id) {
+        String normalized = normalizeId(id);
+        for (OpenHouseComponent component : getDesktopComponentSource()) {
+            if (component != null && normalized.equals(normalizeId(component.id))) {
+                return component;
+            }
+        }
+        return null;
+    }
+
+    private OpenHouseComponent findDesktopComponentForNativePage(String page) {
+        String resolvedPage = resolveNativePage(page);
+        for (OpenHouseComponent component : getDesktopComponentSource()) {
+            if (component == null || component.entryType != OpenHouseComponent.EntryType.NATIVE_PAGE) {
+                continue;
+            }
+            if (resolvedPage != null && resolvedPage.equals(resolveNativePage(component.nativePage))) {
+                return component;
+            }
+        }
+        return null;
+    }
+
+    private void addDesktopAppTile(LinearLayout row, OpenHouseComponent app) {
+        if (row == null || app == null) {
+            return;
+        }
+        LinearLayout tile = createDesktopTile(
+            firstNonBlank(app.iconLabel, app.title),
+            app.title,
+            app.subtitle);
+        tile.setOnClickListener(v -> openDesktopApp(app));
+        tile.setOnLongClickListener(v -> {
+            showDesktopStatusSheet(app, "");
+            return true;
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(112), 1);
+        params.setMargins(dp(4), 0, dp(4), 0);
+        row.addView(tile, params);
+    }
+
+    private void addOperitDesktopTile(LinearLayout row) {
+        if (row == null) {
+            return;
+        }
+        LinearLayout tile = createDesktopTile("AI", "AI朋友 Help", "Operit");
+        tile.setTag(OPERIT_DESKTOP_APP_ID);
+        tile.setOnClickListener(v -> openAiFriendHelp());
+        tile.setOnLongClickListener(v -> {
+            showOperitStatusSheet("");
+            return true;
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(112), 1);
+        params.setMargins(dp(4), 0, dp(4), 0);
+        row.addView(tile, params);
+    }
+
+    private LinearLayout createDesktopTile(String iconLabel, String title, String subtitle) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER);
+        tile.setPadding(dp(8), dp(10), dp(8), dp(8));
+        tile.setBackgroundResource(R.drawable.one_click_item_bg);
+        tile.setClickable(true);
+        tile.setFocusable(true);
+
+        TextView icon = new TextView(this);
+        String label = isBlank(iconLabel) ? firstNonBlank(title, "App") : iconLabel.trim();
+        if (label.length() > 2) {
+            label = label.substring(0, 1);
+        }
+        icon.setText(label);
+        icon.setGravity(Gravity.CENTER);
+        icon.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        icon.setTextSize(label.length() > 1 ? 19 : 24);
+        icon.setTypeface(icon.getTypeface(), android.graphics.Typeface.BOLD);
+        icon.setBackgroundResource(R.drawable.panel_bg);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(48), dp(48));
+        tile.addView(icon, iconParams);
+
+        TextView name = new TextView(this);
+        name.setText(firstNonBlank(title, "应用"));
+        name.setGravity(Gravity.CENTER);
+        name.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        name.setTextSize(12);
+        name.setMaxLines(2);
+        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        nameParams.setMargins(0, dp(8), 0, 0);
+        tile.addView(name, nameParams);
+
+        return tile;
+    }
+
+    private void openDesktopApp(OpenHouseComponent app) {
+        if (app == null) {
+            Toast.makeText(this, "应用不存在。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (desktopAppLauncher == null) {
+            desktopAppLauncher = new DesktopAppLauncher(this);
+        }
+        DesktopAppLaunchIntent launchIntent = desktopAppLauncher.buildOpenIntent(app);
+        if (launchIntent == null || !launchIntent.launchable) {
+            showDesktopStatusSheet(app, launchIntent == null ? "无法打开应用。" : launchIntent.message);
+            return;
+        }
+        try {
+            switch (launchIntent.kind) {
+                case WEBVIEW:
+                    pendingDesktopOpenAppId = app.id;
+                    openComponent(app);
+                    return;
+                case NATIVE_PAGE:
+                    openNativeDesktopPage(app, launchIntent.nativePage);
+                    return;
+                case TERMINAL:
+                    openTerminal(false);
+                    return;
+                case SERVICE_CONTROL:
+                    if (app.hasControlEntry()) {
+                        openComponentControl(app);
+                    } else {
+                        openAllServiceControl();
+                    }
+                    return;
+                case ANDROID_ACTIVITY:
+                    openAndroidActivityComponent(app, launchIntent.intent);
+                    return;
+                case STATUS_PANEL:
+                case UNSUPPORTED:
+                default:
+                    showDesktopStatusSheet(app, launchIntent.message);
+            }
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Desktop app launch failed: " + app.id, e);
+            showDesktopStatusSheet(app, "打开失败：" + safeMessage(e));
+        }
+    }
+
+    private void openNativeDesktopPage(OpenHouseComponent app, String nativePage) {
+        String page = resolveNativePage(nativePage);
+        if (isBlank(page)) {
+            showDesktopStatusSheet(app, "不支持的原生页面：" + nativePage);
+            return;
+        }
+        selectPage(page);
+    }
+
+    private void openAndroidActivityComponent(OpenHouseComponent app, Intent intent) {
+        if (intent == null) {
+            showDesktopStatusSheet(app, "Android Activity 入口不可用。");
+            return;
+        }
+        try {
+            if (drawerLayout != null) {
+                drawerLayout.closeDrawer(GravityCompat.START);
+            }
+            ActivityUtils.startActivity(this, intent);
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Android activity desktop launch failed: " + app.id, e);
+            showDesktopStatusSheet(app, "Activity 打开失败：" + safeMessage(e));
+        }
+    }
+
+    private void showDesktopStatusSheet(OpenHouseComponent app, String leadingMessage) {
+        if (desktopAppLauncher == null) {
+            desktopAppLauncher = new DesktopAppLauncher(this);
+        }
+        DesktopAppDescriptor descriptor = DesktopAppDescriptor.fromComponent(app);
+        DesktopAppStatusSheetModel model = desktopAppLauncher.buildStatusSheetModel(descriptor);
+        showDesktopStatusDialog(model, leadingMessage);
+    }
+
+    private void showDesktopStatusDialog(DesktopAppStatusSheetModel model, String leadingMessage) {
+        if (model == null || isFinishing()) {
+            return;
+        }
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(14), dp(18), dp(6));
+        addTitle(panel, model.title(), 20);
+        if (!isBlank(leadingMessage)) {
+            addBody(panel, leadingMessage);
+        }
+        addStatusRow(panel, "状态", model.headline());
+        if (model.status != null && !isBlank(model.status.detail)) {
+            addBody(panel, model.status.detail);
+        }
+        addDesktopStatusLines(panel, "详细信息", model.detailLines, 8);
+        addDesktopStatusLines(panel, "最近日志", model.recentLogLines, 5);
+
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        addDesktopStatusActionRows(panel, model, dialogHolder);
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.addView(panel);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setNegativeButton("关闭", null)
+            .create();
+        dialogHolder[0] = dialog;
+        dialog.show();
+    }
+
+    private void addDesktopStatusLines(LinearLayout panel, String title, List<String> lines, int limit) {
+        if (lines == null || lines.isEmpty()) {
+            return;
+        }
+        addTitle(panel, title, 15);
+        StringBuilder body = new StringBuilder();
+        int count = 0;
+        for (String line : lines) {
+            if (isBlank(line)) {
+                continue;
+            }
+            if (body.length() > 0) {
+                body.append('\n');
+            }
+            body.append(line.trim());
+            count++;
+            if (count >= limit) {
+                break;
+            }
+        }
+        if (body.length() > 0) {
+            addBody(panel, body.toString());
+        }
+    }
+
+    private void addDesktopStatusActionRows(
+        LinearLayout panel,
+        DesktopAppStatusSheetModel model,
+        AlertDialog[] dialogHolder
+    ) {
+        DesktopAppAction openAction = findDesktopAction(model, DesktopAppAction.Type.OPEN);
+        DesktopAppAction restartAction = findDesktopAction(model, DesktopAppAction.Type.RESTART);
+        DesktopAppAction logAction = findDesktopAction(model, DesktopAppAction.Type.LOG);
+        DesktopAppAction serviceAction = findDesktopAction(model, DesktopAppAction.Type.SERVICE_CONTROL);
+        DesktopAppAction repairAction = findDesktopAction(model, DesktopAppAction.Type.REPAIR);
+
+        OpenHouseComponent component = model.app == null ? null : model.app.component;
+        addButtonRow(panel,
+            compactButton("打开", v -> {
+                dismissDialog(dialogHolder);
+                openDesktopApp(component);
+            }, openAction == null || openAction.enabled),
+            compactButton("重启", v -> runDesktopServiceAction(restartAction), restartAction != null && restartAction.enabled));
+        addButtonRow(panel,
+            compactButton("日志", v -> {
+                dismissDialog(dialogHolder);
+                openDesktopLogs(model);
+            }, logAction != null && logAction.enabled),
+            compactButton("服务控制", v -> {
+                dismissDialog(dialogHolder);
+                openDesktopServiceControl(model);
+            }, serviceAction == null || serviceAction.enabled));
+        addButtonRow(panel,
+            compactButton("修复", v -> runDesktopServiceAction(repairAction), repairAction != null && repairAction.enabled),
+            compactButton("维护中心", v -> {
+                dismissDialog(dialogHolder);
+                openMaintenanceCenter();
+            }, true));
+    }
+
+    private DesktopAppAction findDesktopAction(DesktopAppStatusSheetModel model, DesktopAppAction.Type type) {
+        if (model == null || type == null || model.actions == null) {
+            return null;
+        }
+        for (DesktopAppAction action : model.actions) {
+            if (action != null && action.type == type) {
+                return action;
+            }
+        }
+        return null;
+    }
+
+    private void runDesktopServiceAction(DesktopAppAction action) {
+        if (desktopAppLauncher == null) {
+            desktopAppLauncher = new DesktopAppLauncher(this);
+        }
+        if (action == null || !action.enabled) {
+            Toast.makeText(this, "这个动作当前不可用。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Toast.makeText(this, action.label + "执行中。", Toast.LENGTH_SHORT).show();
+        backgroundExecutor.execute(() -> {
+            DesktopAppActionResult result = desktopAppLauncher.performAction(action);
+            runOnUiThread(() -> Toast.makeText(this,
+                result.success
+                    ? action.label + "完成" + (isBlank(result.state) ? "" : "：" + result.state)
+                    : action.label + "失败：" + firstNonBlank(result.message, "请查看服务控制。"),
+                Toast.LENGTH_LONG).show());
+        });
+    }
+
+    private void openDesktopLogs(DesktopAppStatusSheetModel model) {
+        if (model != null && model.app != null && model.app.component != null && model.app.component.hasControlEntry()) {
+            openComponentControl(model.app.component);
+            return;
+        }
+        selectPage(PAGE_LOGS);
+    }
+
+    private void openDesktopServiceControl(DesktopAppStatusSheetModel model) {
+        if (model != null && model.app != null && model.app.component != null && model.app.component.hasControlEntry()) {
+            openComponentControl(model.app.component);
+            return;
+        }
+        openAllServiceControl();
+    }
+
+    private void dismissDialog(AlertDialog[] dialogHolder) {
+        if (dialogHolder != null && dialogHolder.length > 0 && dialogHolder[0] != null) {
+            dialogHolder[0].dismiss();
+        }
+    }
+
+    private void showOperitStatusSheet(String leadingMessage) {
+        if (!OperitHomeIntegration.isAvailable()) {
+            return;
+        }
+        OperitHomeIntegration.DisplayState state = getAiFriendHelpDisplayState();
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(14), dp(18), dp(6));
+        addTitle(panel, "AI朋友 Help", 20);
+        if (!isBlank(leadingMessage)) {
+            addBody(panel, leadingMessage);
+        }
+        addStatusRow(panel, "状态", getAiFriendHelpStateLabel(state));
+        addBody(panel, "这是 withOperit 构建中的 Android 侧完整 Operit 入口；withoutOperit 构建不会显示。");
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        addButtonRow(panel,
+            compactButton(getAiFriendHelpOpenActionLabel(state), v -> {
+                dismissDialog(dialogHolder);
+                openAiFriendHelp();
+            }, state != OperitHomeIntegration.DisplayState.STARTING && state != OperitHomeIntegration.DisplayState.STOPPING),
+            compactButton("关闭后台运行", v -> requestCloseBackgroundAiFriendHelp(),
+                state == OperitHomeIntegration.DisplayState.BACKGROUND));
+        addButtonRow(panel,
+            compactButton("日志", v -> {
+                dismissDialog(dialogHolder);
+                selectPage(PAGE_LOGS);
+            }, true),
+            compactButton("服务控制", v -> {
+                dismissDialog(dialogHolder);
+                openAllServiceControl();
+            }, true));
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.addView(panel);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setNegativeButton("关闭", null)
+            .create();
+        dialogHolder[0] = dialog;
+        dialog.show();
+    }
+
+    private void notifyDesktopOpenFailedIfNeeded(OpenHouseComponent app, String message) {
+        if (app == null || isBlank(pendingDesktopOpenAppId) || !pendingDesktopOpenAppId.equals(app.id)) {
+            return;
+        }
+        pendingDesktopOpenAppId = null;
+        View anchor = contentView != null ? contentView : scrollContentView;
+        if (anchor == null) {
+            showDesktopStatusSheet(app, message);
+            return;
+        }
+        anchor.post(() -> showDesktopStatusSheet(app, message));
+    }
+
+    private void clearPendingDesktopOpenIfMatches(OpenHouseComponent app) {
+        if (app != null && app.id.equals(pendingDesktopOpenAppId)) {
+            pendingDesktopOpenAppId = null;
+        }
+    }
+
+    private String safeMessage(Exception e) {
+        return e == null || isBlank(e.getMessage()) ? "未知错误" : e.getMessage().trim();
+    }
+
     private void renderHomePage() {
         LinearLayout panel = panel();
         addTitle(panel, "菜单总览", 19);
@@ -3100,6 +3750,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
             compactButton("使用教学", v -> startUsageTeachingFlow(), true));
+        addButtonRow(panel,
+            compactButton("进入桌面", v -> selectPage(PAGE_DESKTOP), true),
+            compactButton("设默认打开桌面", v -> setStartPageMode(START_MODE_DESKTOP), true));
         addButtonRow(panel,
             compactButton("打开 " + getCcCodexTitle(),
                 v -> openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI),
@@ -3255,10 +3908,16 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         OpenHouseComponentRegistry.LoadResult registryResult = dynamicRegistryResult == null
             ? OpenHouseComponentRegistry.loadWithDiagnostics()
             : dynamicRegistryResult;
-        addStatusRow(panel, "默认首页", getHomeDisplayTitle(getConfiguredHomePage()));
+        addStatusRow(panel, "默认打开", getLaunchModeDisplayTitle());
         addStatusRow(panel, "控制平面", "service-manager");
         addStatusRow(panel, "菜单注册", registryResult.toShortStatusText());
         addBody(panel, registryResult.toDiagnosticText());
+        addButtonRow(panel,
+            compactButton("默认桌面", v -> setStartPageMode(START_MODE_DESKTOP), true),
+            compactButton("默认" + getHomeDisplayTitle(PAGE_HOME), v -> setStartPageMode(START_MODE_HOME), true));
+        addButtonRow(panel,
+            compactButton("默认上次退出页", v -> setStartPageMode(START_MODE_LAST), true),
+            compactButton("进入桌面", v -> selectPage(PAGE_DESKTOP), true));
         CheckBox keepAliveToggle = checkbox("自动保持控制中枢运行", OpenHouseRuntimePreferences.isServiceManagerKeepAliveEnabled(this));
         keepAliveToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             OpenHouseRuntimePreferences.setServiceManagerKeepAliveEnabled(this, isChecked);

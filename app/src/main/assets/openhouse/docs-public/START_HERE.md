@@ -28,6 +28,8 @@ pi-web 默认提示词应优先引用 `/root/openhouse/docs` 下的稳定文档�
    - 准备 `base_url`、`key/token`、`model id` 和协议类型。
 5. `cloudcli-claude-code-setup.md` 或 `codex-setup.md`
    - 根据你要先使用 Claude 还是 Codex，完成后置配置和实测。
+6. `OPENHOUSE_DESKTOP.md`
+   - 了解桌面页、现有首页功能页、默认启动页策略、短按打开和长按状态面板。
 
 普通用户不需要先学习终端。终端教学在 `terminal-guide.md`，需要时再看。
 
@@ -57,7 +59,7 @@ OpenHouse 有三层常见路径，不要混用：
 - Termux 文件系统真实路径：`/data/data/com.termux/files/home` 和 `/data/data/com.termux/files/usr`。这是 Android 侧 Termux shell 的 home 和 prefix，负责底座、bootstrap、proot-distro 和 Ubuntu 修复。
 - Ubuntu rootfs 在 Termux 中的真实位置：`/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu`。知道这个位置有助于排障，但普通操作不要直接改 rootfs 文件。
 
-OpenHouse 菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。Termux 终端不是 `/root`；它是 Android 侧 Termux shell。安装完成后，Termux 终端可能会自动进入 Ubuntu，因此 AI 和用户排障时应先判断当前层。
+OpenHouse 桌面、现有首页功能页或菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。Termux 终端不是 `/root`；它是 Android 侧 Termux shell。安装完成后，Termux 终端可能会自动进入 Ubuntu，因此 AI 和用户排障时应先判断当前层。
 
 快速判断：
 
@@ -116,7 +118,9 @@ openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
 
 Codex、Claude Code、CloudCLI 和 Hermes 是后置 AI 工作能力。用户先进入 pi-agent 完成首次配置；pi-agent 再按 `/root/openhouse/scripts` 中的脚本和本文档引导安装这些能力。
 
-主菜单/侧边栏的一级服务入口至少包括：
+OpenHouse 有独立桌面页和现有首页功能页。“首页”是每次打开 OpenHouse 后默认进入哪里的策略，可设为桌面页、现有首页功能页或上次退出页。桌面页是原生桌面壳，图标默认只显示图标和名称；短按打开 App，长按查看状态和重启/日志/服务控制等恢复操作，打开失败时会自动弹出状态面板。
+
+桌面或菜单/侧边栏的一级服务入口至少包括：
 
 - `SmallPhone`
 - `pi-agent`

@@ -112,17 +112,17 @@ service-manager status pi-web
 curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/status"
 ```
 
-## 注册到主菜单和侧边栏
+## 注册到桌面、主菜单和侧边栏
 
-OpenHouseAI 主菜单/侧边栏读取组件注册目录：
+OpenHouseAI 桌面、主菜单和侧边栏读取组件注册目录：
 
 ```text
 $HOME/.config/openhouseai/components.d/*.json
 ```
 
-组件注册只描述入口、标题、分区和 service-manager 绑定关系。不要在组件注册里写 `command`、`shell`、`script` 或 `args`；这些执行细节必须放在 service-manager 的 `ServiceSpec` 中。
+组件注册只描述入口、标题、分区、桌面展示和 service-manager 绑定关系。不要在组件注册里写 `command`、`shell`、`script` 或 `args`；这些执行细节必须放在 service-manager 的 `ServiceSpec` 中。
 
-一个同时提供 `pi-agent` 进入入口和控制入口的组件示例：
+一个同时提供 `pi-agent` 进入入口、桌面入口和控制入口的组件示例：
 
 ```json
 {
@@ -135,6 +135,11 @@ $HOME/.config/openhouseai/components.d/*.json
     "order": 80,
     "visible": true,
     "favorite": true,
+    "desktop": {
+      "visible": true,
+      "order": 80,
+      "icon": "agent"
+    },
     "entry": {
       "type": "webview",
       "url": "http://127.0.0.1:30141/"
@@ -165,19 +170,20 @@ $HOME/.config/openhouseai/components.d/*.json
 }
 ```
 
-`pi-agent` 是侧边栏一级入口，和 `SmallPhone`、`cc/codex` 同级。pi-web 是该入口背后的本地页面运行时，不应作为新手教学里的另一个大入口。`pi-agent` 负责首次配置、文档索引和配置迁移，不是唯一主工作台。
+`pi-agent` 是桌面/侧边栏一级入口，和 `SmallPhone`、`cc/codex` 同级。pi-web 是该入口背后的本地页面运行时，不应作为新手教学里的另一个大入口。`pi-agent` 负责首次配置、文档索引和配置迁移，不是唯一主工作台。
 
 `cc/codex` 是统一入口，服务控制可以绑定 `cloudcli`、`cc-connect`、Codex 相关服务或后续 Claude Code 服务。除非产品菜单策略变化，不要把 CloudCLI、Claude Code、Codex 拆成多个一级入口。
 
 标准组件清单使用四层结构：`shellMenu`、`smallphoneApp`、`serviceManager`、`ai`。即使某一层暂时不用，也保留为空对象，方便通过 registry API 校验和同步。
 
-侧边栏行为：
+桌面和侧边栏行为：
 
 - `entry.type: "webview"` 会在 OpenHouseAI 内打开本地 Web 页面。
 - `controlEntry.type: "service-control"` 会显示服务控制入口。
 - 同时有 `entry` 和 `controlEntry` 时，侧边栏会显示打开按钮和控制按钮。
 - 只有 `controlEntry`、没有 `entry` 时，会显示控制型入口。
 - `favorite: true` 或 `home: true` 会让入口进入更靠前的快捷区域。
+- `desktop.visible: true` 会让入口进入原生桌面页；桌面图标默认只显示图标和名称，状态通过长按面板或打开失败面板查看。
 
 `serviceRefs` 支持：
 
@@ -189,7 +195,7 @@ service-manager://actions/<serviceId>.restart
 service-manager://actions/<serviceId>.repair
 ```
 
-主菜单在进入或回到页面时会重新读取 `components.d`。如果新入口没有出现，先检查：
+桌面或主菜单在进入或回到页面时会重新读取 `components.d`。如果新入口没有出现，先检查：
 
 ```bash
 ls -la "$HOME/.config/openhouseai/components.d"
@@ -197,7 +203,7 @@ service-manager list
 service-manager status pi-web
 ```
 
-再回到 OpenHouseAI 主菜单，或重新打开主菜单页面触发刷新。
+再回到 OpenHouseAI 桌面/主菜单，或重新打开页面触发刷新。
 
 ## 默认地址和配置
 

@@ -33,6 +33,10 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 侧边栏入口。组件注册只允许描述 UI 入口和 service-manager 引用，不能包含 `command`、
 `shell`、`script` 或 `args`。
 
+OpenHouse 有独立原生桌面页和现有首页功能页。这里的“首页”应理解为打开 OpenHouse 后默认进入哪里的策略，可设为桌面、现有首页功能页或上次退出页。不要把桌面页和现有首页功能页写成同一个页面，也不要为了桌面化删除现有首页功能。
+
+桌面 App 图标默认不显示状态角标。短按是打开，长按是状态面板；打开失败或 WebView 主帧加载失败时，应自动进入同一个状态面板。桌面 App 的入口类型可以是 `webview`、`native-page`、`terminal`、`service-control` 或 `android-activity`。桌面壳是原生 UI，不是全 WebView 多窗口系统。
+
 `pi-agent` 是首次配置助手、文档索引员和配置迁移执行者。用户侧一级入口名称是 `pi-agent`，与 `SmallPhone`、`cc/codex` 同级；pi-web 是 `pi-agent` 背后的本地页面运行时。不要把 `pi-agent` 写成唯一主工作台，也不要把 Operit 当作默认 agent、默认 UI 或默认插件体系。
 
 Operit 是 Android 侧完整可选构建能力。只有 `withOperit` flavor 包含完整 Operit feature/module、宿主桥接和 Android 入口；`withoutOperit` 不依赖、不暴露 Operit。两个 flavor 的包名都保持 `com.termux`，不能共存，只能在同签名且 `versionCode` 单调递增时互相升级或替换。AI 不要把 Operit 当作 Ubuntu payload，也不要把它写成 OpenHouse/Pi/AionUi 的替代运行时。
@@ -89,7 +93,7 @@ search
 | Termux 外层 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | bootstrap、Termux 包、proot-distro、Ubuntu 启停、底座修复。 |
 | Ubuntu rootfs 真实路径 | `/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu` | Ubuntu 数据在 Termux 文件系统中的位置；排障时识别，不要默认直接修改。 |
 
-OpenHouse 菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。Termux 终端不是 `/root`，它是 Android 侧 Termux shell；安装完成后可能自动进入 Ubuntu，所以必须用命令确认当前层。
+OpenHouse 桌面、现有首页功能页或菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。Termux 终端不是 `/root`，它是 Android 侧 Termux shell；安装完成后可能自动进入 Ubuntu，所以必须用命令确认当前层。
 
 在 Termux 外层优先运行：
 

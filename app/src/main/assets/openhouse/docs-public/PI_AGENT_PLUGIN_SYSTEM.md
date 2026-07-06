@@ -83,7 +83,7 @@ ls -la /root/.pi/agent/extensions
 
 不要只因为旧会话看不到工具就判定插件安装失败。
 
-## 服务和侧边栏
+## 服务和桌面/侧边栏
 
 长期运行的 pi 服务必须通过 service-manager 管理。
 
@@ -94,13 +94,13 @@ $HOME/.config/openhouseai/service-manager/services.d/pi-agent.json
 $HOME/.config/openhouseai/service-manager/services.d/pi-web.json
 ```
 
-侧边栏组件路径：
+桌面/侧边栏组件路径：
 
 ```text
 $HOME/.config/openhouseai/components.d/pi-agent.json
 ```
 
-组件注册只描述 UI 入口和 service-manager 引用。命令、脚本、工作目录、环境变量和停止方式必须放在 service-manager 的服务清单中。
+组件注册只描述 UI 入口、桌面展示和 service-manager 引用。命令、脚本、工作目录、环境变量和停止方式必须放在 service-manager 的服务清单中。
 
 脚本型 pi 服务应使用稳定的 process provider 命令形式：
 

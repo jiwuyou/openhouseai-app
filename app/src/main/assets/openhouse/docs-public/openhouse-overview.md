@@ -8,7 +8,7 @@ OpenHouse 是一个面向人机协作的移动端 AI 运行平台。它把 Andro
 
 OpenHouse 不是单纯聊天软件，也不是把终端塞进手机。它要提供一个人和 AI 都能使用的软件环境：
 
-- 用户通过菜单、按钮、页面、日志和教学使用系统。
+- 用户通过桌面、菜单、按钮、页面、日志和教学使用系统。
 - AI 通过文档、插件、终端、API、service-manager 和脚本使用同一套能力。
 - 用户可以随时查看、接管、暂停、修复或全部退出。
 - AI 可以在授权范围内帮助配置模型、安装工具、管理服务、整理文件、检索资料、运行项目和构建工作台。
@@ -47,7 +47,9 @@ App 在前台时，默认应保持这些能力运行：
 
 ## 入口定位
 
-主菜单/侧边栏的一级服务入口至少包括：
+OpenHouse 有独立桌面页和现有首页功能页。每次打开 OpenHouse 后默认进入哪里由“首页/默认启动页”策略决定，可以是桌面、现有首页功能页或上次退出页。桌面是原生壳，不是全 WebView 多窗口；图标默认只显示图标和名称，短按打开，长按查看状态和恢复操作。
+
+桌面或主菜单/侧边栏的一级服务入口至少包括：
 
 | 入口 | 定位 |
 | --- | --- |
@@ -65,7 +67,7 @@ OpenHouse 同时存在 Android App、Termux 外层和 Ubuntu in Termux：
 
 | 层级 | 常见路径 | 用途 |
 | --- | --- | --- |
-| Android App | 菜单、教学、维护中心、WebView | 权限、入口、状态展示、显式控制。 |
+| Android App | 桌面、菜单、教学、维护中心、WebView | 权限、入口、状态展示、显式控制。 |
 | Termux 外层 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | 底座、bootstrap、Termux 包、proot-distro、Ubuntu 修复。 |
 | Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/projects` | 主要工作区、pi-agent/pi-web、开发工具、Claude/Codex/CloudCLI。 |
 

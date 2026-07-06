@@ -12,6 +12,7 @@ OpenHouse 帮用户在手机上构建自己的 AI 工作环境。用户可以直
 
 | 能力 | 给用户的价值 | 给 AI 的用法 | 主要文档 |
 | --- | --- | --- | --- |
+| 原生桌面 | 用桌面图标打开 OpenHouse App，长按查看状态和恢复操作 | 根据组件 registry 判断入口类型、服务引用和状态面板动作 | `OPENHOUSE_DESKTOP.md` |
 | 首次配置 | 配好 pi-web 后继续完成 OpenHouse 初始化 | 读取文档，检查后置工具，迁移模型，测通 CloudCLI/Claude Code | `OPENHOUSE_FIRST_CONFIGURATION.md`, `AI_TOOL_POSTINSTALL.md` |
 | 工作台选择 | 不被锁定到单一 UI | 推荐 Claude Code、Codex、Hermes Web 或其它开源项目 | `WORKBENCH_OPTIONS.md` |
 | Termux | Android 侧 Linux 底座和救援入口 | 修复 Ubuntu、调用 Android 侧桥接能力 | `TERMINAL_PROFILES.md`, `RECOVERY.md` |
@@ -40,7 +41,7 @@ OpenHouse 的能力应该被理解为一个开放平台，而不是固定功能�
 - 让 AI 使用 Termux 或 Ubuntu 命令完成文件、项目、构建和排障任务。
 - 把资料、项目、笔记和下载文件组织成知识库。
 - 构建个人工作台、写作系统、项目管理系统、知识库、人机编程平台或自动化流程。
-- 让 AI 搜索合适的开源项目，安装到 Ubuntu，注册成服务，再接入侧边栏。
+- 让 AI 搜索合适的开源项目，安装到 Ubuntu，注册成服务，再接入桌面或侧边栏。
 - 在获得 Shizuku 等授权后，探索更强的 Android 侧操作能力。
 
 AI 可以协助：
