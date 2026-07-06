@@ -9,6 +9,7 @@ public final class DesktopLayoutEntry {
     public final String originalTitle;
     public final String subtitle;
     public final String section;
+    public final int slotIndex;
     public final int position;
     public final int orderIndex;
     public final int defaultOrder;
@@ -27,7 +28,7 @@ public final class DesktopLayoutEntry {
         OpenHouseComponent component,
         DesktopAppDescriptor descriptor,
         DesktopAppOverride override,
-        int position,
+        int slotIndex,
         int orderIndex,
         boolean hidden
     ) {
@@ -39,7 +40,8 @@ public final class DesktopLayoutEntry {
         this.title = firstNonBlank(this.override.title, originalTitle, id);
         this.subtitle = safeTrim(component == null ? "" : component.subtitle);
         this.section = safeTrim(component == null ? "" : component.section);
-        this.position = position;
+        this.slotIndex = Math.max(0, slotIndex);
+        this.position = this.slotIndex;
         this.orderIndex = orderIndex;
         this.defaultOrder = component == null ? 0 : component.desktopOrder;
         this.iconKey = firstNonBlank(this.override.icon.key, component == null ? "" : component.iconKey, "app");

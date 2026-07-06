@@ -5,13 +5,18 @@ import com.termux.app.openhouse.desktop.DesktopAppDescriptor;
 
 public final class DesktopUiEntry {
 
+    public static final int NO_SLOT = -1;
+
     public final String id;
     public final String title;
     public final String subtitle;
     public final String iconLabel;
     public final String iconKey;
     public final int order;
+    public final int slotIndex;
     public final boolean enabled;
+    private final boolean explicitSlotIndex;
+    private final boolean explicitOrder;
 
     private DesktopUiEntry(Builder builder) {
         this.id = safeTrim(builder.id);
@@ -20,7 +25,10 @@ public final class DesktopUiEntry {
         this.iconLabel = safeTrim(builder.iconLabel);
         this.iconKey = safeTrim(builder.iconKey);
         this.order = builder.order;
+        this.slotIndex = builder.explicitSlotIndex ? Math.max(0, builder.slotIndex) : NO_SLOT;
         this.enabled = builder.enabled;
+        this.explicitSlotIndex = builder.explicitSlotIndex;
+        this.explicitOrder = builder.explicitOrder;
     }
 
     public static Builder builder() {
@@ -89,7 +97,31 @@ public final class DesktopUiEntry {
             .iconLabel(iconLabel)
             .iconKey(iconKey)
             .order(order)
+            .copySlot(slotIndex, explicitSlotIndex)
+            .copyOrder(order, explicitOrder)
             .enabled(enabled);
+    }
+
+    public boolean hasExplicitSlotIndex() {
+        return explicitSlotIndex && slotIndex >= 0;
+    }
+
+    public boolean hasExplicitOrder() {
+        return explicitOrder;
+    }
+
+    public int requestedSlotIndex(int fallbackSlot) {
+        if (hasExplicitSlotIndex()) {
+            return slotIndex;
+        }
+        if (hasExplicitOrder()) {
+            return Math.max(0, order);
+        }
+        return Math.max(0, fallbackSlot);
+    }
+
+    public DesktopUiEntry withSlotIndex(int newSlotIndex) {
+        return toBuilder().slotIndex(newSlotIndex).build();
     }
 
     public static final class Builder {
@@ -99,7 +131,10 @@ public final class DesktopUiEntry {
         private String iconLabel = "";
         private String iconKey = "";
         private int order;
+        private int slotIndex = NO_SLOT;
         private boolean enabled = true;
+        private boolean explicitSlotIndex;
+        private boolean explicitOrder;
 
         public Builder id(String id) {
             this.id = id;
@@ -128,11 +163,43 @@ public final class DesktopUiEntry {
 
         public Builder order(int order) {
             this.order = order;
+            this.explicitOrder = true;
             return this;
+        }
+
+        public Builder slotIndex(int slotIndex) {
+            if (slotIndex >= 0) {
+                this.slotIndex = slotIndex;
+                this.explicitSlotIndex = true;
+            } else {
+                this.slotIndex = NO_SLOT;
+                this.explicitSlotIndex = false;
+            }
+            return this;
+        }
+
+        public Builder position(int position) {
+            return slotIndex(position);
+        }
+
+        public Builder absoluteSlot(int absoluteSlot) {
+            return slotIndex(absoluteSlot);
         }
 
         public Builder enabled(boolean enabled) {
             this.enabled = enabled;
+            return this;
+        }
+
+        private Builder copySlot(int slotIndex, boolean explicitSlotIndex) {
+            this.slotIndex = slotIndex;
+            this.explicitSlotIndex = explicitSlotIndex && slotIndex >= 0;
+            return this;
+        }
+
+        private Builder copyOrder(int order, boolean explicitOrder) {
+            this.order = order;
+            this.explicitOrder = explicitOrder;
             return this;
         }
 

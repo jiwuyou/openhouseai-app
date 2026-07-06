@@ -143,7 +143,7 @@ See `PI_AGENT_PLUGIN_SYSTEM.md` for the detailed contract.
 
 OpenHouse has a native desktop route and app routes. The word "home" should be treated as a default-entry strategy, not as the old menu page: users may choose to open the native desktop, a specific desktop app, or the last page from the previous session. The previous home/menu overview remains available as a normal desktop app and fallback route.
 
-The native desktop is not an all-WebView multi-window shell. It renders an Android-native, horizontally paged app grid, with icons and names only by default. Status badges are intentionally omitted from app icons; app state is shown through app details, explicit status surfaces, or launch failure recovery.
+The native desktop is not an all-WebView multi-window shell. It renders an Android-native, horizontally paged sparse slot grid, with icons and names only by default. Empty slots are allowed and are not automatically compacted; dragging an icon past the last page may create a new page. Status badges are intentionally omitted from app icons; app state is shown through app details, explicit status surfaces, or launch failure recovery.
 
 Desktop app entries are registry-backed and may point to:
 
@@ -153,9 +153,9 @@ Desktop app entries are registry-backed and may point to:
 - `service-control`
 - `android-activity`
 
-Short press opens the app through the launcher. Long press enters desktop edit mode, where the user can drag icons, rename entries, change lightweight icon keys, hide/reset entries, set a default entry, or open app details/status. If launch or WebView main-frame loading fails, the status sheet is shown automatically so the user can retry, restart, inspect logs, open service control, or go to maintenance.
+Short press opens the app through the launcher. Long press enters desktop edit mode, where the user can drag icons within sparse slots or across pages, rename entries, change lightweight icon keys, hide/reset entries, set a default entry, or open app details/status. If launch or WebView main-frame loading fails, the status sheet is shown automatically so the user can retry, restart, inspect logs, open service control, or go to maintenance.
 
-The desktop route hides the top browser/control/refresh bar. App routes show that bar, and the user can collapse it into a white-to-black gradient floating ball that restores the bar when tapped. The existing menu overview remains available as a native app entry. Desktop work must not remove it, collapse it into the desktop route, or require multiple WebViews to stay resident.
+The desktop route hides the top app control bar. App routes show a bar structured as `left sidebar / desktop / current app name / refresh / collapse / right control sidebar`. The left sidebar opens global navigation, the desktop button returns to the native desktop, and the right control sidebar opens the current app's status, logs, service controls, and recovery actions. The user can collapse the bar into a white-to-black gradient floating ball; the ball is draggable, snaps to the left or right edge, persists its position, and restores the bar when tapped. The existing menu overview remains available as a native app entry. Desktop work must not remove it, collapse it into the desktop route, or require multiple WebViews to stay resident.
 
 ## Operit Optional Build Position
 

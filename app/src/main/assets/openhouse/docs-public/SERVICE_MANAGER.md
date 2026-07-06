@@ -183,7 +183,7 @@ $HOME/.config/openhouseai/components.d/*.json
 - 同时有 `entry` 和 `controlEntry` 时，侧边栏会显示打开按钮和控制按钮。
 - 只有 `controlEntry`、没有 `entry` 时，会显示控制型入口。
 - `favorite: true` 或 `home: true` 会让入口进入更靠前的快捷区域。
-- `desktop.visible: true` 会让入口进入原生桌面页；桌面图标默认只显示图标和名称，布局、改名和图标 override 由桌面层保存。用户长按进入编辑模式，状态通过 App 详情、打开失败面板或 App 页控制栏查看。
+- `desktop.visible: true` 会让入口进入原生桌面页；桌面图标默认只显示图标和名称，稀疏槽位布局、改名和图标 override 由桌面层保存。用户长按进入编辑模式，可跨屏拖动、拖到末尾新建屏、隐藏、重置或设为默认入口；状态通过 App 详情、打开失败面板或 App 页右侧控制栏查看。
 
 `serviceRefs` 支持：
 

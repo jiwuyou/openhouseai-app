@@ -17,7 +17,9 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -81,6 +83,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -100,6 +103,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PREF_START_PAGE_MODE = "start_page_mode";
     private static final String PREF_LAST_PAGE = "last_page";
     private static final String PREF_TOP_ACTION_BAR_COLLAPSED = "top_action_bar_collapsed";
+    private static final String PREF_TOP_ACTION_BAR_BUBBLE_EDGE = "top_action_bar_bubble_edge";
+    private static final String PREF_TOP_ACTION_BAR_BUBBLE_Y_RATIO = "top_action_bar_bubble_y_ratio";
     private static final String PREF_AI_RESCUE_PORT = "ai_rescue_port";
     private static final int MIN_AI_RESCUE_PORT = 1024;
     private static final int MAX_AI_RESCUE_PORT = 65535;
@@ -149,6 +154,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String AI_FRIEND_HELP_ENTRY_TAG = "ai_friend_help_entry";
     private static final String DESKTOP_DRAWER_ENTRY_TAG = "openhouse_desktop_drawer_entry";
     private static final String OPERIT_DESKTOP_APP_ID = "operit-help";
+    private static final int DESKTOP_GRID_COLUMNS = 3;
+    private static final int DESKTOP_GRID_ROWS = 3;
+    private static final int DESKTOP_PAGE_SIZE = DESKTOP_GRID_COLUMNS * DESKTOP_GRID_ROWS;
+    private static final int BUBBLE_EDGE_START = 0;
+    private static final int BUBBLE_EDGE_END = 1;
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -166,6 +176,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private Button copyCurrentButton;
     private Button openCurrentBrowserButton;
     private Button openCurrentControlButton;
+    private Button returnDesktopButton;
+    private Button collapseTopActionButton;
     private Button refreshCurrentButton;
     private TextView pageTitleView;
     private TextView pageSubtitleView;
@@ -248,6 +260,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         copyCurrentButton = findViewById(R.id.buttonCopyCurrent);
         openCurrentBrowserButton = findViewById(R.id.buttonOpenCurrentBrowser);
         openCurrentControlButton = findViewById(R.id.buttonOpenCurrentControl);
+        returnDesktopButton = findViewById(R.id.buttonReturnDesktop);
+        collapseTopActionButton = findViewById(R.id.buttonCollapseTopAction);
         refreshCurrentButton = findViewById(R.id.buttonRefreshCurrent);
         pageTitleView = findViewById(R.id.openhousePageTitle);
         pageSubtitleView = findViewById(R.id.openhousePageSubtitle);
@@ -269,6 +283,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         if (openCurrentControlButton != null) {
             openCurrentControlButton.setOnClickListener(v -> openCurrentControl());
+        }
+        if (returnDesktopButton != null) {
+            returnDesktopButton.setOnClickListener(v -> selectPage(PAGE_DESKTOP));
+        }
+        if (collapseTopActionButton != null) {
+            collapseTopActionButton.setOnClickListener(v -> setTopActionBarCollapsed(true));
         }
         if (refreshCurrentButton != null) {
             refreshCurrentButton.setOnClickListener(v -> refreshCurrentTarget());
@@ -484,9 +504,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         int[] actionButtonIds = new int[] {
             R.id.buttonOpenDrawer,
+            R.id.buttonReturnDesktop,
             R.id.buttonCopyCurrent,
             R.id.buttonOpenCurrentBrowser,
             R.id.buttonOpenCurrentControl,
+            R.id.buttonCollapseTopAction,
             R.id.buttonRefreshCurrent
         };
         for (int id : actionButtonIds) {
@@ -517,12 +539,137 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         background.setStroke(dp(1), 0x66FFFFFF);
         topActionBarBubbleView.setBackground(background);
         topActionBarBubbleView.setOnClickListener(v -> setTopActionBarCollapsed(false));
+        attachTopActionBarBubbleDrag(topActionBarBubbleView);
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(52), dp(52));
-        params.gravity = Gravity.BOTTOM | Gravity.END;
-        params.setMargins(0, 0, dp(18), dp(18));
+        params.gravity = Gravity.TOP | Gravity.START;
         pageHostView.addView(topActionBarBubbleView, params);
         topActionBarBubbleView.setVisibility(View.GONE);
+        pageHostView.post(this::applyTopActionBarBubblePosition);
+    }
+
+    private void attachTopActionBarBubbleDrag(View bubble) {
+        if (bubble == null) {
+            return;
+        }
+        final int touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
+        final float[] downRaw = new float[2];
+        final int[] startMargins = new int[2];
+        final boolean[] dragging = new boolean[1];
+        bubble.setOnTouchListener((v, event) -> {
+            if (!(v.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+                return false;
+            }
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) v.getLayoutParams();
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downRaw[0] = event.getRawX();
+                    downRaw[1] = event.getRawY();
+                    startMargins[0] = params.leftMargin;
+                    startMargins[1] = params.topMargin;
+                    dragging[0] = false;
+                    v.getParent().requestDisallowInterceptTouchEvent(true);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    float dx = event.getRawX() - downRaw[0];
+                    float dy = event.getRawY() - downRaw[1];
+                    if (!dragging[0] && Math.hypot(dx, dy) > touchSlop) {
+                        dragging[0] = true;
+                    }
+                    if (dragging[0]) {
+                        moveTopActionBarBubbleTo(startMargins[0] + Math.round(dx), startMargins[1] + Math.round(dy), false);
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    v.getParent().requestDisallowInterceptTouchEvent(false);
+                    if (dragging[0]) {
+                        snapAndSaveTopActionBarBubble();
+                    } else if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                        setTopActionBarCollapsed(false);
+                    }
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    private void applyTopActionBarBubblePosition() {
+        if (pageHostView == null || topActionBarBubbleView == null) {
+            return;
+        }
+        int hostWidth = pageHostView.getWidth();
+        int hostHeight = pageHostView.getHeight();
+        int bubbleSize = topActionBarBubbleView.getWidth() > 0 ? topActionBarBubbleView.getWidth() : dp(52);
+        if (hostWidth <= 0 || hostHeight <= 0) {
+            pageHostView.post(this::applyTopActionBarBubblePosition);
+            return;
+        }
+        SharedPreferences prefs = getOpenHouseHomePrefs();
+        int edge = prefs.getInt(PREF_TOP_ACTION_BAR_BUBBLE_EDGE, BUBBLE_EDGE_END);
+        float yRatio = prefs.getFloat(PREF_TOP_ACTION_BAR_BUBBLE_Y_RATIO, 0.78f);
+        int margin = dp(14);
+        int left = edge == BUBBLE_EDGE_START ? margin : hostWidth - bubbleSize - margin;
+        int top = Math.round(clampFloat(yRatio, 0f, 1f) * Math.max(0, hostHeight - bubbleSize - margin * 2)) + margin;
+        moveTopActionBarBubbleTo(left, top, false);
+    }
+
+    private void moveTopActionBarBubbleTo(int left, int top, boolean save) {
+        if (pageHostView == null || topActionBarBubbleView == null
+            || !(topActionBarBubbleView.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+            return;
+        }
+        int hostWidth = pageHostView.getWidth();
+        int hostHeight = pageHostView.getHeight();
+        int bubbleWidth = topActionBarBubbleView.getWidth() > 0 ? topActionBarBubbleView.getWidth() : dp(52);
+        int bubbleHeight = topActionBarBubbleView.getHeight() > 0 ? topActionBarBubbleView.getHeight() : dp(52);
+        int margin = dp(10);
+        int maxLeft = Math.max(margin, hostWidth - bubbleWidth - margin);
+        int maxTop = Math.max(margin, hostHeight - bubbleHeight - margin);
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) topActionBarBubbleView.getLayoutParams();
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.leftMargin = clampInt(left, margin, maxLeft);
+        params.topMargin = clampInt(top, margin, maxTop);
+        params.rightMargin = 0;
+        params.bottomMargin = 0;
+        topActionBarBubbleView.setLayoutParams(params);
+        if (save) {
+            saveTopActionBarBubblePosition(params.leftMargin, params.topMargin);
+        }
+    }
+
+    private void snapAndSaveTopActionBarBubble() {
+        if (pageHostView == null || topActionBarBubbleView == null
+            || !(topActionBarBubbleView.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+            return;
+        }
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) topActionBarBubbleView.getLayoutParams();
+        int bubbleWidth = topActionBarBubbleView.getWidth() > 0 ? topActionBarBubbleView.getWidth() : dp(52);
+        int margin = dp(14);
+        int hostWidth = pageHostView.getWidth();
+        int center = params.leftMargin + bubbleWidth / 2;
+        int snappedLeft = center < hostWidth / 2 ? margin : Math.max(margin, hostWidth - bubbleWidth - margin);
+        moveTopActionBarBubbleTo(snappedLeft, params.topMargin, true);
+    }
+
+    private void saveTopActionBarBubblePosition(int left, int top) {
+        if (pageHostView == null || topActionBarBubbleView == null) {
+            return;
+        }
+        int hostWidth = pageHostView.getWidth();
+        int hostHeight = pageHostView.getHeight();
+        int bubbleWidth = topActionBarBubbleView.getWidth() > 0 ? topActionBarBubbleView.getWidth() : dp(52);
+        int bubbleHeight = topActionBarBubbleView.getHeight() > 0 ? topActionBarBubbleView.getHeight() : dp(52);
+        int edge = left + bubbleWidth / 2 < hostWidth / 2 ? BUBBLE_EDGE_START : BUBBLE_EDGE_END;
+        int margin = dp(14);
+        float yRatio = hostHeight <= bubbleHeight + margin * 2
+            ? 0.78f
+            : (float) (top - margin) / (float) Math.max(1, hostHeight - bubbleHeight - margin * 2);
+        getOpenHouseHomePrefs().edit()
+            .putInt(PREF_TOP_ACTION_BAR_BUBBLE_EDGE, edge)
+            .putFloat(PREF_TOP_ACTION_BAR_BUBBLE_Y_RATIO, clampFloat(yRatio, 0f, 1f))
+            .apply();
     }
 
     private void setTopActionBarCollapsed(boolean collapsed) {
@@ -550,6 +697,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         if (topActionBarBubbleView != null) {
             topActionBarBubbleView.setVisibility(!isDesktop && collapsed ? View.VISIBLE : View.GONE);
+            if (!isDesktop && collapsed) {
+                topActionBarBubbleView.post(this::applyTopActionBarBubblePosition);
+            }
         }
     }
 
@@ -932,17 +1082,24 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void updateTopActionState() {
         String browserUrl = getCurrentBrowserUrl();
+        boolean isDesktop = PAGE_DESKTOP.equals(currentPage);
         if (copyCurrentButton != null) {
             copyCurrentButton.setEnabled(!isBlank(browserUrl) || !isBlank(getCurrentCopyText()));
         }
         if (openCurrentBrowserButton != null) {
             openCurrentBrowserButton.setEnabled(!isBlank(browserUrl));
         }
+        if (returnDesktopButton != null) {
+            returnDesktopButton.setEnabled(!isDesktop);
+        }
         if (openCurrentControlButton != null) {
-            openCurrentControlButton.setEnabled(true);
+            openCurrentControlButton.setEnabled(!isDesktop);
+        }
+        if (collapseTopActionButton != null) {
+            collapseTopActionButton.setEnabled(!isDesktop);
         }
         if (refreshCurrentButton != null) {
-            refreshCurrentButton.setEnabled(true);
+            refreshCurrentButton.setEnabled(!isDesktop);
         }
         updateTopActionChrome();
     }
@@ -3634,7 +3791,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
 
         desktopView = new OpenHouseDesktopView(this);
-        desktopView.setGridSize(3, 4);
+        desktopView.setGridSize(DESKTOP_GRID_COLUMNS, DESKTOP_GRID_ROWS);
         desktopView.setCallbacks(new OpenHouseDesktopView.Callbacks() {
             @Override
             public void onOpen(DesktopUiEntry entry) {
@@ -3649,7 +3806,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
             @Override
             public void onReorder(List<DesktopUiEntry> orderedEntries, DesktopUiEntry movedEntry, int fromPosition, int toPosition) {
-                persistDesktopReorder(orderedEntries);
+                persistDesktopMove(orderedEntries, movedEntry, fromPosition, toPosition);
             }
 
             @Override
@@ -3706,7 +3863,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 .subtitle(entry.subtitle)
                 .iconLabel(entry.iconLabel)
                 .iconKey(entry.iconKey)
-                .order(entry.orderIndex)
+                .order(entry.position)
                 .enabled(entry.component != null && (entry.component.hasEntry() || OPERIT_DESKTOP_APP_ID.equals(entry.id)))
                 .build());
         }
@@ -3748,6 +3905,88 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return;
         }
         openDesktopApp(layoutEntry.component);
+    }
+
+    private void persistDesktopMove(List<DesktopUiEntry> orderedEntries, DesktopUiEntry movedEntry, int fromPosition, int toPosition) {
+        String appId = movedEntry == null ? "" : movedEntry.id;
+        int targetSlot = Math.max(0, toPosition);
+        DesktopLayoutState state = persistDesktopMoveToSparseSlot(appId, targetSlot);
+        if (state != null) {
+            refreshDesktopViewFromState(state);
+            return;
+        }
+        if (!isBlank(appId)) {
+            state = getDesktopLayoutStore().move(getDesktopAppsForDisplay(), appId, targetSlot);
+            refreshDesktopViewFromState(state);
+            return;
+        }
+        persistDesktopReorder(orderedEntries);
+    }
+
+    private DesktopLayoutState persistDesktopMoveToSparseSlot(String appId, int absoluteSlot) {
+        if (isBlank(appId)) {
+            return null;
+        }
+        List<OpenHouseComponent> apps = getDesktopAppsForDisplay();
+        int targetPage = absoluteSlot / DESKTOP_PAGE_SIZE;
+        int targetSlot = absoluteSlot % DESKTOP_PAGE_SIZE;
+        DesktopLayoutState state = invokeDesktopLayoutStoreState(
+            "moveToPageSlot",
+            new Class<?>[] { List.class, String.class, int.class, int.class },
+            apps,
+            appId,
+            targetPage,
+            targetSlot);
+        if (state != null) {
+            return state;
+        }
+        state = invokeDesktopLayoutStoreState(
+            "moveToPageAndSlot",
+            new Class<?>[] { List.class, String.class, int.class, int.class },
+            apps,
+            appId,
+            targetPage,
+            targetSlot);
+        if (state != null) {
+            return state;
+        }
+        state = invokeDesktopLayoutStoreState(
+            "moveToSlot",
+            new Class<?>[] { List.class, String.class, int.class },
+            apps,
+            appId,
+            absoluteSlot);
+        if (state != null) {
+            return state;
+        }
+        state = invokeDesktopLayoutStoreState(
+            "moveToAbsoluteSlot",
+            new Class<?>[] { List.class, String.class, int.class },
+            apps,
+            appId,
+            absoluteSlot);
+        if (state != null) {
+            return state;
+        }
+        return invokeDesktopLayoutStoreState(
+            "moveToPosition",
+            new Class<?>[] { List.class, String.class, int.class },
+            apps,
+            appId,
+            absoluteSlot);
+    }
+
+    private DesktopLayoutState invokeDesktopLayoutStoreState(String methodName, Class<?>[] parameterTypes, Object... args) {
+        try {
+            Method method = DesktopLayoutStore.class.getMethod(methodName, parameterTypes);
+            Object result = method.invoke(getDesktopLayoutStore(), args);
+            return result instanceof DesktopLayoutState ? (DesktopLayoutState) result : null;
+        } catch (NoSuchMethodException e) {
+            return null;
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Desktop layout store call failed: " + methodName, e);
+            return null;
+        }
     }
 
     private void persistDesktopReorder(List<DesktopUiEntry> orderedEntries) {
@@ -5205,5 +5444,19 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private int clampInt(int value, int min, int max) {
+        if (max < min) {
+            return min;
+        }
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private float clampFloat(float value, float min, float max) {
+        if (max < min) {
+            return min;
+        }
+        return Math.max(min, Math.min(max, value));
     }
 }

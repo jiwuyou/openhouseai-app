@@ -4,9 +4,11 @@ final class DesktopDragPayload {
 
     final String entryId;
     final int fromIndex;
+    final int fromSlot;
 
-    DesktopDragPayload(String entryId, int fromIndex) {
+    DesktopDragPayload(String entryId, int fromSlot) {
         this.entryId = DesktopUiEntry.safeTrim(entryId);
-        this.fromIndex = fromIndex;
+        this.fromSlot = fromSlot;
+        this.fromIndex = fromSlot;
     }
 }

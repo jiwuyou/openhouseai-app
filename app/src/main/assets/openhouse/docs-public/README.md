@@ -55,7 +55,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `CAPABILITIES_MAP.md`：完整能力地图，说明 Termux、Ubuntu、服务、浏览器、文件、模型、Shizuku 和网络检索。
 - `USER_SCENARIOS.md`：日常协作、智能操作系统、人生管理、知识库和人机编程等使用场景。
 - `WORKBENCH_OPTIONS.md`：主工作台选择说明。Claude Code、Codex、Hermes Web 或其它开源项目都可以成为用户自己的工作台。
-- `OPENHOUSE_DESKTOP.md`：原生桌面、默认入口策略、菜单总览 App、横向分页、编辑模式、拖动/改名/改图标、控制栏和桌面 App 类型。
+- `OPENHOUSE_DESKTOP.md`：原生桌面、默认入口策略、菜单总览 App、横向分页稀疏槽位、跨屏拖动、编辑模式、改名/改图标、App 顶部栏、可拖动悬浮球和桌面 App 类型。
 - `START_HERE.md`：首次阅读入口。
 
 ### 2. 运行环境和配置

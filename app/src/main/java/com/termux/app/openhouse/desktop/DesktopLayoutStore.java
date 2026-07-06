@@ -28,7 +28,7 @@ public final class DesktopLayoutStore {
     private static final String KEY_DEFAULT_VALUE = "default_target_value";
     private static final String KEY_LAST_EXIT_KIND = "last_exit_target_kind";
     private static final String KEY_LAST_EXIT_VALUE = "last_exit_target_value";
-    private static final int STATE_VERSION = 1;
+    private static final int STATE_VERSION = 2;
 
     private final SharedPreferences preferences;
 
@@ -59,7 +59,30 @@ public final class DesktopLayoutStore {
 
     public DesktopLayoutState reorder(List<OpenHouseComponent> components, List<String> orderedAppIds) {
         SavedLayout saved = readSavedLayout();
-        saved.orderedIds = sanitizeOrderedIds(orderedAppIds);
+        DesktopLayoutState current = buildState(components, saved);
+        Set<String> requestedOrder = new LinkedHashSet<>(sanitizeOrderedIds(orderedAppIds));
+        Set<String> ordered = new LinkedHashSet<>();
+        for (String id : requestedOrder) {
+            if (current.find(id) != null) {
+                ordered.add(id);
+            }
+        }
+        Map<String, Integer> slots = new LinkedHashMap<>(current.persistedSlotsById);
+        Set<Integer> reservedSlots = new HashSet<>();
+        for (Map.Entry<String, Integer> entry : slots.entrySet()) {
+            if (!ordered.contains(entry.getKey()) && entry.getValue() != null && entry.getValue() >= 0) {
+                reservedSlots.add(entry.getValue());
+            }
+        }
+        int nextSlot = 0;
+        for (String id : ordered) {
+            nextSlot = firstFreeSlot(reservedSlots, nextSlot);
+            slots.put(id, nextSlot);
+            reservedSlots.add(nextSlot);
+            nextSlot++;
+        }
+        saved.slotById = slots;
+        saved.orderedIds = sortedIdsBySlot(slots);
         DesktopLayoutState state = buildState(components, saved);
         persistLayout(state);
         return state;
@@ -75,6 +98,46 @@ public final class DesktopLayoutStore {
         int index = Math.max(0, Math.min(targetIndex, ids.size()));
         ids.add(index, id);
         return reorder(components, ids);
+    }
+
+    public DesktopLayoutState moveToSlot(List<OpenHouseComponent> components, String appId, int targetSlot) {
+        String id = safeId(appId);
+        if (id.isEmpty()) {
+            return load(components);
+        }
+        SavedLayout saved = readSavedLayout();
+        DesktopLayoutState current = buildState(components, saved);
+        if (current.find(id) == null) {
+            return current;
+        }
+        Map<String, Integer> slots = new LinkedHashMap<>(current.persistedSlotsById);
+        Integer fromSlot = slots.get(id);
+        if (fromSlot == null || fromSlot < 0) {
+            fromSlot = firstFreeSlot(new HashSet<Integer>(slots.values()), 0);
+        }
+        int target = Math.max(0, targetSlot);
+        String occupant = idAtSlot(slots, target, id);
+        slots.put(id, target);
+        if (occupant != null) {
+            slots.put(occupant, fromSlot);
+        }
+        saved.slotById = slots;
+        saved.orderedIds = sortedIdsBySlot(slots);
+        DesktopLayoutState state = buildState(components, saved);
+        persistLayout(state);
+        return state;
+    }
+
+    public DesktopLayoutState moveToPageSlot(
+        List<OpenHouseComponent> components,
+        String appId,
+        int pageIndex,
+        int indexInPage,
+        int pageSize
+    ) {
+        int safePageSize = pageSize <= 0 ? DesktopLayoutState.DEFAULT_PAGE_SIZE : pageSize;
+        int targetSlot = Math.max(0, pageIndex) * safePageSize + Math.max(0, Math.min(indexInPage, safePageSize - 1));
+        return moveToSlot(components, appId, targetSlot);
     }
 
     public DesktopLayoutState updateOverride(
@@ -179,6 +242,8 @@ public final class DesktopLayoutStore {
         SavedLayout saved = readSavedLayout();
         saved.hiddenIds.remove(id);
         saved.overrides.remove(id);
+        saved.slotById.remove(id);
+        saved.orderedIds = sortedIdsBySlot(saved.slotById);
         DesktopLayoutState state = buildState(components, saved);
         persistLayout(state);
         return state;
@@ -253,10 +318,10 @@ public final class DesktopLayoutStore {
             }
         }
 
-        List<String> orderedIds = mergeOrderedIds(saved.orderedIds, available);
+        Map<String, Integer> slotsById = mergeSlots(saved, available);
+        List<String> orderedIds = sortedCurrentIdsBySlot(slotsById, available);
         List<DesktopLayoutEntry> entries = new ArrayList<>();
         int orderIndex = 0;
-        int visiblePosition = 0;
         for (String id : orderedIds) {
             OpenHouseComponent component = available.get(id);
             if (component == null) {
@@ -264,11 +329,12 @@ public final class DesktopLayoutStore {
             }
             DesktopAppOverride override = saved.overrides.get(id);
             boolean hidden = saved.hiddenIds.contains(id);
+            Integer slot = slotsById.get(id);
             entries.add(new DesktopLayoutEntry(
                 component,
                 DesktopAppDescriptor.fromComponent(component),
                 override,
-                hidden ? orderIndex : visiblePosition++,
+                slot == null ? orderIndex : slot,
                 orderIndex,
                 hidden));
             orderIndex++;
@@ -278,7 +344,15 @@ public final class DesktopLayoutStore {
         DesktopLaunchTarget defaultTarget = readTarget(KEY_DEFAULT_KIND, KEY_DEFAULT_VALUE, DesktopLaunchTarget.desktop());
         DesktopLaunchTarget lastTarget = readTarget(KEY_LAST_EXIT_KIND, KEY_LAST_EXIT_VALUE, DesktopLaunchTarget.desktop());
         DesktopLaunchTarget resolvedDefault = resolveTarget(defaultTarget, ids);
-        return new DesktopLayoutState(entries, defaultTarget, resolvedDefault, lastTarget, saved.currentPage);
+        return new DesktopLayoutState(
+            entries,
+            slotsById,
+            saved.hiddenIds,
+            saved.overrides,
+            defaultTarget,
+            resolvedDefault,
+            lastTarget,
+            saved.currentPage);
     }
 
     private void persistLayout(DesktopLayoutState state) {
@@ -291,17 +365,27 @@ public final class DesktopLayoutStore {
             root.put("currentPage", state.currentPage);
 
             JSONArray orderedIds = new JSONArray();
+            JSONArray slots = new JSONArray();
             JSONArray hiddenIds = new JSONArray();
             JSONObject overrides = new JSONObject();
-            for (DesktopLayoutEntry entry : state.allEntries) {
-                orderedIds.put(entry.id);
-                if (entry.hidden) {
-                    hiddenIds.put(entry.id);
+            for (String id : sortedIdsBySlot(state.persistedSlotsById)) {
+                Integer slot = state.persistedSlotsById.get(id);
+                if (slot == null || slot < 0) {
+                    continue;
                 }
-                if (entry.override != null && !entry.override.isEmpty()) {
-                    overrides.put(entry.id, entry.override.toJson());
-                }
+                JSONObject item = new JSONObject();
+                item.put("id", id);
+                item.put("slot", slot);
+                slots.put(item);
+                orderedIds.put(id);
             }
+            for (String id : state.persistedHiddenIds) {
+                hiddenIds.put(id);
+            }
+            for (Map.Entry<String, DesktopAppOverride> entry : state.persistedOverrides.entrySet()) {
+                overrides.put(entry.getKey(), entry.getValue().toJson());
+            }
+            root.put("slots", slots);
             root.put("orderedIds", orderedIds);
             root.put("hiddenIds", hiddenIds);
             root.put("overrides", overrides);
@@ -324,6 +408,10 @@ public final class DesktopLayoutStore {
             JSONObject root = new JSONObject(raw);
             saved.currentPage = Math.max(0, root.optInt("currentPage", 0));
             saved.orderedIds = readStringArray(root.optJSONArray("orderedIds"));
+            saved.slotById = readSlotMap(root);
+            if (saved.slotById.isEmpty() && !saved.orderedIds.isEmpty()) {
+                saved.slotById = slotsFromOrderedIds(saved.orderedIds);
+            }
             saved.hiddenIds = new LinkedHashSet<>(readStringArray(root.optJSONArray("hiddenIds")));
             JSONObject overrides = root.optJSONObject("overrides");
             if (overrides != null) {
@@ -414,26 +502,147 @@ public final class DesktopLayoutStore {
         return sorted;
     }
 
-    private List<String> mergeOrderedIds(List<String> savedIds, Map<String, OpenHouseComponent> available) {
+    private Map<String, Integer> mergeSlots(SavedLayout saved, Map<String, OpenHouseComponent> available) {
+        Map<String, Integer> raw = saved == null ? Collections.<String, Integer>emptyMap() : saved.slotById;
+        Map<String, Integer> merged = normalizeSlots(raw);
+        Set<Integer> occupied = new HashSet<>(merged.values());
+        if (available != null) {
+            for (String id : available.keySet()) {
+                if (merged.containsKey(id)) {
+                    continue;
+                }
+                int slot = firstFreeSlot(occupied, 0);
+                merged.put(id, slot);
+                occupied.add(slot);
+            }
+        }
+        return merged;
+    }
+
+    private Map<String, Integer> normalizeSlots(Map<String, Integer> slotsById) {
+        if (slotsById == null || slotsById.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        List<SlotRecord> records = new ArrayList<>();
+        int order = 0;
+        for (Map.Entry<String, Integer> entry : slotsById.entrySet()) {
+            String id = safeId(entry.getKey());
+            Integer slot = entry.getValue();
+            if (!id.isEmpty() && slot != null && slot >= 0) {
+                records.add(new SlotRecord(id, slot, order++));
+            }
+        }
+        Collections.sort(records, new Comparator<SlotRecord>() {
+            @Override
+            public int compare(SlotRecord left, SlotRecord right) {
+                int slotCompare = Integer.compare(left.slot, right.slot);
+                if (slotCompare != 0) {
+                    return slotCompare;
+                }
+                return Integer.compare(left.order, right.order);
+            }
+        });
+        Map<String, Integer> clean = new LinkedHashMap<>();
+        Set<String> seenIds = new HashSet<>();
+        Set<Integer> occupied = new HashSet<>();
+        for (SlotRecord record : records) {
+            if (!seenIds.add(record.id)) {
+                continue;
+            }
+            int slot = occupied.contains(record.slot)
+                ? firstFreeSlot(occupied, record.slot)
+                : record.slot;
+            clean.put(record.id, slot);
+            occupied.add(slot);
+        }
+        return clean;
+    }
+
+    private List<String> sortedCurrentIdsBySlot(Map<String, Integer> slotsById, Map<String, OpenHouseComponent> available) {
         if (available == null || available.isEmpty()) {
             return Collections.emptyList();
         }
-        List<String> merged = new ArrayList<>();
+        List<String> sorted = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        if (savedIds != null) {
-            for (String rawId : savedIds) {
-                String id = safeId(rawId);
-                if (available.containsKey(id) && seen.add(id)) {
-                    merged.add(id);
-                }
+        for (String id : sortedIdsBySlot(slotsById)) {
+            if (available.containsKey(id) && seen.add(id)) {
+                sorted.add(id);
             }
         }
         for (String id : available.keySet()) {
             if (seen.add(id)) {
-                merged.add(id);
+                sorted.add(id);
             }
         }
-        return merged;
+        return sorted;
+    }
+
+    private List<String> sortedIdsBySlot(Map<String, Integer> slotsById) {
+        if (slotsById == null || slotsById.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Map.Entry<String, Integer>> entries = new ArrayList<>(slotsById.entrySet());
+        Collections.sort(entries, new Comparator<Map.Entry<String, Integer>>() {
+            @Override
+            public int compare(Map.Entry<String, Integer> left, Map.Entry<String, Integer> right) {
+                int leftSlot = left.getValue() == null ? Integer.MAX_VALUE : left.getValue();
+                int rightSlot = right.getValue() == null ? Integer.MAX_VALUE : right.getValue();
+                int slotCompare = Integer.compare(leftSlot, rightSlot);
+                if (slotCompare != 0) {
+                    return slotCompare;
+                }
+                return safeTrim(left.getKey()).compareToIgnoreCase(safeTrim(right.getKey()));
+            }
+        });
+        List<String> ids = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (Map.Entry<String, Integer> entry : entries) {
+            String id = safeId(entry.getKey());
+            Integer slot = entry.getValue();
+            if (!id.isEmpty() && slot != null && slot >= 0 && seen.add(id)) {
+                ids.add(id);
+            }
+        }
+        return ids;
+    }
+
+    private Map<String, Integer> slotsFromOrderedIds(List<String> orderedIds) {
+        if (orderedIds == null || orderedIds.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, Integer> slots = new LinkedHashMap<>();
+        int slot = 0;
+        for (String rawId : orderedIds) {
+            String id = safeId(rawId);
+            if (!id.isEmpty() && !slots.containsKey(id)) {
+                slots.put(id, slot++);
+            }
+        }
+        return slots;
+    }
+
+    private String idAtSlot(Map<String, Integer> slotsById, int slot, String ignoreId) {
+        if (slotsById == null || slotsById.isEmpty()) {
+            return null;
+        }
+        int target = Math.max(0, slot);
+        String ignored = safeId(ignoreId);
+        for (Map.Entry<String, Integer> entry : slotsById.entrySet()) {
+            String id = safeId(entry.getKey());
+            Integer currentSlot = entry.getValue();
+            if (!id.isEmpty() && !id.equals(ignored) && currentSlot != null && currentSlot == target) {
+                return id;
+            }
+        }
+        return null;
+    }
+
+    private int firstFreeSlot(Set<Integer> occupied, int startSlot) {
+        int slot = Math.max(0, startSlot);
+        while (occupied != null && occupied.contains(slot)) {
+            slot++;
+        }
+        return slot;
     }
 
     private Set<String> appIds(List<OpenHouseComponent> components) {
@@ -480,6 +689,49 @@ public final class DesktopLayoutStore {
         return values;
     }
 
+    private Map<String, Integer> readSlotMap(JSONObject root) {
+        if (root == null) {
+            return new LinkedHashMap<>();
+        }
+        JSONArray array = root.optJSONArray("slots");
+        if (array != null) {
+            Map<String, Integer> slots = new LinkedHashMap<>();
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject item = array.optJSONObject(i);
+                if (item == null) {
+                    continue;
+                }
+                String id = safeId(item.optString("id", ""));
+                int slot = item.optInt("slot", -1);
+                if (!id.isEmpty() && slot >= 0 && !slots.containsKey(id)) {
+                    slots.put(id, slot);
+                }
+            }
+            return slots;
+        }
+        JSONObject object = root.optJSONObject("slots");
+        if (object == null) {
+            object = root.optJSONObject("slotById");
+        }
+        if (object == null) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, Integer> slots = new LinkedHashMap<>();
+        JSONArray names = object.names();
+        if (names == null) {
+            return slots;
+        }
+        for (int i = 0; i < names.length(); i++) {
+            String rawKey = names.optString(i, "");
+            String id = safeId(rawKey);
+            int slot = object.optInt(rawKey, -1);
+            if (!id.isEmpty() && slot >= 0 && !slots.containsKey(id)) {
+                slots.put(id, slot);
+            }
+        }
+        return slots;
+    }
+
     private static String safeId(String value) {
         return safeTrim(value).toLowerCase(Locale.US).replace(' ', '-');
     }
@@ -488,7 +740,20 @@ public final class DesktopLayoutStore {
         return value == null ? "" : value.trim();
     }
 
+    private static final class SlotRecord {
+        private final String id;
+        private final int slot;
+        private final int order;
+
+        private SlotRecord(String id, int slot, int order) {
+            this.id = id;
+            this.slot = Math.max(0, slot);
+            this.order = Math.max(0, order);
+        }
+    }
+
     private static final class SavedLayout {
+        private Map<String, Integer> slotById = new LinkedHashMap<>();
         private List<String> orderedIds = Collections.emptyList();
         private Set<String> hiddenIds = new LinkedHashSet<>();
         private Map<String, DesktopAppOverride> overrides = new HashMap<>();
