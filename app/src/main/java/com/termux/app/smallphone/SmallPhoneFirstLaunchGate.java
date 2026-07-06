@@ -39,7 +39,8 @@ public final class SmallPhoneFirstLaunchGate {
             return newBootstrapIntent(context);
         }
 
-        OpenHouseOnboardingState state = new OpenHouseStatusRepository(context).loadOnboardingState();
+        OpenHouseOnboardingState state = new OpenHouseStatusRepository(context)
+            .loadOnboardingStateWithoutStatusProbe();
         if (state.isComplete()) {
             return null;
         }

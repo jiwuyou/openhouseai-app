@@ -36,6 +36,7 @@ public final class OpenHouseComponentRegistry {
     private static final String DEFAULT_PI_AGENT_URL = "http://127.0.0.1:30141/";
     private static final String DEFAULT_CLOUDCLI_URL = "http://127.0.0.1:23083/";
     private static final String DEFAULT_SMALLPHONE_URL = "http://127.0.0.1:22082/";
+    private static final String DEFAULT_AIONUI_URL = "http://127.0.0.1:25808/";
     private static final String DEFAULT_HOME_TARGET = "pi-web";
 
     private OpenHouseComponentRegistry() {
@@ -291,6 +292,23 @@ public final class OpenHouseComponentRegistry {
             "builtin",
             Collections.singletonList("cloudcli"),
             Collections.singletonList("service-manager://services/cloudcli")));
+        components.add(createComponent(
+            "aionui-web",
+            "AionUi",
+            "本地 AI 工作台",
+            "ai",
+            30,
+            OpenHouseComponent.EntryType.WEBVIEW,
+            DEFAULT_AIONUI_URL,
+            null,
+            "控制",
+            true,
+            true,
+            false,
+            true,
+            "builtin",
+            Collections.singletonList("aionui-web"),
+            Collections.singletonList("service-manager://services/aionui-web")));
         components.add(createComponent(
             "messages",
             "SmallPhone",

@@ -34,6 +34,7 @@ public final class OpenHouseInstallController {
     private static final String OFFICIAL_DOCS_ASSET_DIR = "openhouse/docs-public";
     private static final int DEFAULT_LOCAL_MAINTENANCE_WEB_PORT = 38423;
     private static final String DEFAULT_CLAUDE_CODE_UI_PORT = "23083";
+    private static final String DEFAULT_AIONUI_WEB_PORT = "25808";
     private static final long POLL_INTERVAL_MS = 2000L;
     private static final long STALE_RUNNING_MARKER_MS = 6 * 60 * 60 * 1000L;
     private static final long FINAL_PI_WEB_READY_TIMEOUT_MS = 3 * 60 * 1000L;
@@ -59,7 +60,8 @@ public final class OpenHouseInstallController {
         Stage.SYNC_OFFICIAL_DOCS,
         Stage.RUNTIME_COMPONENTS,
         Stage.SYNC_OPENHOUSE_REGISTRY,
-        Stage.START_SMALLPHONE
+        Stage.START_SMALLPHONE,
+        Stage.INSTALL_AIONUI
     };
     private static final Stage[] FULL_STAGE_SEQUENCE = new Stage[] {
         Stage.PREPARE,
@@ -71,7 +73,8 @@ public final class OpenHouseInstallController {
         Stage.SYNC_OFFICIAL_DOCS,
         Stage.RUNTIME_COMPONENTS,
         Stage.SYNC_OPENHOUSE_REGISTRY,
-        Stage.START_SMALLPHONE
+        Stage.START_SMALLPHONE,
+        Stage.INSTALL_AIONUI
     };
 
     private static volatile OpenHouseInstallController instance;
@@ -1119,7 +1122,7 @@ public final class OpenHouseInstallController {
         if (resolvedTaskScope == OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
             return "已检测到基础环境和启动入口配置完成，可以继续安装 AI 功能。";
         }
-        return "pi-web 已可访问，首次安装完成；SmallPhone、openhouse-connect 等附属服务可稍后在运行控制中查看或修复。";
+        return "已检测到 AI 功能和本地 AI 页面可用，首次安装完成；SmallPhone、openhouse-connect 等附属服务可稍后在运行控制中查看或修复。";
     }
 
     private String taskAlreadyCompleteDetail(OpenHouseInstallState.TaskScope taskScope) {
@@ -1138,7 +1141,7 @@ public final class OpenHouseInstallController {
         if (resolvedTaskScope == OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
             return "安装脚本已经退出，但尚未确认基础环境和启动入口配置完成。请等待状态刷新；如果仍停留在这里，请手动重试当前步骤。";
         }
-        return "安装脚本已经退出，但 3 分钟内没有确认 pi-web 可访问。请等待状态刷新；如果仍停留在这里，请手动重试当前步骤。";
+        return "安装脚本已经退出，但 3 分钟内没有确认 AI 功能和本地 AI 页面可用。请等待状态刷新；如果仍停留在这里，请手动重试当前步骤。";
     }
 
     private String taskLogLabel(OpenHouseInstallState.TaskScope taskScope) {
@@ -1409,6 +1412,7 @@ public final class OpenHouseInstallController {
         return loadAsset("maintainer/" + stage.assetName)
             .replace("__PORT__", DEFAULT_CLAUDE_CODE_UI_PORT)
             .replace("__CLAUDE_CODE_UI_PORT__", DEFAULT_CLAUDE_CODE_UI_PORT)
+            .replace("__AIONUI_WEB_PORT__", DEFAULT_AIONUI_WEB_PORT)
             .replace("__REQUIRED_COMPONENT_TARGETS__", "")
             .replace("__LOCAL_MAINTENANCE_WEB_PORT__", Integer.toString(DEFAULT_LOCAL_MAINTENANCE_WEB_PORT))
             .replace("__BUNDLED_OFFICIAL_DOCS__", buildBundledAssetWriteSnippet(OFFICIAL_DOCS_ASSET_DIR, "OFFICIAL_DOC_DIR"));
@@ -1664,6 +1668,7 @@ public final class OpenHouseInstallController {
         RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装本机 Agent 运行栈", "正在从 APK 内置组件包安装 pi-agent、pi-web、service-manager 和 SmallPhone 兼容组件；cc-connect 作为可修复连接服务处理。"),
         SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh", "同步 OpenHouseAI 注册表", "正在把 Ubuntu mirror 同步到 Termux canonical，供 App、SmallPhone 和 AI 读取。"),
         START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动本机 pi-agent", "正在启动 service-manager 管理的 pi-agent、pi-web 和 SmallPhone 兼容服务，并尝试拉起 openhouse-connect。"),
+        INSTALL_AIONUI("install_aionui", "install-aionui.sh", "安装 AI 工作台", "正在从 APK 内置离线包安装 AionUi 工作台，并检查本机入口。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),
         INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh", "安装 AI 工具：ClaudeCodeUI", "正在安装 ClaudeCodeUI / CloudCLI，并固定端口 23083。");

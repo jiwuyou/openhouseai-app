@@ -911,7 +911,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private boolean isOpenHouseFirstInstallGuideComplete() {
-        OpenHouseOnboardingState state = new OpenHouseStatusRepository(this).loadOnboardingState();
+        OpenHouseOnboardingState state = new OpenHouseStatusRepository(this).loadOnboardingStateWithoutStatusProbe();
         return state.isComplete();
     }
 

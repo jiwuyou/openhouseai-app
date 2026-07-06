@@ -808,7 +808,7 @@ public final class OpenHouseOnboardingOverlay {
             return;
         }
 
-        runtime.confirmLaunch();
+        runtime.confirmLaunch(status);
         preferences.edit().putBoolean(KEY_GUIDE_DISMISSED, true).apply();
         render();
     }
@@ -957,7 +957,7 @@ public final class OpenHouseOnboardingOverlay {
         AI_FEATURES(
             "3",
             "安装 AI 功能",
-            "安装 AI 助手、网页控制台、服务管理和 SmallPhone 运行组件。",
+            "安装 AI 助手、本地 AI 页面和手机端运行组件。",
             "继续安装 AI 功能",
             "正在安装",
             "AI 功能已安装",

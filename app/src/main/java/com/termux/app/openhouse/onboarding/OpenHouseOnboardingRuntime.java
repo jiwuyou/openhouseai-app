@@ -208,7 +208,7 @@ public final class OpenHouseOnboardingRuntime {
         if (helperResult != null) {
             return helperResult;
         }
-        return status != null && status.isFirstUseReady();
+        return status != null && status.isAiFeaturesReady();
     }
 
     public boolean isBackgroundRunReady(OpenHouseStatus status) {
@@ -250,15 +250,17 @@ public final class OpenHouseOnboardingRuntime {
             return 0;
         }
         int done = 0;
-        int total = 8;
+        int total = 10;
         if (status.nodeInstalled) done++;
         if (status.officialDocsSynced) done++;
         if (status.serviceManagerInstalled) done++;
         if (status.piAgentInstalled) done++;
         if (status.piWebInstalled) done++;
         if (status.smallPhoneRuntimeInstalled) done++;
+        if (status.aionUiInstalled) done++;
         if (status.registrySynced) done++;
         if (status.piWebReachable) done++;
+        if (status.aionUiReachable) done++;
         return Math.round((done * 100f) / total);
     }
 
@@ -288,11 +290,14 @@ public final class OpenHouseOnboardingRuntime {
         if (!status.nodeInstalled || !status.serviceManagerInstalled || !status.piAgentInstalled || !status.piWebInstalled) {
             return "正在安装 AI 功能";
         }
+        if (!status.aionUiInstalled) {
+            return "正在安装本地 AI 页面";
+        }
         if (!status.officialDocsSynced || !status.registrySynced || !status.smallPhoneRuntimeInstalled) {
             return "正在同步组件信息";
         }
-        if (!status.piWebReachable) {
-            return "正在启动服务";
+        if (!status.piWebReachable || !status.aionUiReachable) {
+            return "正在启动 AI 功能";
         }
         return "正在确认 AI 功能";
     }
@@ -334,6 +339,10 @@ public final class OpenHouseOnboardingRuntime {
 
     public void confirmLaunch() {
         statusRepository.markLaunchConfirmed(true);
+    }
+
+    public void confirmLaunch(OpenHouseStatus knownStatus) {
+        statusRepository.markLaunchConfirmed(true, knownStatus);
     }
 
     public void destroy() {

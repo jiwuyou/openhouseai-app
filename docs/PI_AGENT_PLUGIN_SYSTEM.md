@@ -16,12 +16,14 @@ Ubuntu
 service-manager
   - pi-agent
   - pi-web
+  - AionUi local web page (`aionui-web`)
   - CloudCLI and connector services
 
 Android App
   - onboarding
   - status and maintenance
   - WebView entry for pi-web
+  - WebView entry for AionUi
   - service controls
 ```
 
@@ -36,6 +38,7 @@ http://127.0.0.1:30141/
 ```text
 pi-agent
 pi-web
+aionui-web
 ```
 
 默认环境变量：
@@ -90,19 +93,21 @@ ls -la /root/.pi/agent/extensions
 
 ## service-manager Contract
 
-pi 和 pi-web 都必须由 service-manager 管理，不要由 Android UI 直接长期启动。
+pi、pi-web 和 AionUi 本地页面都必须由 service-manager 管理，不要由 Android UI 直接长期启动。
 
 服务注册应写入：
 
 ```text
 $HOME/.config/openhouseai/service-manager/services.d/pi-agent.json
 $HOME/.config/openhouseai/service-manager/services.d/pi-web.json
+$HOME/.config/openhouseai/service-manager/services.d/aionui-web.json
 ```
 
 组件注册应写入：
 
 ```text
 $HOME/.config/openhouseai/components.d/pi-web.json
+$HOME/.config/openhouseai/components.d/aionui-web.json
 ```
 
 pi-web 组件入口应使用 WebView：
@@ -149,6 +154,8 @@ pi-web 组件入口应使用 WebView：
 ```
 
 组件清单只描述 UI 入口和 service-manager 引用。命令、工作目录、环境变量和停止方式必须放在 service-manager 服务定义中。
+
+AionUi 本地页面的 service id 是 `aionui-web`。Android 菜单入口应只打开 `http://127.0.0.1:25808/` 的 WebView，并通过 `service-manager://services/aionui-web` 暴露控制入口；它不能由 Android UI 或安装后的菜单逻辑直接长期启动。
 
 脚本型 pi 服务应使用稳定的 process provider 命令形式：
 

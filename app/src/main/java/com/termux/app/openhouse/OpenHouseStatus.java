@@ -17,11 +17,14 @@ public final class OpenHouseStatus {
     public final boolean piWebInstalled;
     public final boolean openhouseConnectInstalled;
     public final boolean smallPhoneRuntimeInstalled;
+    public final boolean aionUiInstalled;
     public final boolean registrySynced;
     public final boolean serviceManagerReachable;
     public final boolean piWebReachable;
     public final boolean openhouseConnectReachable;
     public final boolean smallPhoneReachable;
+    public final boolean aionUiReachable;
+    public final String aionUiUrl;
     public final boolean launchConfirmed;
     public final String diagnostic;
 
@@ -40,11 +43,14 @@ public final class OpenHouseStatus {
                            boolean piWebInstalled,
                            boolean openhouseConnectInstalled,
                            boolean smallPhoneRuntimeInstalled,
+                           boolean aionUiInstalled,
                            boolean registrySynced,
                            boolean serviceManagerReachable,
                            boolean piWebReachable,
                            boolean openhouseConnectReachable,
                            boolean smallPhoneReachable,
+                           boolean aionUiReachable,
+                           String aionUiUrl,
                            boolean launchConfirmed,
                            String diagnostic) {
         this.termuxReady = termuxReady;
@@ -62,11 +68,14 @@ public final class OpenHouseStatus {
         this.piWebInstalled = piWebInstalled;
         this.openhouseConnectInstalled = openhouseConnectInstalled;
         this.smallPhoneRuntimeInstalled = smallPhoneRuntimeInstalled;
+        this.aionUiInstalled = aionUiInstalled;
         this.registrySynced = registrySynced;
         this.serviceManagerReachable = serviceManagerReachable;
         this.piWebReachable = piWebReachable;
         this.openhouseConnectReachable = openhouseConnectReachable;
         this.smallPhoneReachable = smallPhoneReachable;
+        this.aionUiReachable = aionUiReachable;
+        this.aionUiUrl = aionUiUrl == null ? "" : aionUiUrl;
         this.launchConfirmed = launchConfirmed;
         this.diagnostic = diagnostic == null ? "" : diagnostic;
     }
@@ -74,7 +83,7 @@ public final class OpenHouseStatus {
     public static OpenHouseStatus checking() {
         return new OpenHouseStatus(false, false, false, false, false, false,
             false, false, false, false, false, false, false, false, false,
-            false, false, false, false, false, false, "");
+            false, false, false, false, false, false, false, "", false, "");
     }
 
     public boolean isDeploymentComplete() {
@@ -86,7 +95,7 @@ public final class OpenHouseStatus {
     }
 
     public boolean isFirstUseReady() {
-        return piWebReachable;
+        return serviceManagerReachable && piWebReachable && aionUiInstalled && aionUiReachable;
     }
 
     public boolean isRuntimeEnvironmentPrepared() {
@@ -121,7 +130,7 @@ public final class OpenHouseStatus {
         }
 
         int done = 0;
-        int total = 13;
+        int total = 15;
         if (termuxReady) done++;
         if (productPrepared) done++;
         if (ubuntuInstalled) done++;
@@ -131,28 +140,31 @@ public final class OpenHouseStatus {
         if (piAgentInstalled) done++;
         if (piWebInstalled) done++;
         if (smallPhoneRuntimeInstalled) done++;
+        if (aionUiInstalled) done++;
         if (registrySynced) done++;
         if (serviceManagerReachable) done++;
         if (piWebReachable) done++;
         if (smallPhoneReachable) done++;
+        if (aionUiReachable) done++;
         return Math.round((done * 100f) / total);
     }
 
     public String getNextStepLabel() {
-        if (isFirstUseReady()) return "pi-web 已可访问";
-        if (!termuxReady) return "准备 Termux 基础环境";
-        if (!productPrepared) return "准备本机目录";
-        if (!ubuntuInstalled) return "准备 Linux 环境";
-        if (!nodeInstalled) return "安装 Node.js";
-        if (!officialDocsSynced) return "同步使用文档";
-        if (!serviceManagerInstalled) return "安装 service-manager";
-        if (!piAgentInstalled) return "安装 pi-agent";
-        if (!piWebInstalled) return "安装 pi-web";
-        if (!smallPhoneRuntimeInstalled) return "安装 SmallPhone 兼容服务";
-        if (!registrySynced) return "同步 service-manager 注册表";
-        if (!serviceManagerReachable) return "启动 service-manager";
-        if (!piWebReachable) return "启动 pi-web";
-        if (!smallPhoneReachable) return "启动 SmallPhone 兼容服务";
-        return "OpenHouse 核心控制平面已就绪";
+        if (isFirstUseReady()) return "AI 功能已可使用";
+        if (!termuxReady || !productPrepared) return "准备基础组件";
+        if (!ubuntuInstalled || !entryUbuntuConfigured) return "准备运行环境";
+        if (!nodeInstalled
+            || !officialDocsSynced
+            || !serviceManagerInstalled
+            || !piAgentInstalled
+            || !piWebInstalled
+            || !smallPhoneRuntimeInstalled) {
+            return "安装 AI 功能组件";
+        }
+        if (!aionUiInstalled) return "安装本地 AI 页面";
+        if (!registrySynced) return "同步组件信息";
+        if (!serviceManagerReachable || !piWebReachable || !smallPhoneReachable) return "启动本地服务";
+        if (!aionUiReachable) return "启动本地 AI 页面";
+        return "OpenHouse AI 已就绪";
     }
 }

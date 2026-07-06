@@ -12,10 +12,12 @@ import com.termux.shared.termux.TermuxConstants;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -30,6 +32,7 @@ public final class OpenHouseStatusRepository {
     private static final String KEY_OVERLAY_BATTERY_SKIPPED = "battery_skipped";
     private static final String KEY_OVERLAY_GUIDE_DISMISSED = "guide_dismissed";
     private static final String PI_WEB_DEFAULT_URL = "http://127.0.0.1:30141/";
+    private static final String AIONUI_DEFAULT_URL = "http://127.0.0.1:25808/";
 
     private final Context context;
 
@@ -57,6 +60,7 @@ public final class OpenHouseStatusRepository {
         boolean piWebInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/pi-web\" && { test -f \"$HOME/smallphoneai-repos/pi-web/runtime/pi-web/server.js\" || test -f \"$HOME/smallphoneai-repos/pi-web/server.js\" || test -x \"$HOME/smallphoneai-repos/pi-web/bin/openhouse-pi-web-start\" || test -f \"$HOME/smallphoneai-repos/pi-web/scripts/register-service.sh\"; }", 12);
         boolean openhouseConnectInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/openhouse-connect\" && { test -f \"$HOME/smallphoneai-repos/openhouse-connect/scripts/register-service.sh\" || test -f \"$HOME/smallphoneai-repos/openhouse-connect/package.json\" || test -f \"$HOME/smallphoneai-repos/openhouse-connect/Makefile\"; }", 12);
         boolean smallPhoneRuntimeInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/smallphone-active\" && { test -d \"$HOME/smallphoneai-repos/smallphone-active/openhouse-components\" || test -d \"$HOME/smallphoneai-repos/smallphone-active/standalone-apps\" || test -f \"$HOME/smallphoneai-repos/smallphone-active/package.json\"; }", 12);
+        boolean aionUiInstalled = ubuntuInstalled && isAionUiInstalled();
         boolean registrySynced = termuxReady && isRegistrySynced();
 
         SmallPhoneRuntime.Status runtimeStatus = new SmallPhoneRuntime(context).loadStatus();
@@ -64,6 +68,8 @@ public final class OpenHouseStatusRepository {
         boolean piWebReachable = probeUrl(PI_WEB_DEFAULT_URL);
         boolean openhouseConnectReachable = runtimeStatus.ccConnect.reachable || runtimeStatus.ccConnectDisabled;
         boolean smallPhoneReachable = runtimeStatus.smallPhone.reachable && runtimeStatus.smallPhoneCore.reachable;
+        String aionUiUrl = resolveAionUiUrl(ubuntuInstalled);
+        boolean aionUiReachable = aionUiInstalled && isAionUiReachable(aionUiUrl);
 
         return new OpenHouseStatus(
             termuxReady,
@@ -81,11 +87,14 @@ public final class OpenHouseStatusRepository {
             piWebInstalled,
             openhouseConnectInstalled,
             smallPhoneRuntimeInstalled,
+            aionUiInstalled,
             registrySynced,
             serviceManagerReachable,
             piWebReachable,
             openhouseConnectReachable,
             smallPhoneReachable,
+            aionUiReachable,
+            aionUiUrl,
             getOnboardingPrefs().getBoolean(KEY_LAUNCH_CONFIRMED, false),
             diagnostic
         );
@@ -96,7 +105,7 @@ public final class OpenHouseStatusRepository {
     }
 
     public static boolean isCoreDeploymentComplete(OpenHouseStatus status) {
-        return isFirstUseReady(status);
+        return status != null && status.isCoreDeploymentComplete();
     }
 
     public boolean isFirstUseReady() {
@@ -104,7 +113,7 @@ public final class OpenHouseStatusRepository {
     }
 
     public static boolean isFirstUseReady(OpenHouseStatus status) {
-        return status != null && status.piWebReachable;
+        return status != null && status.isFirstUseReady();
     }
 
     public boolean isRuntimeEnvironmentPrepared() {
@@ -124,7 +133,16 @@ public final class OpenHouseStatusRepository {
     }
 
     public boolean isPiWebReachable() {
-        return probeUrl(PI_WEB_DEFAULT_URL);
+        if (!probeUrl(PI_WEB_DEFAULT_URL)) {
+            return false;
+        }
+        if (!isTermuxReady()) {
+            return false;
+        }
+        boolean ubuntuInstalled = runTermuxCommand("proot-distro login ubuntu -- true", 10).isSuccess();
+        return ubuntuInstalled
+            && isAionUiInstalled()
+            && isAionUiReachable(resolveAionUiUrl(true));
     }
 
     public OpenHouseOnboardingState loadOnboardingState() {
@@ -135,6 +153,16 @@ public final class OpenHouseStatusRepository {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read one-click install state", e);
         }
         return loadOnboardingState(installState, null);
+    }
+
+    public OpenHouseOnboardingState loadOnboardingStateWithoutStatusProbe() {
+        OpenHouseInstallState installState = OpenHouseInstallState.idle();
+        try {
+            installState = OpenHouseInstallController.getInstance(context).getState();
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read one-click install state", e);
+        }
+        return loadOnboardingState(installState, OpenHouseStatus.checking());
     }
 
     public OpenHouseOnboardingState loadOnboardingState(OpenHouseInstallState installState, OpenHouseStatus status) {
@@ -187,16 +215,28 @@ public final class OpenHouseStatusRepository {
     }
 
     public OpenHouseOnboardingState markLaunchConfirmed(boolean confirmed) {
+        return markLaunchConfirmed(confirmed, null);
+    }
+
+    public OpenHouseOnboardingState markLaunchConfirmed(boolean confirmed, OpenHouseStatus knownStatus) {
         SharedPreferences.Editor editor = getOnboardingPrefs().edit()
             .putBoolean(KEY_LAUNCH_CONFIRMED, confirmed);
         if (confirmed) {
-            putStepAtLeastAfterInstallGate(
-                editor,
-                OpenHouseOnboardingState.Step.WAITING_INSTALL,
-                OpenHouseOnboardingState.Step.READY_TO_USE);
+            putStep(editor, isFirstUseReady(knownStatus)
+                ? OpenHouseOnboardingState.Step.READY_TO_USE
+                : OpenHouseOnboardingState.Step.WAITING_INSTALL);
         }
         editor.apply();
-        return loadOnboardingState();
+
+        OpenHouseInstallState installState = OpenHouseInstallState.idle();
+        try {
+            installState = OpenHouseInstallController.getInstance(context).getState();
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read one-click install state", e);
+        }
+        return loadOnboardingState(
+            installState,
+            knownStatus == null ? OpenHouseStatus.checking() : knownStatus);
     }
 
     public OpenHouseOnboardingState markOneClickInstallStarted() {
@@ -266,6 +306,202 @@ public final class OpenHouseStatusRepository {
             && new File(officialDocsDir, "START_HERE.md").isFile()
             && new File(officialDocsDir, "ENVIRONMENT.md").isFile()
             && new File(officialDocsDir, "MODEL_API_SETUP.md").isFile();
+    }
+
+    private boolean isAionUiInstalled() {
+        return runUbuntuCheck(
+            "for dir in \"$HOME/aionui-web\" \"$HOME/openhouse/aionui-web\" \"$HOME/openhouseai/aionui-web\" \"$HOME/.local/share/openhouseai/aionui-web\" \"$HOME/.local/opt/aionui-web\" \"$HOME/smallphoneai-repos/aionui-web\" \"/opt/openhouseai/aionui-web\"; do "
+                + "[ -x \"$dir/aionui-web\" ] && [ -f \"$dir/static/index.html\" ] && exit 0; "
+                + "done; command -v aionui-web >/dev/null 2>&1",
+            12);
+    }
+
+    private String resolveAionUiUrl(boolean ubuntuInstalled) {
+        String configuredUrl = firstNonEmptyTermuxStateFile(
+            ".config/openhouseai/aionui-url",
+            ".config/openhouseai/aionui-web-url",
+            ".openhouseai/aionui-url",
+            ".openhouseai/aionui-web-url");
+        if (configuredUrl.isEmpty()) {
+            String configuredPort = firstNonEmptyTermuxStateFile(
+                ".config/openhouseai/aionui-port",
+                ".config/openhouseai/aionui-web-port",
+                ".openhouseai/aionui-port",
+                ".openhouseai/aionui-web-port");
+            configuredUrl = urlFromPort(configuredPort);
+        }
+        if (configuredUrl.isEmpty() && ubuntuInstalled) {
+            configuredUrl = readAionUiUrlFromUbuntu();
+        }
+        return normalizeAionUiUrl(configuredUrl);
+    }
+
+    private String readAionUiUrlFromUbuntu() {
+        String script =
+            "for f in \"$HOME/.config/openhouseai/aionui-url\" \"$HOME/.config/openhouseai/aionui-web-url\" \"$HOME/.aionui-web/url\"; do "
+                + "[ -s \"$f\" ] && { sed -n '1p' \"$f\"; exit 0; }; "
+                + "done; "
+                + "for f in \"$HOME/.config/openhouseai/aionui-port\" \"$HOME/.config/openhouseai/aionui-web-port\" \"$HOME/.aionui-web/port\"; do "
+                + "[ -s \"$f\" ] && { port=\"$(tr -dc '0-9' < \"$f\" | head -c 5)\"; [ -n \"$port\" ] && { printf 'http://127.0.0.1:%s/\\n' \"$port\"; exit 0; }; }; "
+                + "done";
+        ShellCheckResult result = runTermuxCommand(
+            "proot-distro login ubuntu -- bash -lc " + shellQuote(script),
+            8);
+        return result.isSuccess() ? firstLine(result.output) : "";
+    }
+
+    private boolean isAionUiReachable(String configuredUrl) {
+        String normalizedUrl = normalizeAionUiUrl(configuredUrl);
+        if (probeAionUiUrl(normalizedUrl)) {
+            return true;
+        }
+        return !AIONUI_DEFAULT_URL.equals(normalizedUrl) && probeAionUiUrl(AIONUI_DEFAULT_URL);
+    }
+
+    private boolean probeAionUiUrl(String url) {
+        String normalizedUrl = normalizeAionUiUrl(url);
+        HttpTextResponse home = fetchHttpText(normalizedUrl, 4096);
+        if (home.isSuccess() && isAionUiHtml(home.body)) {
+            return true;
+        }
+
+        HttpTextResponse authStatus = fetchHttpText(aionUiEndpointUrl(normalizedUrl, "/api/auth/status"), 4096);
+        return authStatus.isUsable() && isAionUiAuthStatus(authStatus.body);
+    }
+
+    private boolean isAionUiHtml(String body) {
+        if (body == null || body.isEmpty()) {
+            return false;
+        }
+        String normalized = body.toLowerCase(Locale.ROOT).replace('\'', '"');
+        return normalized.contains("<title>aionui</title>")
+            || (normalized.contains("application-name") && normalized.contains("content=\"aionui\""))
+            || (normalized.contains("apple-mobile-web-app-title") && normalized.contains("content=\"aionui\""));
+    }
+
+    private boolean isAionUiAuthStatus(String body) {
+        if (body == null || body.isEmpty()) {
+            return false;
+        }
+        String compact = body.toLowerCase(Locale.ROOT)
+            .replace(" ", "")
+            .replace("\n", "")
+            .replace("\r", "")
+            .replace("\t", "");
+        boolean hasNeedsSetup = compact.contains("\"needs_setup\"");
+        boolean hasUserCount = compact.contains("\"user_count\"");
+        boolean hasAuthenticated = compact.contains("\"is_authenticated\"");
+        if (hasNeedsSetup && hasUserCount && hasAuthenticated) {
+            return true;
+        }
+        return compact.contains("\"success\"")
+            && (hasNeedsSetup || hasUserCount || hasAuthenticated);
+    }
+
+    private String aionUiEndpointUrl(String value, String path) {
+        try {
+            URL parsed = new URL(normalizeAionUiUrl(value));
+            StringBuilder endpoint = new StringBuilder();
+            endpoint.append(parsed.getProtocol().toLowerCase(Locale.ROOT)).append("://127.0.0.1");
+            if (parsed.getPort() > 0) {
+                endpoint.append(':').append(parsed.getPort());
+            }
+            endpoint.append(path.startsWith("/") ? path : "/" + path);
+            return endpoint.toString();
+        } catch (Exception e) {
+            return "http://127.0.0.1:25808" + (path.startsWith("/") ? path : "/" + path);
+        }
+    }
+
+    private String firstNonEmptyTermuxStateFile(String... relativePaths) {
+        if (relativePaths == null) {
+            return "";
+        }
+        for (String relativePath : relativePaths) {
+            if (relativePath == null || relativePath.trim().isEmpty()) {
+                continue;
+            }
+            String value = firstLine(readTextFile(new File(TermuxConstants.TERMUX_HOME_DIR_PATH, relativePath), 512));
+            if (!value.isEmpty()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private String normalizeAionUiUrl(String value) {
+        String candidate = firstLine(value);
+        if (candidate.isEmpty()) {
+            return AIONUI_DEFAULT_URL;
+        }
+
+        String portUrl = urlFromPort(candidate);
+        if (!portUrl.isEmpty()) {
+            return portUrl;
+        }
+
+        try {
+            URL parsed = new URL(candidate);
+            String protocol = parsed.getProtocol();
+            String host = parsed.getHost();
+            if (!("http".equalsIgnoreCase(protocol) || "https".equalsIgnoreCase(protocol))
+                || !isLoopbackHost(host)) {
+                return AIONUI_DEFAULT_URL;
+            }
+            int port = parsed.getPort();
+            String path = parsed.getPath();
+            String query = parsed.getQuery();
+            StringBuilder normalized = new StringBuilder();
+            normalized.append(protocol.toLowerCase()).append("://127.0.0.1");
+            if (port > 0) {
+                normalized.append(':').append(port);
+            }
+            normalized.append(path == null || path.isEmpty() ? "/" : path);
+            if (query != null && !query.isEmpty()) {
+                normalized.append('?').append(query);
+            }
+            return normalized.toString();
+        } catch (Exception e) {
+            return AIONUI_DEFAULT_URL;
+        }
+    }
+
+    private boolean isLoopbackHost(String host) {
+        if (host == null) {
+            return false;
+        }
+        return "127.0.0.1".equals(host)
+            || "localhost".equalsIgnoreCase(host)
+            || "0.0.0.0".equals(host)
+            || "::1".equals(host);
+    }
+
+    private String urlFromPort(String value) {
+        String port = firstLine(value).replaceAll("[^0-9]", "");
+        if (port.isEmpty() || port.length() > 5) {
+            return "";
+        }
+        try {
+            int parsedPort = Integer.parseInt(port);
+            if (parsedPort <= 0 || parsedPort > 65535) {
+                return "";
+            }
+            return "http://127.0.0.1:" + parsedPort + "/";
+        } catch (NumberFormatException e) {
+            return "";
+        }
+    }
+
+    private String firstLine(String value) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        int newline = trimmed.indexOf('\n');
+        if (newline >= 0) {
+            trimmed = trimmed.substring(0, newline).trim();
+        }
+        return trimmed;
     }
 
     private boolean isRegistrySynced() {
@@ -360,7 +596,17 @@ public final class OpenHouseStatusRepository {
     }
 
     private boolean isInstallDone(OpenHouseInstallState installState, OpenHouseStatus status) {
-        return isOverallInstallTaskCompleted(installState) || isFirstUseReady(status);
+        if (isFirstUseReady(status)) {
+            return true;
+        }
+        if (!isOverallInstallTaskCompleted(installState)) {
+            return false;
+        }
+        try {
+            return isFirstUseReady(status == null ? loadStatus() : status);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private boolean isOverallInstallTaskCompleted(OpenHouseInstallState installState) {
@@ -453,6 +699,47 @@ public final class OpenHouseStatusRepository {
             if (connection != null) {
                 connection.disconnect();
             }
+        }
+    }
+
+    private HttpTextResponse fetchHttpText(String url, int maxChars) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setConnectTimeout(1200);
+            connection.setReadTimeout(1800);
+            connection.setUseCaches(false);
+            connection.setInstanceFollowRedirects(false);
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("Accept", "application/json,text/html;q=0.9,*/*;q=0.1");
+            int code = connection.getResponseCode();
+            InputStream stream = code >= 200 && code < 400
+                ? connection.getInputStream()
+                : connection.getErrorStream();
+            String body = readHttpBody(stream, maxChars);
+            return new HttpTextResponse(code, body);
+        } catch (Exception e) {
+            return new HttpTextResponse(0, "");
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private String readHttpBody(InputStream stream, int maxChars) {
+        if (stream == null || maxChars <= 0) {
+            return "";
+        }
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            StringBuilder output = new StringBuilder();
+            int next;
+            while ((next = reader.read()) != -1 && output.length() < maxChars) {
+                output.append((char) next);
+            }
+            return output.toString();
+        } catch (Exception e) {
+            return "";
         }
     }
 
@@ -565,6 +852,24 @@ public final class OpenHouseStatusRepository {
 
         boolean isSuccess() {
             return exitCode == 0;
+        }
+    }
+
+    private static final class HttpTextResponse {
+        final int code;
+        final String body;
+
+        HttpTextResponse(int code, String body) {
+            this.code = code;
+            this.body = body == null ? "" : body;
+        }
+
+        boolean isSuccess() {
+            return code >= 200 && code < 400;
+        }
+
+        boolean isUsable() {
+            return code >= 200 && code < 500;
         }
     }
 }

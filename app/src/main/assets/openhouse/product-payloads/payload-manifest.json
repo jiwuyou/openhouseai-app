@@ -31,6 +31,14 @@
       "archive": "pi-web.tar",
       "sha256": "d72729dd1c653ac366de3f58c51025b92630b598b07f37b906b471e626d0cf35",
       "size": 114452480
+    },
+    {
+      "id": "aionui-web",
+      "archive": "aionui-web-2.1.25-linux-arm64.tgz",
+      "sha256": "e9cf83bf0776c8d89765933a56dd7d98329926afae0748ece49b68de7fc447ad",
+      "size": 357095493,
+      "platform": "linux-arm64",
+      "version": "2.1.25"
     }
   ]
 }

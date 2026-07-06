@@ -12,7 +12,7 @@ OpenHouseAI 是一个运行在 Android 手机上的人机协作 AI 平台。它�
 Android App / com.termux
   - product shell, permissions, onboarding, status, entry points
   - Termux bootstrap, first install, maintenance, recovery UI
-  - pi-web WebView entry and service controls
+  - pi-web and AionUi WebView entries and service controls
 
 Termux
   - Android host bridge
@@ -26,7 +26,7 @@ Ubuntu in Termux
   - pi-web as the primary user interface
   - Codex, Claude Code, CloudCLI
   - MCP servers and developer toolchains
-  - service-manager managed services: pi-agent, pi-web, CloudCLI and connectors
+  - service-manager managed services: pi-agent, pi-web, aionui-web, CloudCLI and connectors
 
 service-manager
   - post-install control plane
@@ -70,7 +70,7 @@ The intended split is:
 Android App: show, authorize, start, stop, inspect
 Termux: host, bridge, rescue, install, repair
 Ubuntu: run pi, pi-web, AI CLIs, builds, tools, and projects
-service-manager: supervise pi-agent, pi-web, connectors, and expose state
+service-manager: supervise pi-agent, pi-web, aionui-web, connectors, and expose state
 ```
 
 ## Install Chain vs Control Plane
@@ -84,7 +84,7 @@ During first install, Android App and Termux coordinate:
 3. install Ubuntu packages and Node runtime
 4. install Codex, Claude Code, CloudCLI, service-manager assets, pi, and the bundled pi-web runtime
 5. sync pi extensions, service definitions, and component registry
-6. start `pi-agent` and `pi-web` through service-manager
+6. start `pi-agent`, `pi-web`, and `aionui-web` through service-manager
 
 The pi-web first install path uses the complete runtime bundled in the APK. It should extract, verify, register, and start that runtime instead of installing pi-web through `npm install -g` from a tgz package. Other first-install stages, including Node.js, Codex, Claude Code, CloudCLI, Ubuntu packages, and missing dependencies, may still require network access.
 
