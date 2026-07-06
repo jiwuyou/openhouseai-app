@@ -35,6 +35,8 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 
 `pi-agent` 是首次配置助手、文档索引员和配置迁移执行者。用户侧一级入口名称是 `pi-agent`，与 `SmallPhone`、`cc/codex` 同级；pi-web 是 `pi-agent` 背后的本地页面运行时。不要把 `pi-agent` 写成唯一主工作台，也不要把 Operit 当作默认 agent、默认 UI 或默认插件体系。
 
+Operit 是 Android 侧完整可选构建能力。只有 `withOperit` flavor 包含完整 Operit feature/module、宿主桥接和 Android 入口；`withoutOperit` 不依赖、不暴露 Operit。两个 flavor 的包名都保持 `com.termux`，不能共存，只能在同签名且 `versionCode` 单调递增时互相升级或替换。AI 不要把 Operit 当作 Ubuntu payload，也不要把它写成 OpenHouse/Pi/AionUi 的替代运行时。
+
 新手教学和面向用户文案可以写“进入 pi-agent 完成首次配置”，不要把 pi-web 写成需要用户单独理解的一级服务。需要说明技术实现时，可以说 pi-web 由 service-manager 托管，默认本地地址是 `http://127.0.0.1:30141/`。
 
 OpenHouse 的主工作台由用户选择。用户可能继续使用 Claude Code、Codex、Hermes Web，也可能要求 AI 搜索、安装和改造其它开源项目。AI 应根据用户目标推荐工作台，而不是默认把所有任务都拉回 `pi-agent`。

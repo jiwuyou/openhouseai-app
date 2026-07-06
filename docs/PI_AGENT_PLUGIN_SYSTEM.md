@@ -193,4 +193,8 @@ Termux 侧救援助手是后置能力和未来预留。本轮不默认安装、�
 
 ## Operit Boundary
 
-Operit 不再是默认 agent、默认 UI 或默认插件体系。它只应出现在历史移除说明中，或作为用户明确要求的外部/兼容研究对象。新的默认能力、安装链路、侧边栏入口和 AI 参考文档都应以 pi 和 pi-web 为准。
+Operit 已作为 Android 侧完整可选构建恢复，但不属于 pi 插件体系，也不是 Ubuntu payload。`withOperit` flavor 可以包含完整 Operit feature/module、宿主桥接和 Android 入口；`withoutOperit` flavor 不依赖 Operit，也不暴露 Operit 入口。
+
+新的默认能力、首次安装链路、service-manager 服务和 AI 参考文档仍应以 pi、pi-web 和 AionUi 为准。不要把 Operit package/plugin 格式写成默认 OpenHouseAI 插件标准，也不要让 pi、pi-web 或 AionUi 依赖 Operit 才能工作。
+
+两个 flavor 的 Android 包名都保持 `com.termux`。因此 `withOperit` 和 `withoutOperit` APK 不能共存，只能在同签名且 `versionCode` 单调递增时互相升级或替换。

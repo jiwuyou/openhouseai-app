@@ -24,7 +24,7 @@ OpenHouseAI 面向人机协作：
 - pi 插件目录：`/root/.pi/extensions` 和 `/root/.pi/agent/extensions`。
 - Codex、Claude Code、CloudCLI：核心 AI 编程和远程交互能力。
 
-Operit、OpenCode、Reasonix、Hermes 等退役或外部工具不是 APK 默认核心能力。它们只作为历史说明或可选外部工具保留文档参考。
+Operit 是 Android 侧完整可选构建能力，不是默认核心运行时。`withOperit` 包含完整 Operit feature/module 和宿主桥接，`withoutOperit` 不依赖、不暴露 Operit；两个 flavor 的包名都保持 `com.termux`。OpenCode、Reasonix、Hermes 等仍作为可选外部或后置能力保留文档参考。
 
 ## 文档结构
 
@@ -48,7 +48,7 @@ docs/
 - 运行分层：`docs/RUNTIME_LAYERING.md`
 - AI 参考：`app/src/main/assets/openhouse/docs-public/AI_AGENT_REFERENCE.md`
 - pi agent 与插件体系：`docs/PI_AGENT_PLUGIN_SYSTEM.md`
-- Operit 历史移除说明：`docs/OPERIT_ROLE.md`
+- Operit 可选 Android 构建说明：`docs/OPERIT_ROLE.md`
 
 ## 安装链路与运行期
 
@@ -74,6 +74,6 @@ OpenHouseAI 的长期方向是一个人机友好的移动端 AI 平台：
 - 个人知识库
 - 人机编程平台
 
-核心 agent 和开发工具链长期应位于 Ubuntu 层。Termux 保持为 Android 宿主和救援层。当前主线中，核心 agent 是 pi，主 UI 是 pi-web。Operit 只作为历史移除说明或用户明确要求的外部研究对象，不进入默认核心。
+核心 agent 和开发工具链长期应位于 Ubuntu 层。Termux 保持为 Android 宿主和救援层。当前主线中，核心 agent 是 pi，主 UI 是 pi-web，AionUi 是独立本地页面能力。Operit 作为 Android 侧可选完整 flavor 存在，不是 Ubuntu payload，也不替代 OpenHouse/Pi/AionUi 默认运行时。
 
 Termux 侧救援助手是后置预留能力，本轮不默认安装、不常驻、不进入首次安装关键路径。

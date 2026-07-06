@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="operit_assistant_title">Operit Assistant</string>
+    <string name="operit_assistant_nav_title">Operit Assistant</string>
+    <string name="operit_ai_friend_help_nav_title">AI朋友 Help</string>
+    <string name="operit_ai_friend_help_state_title">AI朋友help（状态：%1$s）</string>
+    <string name="operit_ai_friend_help_state_not_running">未运行</string>
+    <string name="operit_ai_friend_help_state_starting">启动中</string>
+    <string name="operit_ai_friend_help_state_foreground">前台运行</string>
+    <string name="operit_ai_friend_help_state_background">后台运行</string>
+    <string name="operit_ai_friend_help_state_stopping">停止中</string>
+    <string name="operit_ai_friend_help_action_open">打开进入</string>
+    <string name="operit_ai_friend_help_action_starting">启动中</string>
+    <string name="operit_ai_friend_help_action_enter">进入</string>
+    <string name="operit_ai_friend_help_action_close_background">关闭后台运行</string>
+    <string name="operit_ai_friend_help_action_stopping">停止中</string>
+    <string name="operit_ai_friend_help_not_background">AI朋友help 当前不是后台运行状态</string>
+    <string name="operit_ai_friend_help_start_failed">AI朋友help 启动请求失败</string>
+    <string name="operit_ai_friend_help_launch_failed">AI朋友help 没有成功启动，已回到主菜单。请查看崩溃日志。</string>
+    <string name="operit_ai_friend_help_shutdown_requested">已请求关闭 AI朋友help 后台运行</string>
+    <string name="operit_ai_friend_help_shutdown_failed">关闭 AI朋友help 请求失败</string>
+    <string name="operit_assistant_back">返回</string>
+    <string name="operit_assistant_status_ready">就绪</string>
+    <string name="operit_assistant_status_running">正在执行</string>
+    <string name="operit_assistant_status_failed">执行失败</string>
+    <string name="operit_assistant_welcome">输入自然语言请求，或使用快捷命令检查 Termux、Ubuntu 和 service-manager。\n\n可用命令示例：\n/termux pwd\n/ubuntu pwd\n/service-manager health\n/service-manager status smallphone-core</string>
+    <string name="operit_assistant_quick_hint">快捷命令</string>
+    <string name="operit_assistant_quick_termux">Termux</string>
+    <string name="operit_assistant_quick_ubuntu">Ubuntu</string>
+    <string name="operit_assistant_quick_service_health">SM health</string>
+    <string name="operit_assistant_quick_service_status">SM status</string>
+    <string name="operit_assistant_input_hint">输入消息或 /termux、/ubuntu、/service-manager 命令</string>
+    <string name="operit_assistant_submit">发送</string>
+    <string name="operit_assistant_empty_input">请输入内容</string>
+    <string name="operit_assistant_busy">当前命令仍在执行</string>
+    <string name="operit_assistant_empty_result">无输出</string>
+    <string name="operit_assistant_error_prefix">错误： </string>
+</resources>

@@ -13,6 +13,7 @@ Android App / com.termux
   - product shell, permissions, onboarding, status, entry points
   - Termux bootstrap, first install, maintenance, recovery UI
   - pi-web and AionUi WebView entries and service controls
+  - optional withOperit Android-hosted Operit feature
 
 Termux
   - Android host bridge
@@ -49,6 +50,7 @@ User and AI surfaces
 | service-manager | Post-install service control plane, status APIs, logs, lifecycle actions, service definitions, health checks | First install chain, Android permission UI, direct model reasoning |
 | pi | Primary agent runtime, tool calling, extension loading, RPC/API surface, plugin execution contracts | Android shell, Termux bootstrap, service supervision |
 | pi-web | Main product interaction surface, user-facing AI workspace, tool display, local web UI | Service lifecycle ownership, Termux/Ubuntu installation |
+| Operit | Optional Android-side complete feature in the `withOperit` flavor, including hosted UI and host bridge | Default OpenHouse agent/runtime, Ubuntu payload, pi plugin standard, AionUi replacement |
 | Codex | Core coding/reasoning agent capability, codebase work, terminal-backed development tasks | Product shell, runtime supervision |
 | Claude Code | Core coding/reasoning agent capability, codebase work, terminal-backed development tasks | Product shell, runtime supervision |
 | CloudCLI | Model/account connectivity and ClaudeCodeUI-related access path where applicable | Product shell, runtime supervision |
@@ -136,9 +138,25 @@ The default search extension is `multi-platform-search.ts`. Existing pi-web sess
 
 See `PI_AGENT_PLUGIN_SYSTEM.md` for the detailed contract.
 
-## Operit Removal Position
+## Operit Optional Build Position
 
-Operit is no longer the default OpenHouseAI agent, UI, or plugin system. It may appear in historical migration notes while code removal is underway, but new architecture, install stages, and product copy must target pi and pi-web.
+Operit is available as a complete Android-side optional build, not as the default OpenHouseAI agent, UI, plugin system, or Ubuntu payload. The build matrix is:
+
+```text
+withOperit
+  - applicationId: com.termux
+  - includes :operit-feature and operit-* Android modules
+  - installs the real Operit host bridge and Android entry points
+
+withoutOperit
+  - applicationId: com.termux
+  - excludes :operit-feature
+  - uses no-op Operit source-set integration
+```
+
+Because both APKs use the same package name, they cannot coexist. Release channels must use the same signing key and monotonically increasing `versionCode` values so one flavor can upgrade or replace the other.
+
+New architecture, first-install stages, and product copy must still target pi, pi-web, AionUi, and service-manager as the default runtime. Operit must not be described as replacing OpenHouse/Pi/AionUi.
 
 ## Termux Compatibility Constraint
 
@@ -164,7 +182,7 @@ Ubuntu hosts agent and developer workflows.
 
 ## Current vs Long-Term State
 
-Current implementation is being moved from the previous SmallPhone/Operit direction to the pi/pi-web direction. The stable spine remains: Termux-derived Android host, Ubuntu runtime ownership, first install flow, service-manager installation, CloudCLI, and service/component registration.
+Current implementation keeps the pi/pi-web/AionUi direction as the default runtime while restoring Operit as an optional Android flavor. The stable spine remains: Termux-derived Android host, Ubuntu runtime ownership, first install flow, service-manager installation, CloudCLI, and service/component registration.
 
 Long-term work should extend this spine instead of replacing it:
 
@@ -176,8 +194,9 @@ Long-term work should extend this spine instead of replacing it:
 
 ## Non-Goals
 
-- Do not make Operit the Android app shell.
+- Do not make Operit the default Android app shell.
 - Do not make Operit the default OpenHouseAI agent, UI, or plugin system.
+- Do not make Operit a Ubuntu payload or a prerequisite for pi, pi-web, or AionUi.
 - Do not place the primary agent loop inside an Android Activity or WebView.
 - Do not place the primary agent loop in the Termux base layer.
 - Do not start persistent daemons directly from UI code.

@@ -53,6 +53,7 @@ import com.termux.app.openhouse.OpenHouseRuntimePreferences;
 import com.termux.app.openhouse.components.OpenHouseComponent;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
 import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
+import com.termux.app.operit.OperitHomeIntegration;
 import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
 import com.termux.app.smallphone.SmallPhoneHostController;
 import com.termux.shared.activity.ActivityUtils;
@@ -120,6 +121,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PI_WEB_DEFAULT_URL = "http://127.0.0.1:30141/";
     private static final String HOME_USAGE_TUTORIAL_TAG = "openhouse_home_usage_tutorial";
     private static final String HOME_CORE_SERVICES_BUTTON_TAG = "openhouse_core_services_start";
+    private static final String AI_FRIEND_HELP_ENTRY_TAG = "ai_friend_help_entry";
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -137,6 +139,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private Button refreshCurrentButton;
     private TextView pageTitleView;
     private TextView pageSubtitleView;
+    private LinearLayout aiFriendHelpNavContainer;
+    private TextView aiFriendHelpNavStatusView;
+    private Button aiFriendHelpNavOpenButton;
+    private Button aiFriendHelpNavCloseButton;
+    private TextView aiFriendHelpHomeStatusView;
+    private Button aiFriendHelpHomeOpenButton;
+    private Button aiFriendHelpHomeCloseButton;
     private String currentPage = PAGE_HOME;
     private List<OpenHouseComponent> dynamicComponents = Collections.emptyList();
     private OpenHouseComponentRegistry.LoadResult dynamicRegistryResult;
@@ -177,10 +186,17 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private boolean usageCoreServicesFailed = false;
     private TextView usageCoreServicesProgressView;
     private Button usageCoreServicesStartButton;
+    private long aiFriendHelpLaunchRequestedAtMs;
+    private long aiFriendHelpShutdownRequestedAtMs;
+    private boolean aiFriendHelpLaunchFailureNotified;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (OperitHomeIntegration.forwardExternalEntryIntentIfNeeded(this, getIntent())) {
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_openhouse_home);
 
         drawerLayout = findViewById(R.id.openhouseDrawer);
@@ -301,6 +317,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (OperitHomeIntegration.forwardExternalEntryIntentIfNeeded(this, intent)) {
+            finish();
+            return;
+        }
         if (handleOpenHouseIntent(intent)) {
             scheduleResumePendingUsageTutorial();
             return;
@@ -400,10 +420,37 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavAdvanced).setOnClickListener(v -> selectPage(PAGE_ADVANCED));
         findViewById(R.id.buttonNavTerminal).setOnClickListener(v -> openTerminal(false));
         findViewById(R.id.buttonNavAiRescue).setOnClickListener(v -> selectPage(PAGE_AI_RESCUE));
+        addAiFriendHelpDrawerEntry();
         if (setCurrentHomeButton != null) {
             setCurrentHomeButton.setOnClickListener(v -> setCurrentPageAsHome());
         }
         updateHomePreferenceViews();
+    }
+
+    private void addAiFriendHelpDrawerEntry() {
+        if (!OperitHomeIntegration.isAvailable()) {
+            return;
+        }
+        View anchor = findViewById(R.id.buttonNavServiceControl);
+        if (anchor == null || !(anchor.getParent() instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout parent = (LinearLayout) anchor.getParent();
+        View existing = parent.findViewWithTag(AI_FRIEND_HELP_ENTRY_TAG);
+        if (existing != null) {
+            refreshAiFriendHelpEntryState();
+            return;
+        }
+
+        aiFriendHelpNavContainer = createAiFriendHelpControlBlock(false);
+        aiFriendHelpNavContainer.setTag(AI_FRIEND_HELP_ENTRY_TAG);
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.setMargins(0, dp(8), 0, 0);
+        parent.addView(aiFriendHelpNavContainer, parent.indexOfChild(anchor) + 1, params);
+        refreshAiFriendHelpEntryState();
     }
 
     private void refreshDynamicComponents() {
@@ -411,6 +458,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         dynamicComponents = dynamicRegistryResult.components;
         setFallbackNavigationVisible(dynamicRegistryResult.shouldShowFallbackNavigation());
         updateBuiltinNavigationLabels();
+        refreshAiFriendHelpEntryState();
         renderDynamicQuickNavigation();
         renderDynamicNavigation();
         updateHomePreferenceViews();
@@ -3046,6 +3094,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addTitle(panel, "菜单总览", 19);
         addBody(panel, "这里保留主入口：SmallPhone、pi-agent、cc/codex、运行控制、终端教学、文档、日志和维护中心。安装完成后，应用在前台会自动保持核心服务运行，运行控制由 service-manager 负责。");
         panel.addView(createPiAgentControlBlock());
+        if (OperitHomeIntegration.isAvailable()) {
+            panel.addView(createAiFriendHelpControlBlock(true));
+        }
         addButtonRow(panel,
             compactButton("进入 AI 软件安装引导", v -> openInstallGuide(), true),
             compactButton("使用教学", v -> startUsageTeachingFlow(), true));
@@ -3074,6 +3125,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addStatusRow(quick, "运行环境", "AI 工具安装在 Ubuntu /root");
         addStatusRow(quick, "控制平面", "service-manager");
         contentView.addView(quick);
+        refreshAiFriendHelpEntryState();
     }
 
     private void renderUsageTutorialPage() {
@@ -3352,6 +3404,217 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void openSmallPhone() {
         openBuiltinComponentOrFallback(findSmallPhoneComponent(), PAGE_SMALLPHONE);
+    }
+
+    private LinearLayout createAiFriendHelpControlBlock(boolean homeBlock) {
+        LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        block.setPadding(0, dp(4), 0, dp(2));
+
+        TextView statusView = new TextView(this);
+        statusView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        statusView.setTextSize(14);
+        statusView.setTypeface(statusView.getTypeface(), android.graphics.Typeface.BOLD);
+        block.addView(statusView, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        rowParams.setMargins(0, dp(8), 0, 0);
+
+        Button openButton = compactButton("", v -> openAiFriendHelp(), true);
+        row.addView(openButton, new LinearLayout.LayoutParams(0, dp(44), 1));
+
+        Button closeButton = compactButton("关闭后台运行", v -> requestCloseBackgroundAiFriendHelp(), true);
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(dp(118), dp(44));
+        closeParams.setMargins(dp(8), 0, 0, 0);
+        row.addView(closeButton, closeParams);
+        block.addView(row, rowParams);
+
+        if (homeBlock) {
+            aiFriendHelpHomeStatusView = statusView;
+            aiFriendHelpHomeOpenButton = openButton;
+            aiFriendHelpHomeCloseButton = closeButton;
+        } else {
+            aiFriendHelpNavStatusView = statusView;
+            aiFriendHelpNavOpenButton = openButton;
+            aiFriendHelpNavCloseButton = closeButton;
+        }
+        return block;
+    }
+
+    private void refreshAiFriendHelpEntryState() {
+        if (!OperitHomeIntegration.isAvailable()) {
+            return;
+        }
+        OperitHomeIntegration.DisplayState displayState = getAiFriendHelpDisplayState();
+        updateAiFriendHelpControlBlock(
+            aiFriendHelpNavStatusView,
+            aiFriendHelpNavOpenButton,
+            aiFriendHelpNavCloseButton,
+            displayState);
+        updateAiFriendHelpControlBlock(
+            aiFriendHelpHomeStatusView,
+            aiFriendHelpHomeOpenButton,
+            aiFriendHelpHomeCloseButton,
+            displayState);
+    }
+
+    private OperitHomeIntegration.DisplayState getAiFriendHelpDisplayState() {
+        OperitHomeIntegration.DisplayState state =
+            OperitHomeIntegration.readDisplayState(getApplicationContext());
+        if (state == OperitHomeIntegration.DisplayState.NOT_RUNNING
+            || state == OperitHomeIntegration.DisplayState.UNAVAILABLE) {
+            aiFriendHelpShutdownRequestedAtMs = 0L;
+            return getPendingAiFriendHelpLaunchState();
+        }
+        if (state == OperitHomeIntegration.DisplayState.STOPPING) {
+            clearAiFriendHelpLaunchPending();
+            return OperitHomeIntegration.DisplayState.STOPPING;
+        }
+        if (aiFriendHelpShutdownRequestedAtMs <= 0L) {
+            clearAiFriendHelpLaunchPending();
+            return state;
+        }
+        long elapsed = System.currentTimeMillis() - aiFriendHelpShutdownRequestedAtMs;
+        if (elapsed <= OperitHomeIntegration.SHUTDOWN_PENDING_UI_MS) {
+            clearAiFriendHelpLaunchPending();
+            return OperitHomeIntegration.DisplayState.STOPPING;
+        }
+        aiFriendHelpShutdownRequestedAtMs = 0L;
+        clearAiFriendHelpLaunchPending();
+        return state;
+    }
+
+    private OperitHomeIntegration.DisplayState getPendingAiFriendHelpLaunchState() {
+        if (aiFriendHelpLaunchRequestedAtMs <= 0L) {
+            aiFriendHelpLaunchFailureNotified = false;
+            return OperitHomeIntegration.DisplayState.NOT_RUNNING;
+        }
+
+        long elapsed = System.currentTimeMillis() - aiFriendHelpLaunchRequestedAtMs;
+        if (elapsed <= OperitHomeIntegration.LAUNCH_PROCESS_GRACE_MS
+            || (elapsed <= OperitHomeIntegration.LAUNCH_PENDING_UI_MS
+            && OperitHomeIntegration.isOperitProcessAlive(getApplicationContext(), -1))) {
+            return OperitHomeIntegration.DisplayState.STARTING;
+        }
+
+        aiFriendHelpLaunchRequestedAtMs = 0L;
+        if (!aiFriendHelpLaunchFailureNotified) {
+            aiFriendHelpLaunchFailureNotified = true;
+            Toast.makeText(this, "AI朋友 Help 没有成功启动，已回到主菜单。请查看崩溃日志。", Toast.LENGTH_LONG).show();
+        }
+        return OperitHomeIntegration.DisplayState.NOT_RUNNING;
+    }
+
+    private void clearAiFriendHelpLaunchPending() {
+        aiFriendHelpLaunchRequestedAtMs = 0L;
+        aiFriendHelpLaunchFailureNotified = false;
+    }
+
+    private void updateAiFriendHelpControlBlock(
+        TextView statusView,
+        Button openButton,
+        Button closeButton,
+        OperitHomeIntegration.DisplayState displayState
+    ) {
+        if (statusView == null || openButton == null || closeButton == null) {
+            return;
+        }
+        statusView.setText("AI朋友 Help（状态：" + getAiFriendHelpStateLabel(displayState) + "）");
+
+        boolean starting = displayState == OperitHomeIntegration.DisplayState.STARTING;
+        boolean stopping = displayState == OperitHomeIntegration.DisplayState.STOPPING;
+        boolean background = displayState == OperitHomeIntegration.DisplayState.BACKGROUND;
+        openButton.setText(getAiFriendHelpOpenActionLabel(displayState));
+        openButton.setEnabled(!starting && !stopping);
+        closeButton.setText(stopping ? "停止中" : "关闭后台运行");
+        closeButton.setVisibility(background || stopping ? View.VISIBLE : View.GONE);
+        closeButton.setEnabled(background && !stopping);
+    }
+
+    private String getAiFriendHelpStateLabel(OperitHomeIntegration.DisplayState state) {
+        if (state == OperitHomeIntegration.DisplayState.STARTING) {
+            return "启动中";
+        }
+        if (state == OperitHomeIntegration.DisplayState.FOREGROUND) {
+            return "前台运行";
+        }
+        if (state == OperitHomeIntegration.DisplayState.BACKGROUND) {
+            return "后台运行";
+        }
+        if (state == OperitHomeIntegration.DisplayState.STOPPING) {
+            return "停止中";
+        }
+        return "未运行";
+    }
+
+    private String getAiFriendHelpOpenActionLabel(OperitHomeIntegration.DisplayState state) {
+        if (state == OperitHomeIntegration.DisplayState.NOT_RUNNING
+            || state == OperitHomeIntegration.DisplayState.UNAVAILABLE) {
+            return "打开进入";
+        }
+        if (state == OperitHomeIntegration.DisplayState.STARTING) {
+            return "启动中";
+        }
+        if (state == OperitHomeIntegration.DisplayState.STOPPING) {
+            return "停止中";
+        }
+        return "进入";
+    }
+
+    private void requestCloseBackgroundAiFriendHelp() {
+        clearAiFriendHelpLaunchPending();
+        if (!OperitHomeIntegration.isBackground(getApplicationContext())) {
+            refreshAiFriendHelpEntryState();
+            Toast.makeText(this, "AI朋友 Help 当前不是后台运行状态", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        aiFriendHelpShutdownRequestedAtMs = System.currentTimeMillis();
+        if (OperitHomeIntegration.requestShutdown(getApplicationContext())) {
+            Toast.makeText(this, "已请求关闭 AI朋友 Help 后台运行", Toast.LENGTH_SHORT).show();
+        } else {
+            aiFriendHelpShutdownRequestedAtMs = 0L;
+            Toast.makeText(this, "关闭 AI朋友 Help 请求失败", Toast.LENGTH_SHORT).show();
+        }
+        refreshAiFriendHelpEntryState();
+        scheduleAiFriendHelpStateRefresh();
+    }
+
+    private void scheduleAiFriendHelpStateRefresh() {
+        View anchor = aiFriendHelpNavContainer != null ? aiFriendHelpNavContainer : contentView;
+        if (anchor == null) {
+            return;
+        }
+        anchor.postDelayed(this::refreshAiFriendHelpEntryState, 750);
+        anchor.postDelayed(this::refreshAiFriendHelpEntryState, 2_000);
+        anchor.postDelayed(this::refreshAiFriendHelpEntryState,
+            OperitHomeIntegration.SHUTDOWN_PENDING_UI_MS + 250);
+        anchor.postDelayed(this::refreshAiFriendHelpEntryState,
+            OperitHomeIntegration.LAUNCH_PENDING_UI_MS + 250);
+    }
+
+    private void openAiFriendHelp() {
+        if (drawerLayout != null) {
+            drawerLayout.closeDrawer(GravityCompat.START);
+        }
+        aiFriendHelpShutdownRequestedAtMs = 0L;
+        aiFriendHelpLaunchRequestedAtMs = System.currentTimeMillis();
+        aiFriendHelpLaunchFailureNotified = false;
+        refreshAiFriendHelpEntryState();
+        if (OperitHomeIntegration.openAiFriendHelp(this)) {
+            refreshAiFriendHelpEntryState();
+            scheduleAiFriendHelpStateRefresh();
+        } else {
+            aiFriendHelpLaunchRequestedAtMs = 0L;
+            aiFriendHelpLaunchFailureNotified = true;
+            refreshAiFriendHelpEntryState();
+        }
     }
 
     private LinearLayout createPiAgentControlBlock() {

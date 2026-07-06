@@ -30,14 +30,22 @@ Debug APK 可能使用上游公开测试签名，只适合开发和测试，不�
 ## 构建
 
 ```bash
-./gradlew :app:assembleDebug -Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
+./gradlew :app:assembleWithOperitDebug -Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
+./gradlew :app:assembleWithoutOperitDebug -Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
 ```
+
+`withOperit` 包含完整 Android 侧 Operit feature/module 和宿主桥接；`withoutOperit` 不依赖、不暴露 Operit。
 
 ## 安装到 ADB 设备
 
+选择一个 flavor 安装：
+
 ```bash
-adb install -r app/build/outputs/apk/debug/termux-app_apt-android-7-debug_universal.apk
+adb install -r app/build/outputs/apk/withOperit/debug/termux-app_apt-android-7-withOperit-debug_universal.apk
+adb install -r app/build/outputs/apk/withoutOperit/debug/termux-app_apt-android-7-withoutOperit-debug_universal.apk
 ```
+
+两个 APK 的包名都是 `com.termux`，不能共存；它们只能在同一签名且 `versionCode` 单调递增时互相升级或替换。
 
 ## 发布检查
 

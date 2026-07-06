@@ -19,3 +19,11 @@ dependencyResolutionManagement {
 }
 
 include ':app', ':termux-shared', ':terminal-emulator', ':terminal-view'
+include ':operit-feature'
+include ':operit-dragonbones'
+include ':operit-mnn'
+include ':operit-llama'
+include ':operit-mmd'
+include ':operit-fbx'
+include ':operit-quickjs'
+include ':operit-showerclient'

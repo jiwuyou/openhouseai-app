@@ -74,7 +74,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `HERMES_SETUP.md`：Hermes 可选高级安装和 service-manager 注册说明。
 - `PI_AGENT_PLUGIN_SYSTEM.md`：pi、pi-web、插件目录和默认搜索插件。
 - `GITHUB_NETWORK_MIRRORS.md`：GitHub、镜像、代理、备用源和网络检索策略。
-- `OPTIONAL_EXTERNAL_TOOLS.md`：退役外部工具的可选外部安装参考。
+- `OPTIONAL_EXTERNAL_TOOLS.md`：外部工具和可选构建能力的边界参考。
 
 架构设计文档位于仓库级 `docs/` 目录，主要入口是 `docs/ARCHITECTURE.md`、`docs/RUNTIME_LAYERING.md` 和 `docs/PI_AGENT_PLUGIN_SYSTEM.md`。
 
@@ -111,4 +111,6 @@ OpenHouse 的主工作台由用户决定。用户可以选择 Claude Code、Code
 
 pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络；Codex、Claude Code、CloudCLI 和 Hermes 的网络安装放到 pi-agent 后置引导阶段。
 
-Operit、OpenCode、Reasonix 等退役或外部工具不是 APK 默认核心能力。Hermes 不进入 APK 默认核心 payload，但可以作为 pi-agent 默认新手提示词里的可选高级任务出现，必须引用 `/root/openhouse/docs/HERMES_SETUP.md` 并提示耗时较久；旧环境可回退到 `/root/openhouseai-docs/official/HERMES_SETUP.md`。
+Operit 是 Android 侧完整可选构建能力，不是 APK 默认核心运行时。`withOperit` 包含完整 Operit feature/module 和宿主桥接，`withoutOperit` 不依赖、不暴露 Operit；两个 flavor 的包名都保持 `com.termux`，不能共存，只能同签名且 `versionCode` 单调递增时互相升级或替换。Operit 不是 Ubuntu payload，也不替代 OpenHouse/Pi/AionUi。
+
+OpenCode、Reasonix 等外部工具不是 APK 默认核心能力。Hermes 不进入 APK 默认核心 payload，但可以作为 pi-agent 默认新手提示词里的可选高级任务出现，必须引用 `/root/openhouse/docs/HERMES_SETUP.md` 并提示耗时较久；旧环境可回退到 `/root/openhouseai-docs/official/HERMES_SETUP.md`。

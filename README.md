@@ -10,7 +10,7 @@ OpenHouseAI 文档：
 - [架构设计](docs/ARCHITECTURE.md)
 - [运行分层](docs/RUNTIME_LAYERING.md)
 - [pi agent 与插件体系](docs/PI_AGENT_PLUGIN_SYSTEM.md)
-- [Operit 历史移除说明](docs/OPERIT_ROLE.md)
+- [Operit 可选 Android 构建说明](docs/OPERIT_ROLE.md)
 - [APK 内置用户与 AI 文档](app/src/main/assets/openhouse/docs-public/START_HERE.md)
 - [开源说明](docs/OPENHOUSEAI_OPEN_SOURCE.md)
 - [安全说明](SECURITY_OPENHOUSEAI.md)
@@ -24,23 +24,27 @@ OpenHouseAI 文档：
 - pi 作为默认主 agent 和插件体系。
 - pi-web 作为默认主 UI，默认本地入口是 `http://127.0.0.1:30141/`。
 - 默认搜索插件 `multi-platform-search.ts` 通过 pi 插件目录加载。
+- Operit 是 Android 侧可选完整构建能力：`withOperit` flavor 包含完整 Operit feature/module 和宿主桥接，`withoutOperit` flavor 不依赖、不暴露 Operit 入口。
 
 pi 和 pi-web 的安装包随 APK 提供，但它们的 npm 依赖解析和安装可能仍需要访问 npm registry；首次安装不应被描述为完全离线流程。
 
-Operit、OpenCode、Reasonix、Hermes 等退役或外部工具不是 APK 默认核心能力。
+Operit 不属于默认核心运行时，不是 Ubuntu payload，也不替代 OpenHouse/Pi/AionUi。OpenCode、Reasonix、Hermes 等仍按可选外部或后置能力处理。
 
-OpenHouseAI 的文档和安装链路应区分“当前默认核心”和“可选外部工具”，避免把退役能力重新打入 APK。
+`withOperit` 和 `withoutOperit` 的 Android 包名都保持 `com.termux`，不设置 `applicationIdSuffix`。同包名 APK 不能共存，只能在同签名且 `versionCode` 单调递增的前提下互相升级或替换。
+
+OpenHouseAI 的文档和安装链路应区分“当前默认核心”和“可选构建/外部工具”，避免把可选能力误写成首次安装必需项。
 
 ## Quick Build
 
 ```bash
-./gradlew :app:assembleDebug -Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
+./gradlew :app:assembleWithOperitDebug -Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
+./gradlew :app:assembleWithoutOperitDebug -Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
 ```
 
-Debug APK output:
+Debug APK output can be located with:
 
-```text
-app/build/outputs/apk/debug/termux-app_apt-android-7-debug_universal.apk
+```bash
+find app/build/outputs/apk -name 'termux-app_*debug*_universal.apk' -print
 ```
 
 ## Upstream Termux README
