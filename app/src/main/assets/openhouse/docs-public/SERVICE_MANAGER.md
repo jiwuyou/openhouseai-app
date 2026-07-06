@@ -112,9 +112,9 @@ service-manager status pi-web
 curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/status"
 ```
 
-## 注册到桌面、主菜单和侧边栏
+## 注册到桌面、菜单总览 App 和侧边栏
 
-OpenHouseAI 桌面、主菜单和侧边栏读取组件注册目录：
+OpenHouseAI 桌面、菜单总览 App 和侧边栏读取组件注册目录：
 
 ```text
 $HOME/.config/openhouseai/components.d/*.json
@@ -183,7 +183,7 @@ $HOME/.config/openhouseai/components.d/*.json
 - 同时有 `entry` 和 `controlEntry` 时，侧边栏会显示打开按钮和控制按钮。
 - 只有 `controlEntry`、没有 `entry` 时，会显示控制型入口。
 - `favorite: true` 或 `home: true` 会让入口进入更靠前的快捷区域。
-- `desktop.visible: true` 会让入口进入原生桌面页；桌面图标默认只显示图标和名称，状态通过长按面板或打开失败面板查看。
+- `desktop.visible: true` 会让入口进入原生桌面页；桌面图标默认只显示图标和名称，布局、改名和图标 override 由桌面层保存。用户长按进入编辑模式，状态通过 App 详情、打开失败面板或 App 页控制栏查看。
 
 `serviceRefs` 支持：
 
@@ -195,7 +195,7 @@ service-manager://actions/<serviceId>.restart
 service-manager://actions/<serviceId>.repair
 ```
 
-桌面或主菜单在进入或回到页面时会重新读取 `components.d`。如果新入口没有出现，先检查：
+桌面、菜单总览 App 或侧边栏在进入或回到页面时会重新读取 `components.d`。如果新入口没有出现，先检查：
 
 ```bash
 ls -la "$HOME/.config/openhouseai/components.d"

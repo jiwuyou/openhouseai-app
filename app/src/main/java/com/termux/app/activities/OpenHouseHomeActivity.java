@@ -7,6 +7,8 @@ import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -59,6 +61,13 @@ import com.termux.app.openhouse.desktop.DesktopAppDescriptor;
 import com.termux.app.openhouse.desktop.DesktopAppLaunchIntent;
 import com.termux.app.openhouse.desktop.DesktopAppLauncher;
 import com.termux.app.openhouse.desktop.DesktopAppStatusSheetModel;
+import com.termux.app.openhouse.desktop.DesktopIconOverride;
+import com.termux.app.openhouse.desktop.DesktopLaunchTarget;
+import com.termux.app.openhouse.desktop.DesktopLayoutEntry;
+import com.termux.app.openhouse.desktop.DesktopLayoutState;
+import com.termux.app.openhouse.desktop.DesktopLayoutStore;
+import com.termux.app.openhouse.desktop.ui.DesktopUiEntry;
+import com.termux.app.openhouse.desktop.ui.OpenHouseDesktopView;
 import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
 import com.termux.app.operit.OperitHomeIntegration;
 import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
@@ -71,6 +80,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.lang.reflect.Constructor;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -89,6 +99,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PREF_HOME_PAGE = "home_page";
     private static final String PREF_START_PAGE_MODE = "start_page_mode";
     private static final String PREF_LAST_PAGE = "last_page";
+    private static final String PREF_TOP_ACTION_BAR_COLLAPSED = "top_action_bar_collapsed";
     private static final String PREF_AI_RESCUE_PORT = "ai_rescue_port";
     private static final int MIN_AI_RESCUE_PORT = 1024;
     private static final int MAX_AI_RESCUE_PORT = 65535;
@@ -147,6 +158,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private LinearLayout contentView;
     private LinearLayout dynamicQuickNavView;
     private LinearLayout dynamicNavView;
+    private FrameLayout pageHostView;
+    private View topActionBarView;
+    private TextView topActionBarBubbleView;
     private TextView homeStatusView;
     private Button setCurrentHomeButton;
     private Button copyCurrentButton;
@@ -162,11 +176,15 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private TextView aiFriendHelpHomeStatusView;
     private Button aiFriendHelpHomeOpenButton;
     private Button aiFriendHelpHomeCloseButton;
-    private String currentPage = PAGE_HOME;
+    private String currentPage = PAGE_DESKTOP;
     private List<OpenHouseComponent> dynamicComponents = Collections.emptyList();
     private List<OpenHouseComponent> desktopComponents = Collections.emptyList();
     private OpenHouseComponentRegistry.LoadResult dynamicRegistryResult;
     private DesktopAppLauncher desktopAppLauncher;
+    private DesktopLayoutStore desktopLayoutStore;
+    private DesktopLayoutState desktopLayoutState;
+    private OpenHouseDesktopView desktopView;
+    private boolean bindingDesktopView;
     private final String cloudCliUrl = ClaudeCodeUiSettings.getLoopbackUrl();
     private SmallPhoneHostController smallPhoneController;
     private View smallPhoneView;
@@ -224,6 +242,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         contentView = findViewById(R.id.openhouseContent);
         dynamicQuickNavView = findViewById(R.id.openhouseDynamicQuickNav);
         dynamicNavView = findViewById(R.id.openhouseDynamicNav);
+        pageHostView = findViewById(R.id.openhousePageHost);
         homeStatusView = findViewById(R.id.openhouseHomeStatus);
         setCurrentHomeButton = findViewById(R.id.buttonSetCurrentHome);
         copyCurrentButton = findViewById(R.id.buttonCopyCurrent);
@@ -233,8 +252,14 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         pageTitleView = findViewById(R.id.openhousePageTitle);
         pageSubtitleView = findViewById(R.id.openhousePageSubtitle);
         desktopAppLauncher = new DesktopAppLauncher(this);
+        desktopLayoutStore = new DesktopLayoutStore(this);
 
-        findViewById(R.id.buttonOpenDrawer).setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
+        View openDrawerButton = findViewById(R.id.buttonOpenDrawer);
+        topActionBarView = openDrawerButton == null ? null : (View) openDrawerButton.getParent();
+        initTopActionChrome();
+        if (openDrawerButton != null) {
+            openDrawerButton.setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
+        }
         findViewById(R.id.buttonCloseDrawer).setOnClickListener(v -> drawerLayout.closeDrawer(GravityCompat.START));
         if (copyCurrentButton != null) {
             copyCurrentButton.setOnClickListener(v -> copyCurrentTarget());
@@ -446,6 +471,86 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             setCurrentHomeButton.setOnClickListener(v -> setCurrentPageAsHome());
         }
         updateHomePreferenceViews();
+    }
+
+    private void initTopActionChrome() {
+        createTopActionBarBubble();
+        View.OnLongClickListener collapseListener = v -> {
+            setTopActionBarCollapsed(true);
+            return true;
+        };
+        if (topActionBarView != null) {
+            topActionBarView.setOnLongClickListener(collapseListener);
+        }
+        int[] actionButtonIds = new int[] {
+            R.id.buttonOpenDrawer,
+            R.id.buttonCopyCurrent,
+            R.id.buttonOpenCurrentBrowser,
+            R.id.buttonOpenCurrentControl,
+            R.id.buttonRefreshCurrent
+        };
+        for (int id : actionButtonIds) {
+            View button = findViewById(id);
+            if (button != null) {
+                button.setOnLongClickListener(collapseListener);
+            }
+        }
+        updateTopActionChrome();
+    }
+
+    private void createTopActionBarBubble() {
+        if (pageHostView == null || topActionBarBubbleView != null) {
+            return;
+        }
+        topActionBarBubbleView = new TextView(this);
+        topActionBarBubbleView.setContentDescription("展开顶部控制栏");
+        topActionBarBubbleView.setGravity(Gravity.CENTER);
+        topActionBarBubbleView.setText("");
+        topActionBarBubbleView.setClickable(true);
+        topActionBarBubbleView.setFocusable(true);
+        topActionBarBubbleView.setElevation(dp(8));
+
+        GradientDrawable background = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[] { Color.WHITE, Color.DKGRAY, Color.BLACK });
+        background.setShape(GradientDrawable.OVAL);
+        background.setStroke(dp(1), 0x66FFFFFF);
+        topActionBarBubbleView.setBackground(background);
+        topActionBarBubbleView.setOnClickListener(v -> setTopActionBarCollapsed(false));
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(52), dp(52));
+        params.gravity = Gravity.BOTTOM | Gravity.END;
+        params.setMargins(0, 0, dp(18), dp(18));
+        pageHostView.addView(topActionBarBubbleView, params);
+        topActionBarBubbleView.setVisibility(View.GONE);
+    }
+
+    private void setTopActionBarCollapsed(boolean collapsed) {
+        if (PAGE_DESKTOP.equals(currentPage)) {
+            collapsed = false;
+        }
+        getOpenHouseHomePrefs().edit()
+            .putBoolean(PREF_TOP_ACTION_BAR_COLLAPSED, collapsed)
+            .apply();
+        updateTopActionChrome();
+        if (collapsed) {
+            Toast.makeText(this, "顶部控制栏已收起，点击悬浮球可展开。", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private boolean isTopActionBarCollapsed() {
+        return getOpenHouseHomePrefs().getBoolean(PREF_TOP_ACTION_BAR_COLLAPSED, false);
+    }
+
+    private void updateTopActionChrome() {
+        boolean isDesktop = PAGE_DESKTOP.equals(currentPage);
+        boolean collapsed = !isDesktop && isTopActionBarCollapsed();
+        if (topActionBarView != null) {
+            topActionBarView.setVisibility(!isDesktop && !collapsed ? View.VISIBLE : View.GONE);
+        }
+        if (topActionBarBubbleView != null) {
+            topActionBarBubbleView.setVisibility(!isDesktop && collapsed ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void addAiFriendHelpDrawerEntry() {
@@ -703,14 +808,19 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void selectPage(String page) {
-        if (!page.equals(currentPage)) {
+        String targetPage = isBlank(page) ? PAGE_DESKTOP : page;
+        if (!targetPage.equals(currentPage)) {
             pauseCurrentEmbeddedPage();
+            releaseEmbeddedPagesExcept(targetPage);
         }
-        currentPage = page;
-        rememberLastOpenHousePage(page);
-        drawerLayout.closeDrawer(GravityCompat.START);
+        currentPage = targetPage;
+        rememberLastOpenHousePage(targetPage);
+        if (drawerLayout != null) {
+            drawerLayout.closeDrawer(GravityCompat.START);
+        }
         renderPage();
         updateHomePreferenceViews();
+        updateTopActionChrome();
     }
 
     private void renderPage() {
@@ -725,7 +835,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 renderDynamicWebViewPage(component);
                 return;
             }
-            currentPage = PAGE_HOME;
+            releaseEmbeddedPagesExcept(PAGE_DESKTOP);
+            currentPage = PAGE_DESKTOP;
         }
 
         switch (currentPage) {
@@ -750,6 +861,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 renderControlledBrowserPage();
                 break;
             case PAGE_DESKTOP:
+                releaseEmbeddedPagesExcept(PAGE_DESKTOP);
                 showScrollContent();
                 setHeader("桌面", "OpenHouse apps");
                 renderDesktopPage();
@@ -832,6 +944,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (refreshCurrentButton != null) {
             refreshCurrentButton.setEnabled(true);
         }
+        updateTopActionChrome();
     }
 
     private void copyCurrentTarget() {
@@ -1186,6 +1299,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 if (!piWebLoadFailed) {
                     setPiWebFallbackVisible(false);
                     setPiWebStatus(getPiWebTitle() + " 已连接：" + url);
+                    clearPendingDesktopOpenForNativePage(PAGE_PI_WEB);
                 }
             }
 
@@ -1227,6 +1341,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         piWebLoadFailed = true;
         setPiWebStatus(getPiWebTitle() + " 未连接：" + getPiWebUrl());
         setPiWebFallbackVisible(true);
+        notifyDesktopOpenFailedForNativePage(PAGE_PI_WEB, findPiWebComponent(),
+            getPiWebTitle() + " 没有响应，可以重启服务或进入服务控制查看状态。");
     }
 
     private void setPiWebFallbackVisible(boolean visible) {
@@ -1404,6 +1520,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 if (!aiRescueLoadFailed) {
                     setAiRescueFallbackVisible(false);
                     setAiRescueStatus("AI救援已连接：" + url);
+                    clearPendingDesktopOpenForNativePage(PAGE_AI_RESCUE);
                 }
             }
 
@@ -1440,6 +1557,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         aiRescueLoadFailed = true;
         setAiRescueStatus("AI救援未连接：" + getAiRescueUrl());
         setAiRescueFallbackVisible(true);
+        notifyDesktopOpenFailedForNativePage(PAGE_AI_RESCUE, findDesktopComponentForNativePage(PAGE_AI_RESCUE),
+            "AI救援没有响应，可以启动救援或进入维护中心查看状态。");
     }
 
     private void setAiRescueFallbackVisible(boolean visible) {
@@ -1691,6 +1810,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 if (!cloudCliLoadFailed) {
                     setCloudCliFallbackVisible(false);
                     setCloudCliStatus(getCcCodexTitle() + " 已连接：" + getCcCodexUrl());
+                    clearPendingDesktopOpenForNativePage(PAGE_AI);
                 }
             }
 
@@ -1739,6 +1859,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         cloudCliLoadFailed = true;
         setCloudCliStatus(getCcCodexTitle() + " 未连接：" + getCcCodexUrl());
         setCloudCliFallbackVisible(true);
+        notifyDesktopOpenFailedForNativePage(PAGE_AI, findCcCodexComponent(),
+            getCcCodexTitle() + " 没有响应，可以重启服务或进入服务控制查看状态。");
     }
 
     private void setCloudCliFallbackVisible(boolean visible) {
@@ -1985,6 +2107,116 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         } else if (isComponentPage(currentPage) && dynamicWebView != null) {
             dynamicWebView.onPause();
         }
+    }
+
+    private void releaseEmbeddedPagesExcept(String targetPage) {
+        if (!shouldKeepPiWebPage(targetPage)) {
+            releasePiWebPage();
+        }
+        if (!PAGE_AI_RESCUE.equals(targetPage)) {
+            releaseAiRescuePage();
+        }
+        if (!PAGE_AI.equals(targetPage)) {
+            releaseCloudCliPage();
+        }
+        if (!shouldKeepControlledBrowserView(targetPage)) {
+            releaseControlledBrowserView();
+        }
+        if (!shouldKeepDynamicWebPage(targetPage)) {
+            releaseDynamicWebPage();
+        }
+    }
+
+    private boolean shouldKeepPiWebPage(String targetPage) {
+        return PAGE_PI_WEB.equals(targetPage);
+    }
+
+    private boolean shouldKeepControlledBrowserView(String targetPage) {
+        if (!PAGE_CONTROLLED_BROWSER.equals(targetPage)) {
+            return false;
+        }
+        OpenHouseComponent component = findControlledBrowserComponent();
+        return component == null || component.entryType != OpenHouseComponent.EntryType.WEBVIEW;
+    }
+
+    private boolean shouldKeepDynamicWebPage(String targetPage) {
+        if (isComponentPage(targetPage)) {
+            return true;
+        }
+        OpenHouseComponent component = null;
+        if (PAGE_SMALLPHONE.equals(targetPage)) {
+            component = findSmallPhoneComponent();
+        } else if (PAGE_CONTROLLED_BROWSER.equals(targetPage)) {
+            component = findControlledBrowserComponent();
+        }
+        return component != null
+            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+            && !isBlank(component.url);
+    }
+
+    private void releasePiWebPage() {
+        if (piWebView != null) {
+            piWebView.onPause();
+            piWebView.destroy();
+            piWebView = null;
+        }
+        piWebPageView = null;
+        piWebFallbackView = null;
+        piWebStatusView = null;
+        renderedPiWebUrl = null;
+        piWebLoadFailed = false;
+    }
+
+    private void releaseAiRescuePage() {
+        if (aiRescueWebView != null) {
+            aiRescueWebView.onPause();
+            aiRescueWebView.destroy();
+            aiRescueWebView = null;
+        }
+        aiRescuePageView = null;
+        aiRescueFallbackView = null;
+        aiRescueStatusView = null;
+        aiRescuePortInput = null;
+        renderedAiRescueUrl = null;
+        aiRescueLoadFailed = false;
+    }
+
+    private void releaseCloudCliPage() {
+        if (cloudCliWebView != null) {
+            cloudCliWebView.onPause();
+            cloudCliWebView.destroy();
+            cloudCliWebView = null;
+        }
+        cloudCliPageView = null;
+        cloudCliControlPanel = null;
+        cloudCliFallbackView = null;
+        cloudCliStatusView = null;
+        renderedCloudCliUrl = null;
+        cloudCliLoadFailed = false;
+    }
+
+    private void releaseControlledBrowserView() {
+        if (controlledBrowserView == null) {
+            return;
+        }
+        controlledBrowserView.setExternalNavigationHandler(null);
+        if (controlledBrowserView.getParent() instanceof ViewGroup) {
+            ((ViewGroup) controlledBrowserView.getParent()).removeView(controlledBrowserView);
+        }
+        controlledBrowserView = null;
+    }
+
+    private void releaseDynamicWebPage() {
+        if (dynamicWebView != null) {
+            dynamicWebView.onPause();
+            dynamicWebView.destroy();
+            dynamicWebView = null;
+        }
+        dynamicWebPageView = null;
+        dynamicWebFallbackView = null;
+        dynamicWebStatusView = null;
+        dynamicWebComponent = null;
+        dynamicWebLoadFailed = false;
     }
 
     private void openComponent(OpenHouseComponent component) {
@@ -2876,7 +3108,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void selectConfiguredHomePage() {
-        selectPage(getLaunchPage());
+        DesktopLaunchTarget target = getConfiguredDesktopLaunchTarget();
+        if (!openDesktopLaunchTarget(target)) {
+            selectPage(PAGE_DESKTOP);
+        }
     }
 
     private String getBackTargetPage() {
@@ -2922,6 +3157,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         getOpenHouseHomePrefs().edit()
             .putString(PREF_START_PAGE_MODE, normalizedMode)
             .apply();
+        if (START_MODE_HOME.equals(normalizedMode)) {
+            getDesktopLayoutStore().setDefaultTarget(getDesktopAppsForDisplay(), DesktopLaunchTarget.page(PAGE_HOME));
+        } else if (START_MODE_LAST.equals(normalizedMode)) {
+            getDesktopLayoutStore().setDefaultLastExited();
+        } else if (START_MODE_DESKTOP.equals(normalizedMode)) {
+            getDesktopLayoutStore().setDefaultDesktop();
+        }
         updateHomePreferenceViews();
         if (PAGE_ADVANCED.equals(currentPage) || PAGE_DESKTOP.equals(currentPage)) {
             renderPage();
@@ -2932,6 +3174,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void rememberLastOpenHousePage(String page) {
         if (isLaunchCandidate(page)) {
             getOpenHouseHomePrefs().edit().putString(PREF_LAST_PAGE, page).apply();
+            getDesktopLayoutStore().recordLastExitedTarget(pageToDesktopLaunchTarget(page));
         }
     }
 
@@ -2945,7 +3188,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (isLaunchCandidate(configured)) {
             return configured;
         }
-        return firstVisibleHomePage();
+        return PAGE_DESKTOP;
     }
 
     private String firstVisibleHomePage() {
@@ -3001,6 +3244,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             setStartPageMode(START_MODE_HOME);
             return;
         }
+        DesktopLaunchTarget target = pageToDesktopLaunchTarget(page);
+        getDesktopLayoutStore().setDefaultTarget(getDesktopAppsForDisplay(), target);
         getOpenHouseHomePrefs().edit()
             .putString(PREF_START_PAGE_MODE, START_MODE_PAGE)
             .putString(PREF_HOME_PAGE, page)
@@ -3008,6 +3253,95 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         updateHomePreferenceViews();
         String message = "默认打开已设为：" + getHomeDisplayTitle(page);
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    private void setLaunchAppAsDefault(String appId) {
+        DesktopLaunchTarget target = getDesktopLayoutStore().setDefaultApp(getDesktopAppsForDisplay(), appId);
+        String page = launchTargetToPage(target);
+        SharedPreferences.Editor editor = getOpenHouseHomePrefs().edit()
+            .putString(PREF_START_PAGE_MODE, START_MODE_PAGE);
+        if (!isBlank(page)) {
+            editor.putString(PREF_HOME_PAGE, page);
+        } else {
+            editor.putString(PREF_HOME_PAGE, PAGE_DESKTOP);
+        }
+        editor.apply();
+        updateHomePreferenceViews();
+    }
+
+    private DesktopLaunchTarget getConfiguredDesktopLaunchTarget() {
+        DesktopLayoutState state = getDesktopLayoutStore().load(getDesktopAppsForDisplay());
+        if (state != null && state.defaultTarget != null && !state.defaultTarget.isDesktop()) {
+            return state.resolvedDefaultTarget;
+        }
+        String legacyMode = getStartPageMode();
+        if (!START_MODE_DESKTOP.equals(legacyMode)) {
+            return pageToDesktopLaunchTarget(getLaunchPage());
+        }
+        return state == null ? DesktopLaunchTarget.desktop() : state.resolvedDefaultTarget;
+    }
+
+    private boolean openDesktopLaunchTarget(DesktopLaunchTarget target) {
+        DesktopLaunchTarget cleanTarget = target == null ? DesktopLaunchTarget.desktop() : target;
+        if (cleanTarget.isDesktop()) {
+            selectPage(PAGE_DESKTOP);
+            return true;
+        }
+        if (cleanTarget.isApp()) {
+            DesktopLayoutEntry entry = findDesktopLayoutEntry(cleanTarget.value);
+            if (entry != null && entry.component != null) {
+                openDesktopApp(entry.component);
+                return true;
+            }
+            return false;
+        }
+        if (cleanTarget.isPage()) {
+            String page = resolveNativePage(cleanTarget.value);
+            if (isLaunchCandidate(page)) {
+                selectPage(page);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private DesktopLaunchTarget pageToDesktopLaunchTarget(String page) {
+        if (PAGE_DESKTOP.equals(page)) {
+            return DesktopLaunchTarget.desktop();
+        }
+        if (isComponentPage(page)) {
+            return DesktopLaunchTarget.app(extractComponentId(page));
+        }
+        OpenHouseComponent component = findDesktopComponentForNativePage(page);
+        if (component != null && !isBlank(component.id)) {
+            return DesktopLaunchTarget.app(component.id);
+        }
+        return DesktopLaunchTarget.page(page);
+    }
+
+    private String launchTargetToPage(DesktopLaunchTarget target) {
+        if (target == null || target.isDesktop()) {
+            return PAGE_DESKTOP;
+        }
+        if (target.isPage()) {
+            String page = resolveNativePage(target.value);
+            return isLaunchCandidate(page) ? page : PAGE_DESKTOP;
+        }
+        if (target.isApp()) {
+            DesktopLayoutEntry entry = findDesktopLayoutEntry(target.value);
+            if (entry == null || entry.component == null) {
+                return PAGE_DESKTOP;
+            }
+            OpenHouseComponent component = entry.component;
+            if (component.entryType == OpenHouseComponent.EntryType.NATIVE_PAGE) {
+                String page = resolveNativePage(component.nativePage);
+                return isLaunchCandidate(page) ? page : PAGE_DESKTOP;
+            }
+            if (component.entryType == OpenHouseComponent.EntryType.WEBVIEW) {
+                return PAGE_COMPONENT_PREFIX + component.id;
+            }
+        }
+        return PAGE_DESKTOP;
     }
 
     private File getMenuOverridesFile() {
@@ -3193,7 +3527,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void updateHomePreferenceViews() {
-        String launchPage = getLaunchPage();
+        String launchPage = launchTargetToPage(getConfiguredDesktopLaunchTarget());
         if (homeStatusView != null) {
             homeStatusView.setText("默认打开：" + getLaunchModeDisplayTitle());
         }
@@ -3236,15 +3570,31 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String getLaunchModeDisplayTitle() {
-        String mode = getStartPageMode();
-        if (START_MODE_HOME.equals(mode)) {
-            return getHomeDisplayTitle(PAGE_HOME);
+        DesktopLayoutState state = getDesktopLayoutStore().load(getDesktopAppsForDisplay());
+        DesktopLaunchTarget target = state == null ? DesktopLaunchTarget.desktop() : state.defaultTarget;
+        DesktopLaunchTarget resolved = state == null ? DesktopLaunchTarget.desktop() : state.resolvedDefaultTarget;
+        if (target != null && target.isLastExited()) {
+            return "上次退出页（当前：" + getLaunchTargetDisplayTitle(resolved) + "）";
         }
-        if (START_MODE_LAST.equals(mode)) {
-            return "上次退出页（当前：" + getHomeDisplayTitle(getLaunchPage()) + "）";
+        if (target != null && !target.isDesktop()) {
+            return getLaunchTargetDisplayTitle(resolved);
         }
-        if (START_MODE_PAGE.equals(mode)) {
-            return getHomeDisplayTitle(getLaunchPage());
+        return "桌面";
+    }
+
+    private String getLaunchTargetDisplayTitle(DesktopLaunchTarget target) {
+        if (target == null || target.isDesktop()) {
+            return "桌面";
+        }
+        if (target.isApp()) {
+            DesktopLayoutEntry entry = findDesktopLayoutEntry(target.value);
+            if (entry != null && !isBlank(entry.title)) {
+                return entry.title;
+            }
+            return "桌面";
+        }
+        if (target.isPage()) {
+            return getHomeDisplayTitle(resolveNativePage(target.value));
         }
         return "桌面";
     }
@@ -3271,48 +3621,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void renderDesktopPage() {
-        LinearLayout grid = new LinearLayout(this);
-        grid.setOrientation(LinearLayout.VERTICAL);
-        grid.setPadding(0, dp(4), 0, dp(4));
-
         List<OpenHouseComponent> apps = getDesktopAppsForDisplay();
-        int column = 0;
-        LinearLayout row = null;
-        for (OpenHouseComponent app : apps) {
-            if (column == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-                rowParams.setMargins(0, 0, 0, dp(10));
-                grid.addView(row, rowParams);
-            }
-            addDesktopAppTile(row, app);
-            column = (column + 1) % 3;
-        }
-        if (OperitHomeIntegration.isAvailable()) {
-            if (column == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-                rowParams.setMargins(0, 0, 0, dp(10));
-                grid.addView(row, rowParams);
-            }
-            addOperitDesktopTile(row);
-            column = (column + 1) % 3;
-        }
-        if (row != null && column != 0) {
-            while (column < 3) {
-                View spacer = new View(this);
-                row.addView(spacer, new LinearLayout.LayoutParams(0, dp(104), 1));
-                column++;
-            }
-        }
-
-        if (grid.getChildCount() == 0) {
+        desktopLayoutState = getDesktopLayoutStore().merge(apps);
+        List<DesktopUiEntry> entries = toDesktopUiEntries(desktopLayoutState);
+        if (entries.isEmpty()) {
             LinearLayout empty = panel();
             addTitle(empty, "桌面", 19);
             addBody(empty, "没有可显示的桌面应用。可以从菜单进入" + getHomeDisplayTitle(PAGE_HOME) + "或高级设置检查组件注册。");
@@ -3320,7 +3632,42 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             contentView.addView(empty);
             return;
         }
-        contentView.addView(grid);
+
+        desktopView = new OpenHouseDesktopView(this);
+        desktopView.setGridSize(3, 4);
+        desktopView.setCallbacks(new OpenHouseDesktopView.Callbacks() {
+            @Override
+            public void onOpen(DesktopUiEntry entry) {
+                openDesktopUiEntry(entry);
+            }
+
+            @Override
+            public void onEdit(DesktopUiEntry entry) {
+                enterDesktopEditMode();
+                showDesktopEditDialog(entry);
+            }
+
+            @Override
+            public void onReorder(List<DesktopUiEntry> orderedEntries, DesktopUiEntry movedEntry, int fromPosition, int toPosition) {
+                persistDesktopReorder(orderedEntries);
+            }
+
+            @Override
+            public void onPageChanged(int pageIndex, int pageCount) {
+                if (!bindingDesktopView) {
+                    desktopLayoutState = getDesktopLayoutStore().saveCurrentPage(getDesktopAppsForDisplay(), pageIndex);
+                }
+            }
+
+            @Override
+            public void onBlankLongPress() {
+                enterDesktopEditMode();
+            }
+        });
+        bindDesktopView(entries, desktopLayoutState.currentPage);
+        contentView.addView(desktopView, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
     }
 
     private List<OpenHouseComponent> getDesktopAppsForDisplay() {
@@ -3333,7 +3680,182 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             }
             out.add(app);
         }
+        addOperitDesktopComponentIfAvailable(out);
         return out;
+    }
+
+    private DesktopLayoutStore getDesktopLayoutStore() {
+        if (desktopLayoutStore == null) {
+            desktopLayoutStore = new DesktopLayoutStore(this);
+        }
+        return desktopLayoutStore;
+    }
+
+    private List<DesktopUiEntry> toDesktopUiEntries(DesktopLayoutState state) {
+        if (state == null || state.entries == null || state.entries.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<DesktopUiEntry> entries = new ArrayList<>();
+        for (DesktopLayoutEntry entry : state.entries) {
+            if (entry == null) {
+                continue;
+            }
+            entries.add(DesktopUiEntry.builder()
+                .id(entry.id)
+                .title(entry.title)
+                .subtitle(entry.subtitle)
+                .iconLabel(entry.iconLabel)
+                .iconKey(entry.iconKey)
+                .order(entry.orderIndex)
+                .enabled(entry.component != null && (entry.component.hasEntry() || OPERIT_DESKTOP_APP_ID.equals(entry.id)))
+                .build());
+        }
+        return entries;
+    }
+
+    private void bindDesktopView(List<DesktopUiEntry> entries, int currentPage) {
+        if (desktopView == null) {
+            return;
+        }
+        bindingDesktopView = true;
+        try {
+            desktopView.setEntries(entries);
+            desktopView.setCurrentPage(currentPage, false);
+        } finally {
+            bindingDesktopView = false;
+        }
+    }
+
+    private void refreshDesktopViewFromState(DesktopLayoutState state) {
+        desktopLayoutState = state == null
+            ? getDesktopLayoutStore().load(getDesktopAppsForDisplay())
+            : state;
+        bindDesktopView(toDesktopUiEntries(desktopLayoutState), desktopLayoutState.currentPage);
+        updateHomePreferenceViews();
+    }
+
+    private void enterDesktopEditMode() {
+        if (desktopView != null && !desktopView.isEditMode()) {
+            desktopView.setEditMode(true);
+            Toast.makeText(this, "桌面编辑模式：点击图标可改名、改图标或隐藏。", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openDesktopUiEntry(DesktopUiEntry entry) {
+        DesktopLayoutEntry layoutEntry = findDesktopLayoutEntry(entry == null ? null : entry.id);
+        if (layoutEntry == null || layoutEntry.component == null) {
+            Toast.makeText(this, "应用不存在或已被移除。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        openDesktopApp(layoutEntry.component);
+    }
+
+    private void persistDesktopReorder(List<DesktopUiEntry> orderedEntries) {
+        List<String> orderedIds = new ArrayList<>();
+        if (orderedEntries != null) {
+            for (DesktopUiEntry entry : orderedEntries) {
+                if (entry != null && !isBlank(entry.id)) {
+                    orderedIds.add(entry.id);
+                }
+            }
+        }
+        DesktopLayoutState state = getDesktopLayoutStore().reorder(getDesktopAppsForDisplay(), orderedIds);
+        refreshDesktopViewFromState(state);
+    }
+
+    private DesktopLayoutEntry findDesktopLayoutEntry(String appId) {
+        String id = normalizeId(appId);
+        if (id.isEmpty()) {
+            return null;
+        }
+        DesktopLayoutState state = desktopLayoutState == null
+            ? getDesktopLayoutStore().load(getDesktopAppsForDisplay())
+            : desktopLayoutState;
+        DesktopLayoutEntry entry = state.find(id);
+        if (entry != null) {
+            return entry;
+        }
+        return getDesktopLayoutStore().load(getDesktopAppsForDisplay()).find(id);
+    }
+
+    private void addOperitDesktopComponentIfAvailable(List<OpenHouseComponent> out) {
+        if (!OperitHomeIntegration.isAvailable() || out == null || hasDesktopComponent(out, OPERIT_DESKTOP_APP_ID)) {
+            return;
+        }
+        OpenHouseComponent component = createOperitDesktopComponent();
+        if (component != null) {
+            out.add(component);
+        }
+    }
+
+    private boolean hasDesktopComponent(List<OpenHouseComponent> components, String id) {
+        String normalized = normalizeId(id);
+        if (components == null || normalized.isEmpty()) {
+            return false;
+        }
+        for (OpenHouseComponent component : components) {
+            if (component != null && normalized.equals(normalizeId(component.id))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private OpenHouseComponent createOperitDesktopComponent() {
+        try {
+            Constructor<OpenHouseComponent> constructor = OpenHouseComponent.class.getDeclaredConstructor(
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                int.class,
+                String.class,
+                String.class,
+                int.class,
+                boolean.class,
+                boolean.class,
+                boolean.class,
+                OpenHouseComponent.EntryType.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                boolean.class,
+                boolean.class,
+                boolean.class,
+                boolean.class,
+                String.class,
+                List.class,
+                List.class);
+            constructor.setAccessible(true);
+            return constructor.newInstance(
+                OPERIT_DESKTOP_APP_ID,
+                "AI朋友 Help",
+                "Operit",
+                "AI",
+                45,
+                "operit",
+                "AI",
+                45,
+                false,
+                true,
+                true,
+                OpenHouseComponent.EntryType.ANDROID_ACTIVITY,
+                "",
+                "",
+                "",
+                "控制",
+                false,
+                true,
+                false,
+                true,
+                "withOperit",
+                Collections.emptyList(),
+                Collections.emptyList());
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Unable to create Operit desktop component", e);
+            return null;
+        }
     }
 
     private List<OpenHouseComponent> getDesktopComponentSource() {
@@ -3358,7 +3880,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private OpenHouseComponent findDesktopComponentById(String id) {
         String normalized = normalizeId(id);
-        for (OpenHouseComponent component : getDesktopComponentSource()) {
+        for (OpenHouseComponent component : getDesktopAppsForDisplay()) {
             if (component != null && normalized.equals(normalizeId(component.id))) {
                 return component;
             }
@@ -3379,81 +3901,133 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         return null;
     }
 
-    private void addDesktopAppTile(LinearLayout row, OpenHouseComponent app) {
-        if (row == null || app == null) {
+    private void showDesktopEditDialog(DesktopUiEntry uiEntry) {
+        DesktopLayoutEntry entry = findDesktopLayoutEntry(uiEntry == null ? null : uiEntry.id);
+        if (entry == null || entry.component == null) {
+            Toast.makeText(this, "应用不存在或已被移除。", Toast.LENGTH_SHORT).show();
             return;
         }
-        LinearLayout tile = createDesktopTile(
-            firstNonBlank(app.iconLabel, app.title),
-            app.title,
-            app.subtitle);
-        tile.setOnClickListener(v -> openDesktopApp(app));
-        tile.setOnLongClickListener(v -> {
-            showDesktopStatusSheet(app, "");
-            return true;
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(12), dp(18), dp(4));
+        addTitle(panel, "编辑桌面 App", 19);
+        addStatusRow(panel, "应用", entry.originalTitle);
+
+        TextView titleLabel = desktopEditLabel("显示名称");
+        panel.addView(titleLabel, desktopEditLabelParams());
+        EditText titleInput = desktopEditInput(entry.hasTitleOverride() ? entry.title : "", entry.originalTitle);
+        panel.addView(titleInput, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(48)));
+
+        TextView iconLabel = desktopEditLabel("图标标签");
+        panel.addView(iconLabel, desktopEditLabelParams());
+        EditText iconLabelInput = desktopEditInput(entry.hasIconOverride() ? entry.iconLabel : "", entry.iconLabel);
+        panel.addView(iconLabelInput, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(48)));
+
+        TextView iconKeyLabel = desktopEditLabel("图标 key");
+        panel.addView(iconKeyLabel, desktopEditLabelParams());
+        EditText iconKeyInput = desktopEditInput(entry.hasIconOverride() ? entry.iconKey : "", entry.iconKey);
+        panel.addView(iconKeyInput, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(48)));
+
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        addButtonRow(panel,
+            compactButton("设为默认入口", v -> {
+                setLaunchAppAsDefault(entry.id);
+                Toast.makeText(this, "默认打开已设为：" + entry.title, Toast.LENGTH_SHORT).show();
+            }, true),
+            compactButton("查看状态", v -> {
+                dismissDialog(dialogHolder);
+                if (OPERIT_DESKTOP_APP_ID.equals(entry.id)) {
+                    showOperitStatusSheet("");
+                } else {
+                    showDesktopStatusSheet(entry.component, "");
+                }
+            }, true));
+        addButtonRow(panel,
+            compactButton("隐藏", v -> {
+                DesktopLayoutState state = getDesktopLayoutStore().hide(getDesktopAppsForDisplay(), entry.id, true);
+                refreshDesktopViewFromState(state);
+                dismissDialog(dialogHolder);
+                Toast.makeText(this, "已从桌面隐藏：" + entry.title, Toast.LENGTH_SHORT).show();
+            }, true),
+            compactButton("重置", v -> {
+                DesktopLayoutState state = getDesktopLayoutStore().resetApp(getDesktopAppsForDisplay(), entry.id);
+                refreshDesktopViewFromState(state);
+                dismissDialog(dialogHolder);
+                Toast.makeText(this, "已重置：" + entry.originalTitle, Toast.LENGTH_SHORT).show();
+            }, true));
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.addView(panel);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setPositiveButton("保存", null)
+            .setNegativeButton("取消", null)
+            .create();
+        dialogHolder[0] = dialog;
+        dialog.setOnShowListener(d -> {
+            Button saveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (saveButton != null) {
+                saveButton.setOnClickListener(v -> {
+                    String title = titleInput.getText() == null ? "" : titleInput.getText().toString();
+                    String icon = iconLabelInput.getText() == null ? "" : iconLabelInput.getText().toString();
+                    String iconKey = iconKeyInput.getText() == null ? "" : iconKeyInput.getText().toString();
+                    DesktopLayoutState state = getDesktopLayoutStore().updateTitleOverride(
+                        getDesktopAppsForDisplay(),
+                        entry.id,
+                        title);
+                    state = getDesktopLayoutStore().updateIconOverride(
+                        getDesktopAppsForDisplay(),
+                        entry.id,
+                        DesktopIconOverride.of(iconKey, icon, ""));
+                    refreshDesktopViewFromState(state);
+                    dialog.dismiss();
+                });
+            }
         });
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(112), 1);
-        params.setMargins(dp(4), 0, dp(4), 0);
-        row.addView(tile, params);
+        dialog.show();
     }
 
-    private void addOperitDesktopTile(LinearLayout row) {
-        if (row == null) {
-            return;
-        }
-        LinearLayout tile = createDesktopTile("AI", "AI朋友 Help", "Operit");
-        tile.setTag(OPERIT_DESKTOP_APP_ID);
-        tile.setOnClickListener(v -> openAiFriendHelp());
-        tile.setOnLongClickListener(v -> {
-            showOperitStatusSheet("");
-            return true;
-        });
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(112), 1);
-        params.setMargins(dp(4), 0, dp(4), 0);
-        row.addView(tile, params);
+    private TextView desktopEditLabel(String text) {
+        TextView label = new TextView(this);
+        label.setText(text);
+        label.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        label.setTextSize(13);
+        return label;
     }
 
-    private LinearLayout createDesktopTile(String iconLabel, String title, String subtitle) {
-        LinearLayout tile = new LinearLayout(this);
-        tile.setOrientation(LinearLayout.VERTICAL);
-        tile.setGravity(Gravity.CENTER);
-        tile.setPadding(dp(8), dp(10), dp(8), dp(8));
-        tile.setBackgroundResource(R.drawable.one_click_item_bg);
-        tile.setClickable(true);
-        tile.setFocusable(true);
-
-        TextView icon = new TextView(this);
-        String label = isBlank(iconLabel) ? firstNonBlank(title, "App") : iconLabel.trim();
-        if (label.length() > 2) {
-            label = label.substring(0, 1);
-        }
-        icon.setText(label);
-        icon.setGravity(Gravity.CENTER);
-        icon.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
-        icon.setTextSize(label.length() > 1 ? 19 : 24);
-        icon.setTypeface(icon.getTypeface(), android.graphics.Typeface.BOLD);
-        icon.setBackgroundResource(R.drawable.panel_bg);
-        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(48), dp(48));
-        tile.addView(icon, iconParams);
-
-        TextView name = new TextView(this);
-        name.setText(firstNonBlank(title, "应用"));
-        name.setGravity(Gravity.CENTER);
-        name.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
-        name.setTextSize(12);
-        name.setMaxLines(2);
-        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(
+    private LinearLayout.LayoutParams desktopEditLabelParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT);
-        nameParams.setMargins(0, dp(8), 0, 0);
-        tile.addView(name, nameParams);
+        params.setMargins(0, dp(12), 0, 0);
+        return params;
+    }
 
-        return tile;
+    private EditText desktopEditInput(String text, String hint) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setText(text);
+        input.setHint(hint);
+        input.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        input.setHintTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        return input;
     }
 
     private void openDesktopApp(OpenHouseComponent app) {
         if (app == null) {
             Toast.makeText(this, "应用不存在。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        getDesktopLayoutStore().recordLastExitedTarget(DesktopLaunchTarget.app(app.id));
+        if (OPERIT_DESKTOP_APP_ID.equals(app.id)) {
+            openAiFriendHelp();
             return;
         }
         if (desktopAppLauncher == null) {
@@ -3502,6 +4076,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (isBlank(page)) {
             showDesktopStatusSheet(app, "不支持的原生页面：" + nativePage);
             return;
+        }
+        if (isWebBackedNativePage(page)) {
+            pendingDesktopOpenAppId = app == null ? null : app.id;
         }
         selectPage(page);
     }
@@ -3733,6 +4310,78 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (app != null && app.id.equals(pendingDesktopOpenAppId)) {
             pendingDesktopOpenAppId = null;
         }
+    }
+
+    private void notifyDesktopOpenFailedForNativePage(String page, OpenHouseComponent fallbackApp, String message) {
+        if (isBlank(pendingDesktopOpenAppId)) {
+            return;
+        }
+        OpenHouseComponent pendingApp = findDesktopComponentById(pendingDesktopOpenAppId);
+        OpenHouseComponent app = pendingApp != null ? pendingApp : fallbackApp;
+        if (app == null || !isPendingDesktopOpenForNativePage(app, page)) {
+            return;
+        }
+        pendingDesktopOpenAppId = null;
+        View anchor = contentView != null ? contentView : scrollContentView;
+        if (anchor == null) {
+            showDesktopStatusSheet(app, message);
+            return;
+        }
+        anchor.post(() -> showDesktopStatusSheet(app, message));
+    }
+
+    private void clearPendingDesktopOpenForNativePage(String page) {
+        if (isBlank(pendingDesktopOpenAppId)) {
+            return;
+        }
+        OpenHouseComponent app = findDesktopComponentById(pendingDesktopOpenAppId);
+        if (app != null && isPendingDesktopOpenForNativePage(app, page)) {
+            pendingDesktopOpenAppId = null;
+        }
+    }
+
+    private boolean isPendingDesktopOpenForNativePage(OpenHouseComponent app, String page) {
+        if (app == null || isBlank(page)) {
+            return false;
+        }
+        if (pendingDesktopOpenAppId.equals(app.id)) {
+            String appPage = resolveNativePage(app.nativePage);
+            if (page.equals(appPage)) {
+                return true;
+            }
+            if (PAGE_PI_WEB.equals(page) && isPiWebComponent(app)) {
+                return true;
+            }
+            if (PAGE_AI.equals(page) && isCcCodexComponent(app)) {
+                return true;
+            }
+            if (PAGE_SMALLPHONE.equals(page) && isSmallPhoneComponent(app)) {
+                return true;
+            }
+            if (PAGE_CONTROLLED_BROWSER.equals(page) && isControlledBrowserComponent(app)) {
+                return true;
+            }
+            return PAGE_AI_RESCUE.equals(page)
+                && PAGE_AI_RESCUE.equals(resolveNativePage(app.nativePage));
+        }
+        return false;
+    }
+
+    private boolean isWebBackedNativePage(String page) {
+        if (PAGE_PI_WEB.equals(page)
+            || PAGE_AI.equals(page)
+            || PAGE_AI_RESCUE.equals(page)) {
+            return true;
+        }
+        if (PAGE_SMALLPHONE.equals(page)) {
+            OpenHouseComponent component = findSmallPhoneComponent();
+            return component != null && component.entryType == OpenHouseComponent.EntryType.WEBVIEW;
+        }
+        if (PAGE_CONTROLLED_BROWSER.equals(page)) {
+            OpenHouseComponent component = findControlledBrowserComponent();
+            return component != null && component.entryType == OpenHouseComponent.EntryType.WEBVIEW;
+        }
+        return false;
     }
 
     private String safeMessage(Exception e) {

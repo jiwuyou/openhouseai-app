@@ -15,7 +15,7 @@ OpenHouseAI 面向人机协作：
 
 当前默认核心包括：
 
-- Android App：入口、权限引导、状态展示、安装引导、原生桌面壳和可视化控制。
+- Android App：入口、权限引导、状态展示、安装引导、原生桌面壳和可视化控制；默认入口可设为桌面、某个桌面 App 或上次退出页。
 - Termux：Android 宿主层、终端底座、Ubuntu 启停和救援控制面。
 - Ubuntu in Termux：pi、pi-web、Codex、Claude Code、CloudCLI、MCP、agent 和开发工具链的主要运行环境。
 - service-manager：安装完成后的控制平面，负责服务启动、停止、状态和日志。
@@ -59,7 +59,9 @@ pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注�
 
 这意味着：
 
-- OpenHouse 的默认启动页策略可以设为桌面页、现有首页功能页或上次退出页；桌面页不删除现有首页功能页。
+- OpenHouse 的默认入口策略可以设为桌面、某个桌面 App 或上次退出页；旧菜单/首页功能保留为桌面里的“菜单总览”App。
+- 桌面是原生横向分页网格，支持编辑模式、拖动排序、改名和轻量图标 override；桌面隐藏顶部控制栏，App 页显示控制栏并可收起为白黑渐变悬浮球。
+- 桌面只保存入口元数据和布局，不预创建多个 WebView，也不要求多个 WebView 常驻。
 - 安装过程中不要求用户先配置默认模型和 API Key。
 - 安装完成后再由用户按需登录 Codex、Claude Code 或 CloudCLI。
 - pi-web 是默认主入口，由 service-manager 管理 `pi-agent` 和 `pi-web`。

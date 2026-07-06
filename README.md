@@ -18,8 +18,10 @@ OpenHouseAI 文档：
 
 ## 当前范围
 
-- Android App 入口、权限引导、安装引导、状态展示和维护中心。
-- 原生桌面壳作为独立桌面页；现有首页功能页保留，默认启动页可设为桌面、现有首页或上次退出页。
+- Android App 入口、权限引导、安装引导、状态展示、维护中心和原生桌面壳。
+- OpenHouse 默认入口可设为桌面、某个桌面 App 或上次退出页；桌面替代默认菜单心智，原菜单总览保留为桌面 App。
+- 桌面支持横向分页、编辑模式、图标拖动、改名和轻量图标 override；桌面不显示顶部控制栏，进入 App 后显示控制栏且可收起为白黑渐变悬浮球。
+- 桌面只保存入口元数据和布局，不预创建多个 WebView，也不要求多个 WebView 常驻。
 - Termux 宿主层、终端底座、Ubuntu 启停和救援控制面。
 - Ubuntu proot runtime，承载 pi、pi-web、Codex、Claude Code、CloudCLI、MCP、agent 和开发工具链。
 - service-manager 作为安装完成后的控制平面。

@@ -12,7 +12,7 @@ OpenHouse 帮用户在手机上构建自己的 AI 工作环境。用户可以直
 
 | 能力 | 给用户的价值 | 给 AI 的用法 | 主要文档 |
 | --- | --- | --- | --- |
-| 原生桌面 | 用桌面图标打开 OpenHouse App，长按查看状态和恢复操作 | 根据组件 registry 判断入口类型、服务引用和状态面板动作 | `OPENHOUSE_DESKTOP.md` |
+| 原生桌面 | 用横向分页桌面打开 OpenHouse App，在编辑模式中拖动、改名、改图标和设置默认入口 | 根据组件 registry 判断入口类型、服务引用、布局 override 和状态面板动作 | `OPENHOUSE_DESKTOP.md` |
 | 首次配置 | 配好 pi-web 后继续完成 OpenHouse 初始化 | 读取文档，检查后置工具，迁移模型，测通 CloudCLI/Claude Code | `OPENHOUSE_FIRST_CONFIGURATION.md`, `AI_TOOL_POSTINSTALL.md` |
 | 工作台选择 | 不被锁定到单一 UI | 推荐 Claude Code、Codex、Hermes Web 或其它开源项目 | `WORKBENCH_OPTIONS.md` |
 | Termux | Android 侧 Linux 底座和救援入口 | 修复 Ubuntu、调用 Android 侧桥接能力 | `TERMINAL_PROFILES.md`, `RECOVERY.md` |

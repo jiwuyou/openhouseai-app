@@ -31,7 +31,7 @@ service-manager 负责：
 - 维护服务健康状态。
 - 暴露服务日志和运行状态。
 - 给 Android 运行控制页提供真实状态。
-- 给 OpenHouse 桌面、主菜单和侧边栏提供服务绑定。
+- 给 OpenHouse 桌面、菜单总览 App 和侧边栏提供服务绑定。
 
 service-manager 不负责：
 

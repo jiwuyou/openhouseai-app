@@ -1,23 +1,16 @@
 # OpenHouse 原生桌面
 
-本文档说明 OpenHouse 的桌面页。这里的“首页”指每次打开 OpenHouse 后默认进入哪里，不等于某一个固定功能页。
+本文档说明 OpenHouse 的桌面页。这里不再把“首页”写成固定页面，而是写成“默认入口”：每次打开 OpenHouse 后要进入哪里。
 
-## 页面关系
+## 默认入口
 
-OpenHouse 同时保留：
+默认入口可以设置为：
 
-| 页面 | 说明 |
-| --- | --- |
-| 桌面页 | 原生桌面壳，显示 App 图标网格，适合作为日常入口。 |
-| 现有首页功能页 | 原来的首页/功能页，保留安装、状态、维护、服务控制等入口。 |
+- 桌面。
+- 某个桌面 App，例如 SmallPhone、pi-agent、AionUi、cc/codex、Operit 或服务控制。
+- 上次退出时的页面；目标失效时回到桌面。
 
-默认启动页可以设置为：
-
-- 桌面页
-- 现有首页功能页
-- 上次退出时的页面
-
-所以文档和 AI 操作说明应把“首页”理解为默认启动页策略；不要把桌面页和现有首页功能页写成同一个页面。
+旧的首页/菜单功能不会删除，但它不再承担默认菜单心智。它保留为桌面里的“菜单总览”App，用于进入安装、状态、维护、服务控制等既有功能。
 
 ## 桌面是什么
 
@@ -25,25 +18,34 @@ OpenHouse 同时保留：
 
 - 图标只显示图标和名称。
 - 默认没有状态角标、红点、绿点或常驻监控文字。
-- 桌面不常驻多个 WebView。
+- 桌面按固定网格横向分页，左右滑动切换页面。
+- 桌面保存顺序、分页位置、显示名 override 和图标 override。
+- 桌面不预创建多个 WebView，不要求多个 WebView 常驻。
 - 每个桌面 App 可以对应 WebView、原生页、终端、服务控制或 Android Activity。
 
 ## 怎么使用
 
 | 操作 | 行为 |
 | --- | --- |
-| 短按 App | 打开 App；必要时先检查或启动关联服务。 |
-| 长按 App | 打开状态面板，查看状态、日志和恢复操作。 |
+| 点击 App | 打开 App；必要时先检查或启动关联服务。 |
+| 长按空白处或 App | 进入编辑模式。 |
 | 打开失败 | 自动弹出状态面板，提供重试、重启、日志、服务控制或维护入口。 |
 
-状态面板用于排障，不占用桌面图标。桌面默认保持简洁。
+编辑模式支持拖动排序、改名、改图标、隐藏、重置、设为默认入口和进入 App 状态/详情。改名只改变桌面显示名；改图标优先使用轻量 icon key、文字、符号或颜色，不默认导入大图片。
+
+## 顶部控制栏
+
+- 在桌面页，不显示顶部“浏览器打开 / 控制 / 刷新”等控制栏。
+- 进入某个 App 后，显示顶部控制栏。
+- 控制栏可以收起；收起后显示白色到黑色渐变的悬浮球。
+- 点击悬浮球可以重新展开控制栏；桌面页不显示悬浮球。
 
 ## App 类型
 
 桌面 App 可以是：
 
 - `webview`：pi-agent / pi-web、AionUi、SmallPhone frontend beta、cc/codex、受控浏览器。
-- `native-page`：安装引导、现有首页功能页、维护中心、日志、权限、高级设置。
+- `native-page`：菜单总览、安装引导、维护中心、日志、权限、高级设置。
 - `terminal`：Termux 或 Ubuntu 终端。
 - `service-control`：service-manager 服务控制。
 - `android-activity`：Android Activity，例如 `withOperit` 中的 Operit。
@@ -52,6 +54,6 @@ OpenHouse 同时保留：
 
 ## Operit
 
-Operit 只在 `withOperit` flavor 中显示为桌面 App。`withoutOperit` 不显示 Operit，不依赖 Operit，也不硬引用 Operit 类。
+Operit 只在 `withOperit` flavor 中显示为桌面 App。`withoutOperit` 不显示 Operit，不依赖 Operit，也不硬引用 Operit Java/Kotlin 包名。
 
 两个 flavor 的包名都保持 `com.termux`，不能共存；只能同签名、递增 `versionCode` 后互相升级或替换。

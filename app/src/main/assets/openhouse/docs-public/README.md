@@ -42,7 +42,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 | Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/openhouseai-docs/official`, `/root/projects` | 主要工作区。pi、pi-web、用户项目、大多数开发命令，以及后置安装完成后的 Claude Code、Codex、CloudCLI 默认在这里运行。 |
 | Termux 文件系统 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | Android 侧 Termux shell 的真实 home 和 prefix。用于 bootstrap、Termux 包、proot-distro、Ubuntu 启停和底座修复。 |
 | Ubuntu rootfs 真实位置 | `/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu` | Termux 文件系统中保存 Ubuntu 根文件系统的位置。排障时可知道数据在哪里，但不要直接改 rootfs 内部文件，优先通过 `proot-distro login ubuntu` 进入 Ubuntu。 |
-| Android App 入口 | OpenHouse 桌面、现有首页功能页、菜单/终端页面中的 Termux 或 Ubuntu 终端入口 | 具体入口名称以当前 App 为准。Termux 终端是 Android 侧底座终端；Ubuntu 终端是主要开发工作区。 |
+| Android App 入口 | OpenHouse 桌面、菜单总览 App、终端 App 中的 Termux 或 Ubuntu 终端入口 | 具体入口名称以当前 App 为准。Termux 终端是 Android 侧底座终端；Ubuntu 终端是主要开发工作区。 |
 
 `Termux 终端` 不是 `/root`。它是 Android App 沙箱内的 Termux shell，通常对应 `/data/data/com.termux/files/home`。安装完成后打开终端可能会自动进入 Ubuntu，所以排障时必须先识别当前层，再执行命令。
 
@@ -55,7 +55,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `CAPABILITIES_MAP.md`：完整能力地图，说明 Termux、Ubuntu、服务、浏览器、文件、模型、Shizuku 和网络检索。
 - `USER_SCENARIOS.md`：日常协作、智能操作系统、人生管理、知识库和人机编程等使用场景。
 - `WORKBENCH_OPTIONS.md`：主工作台选择说明。Claude Code、Codex、Hermes Web 或其它开源项目都可以成为用户自己的工作台。
-- `OPENHOUSE_DESKTOP.md`：原生桌面页、现有首页功能页、默认启动页策略、短按/长按交互和桌面 App 类型。
+- `OPENHOUSE_DESKTOP.md`：原生桌面、默认入口策略、菜单总览 App、横向分页、编辑模式、拖动/改名/改图标、控制栏和桌面 App 类型。
 - `START_HERE.md`：首次阅读入口。
 
 ### 2. 运行环境和配置

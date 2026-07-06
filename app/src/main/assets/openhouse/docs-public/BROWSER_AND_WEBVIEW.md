@@ -4,7 +4,7 @@ OpenHouse 可以通过内置浏览器或 Android WebView 打开本地网页服�
 
 WebView 与手机外部浏览器并不完全相同。调试页面问题时，AI 应同时考虑服务端状态、前端兼容性、WebView 限制和端口绑定。
 
-OpenHouse 桌面页本身是原生桌面壳，不是全 WebView 多窗口。桌面 App 可以打开 WebView，但桌面不要求多个 WebView 常驻；WebView 主帧加载失败时，应回到桌面 App 的状态面板，提供重试、重启服务、日志和服务控制入口。
+OpenHouse 桌面页本身是原生桌面壳，不是全 WebView 多窗口。桌面 App 可以打开 WebView，但桌面不预创建多个 WebView，也不要求多个 WebView 常驻；WebView 主帧加载失败时，应回到桌面 App 的状态面板，提供重试、重启服务、日志和服务控制入口。桌面页隐藏顶部浏览器/控制/刷新栏，进入 WebView App 后才显示该控制栏；用户可以把控制栏收起为白黑渐变悬浮球。
 
 ## 常见本地服务
 
