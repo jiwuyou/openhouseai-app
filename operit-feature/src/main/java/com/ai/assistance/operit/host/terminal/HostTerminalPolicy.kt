@@ -11,7 +11,7 @@ object HostTerminalPolicy {
             Regex("""(^|[;&|]\s*)pm2\s+(start|restart|resurrect)\b""", RegexOption.IGNORE_CASE),
             Regex("""(^|[;&|]\s*)systemctl\s+(start|restart|enable|daemon-reload)\b""", RegexOption.IGNORE_CASE),
             Regex("""(^|[;&|]\s*)service\s+\S+\s+(start|restart)\b""", RegexOption.IGNORE_CASE),
-            Regex("""(^|[;&|]\s*)service-manager\b""", RegexOption.IGNORE_CASE),
+            Regex("""(^|[;&|]\s*)/?service-manager\b""", RegexOption.IGNORE_CASE),
             Regex("""(^|[^\S\r\n])&\s*($|[;|])""")
         )
 
@@ -26,4 +26,3 @@ object HostTerminalPolicy {
 
     fun shellQuote(value: String): String = "'${value.replace("'", "'\"'\"'")}'"
 }
-

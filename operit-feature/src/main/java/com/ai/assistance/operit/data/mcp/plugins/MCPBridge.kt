@@ -9,6 +9,8 @@ import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.host.OperitHostProvider
+import com.ai.assistance.operit.host.OperitHostServiceManagerResult
+import com.ai.assistance.operit.host.recoverServiceManagerControlPlane
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -340,15 +342,39 @@ class MCPBridge private constructor(private val context: Context) {
                         }
 
                         val host = OperitHostProvider.currentOrNull()
+                        val serviceHealth =
+                            runCatching { host?.queryServiceManagerHealth() }.getOrNull()
                         val serviceStatus =
                             runCatching {
                                 host?.queryServiceManagerStatus("operit-mcp-bridge")
                                     ?: host?.queryServiceManagerStatus("smallphone-mcp-bridge")
                             }.getOrNull()
+                        val recoveryResult =
+                            if (host != null && serviceHealth?.success != true && shouldAttemptServiceManagerRecovery()) {
+                                runCatching {
+                                    host.recoverServiceManagerControlPlane("mcp-bridge:start")
+                                }.getOrElse { throwable ->
+                                    serviceManagerRecoveryException(throwable)
+                                }
+                            } else {
+                                null
+                            }
+
+                        if (recoveryResult?.success == true) {
+                            delay(1000L)
+                            cachedDetectedPort = null
+                            cachedDetectedPortAtMs = 0L
+                            val recovered = getInstance(ctx).listMcpServices()
+                            if (recovered != null && recovered.optBoolean("success", false)) {
+                                AppLogger.d(TAG, "service-manager recover completed and MCP bridge is reachable")
+                                deferred.complete(true)
+                                return@withContext true
+                            }
+                        }
 
                         AppLogger.e(
                             TAG,
-                            "MCP bridge 未运行。Operit-feature 不再通过终端后台启动 bridge；请由 SmallPhoneAI service-manager 管理。service-manager status=$serviceStatus"
+                            "MCP bridge 未运行。Operit-feature 不再通过终端后台启动 bridge；请由 SmallPhoneAI service-manager 管理。service-manager health=$serviceHealth status=$serviceStatus recovery=$recoveryResult"
                         )
                         deferred.complete(false)
                         return@withContext false
@@ -414,6 +440,34 @@ class MCPBridge private constructor(private val context: Context) {
                 null
             }
         }
+
+        private fun shouldAttemptServiceManagerRecovery(): Boolean {
+            val nowMs = System.currentTimeMillis()
+            val lastAttemptMs = lastStartCommandAtMs
+            if (nowMs - lastAttemptMs < START_COMMAND_THROTTLE_MS) {
+                return false
+            }
+            lastStartCommandAtMs = nowMs
+            return true
+        }
+
+        private fun serviceManagerRecoveryException(
+            throwable: Throwable
+        ): OperitHostServiceManagerResult =
+            OperitHostServiceManagerResult(
+                success = false,
+                code = 0,
+                url = "",
+                body = "",
+                message = "service-manager recovery request failed.",
+                serviceId = "service-manager",
+                state = "",
+                provider = "operit-feature",
+                pid = -1,
+                serviceUrl = "",
+                error = throwable.message ?: throwable::class.java.simpleName,
+                durationMs = 0L
+            )
 
         suspend fun sendCommand(
             command: JSONObject,

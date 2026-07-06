@@ -2,6 +2,8 @@ package com.ai.assistance.operit.host.terminal
 
 import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostProvider
+import com.ai.assistance.operit.host.OperitHostServiceManagerRecoveryAction
+import com.ai.assistance.operit.host.executeServiceManagerRecoveryCommand
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
@@ -125,6 +127,7 @@ class TermuxHostTerminalAdapter {
     ): HostTerminalHiddenResult {
         val session = sessions.getOrPut(sessionId) { MutableSession(sessionId, sessionId) }
         val command = rawCommand.trim()
+        executeServiceManagerRecovery(session, command)?.let { return it }
         HostTerminalPolicy.rejectionReason(command)?.let { reason ->
             val result =
                 HostTerminalHiddenResult(
@@ -195,6 +198,80 @@ class TermuxHostTerminalAdapter {
                     }
                 }.takeLast(4000),
                 target = execution.resolvedTarget
+            )
+        completeSession(session, command, result)
+        return result
+    }
+
+    private suspend fun executeServiceManagerRecovery(
+        session: MutableSession,
+        command: String
+    ): HostTerminalHiddenResult? {
+        if (OperitHostServiceManagerRecoveryAction.fromCommand(command) == null) {
+            return null
+        }
+
+        session.isExecuting = true
+        refreshState()
+        val startedAtMs = System.currentTimeMillis()
+        val hostResult =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                        OperitHostProvider
+                            .requireHost()
+                            .executeServiceManagerRecoveryCommand(
+                                command = command,
+                                reason = "host-terminal:${session.target.wireName}"
+                            )
+                    }
+                    .getOrElse { throwable ->
+                        OperitHostCommandResult(
+                            command = command,
+                            exitCode = -1,
+                            stdout = "",
+                            stderr = "",
+                            error =
+                                "${session.target.displayName} host terminal unavailable: " +
+                                    (throwable.message ?: throwable::class.java.simpleName),
+                            timedOut = false,
+                            durationMs = System.currentTimeMillis() - startedAtMs
+                        )
+                    }
+            }
+                ?: OperitHostCommandResult(
+                    command = command,
+                    exitCode = 1,
+                    stdout = "",
+                    stderr = "",
+                    error = "Command is not a service-manager recovery request.",
+                    timedOut = false,
+                    durationMs = System.currentTimeMillis() - startedAtMs
+                )
+
+        val state =
+            when {
+                hostResult.timedOut -> HostTerminalHiddenResult.State.TIMEOUT
+                hostResult.isSuccess -> HostTerminalHiddenResult.State.SUCCESS
+                else -> HostTerminalHiddenResult.State.FAILED
+            }
+        val result =
+            HostTerminalHiddenResult(
+                state = state,
+                exitCode = hostResult.exitCode,
+                output = hostResult.stdout,
+                error = listOf(hostResult.error, hostResult.stderr).filter { it.isNotBlank() }.joinToString("\n"),
+                rawOutputPreview = buildString {
+                    append(hostResult.stdout)
+                    if (hostResult.stderr.isNotBlank()) {
+                        if (isNotEmpty()) append('\n')
+                        append(hostResult.stderr)
+                    }
+                    if (hostResult.error.isNotBlank()) {
+                        if (isNotEmpty()) append('\n')
+                        append(hostResult.error)
+                    }
+                }.takeLast(4000),
+                target = HostTerminalTarget.TERMUX
             )
         completeSession(session, command, result)
         return result

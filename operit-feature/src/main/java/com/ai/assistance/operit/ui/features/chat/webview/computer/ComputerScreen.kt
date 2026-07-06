@@ -39,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.host.OperitHostProvider
+import com.ai.assistance.operit.host.executeServiceManagerRecoveryCommand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -128,7 +129,10 @@ private fun HostTerminalPanel(modifier: Modifier = Modifier) {
                     scope.launch {
                         val result =
                             withContext(Dispatchers.IO) {
-                                hostContract.executeTermuxCommand(commandText, timeoutMs = 60_000L)
+                                hostContract.executeServiceManagerRecoveryCommand(
+                                    command = commandText,
+                                    reason = "computer-screen"
+                                ) ?: hostContract.executeTermuxCommand(commandText, timeoutMs = 60_000L)
                             }
                         output =
                             buildString {

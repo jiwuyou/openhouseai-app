@@ -1,5 +1,8 @@
 package com.termux.app.operit.runtime;
 
+import android.content.Context;
+
+import com.termux.app.openhouse.OpenHouseRuntimeSupervisor;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerResult;
 import com.termux.shared.termux.TermuxConstants;
@@ -46,13 +49,27 @@ public final class OperitRuntimeBridge {
         "(?i)(?:^|[;|(){}]|&&|\\|\\|)\\s*(?:nohup|setsid|daemon|disown|supervisord)(?=$|[\\s;|(){}])"
     );
     private static final Pattern SERVICE_MANAGER_SHELL_PATTERN = Pattern.compile(
-        "(?i)(?:^|[;|(){}]|&&|\\|\\|)\\s*service-manager(?=$|[\\s;|(){}])"
+        "(?i)(?:^|[;|(){}]|&&|\\|\\|)\\s*/?service-manager(?=$|[\\s;|(){}])"
+    );
+    private static final Pattern SERVICE_MANAGER_RECOVER_COMMAND_PATTERN = Pattern.compile(
+        "(?i)^/?service-manager\\s+(?:repair|recover)\\s*$"
     );
     private static final Pattern SERVICE_START_COMMAND_PATTERN = Pattern.compile(
         "(?i)(?:^|[;|(){}]|&&|\\|\\|)\\s*(?:systemctl\\s+(?:start|restart|enable)"
             + "|service\\s+[^\\s;|(){}]+\\s+(?:start|restart)"
             + "|pm2\\s+(?:start|restart|resurrect|startup))(?=$|[\\s;|(){}])"
     );
+
+    private final Context applicationContext;
+
+    public OperitRuntimeBridge() {
+        this(null);
+    }
+
+    public OperitRuntimeBridge(Context context) {
+        Context appContext = context == null ? null : context.getApplicationContext();
+        applicationContext = appContext == null ? context : appContext;
+    }
 
     public OperitCommandResult executeTermux(String command, long timeoutMs) {
         return execute(OperitRuntimeTarget.TERMUX, command, timeoutMs);
@@ -160,6 +177,67 @@ public final class OperitRuntimeBridge {
         );
     }
 
+    public OperitServiceManagerResult recoverServiceManager() {
+        long startedAt = System.currentTimeMillis();
+        String serviceManagerUrl = serviceManagerBaseUrl();
+        if (applicationContext == null) {
+            String message = "service-manager recovery requires Android application context. "
+                + "Use the hosted SmallPhoneAI Operit bridge or /service-manager recover from the app.";
+            return new OperitServiceManagerResult(
+                false,
+                0,
+                serviceManagerUrl,
+                "",
+                message,
+                "service-manager",
+                "context_required",
+                "openhouse-runtime-supervisor",
+                -1,
+                "",
+                message,
+                elapsedMs(startedAt)
+            );
+        }
+
+        try {
+            OpenHouseRuntimeSupervisor.MaintenanceReport report =
+                new OpenHouseRuntimeSupervisor(applicationContext).recoverControlPlaneNow();
+            String state = report.controlPlaneReachable
+                ? "reachable"
+                : report.repairAttempted ? "repair_attempted" : "unreachable";
+            return new OperitServiceManagerResult(
+                report.success,
+                report.success ? 200 : 503,
+                serviceManagerUrl,
+                report.message,
+                report.message,
+                "service-manager",
+                state,
+                "openhouse-runtime-supervisor",
+                -1,
+                "",
+                report.success ? "" : report.message,
+                elapsedMs(startedAt)
+            );
+        } catch (Exception e) {
+            String error = "service-manager recovery failed before repair completed: " + compactException(e);
+            return new OperitServiceManagerResult(
+                false,
+                0,
+                serviceManagerUrl,
+                "",
+                error,
+                "service-manager",
+                "recover_failed",
+                "openhouse-runtime-supervisor",
+                -1,
+                "",
+                error,
+                elapsedMs(startedAt)
+            );
+        }
+    }
+
     private static String serviceManagerBaseUrl() {
         return ServiceManagerClient.resolveConfiguredBaseUrl();
     }
@@ -182,7 +260,7 @@ public final class OperitRuntimeBridge {
             return unsupportedCommandTarget(
                 target,
                 cleanCommand,
-                "SERVICE_MANAGER is not a shell execution target. Use getServiceManagerHealth() or getServiceManagerStatus(serviceId).",
+                "SERVICE_MANAGER is not a shell execution target. Use getServiceManagerHealth(), getServiceManagerStatus(serviceId), or recoverServiceManager().",
                 startedAt
             );
         }
@@ -191,6 +269,10 @@ public final class OperitRuntimeBridge {
         }
         if (cleanCommand.isEmpty()) {
             return commandError(target, "", COMMAND_ERROR_EXIT_CODE, "Command is empty.", startedAt);
+        }
+
+        if (target == OperitRuntimeTarget.TERMUX && isExactServiceManagerRecoverCommand(cleanCommand)) {
+            return serviceManagerRecoveryAsCommand(cleanCommand, target, recoverServiceManager(), startedAt);
         }
 
         long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_COMMAND_TIMEOUT_MS;
@@ -324,18 +406,46 @@ public final class OperitRuntimeBridge {
 
     private static String validateShortLivedCommand(String command) {
         if (BACKGROUND_OPERATOR_PATTERN.matcher(command).find()) {
-            return "Background shell operators are not allowed through Operit runtime shell execution. Use service-manager typed APIs for long-running services.";
+            return "Background shell operators are not allowed through Operit runtime shell execution. Use service-manager typed APIs for long-running services. If service-manager itself is down, run /service-manager recover.";
         }
         if (DAEMONIZER_COMMAND_PATTERN.matcher(command).find()) {
-            return "Daemonizer commands are not allowed through Operit runtime shell execution. Use service-manager typed APIs for long-running services.";
+            return "Daemonizer commands are not allowed through Operit runtime shell execution. Use service-manager typed APIs for long-running services. If the control plane is unreachable, run /service-manager recover.";
         }
         if (SERVICE_MANAGER_SHELL_PATTERN.matcher(command).find()) {
-            return "service-manager shell commands are not allowed here. Use getServiceManagerHealth() or getServiceManagerStatus(serviceId).";
+            return "service-manager shell commands are not allowed here. Use typed APIs: getServiceManagerHealth(), getServiceManagerStatus(serviceId), or /service-manager recover when the control plane is unreachable.";
         }
         if (SERVICE_START_COMMAND_PATTERN.matcher(command).find()) {
-            return "Service start/restart commands are not allowed through Operit runtime shell execution. Use service-manager typed APIs for long-running services.";
+            return "Service start/restart commands are not allowed through Operit runtime shell execution. Use service-manager typed APIs for long-running services. If service-manager itself is down, run /service-manager recover.";
         }
         return "";
+    }
+
+    private static boolean isExactServiceManagerRecoverCommand(String command) {
+        return SERVICE_MANAGER_RECOVER_COMMAND_PATTERN.matcher(trim(command)).matches();
+    }
+
+    private static OperitCommandResult serviceManagerRecoveryAsCommand(
+        String command,
+        OperitRuntimeTarget target,
+        OperitServiceManagerResult result,
+        long startedAt
+    ) {
+        boolean success = result != null && result.success;
+        String stdout = success ? result.message : "";
+        String stderr = result == null ? "service-manager recovery returned no result." : result.error;
+        if (!success && stderr.isEmpty() && result != null) {
+            stderr = result.message;
+        }
+        return new OperitCommandResult(
+            command,
+            target,
+            stdout,
+            stderr,
+            success ? 0 : COMMAND_ERROR_EXIT_CODE,
+            success ? "" : stderr,
+            false,
+            elapsedMs(startedAt)
+        );
     }
 
     private static void applyTermuxEnvironment(Map<String, String> environment) {

@@ -5,13 +5,14 @@ import android.content.Context;
 import com.ai.assistance.operit.host.OperitHostCommandResult;
 import com.ai.assistance.operit.host.OperitHostContract;
 import com.ai.assistance.operit.host.OperitHostProvider;
+import com.ai.assistance.operit.host.OperitHostServiceManagerRecovery;
 import com.ai.assistance.operit.host.OperitHostServiceManagerResult;
 import com.ai.assistance.operit.host.lifecycle.OperitHostLifecycle;
 import com.ai.assistance.operit.host.lifecycle.OperitHostLifecycleConfig;
 
 import kotlin.coroutines.Continuation;
 
-public final class SmallPhoneOperitHost implements OperitHostContract {
+public final class SmallPhoneOperitHost implements OperitHostContract, OperitHostServiceManagerRecovery {
 
     private static volatile SmallPhoneOperitHost instance;
 
@@ -21,7 +22,7 @@ public final class SmallPhoneOperitHost implements OperitHostContract {
     private SmallPhoneOperitHost(Context context) {
         Context appContext = context.getApplicationContext();
         applicationContext = appContext == null ? context : appContext;
-        runtimeBridge = new OperitRuntimeBridge();
+        runtimeBridge = new OperitRuntimeBridge(applicationContext);
     }
 
     public static SmallPhoneOperitHost install(Context context) {
@@ -103,6 +104,14 @@ public final class SmallPhoneOperitHost implements OperitHostContract {
         Continuation<? super OperitHostServiceManagerResult> continuation
     ) {
         return toHostServiceManagerResult(runtimeBridge.getServiceManagerStatus(serviceId));
+    }
+
+    @Override
+    public Object recoverServiceManagerControlPlane(
+        String reason,
+        Continuation<? super OperitHostServiceManagerResult> continuation
+    ) {
+        return toHostServiceManagerResult(runtimeBridge.recoverServiceManager());
     }
 
     private OperitHostServiceManagerResult toHostServiceManagerResult(OperitServiceManagerResult result) {

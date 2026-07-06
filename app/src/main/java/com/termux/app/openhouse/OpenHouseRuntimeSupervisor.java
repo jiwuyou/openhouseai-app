@@ -40,6 +40,7 @@ public final class OpenHouseRuntimeSupervisor {
     private static long lastRepairMs;
     private static int consecutiveControlPlaneFailures;
     private static boolean runtimeStackStoppedForSession;
+    private static boolean controlPlaneRepairInFlight;
 
     private final Context context;
     private final ServiceManagerControlClient controlClient;
@@ -56,6 +57,54 @@ public final class OpenHouseRuntimeSupervisor {
     public MaintenanceReport ensureDefaultLongRunningServices() {
         clearRuntimeStackStoppedForSession(context);
         return maintainDefaultServices(true);
+    }
+
+    public MaintenanceReport recoverControlPlaneNow() {
+        clearRuntimeStackStoppedForSession(context);
+        StringBuilder message = new StringBuilder();
+        appendLine(message, "正在通过受控维护入口修复 service-manager；此路径不依赖 service-manager HTTP API 已在线。");
+
+        OpenHouseMaintainerRunner.Result repair = runControlPlaneRepair();
+        boolean repairSuccess = repair.isSuccess();
+        appendLine(message, repairSuccess
+            ? "控制中枢修复命令已完成。"
+            : "控制中枢修复失败，退出码 " + repair.exitCode + formatOutput(repair.output));
+
+        ServiceManagerResult health = controlClient.healthCheck();
+        if (!health.success) {
+            int failureCount = recordControlPlaneFailure();
+            appendLine(message, "修复后 service-manager 仍不可达：" + safeText(health.message));
+            appendLine(message, "连续失败次数：" + failureCount);
+            return MaintenanceReport.failure(
+                message.toString(),
+                false,
+                true,
+                repairSuccess,
+                failureCount,
+                true
+            );
+        }
+
+        resetControlPlaneFailures();
+        MaintenanceReport services = startDefaultServices(true, true);
+        if (!services.success) {
+            appendLine(message, "service-manager 已恢复；部分默认核心服务仍需要单独检查。");
+        }
+        appendLine(message, services.message);
+        return new MaintenanceReport(
+            true,
+            false,
+            true,
+            true,
+            repairSuccess,
+            0,
+            !services.success,
+            services.startedCount,
+            services.skippedCount,
+            services.failedCount,
+            message.toString(),
+            services.defaultServiceIds
+        );
     }
 
     public static boolean isExitAllRequested(Context context) {
@@ -210,10 +259,24 @@ public final class OpenHouseRuntimeSupervisor {
 
     private OpenHouseMaintainerRunner.Result runControlPlaneRepair() {
         synchronized (LOCK) {
+            if (controlPlaneRepairInFlight) {
+                return new OpenHouseMaintainerRunner.Result(
+                    OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE,
+                    125,
+                    "控制中枢修复已在执行中，请稍后重试。"
+                );
+            }
+            controlPlaneRepairInFlight = true;
             lastRepairMs = SystemClock.elapsedRealtime();
         }
-        return new OpenHouseMaintainerRunner(context)
-            .run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0, controlPlaneRepairEnvironment());
+        try {
+            return new OpenHouseMaintainerRunner(context)
+                .run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0, controlPlaneRepairEnvironment());
+        } finally {
+            synchronized (LOCK) {
+                controlPlaneRepairInFlight = false;
+            }
+        }
     }
 
     private Map<String, String> controlPlaneRepairEnvironment() {

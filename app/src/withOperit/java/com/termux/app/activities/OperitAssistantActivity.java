@@ -47,7 +47,10 @@ public class OperitAssistantActivity extends AppCompatActivity {
         hostedMode = getIntent() != null && getIntent().getBooleanExtra(EXTRA_HOSTED_MODE, false);
         helpMode = getIntent() != null && getIntent().getBooleanExtra(EXTRA_HELP_MODE, false);
 
-        assistantFacade = new OperitAssistantFacade(getApplicationContext(), new OperitRuntimeBridge());
+        assistantFacade = new OperitAssistantFacade(
+            getApplicationContext(),
+            new OperitRuntimeBridge(getApplicationContext())
+        );
         outputScrollView = findViewById(R.id.operitAssistantOutputScroll);
         titleView = findViewById(R.id.operitAssistantTitle);
         outputView = findViewById(R.id.operitAssistantOutput);

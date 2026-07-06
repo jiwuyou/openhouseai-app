@@ -11,11 +11,13 @@ public final class OperitFeatureInitializer {
     private static final String STATE_FAILED = "failed";
     private static final String MIGRATION_MODE = "hosted_full_operit";
     private static final String ENABLED_COMPONENTS =
-        "full_operit_feature_module,host_bridge,tool_router,runtime_bridge,service_manager_query";
+        "full_operit_feature_module,host_bridge,tool_router,runtime_bridge,service_manager_query,service_manager_recover";
     private static final String SUPPORTED_COMMANDS = "/termux <command>\n"
         + "/ubuntu <command>\n"
         + "/service-manager health\n"
-        + "/service-manager status <serviceId>";
+        + "/service-manager status <serviceId>\n"
+        + "/service-manager repair\n"
+        + "/service-manager recover";
 
     private final Object lock = new Object();
 

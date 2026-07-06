@@ -15,7 +15,9 @@ public final class OperitToolRouter {
     private static final String SUPPORTED_COMMANDS_TEXT = "/termux <command>\n"
         + "/ubuntu <command>\n"
         + "/service-manager health\n"
-        + "/service-manager status <serviceId>";
+        + "/service-manager status <serviceId>\n"
+        + "/service-manager repair\n"
+        + "/service-manager recover";
 
     private final OperitRuntimeBridge runtimeBridge;
 
@@ -75,7 +77,7 @@ public final class OperitToolRouter {
         if (looksLikeBackgroundDaemonCommand(command)) {
             return OperitAssistantResponse.invalid(
                 originalInput,
-                "Operit Core Adapter 不处理长驻后台进程。请通过 SmallPhoneAI service-manager 管理常驻服务。"
+                "Operit Core Adapter 不处理长驻后台进程。请通过 SmallPhoneAI service-manager 管理常驻服务；如果控制中枢不可达，请使用 /service-manager recover。"
             );
         }
 
@@ -103,6 +105,14 @@ public final class OperitToolRouter {
             return OperitAssistantResponse.serviceManager(
                 originalInput,
                 "service-manager health 已通过 Operit runtime bridge 查询。",
+                result
+            );
+        }
+        if ("repair".equals(argument) || "recover".equals(argument)) {
+            OperitServiceManagerResult result = runtimeBridge.recoverServiceManager();
+            return OperitAssistantResponse.serviceManager(
+                originalInput,
+                "service-manager 控制中枢恢复已通过 Operit typed runtime bridge 触发。",
                 result
             );
         }
@@ -137,7 +147,9 @@ public final class OperitToolRouter {
     private static String serviceManagerUsage() {
         return "不支持的 service-manager 命令。当前支持：\n"
             + "/service-manager health\n"
-            + "/service-manager status <serviceId>";
+            + "/service-manager status <serviceId>\n"
+            + "/service-manager repair\n"
+            + "/service-manager recover";
     }
 
     public static String supportedCommandsText() {
