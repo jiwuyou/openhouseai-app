@@ -278,7 +278,7 @@ public final class OpenHouseComponentRegistry {
             visible,
             entryFields == null ? null : entryFields.entryType);
 
-        OpenHouseComponent component = createComponent(
+        return createComponent(
             id,
             title,
             subtitle,
@@ -302,45 +302,6 @@ public final class OpenHouseComponentRegistry {
             "extension",
             controlFields == null ? Collections.emptyList() : controlFields.serviceNames,
             controlFields == null ? Collections.emptyList() : controlFields.serviceRefs);
-        return isRetiredDefaultUiComponent(component) ? null : component;
-    }
-
-    private static boolean isRetiredDefaultUiComponent(OpenHouseComponent component) {
-        if (component == null) {
-            return false;
-        }
-        if (isRetiredDefaultUiId(component.id) || isRetiredDefaultUiId(component.nativePage)) {
-            return true;
-        }
-        for (String serviceName : component.serviceNames) {
-            if (isRetiredDefaultUiId(serviceName)) {
-                return true;
-            }
-        }
-        for (String serviceRef : component.serviceRefs) {
-            if (isRetiredDefaultUiServiceRef(serviceRef)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean isRetiredDefaultUiId(String value) {
-        String normalized = normalizeId(value);
-        return "hermes".equals(normalized)
-            || "hermes-webui".equals(normalized)
-            || "opencode".equals(normalized)
-            || "reasonix".equals(normalized)
-            || "deepseek".equals(normalized);
-    }
-
-    private static boolean isRetiredDefaultUiServiceRef(String value) {
-        String normalized = normalizeId(value);
-        return normalized.endsWith("/hermes")
-            || normalized.endsWith("/hermes-webui")
-            || normalized.endsWith("/opencode")
-            || normalized.endsWith("/reasonix")
-            || normalized.endsWith("/deepseek");
     }
 
     private static List<OpenHouseComponent> createBuiltinComponents() {
