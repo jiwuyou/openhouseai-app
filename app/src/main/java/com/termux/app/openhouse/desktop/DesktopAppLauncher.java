@@ -13,6 +13,7 @@ import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerLogEntry;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerResult;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceStatus;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceResolver;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -161,6 +162,24 @@ public final class DesktopAppLauncher {
         boolean anyStarting = false;
         boolean anyStopped = false;
         boolean anyFailure = false;
+        List<String> missingServiceIds = Collections.emptyList();
+        ServiceManagerServiceResolver.Resolution resolution = safeResolveServiceIds(app, serviceIds);
+        if (resolution != null) {
+            serviceIds = resolution.serviceIds;
+            missingServiceIds = resolution.missingServiceIds;
+        }
+        if (serviceIds.isEmpty()) {
+            return DesktopAppStatus.builder()
+                .app(app)
+                .serviceIds(Collections.emptyList())
+                .state(DesktopAppStatus.State.FAILED)
+                .headline("服务未注册")
+                .detail("这个应用注册的服务当前未出现在 service-manager 列表中。"
+                    + formatMissingServices(missingServiceIds))
+                .serviceManagerReachable(true)
+                .services(Collections.emptyList())
+                .build();
+        }
         for (String serviceId : serviceIds) {
             DesktopAppServiceStatus service = safeLoadServiceStatus(serviceId);
             services.add(service);
@@ -191,9 +210,10 @@ public final class DesktopAppLauncher {
 
         return DesktopAppStatus.builder()
             .app(app)
+            .serviceIds(serviceIds)
             .state(state)
             .headline(headline)
-            .detail(buildStatusDetail(services))
+            .detail(buildStatusDetail(services) + formatIgnoredServices(missingServiceIds))
             .serviceManagerReachable(true)
             .services(services)
             .build();
@@ -303,6 +323,20 @@ public final class DesktopAppLauncher {
         }
     }
 
+    private ServiceManagerServiceResolver.Resolution safeResolveServiceIds(
+        DesktopAppDescriptor app,
+        List<String> requestedServiceIds
+    ) {
+        try {
+            return ServiceManagerServiceResolver.resolve(
+                app == null ? "" : app.id,
+                requestedServiceIds,
+                controlClient.listServices());
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private List<String> safeLoadRecentLogs(String serviceId) {
         if (serviceId == null || serviceId.trim().isEmpty()) {
             return Collections.emptyList();
@@ -366,6 +400,20 @@ public final class DesktopAppLauncher {
             builder.append(service.displayLine());
         }
         return builder.toString();
+    }
+
+    private String formatIgnoredServices(List<String> missingServiceIds) {
+        if (missingServiceIds == null || missingServiceIds.isEmpty()) {
+            return "";
+        }
+        return "\n已忽略当前未注册服务：" + DesktopAppServices.join(missingServiceIds);
+    }
+
+    private String formatMissingServices(List<String> missingServiceIds) {
+        if (missingServiceIds == null || missingServiceIds.isEmpty()) {
+            return "";
+        }
+        return "\n未找到：" + DesktopAppServices.join(missingServiceIds);
     }
 
     private String firstServiceId(DesktopAppStatus status) {

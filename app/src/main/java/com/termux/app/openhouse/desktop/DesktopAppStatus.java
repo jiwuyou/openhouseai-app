@@ -112,6 +112,11 @@ public final class DesktopAppStatus {
             return this;
         }
 
+        public Builder serviceIds(List<String> serviceIds) {
+            this.serviceIds = serviceIds;
+            return this;
+        }
+
         public DesktopAppStatus build() {
             return new DesktopAppStatus(this);
         }

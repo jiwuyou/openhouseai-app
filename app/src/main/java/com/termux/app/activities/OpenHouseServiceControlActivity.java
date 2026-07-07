@@ -29,6 +29,7 @@ import com.termux.app.openhouse.servicecontrol.ServiceManagerLogEntry;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerRedactor;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerService;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceStatus;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceResolver;
 import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
 import com.termux.shared.logger.Logger;
 
@@ -284,19 +285,46 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     }
 
     private void loadComponentServices(List<String> serviceIds) {
-        if (serviceIds.isEmpty()) {
+        boolean hasDeclaredServiceIds = serviceIds != null && !serviceIds.isEmpty();
+        if (!hasDeclaredServiceIds && componentId.isEmpty()) {
             setBusy(false);
             setStatus("这个组件没有注册可控制的 service-manager 服务。");
             return;
         }
-
-        List<ServiceSnapshot> snapshots = new ArrayList<>();
-        for (String serviceId : serviceIds) {
-            snapshots.add(new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, "", componentUrl, true));
-        }
-        setControlPlaneStatus("控制中枢：当前组件由 service-manager 控制；如果启动、关闭或状态刷新失败，请点击“修复控制中枢”。");
-        renderServices(snapshots);
-        refreshAllStatuses();
+        setBusy(true);
+        setStatus("正在匹配当前组件的 service-manager 服务...");
+        setControlPlaneStatus("控制中枢：正在读取 service-manager 服务列表...");
+        hideMaintenanceFallback();
+        backgroundExecutor.execute(() -> {
+            try {
+                List<ServiceManagerService> registeredServices = controlClient.listServices();
+                ServiceManagerServiceResolver.Resolution resolution =
+                    ServiceManagerServiceResolver.resolve(componentId, serviceIds, registeredServices);
+                List<ServiceSnapshot> snapshots = snapshotsFromResolution(resolution);
+                runOnUiThread(() -> {
+                    if (snapshots.isEmpty()) {
+                        setBusy(false);
+                        setControlPlaneStatus("控制中枢：已连接（service-manager），但当前组件注册的服务未出现在服务列表中。");
+                        setStatus((hasDeclaredServiceIds
+                                ? "这个组件注册的服务当前不可控。"
+                                : "这个组件没有声明可控制服务，也未在当前服务列表中匹配到同名服务。")
+                            + formatMissingServices(resolution.missingServiceIds)
+                            + "\n可以打开“全部服务控制”查看当前可用服务，或点击“修复控制中枢”。");
+                        showMaintenanceFallback();
+                        return;
+                    }
+                    setControlPlaneStatus("控制中枢：当前组件由 service-manager 控制。"
+                        + formatIgnoredServices(resolution.missingServiceIds));
+                    renderServices(snapshots);
+                    refreshAllStatuses();
+                });
+            } catch (Exception e) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to resolve component services", e);
+                runOnUiThread(() -> showServiceManagerError(
+                    "控制中枢异常：无法匹配当前组件服务。\n"
+                        + safeErrorMessage(e)));
+            }
+        });
     }
 
     private List<String> readComponentServiceIds(Intent intent) {
@@ -662,13 +690,14 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     }
 
     private ServiceSnapshot snapshotFromStatus(String serviceId, ServiceManagerServiceStatus status) {
+        String displayName = resolvedDisplayName(serviceId, status);
         if (status == null) {
-            return new ServiceSnapshot(serviceId, serviceId, "", "unknown", -1, "service-manager request failed", currentServiceUrl(serviceId), false);
+            return new ServiceSnapshot(serviceId, displayName, "", "unknown", -1, "service-manager request failed", currentServiceUrl(serviceId), false);
         }
         if (!status.success()) {
             return new ServiceSnapshot(
                 serviceId,
-                firstNonBlank(status.displayName(), serviceId),
+                displayName,
                 status.provider(),
                 "unknown",
                 status.pid(),
@@ -678,13 +707,50 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         }
         return new ServiceSnapshot(
             serviceId,
-            firstNonBlank(status.displayName(), serviceId),
+            displayName,
             status.provider(),
             status.state(),
             status.pid(),
             status.message(),
             firstNonBlank(status.url(), currentServiceUrl(serviceId)),
             true);
+    }
+
+    private String resolvedDisplayName(String serviceId, ServiceManagerServiceStatus status) {
+        String cleanServiceId = ServiceManagerClient.sanitizeServiceId(serviceId);
+        String statusName = status == null ? "" : safeTrim(status.displayName());
+        String currentName = currentServiceDisplayName(cleanServiceId);
+        if (!currentName.isEmpty() && (statusName.isEmpty() || statusName.equals(cleanServiceId))) {
+            return currentName;
+        }
+        return firstNonBlank(statusName, cleanServiceId);
+    }
+
+    private String currentServiceDisplayName(String serviceId) {
+        String cleanServiceId = ServiceManagerClient.sanitizeServiceId(serviceId);
+        ServiceCard card = cleanServiceId.isEmpty() ? null : serviceCards.get(cleanServiceId);
+        CharSequence text = card == null || card.titleView == null ? null : card.titleView.getText();
+        return text == null ? "" : safeTrim(text.toString());
+    }
+
+    private List<ServiceSnapshot> snapshotsFromResolution(ServiceManagerServiceResolver.Resolution resolution) {
+        if (resolution == null || resolution.serviceIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<ServiceSnapshot> snapshots = new ArrayList<>();
+        for (String serviceId : resolution.serviceIds) {
+            ServiceManagerService service = resolution.serviceForId(serviceId);
+            snapshots.add(new ServiceSnapshot(
+                serviceId,
+                service == null ? serviceId : firstNonBlank(service.displayName(), serviceId),
+                service == null ? "" : service.provider(),
+                service == null ? "unknown" : firstNonBlank(service.state(), "unknown"),
+                service == null ? -1 : service.pid(),
+                service == null ? "" : service.message(),
+                service == null ? componentUrl : firstNonBlank(service.url(), componentUrl),
+                true));
+        }
+        return snapshots;
     }
 
     private void updateCard(ServiceCard card, ServiceSnapshot snapshot) {
@@ -1201,6 +1267,39 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             return result.success() ? "已提交" : "失败";
         }
         return (result.success() ? "已提交，" : "失败，") + message;
+    }
+
+    private String formatIgnoredServices(List<String> missingServiceIds) {
+        if (missingServiceIds == null || missingServiceIds.isEmpty()) {
+            return "\n如果启动、关闭或状态刷新失败，请点击“修复控制中枢”。";
+        }
+        return "\n已忽略当前未注册的服务：" + joinValues(missingServiceIds)
+            + "\n如果需要这些服务，请点击“修复控制中枢”。";
+    }
+
+    private String formatMissingServices(List<String> missingServiceIds) {
+        if (missingServiceIds == null || missingServiceIds.isEmpty()) {
+            return "";
+        }
+        return "\n未找到：" + joinValues(missingServiceIds);
+    }
+
+    private String joinValues(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (String value : values) {
+            String text = safeTrim(value);
+            if (text.isEmpty()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(", ");
+            }
+            builder.append(text);
+        }
+        return builder.toString();
     }
 
     private String formatLogs(String serviceId, List<ServiceManagerLogEntry> logs) {
