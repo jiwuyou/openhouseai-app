@@ -56,7 +56,7 @@ class StandardShellExecutor(private val context: Context) : ShellExecutor {
                         command = command,
                         executorKey = "standard-shell",
                         timeoutMs = COMMAND_TIMEOUT_MS,
-                        target = HostTerminalTarget.DEFAULT
+                        target = HostTerminalTarget.TERMUX
                     )
                 ShellExecutor.CommandResult(
                     success = result.isOk,

@@ -5,11 +5,11 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.data.mcp.MCPLocalServer
 import com.ai.assistance.operit.core.tools.system.Terminal
-import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.data.model.AITool
-import com.ai.assistance.operit.data.model.ToolParameter
+import com.ai.assistance.operit.host.terminal.HostTerminalPolicy
+import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.google.gson.JsonParser
 import java.io.File
+import java.util.Locale
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -119,17 +119,18 @@ class MCPDeployer(private val context: Context) {
 
                         val terminal = Terminal.getInstance(context)
                         val pluginShortName = pluginId.split("/").last()
-                        val sessionId = terminal.createSession("deploy-$pluginShortName")
-                        if (sessionId == null) {
-                            statusCallback(DeploymentStatus.Error(context.getString(R.string.mcp_deployment_cannot_create_terminal)))
-                            return@withContext false
-                        }
+                        val sessionId =
+                            terminal.createSession(
+                                "deploy-$pluginShortName",
+                                HostTerminalTarget.DEFAULT
+                            )
 
                         try {
                             val pluginDir = mcpLocalServer.getPluginRuntimeDirectory(pluginId)
+                            val quotedPluginDir = MCPHostPath.shellQuote(pluginDir)
                             statusCallback(DeploymentStatus.InProgress(context.getString(R.string.mcp_deployment_creating_directory, pluginDir)))
 
-                            val mkdirExecuted = terminal.executeCommand(sessionId, "mkdir -p $pluginDir")
+                            val mkdirExecuted = terminal.executeCommand(sessionId, "mkdir -p $quotedPluginDir")
                             if (mkdirExecuted == null) {
                                 statusCallback(DeploymentStatus.Error(context.getString(R.string.mcp_deployment_create_directory_failed)))
                                 return@withContext false
@@ -279,22 +280,23 @@ class MCPDeployer(private val context: Context) {
             // 为每个插件创建独立的终端会话，方便查看部署日志
             val terminal = Terminal.getInstance(context)
             val pluginShortName = pluginId.split("/").last()
-            sessionId = terminal.createSession("deploy-$pluginShortName")
-            if (sessionId == null) {
-                statusCallback(DeploymentStatus.Error(context.getString(R.string.mcp_deployment_cannot_create_terminal)))
-                return@withContext false
-            }
+            sessionId =
+                terminal.createSession(
+                    "deploy-$pluginShortName",
+                    HostTerminalTarget.DEFAULT
+                )
 
             AppLogger.d(TAG, "为插件 $pluginId 创建独立部署会话: $sessionId")
 
             // 定义插件在 proot 环境中的主目录路径
             val mcpLocalServer = MCPLocalServer.getInstance(context)
             val pluginDir = mcpLocalServer.getPluginRuntimeDirectory(pluginId)
+            val quotedPluginDir = MCPHostPath.shellQuote(pluginDir)
 
             // 首先创建插件目录
             statusCallback(DeploymentStatus.InProgress(context.getString(R.string.mcp_deployment_creating_directory, pluginDir)))
 
-            val mkdirExecuted = terminal.executeCommand(sessionId, "mkdir -p $pluginDir")
+            val mkdirExecuted = terminal.executeCommand(sessionId, "mkdir -p $quotedPluginDir")
             if (mkdirExecuted == null) {
                 statusCallback(DeploymentStatus.Error(context.getString(R.string.mcp_deployment_create_directory_failed)))
                 return@withContext false
@@ -315,22 +317,19 @@ class MCPDeployer(private val context: Context) {
                 pluginPath
             }
 
-            // 使用 AIToolHandler 复制目录（跨环境复制：Android -> Linux）
-            val toolHandler = AIToolHandler.getInstance(context)
-            val copyTool = AITool(
-                name = "copy_file",
-                parameters = listOf(
-                    ToolParameter("source", terminalPluginPath),
-                    ToolParameter("destination", pluginDir),
-                    ToolParameter("source_environment", "android"),
-                    ToolParameter("dest_environment", "linux"),
-                    ToolParameter("recursive", "true")
+            // Copy inside the same DEFAULT/AUTO terminal target that will run deployment commands.
+            // This avoids the legacy Android->linux file tool writing into Termux home while the
+            // session runs in Ubuntu with a different "~".
+            val copyCommand = buildRuntimeCopyCommand(terminalPluginPath, pluginDir)
+            val copyResult =
+                executeCommandWithStreaming(
+                    terminal = terminal,
+                    sessionId = sessionId,
+                    command = copyCommand,
+                    statusCallback = statusCallback
                 )
-            )
-
-            val copyResult = toolHandler.executeTool(copyTool)
-            if (!copyResult.success) {
-                statusCallback(DeploymentStatus.Error(context.getString(R.string.mcp_deployment_copy_failed, copyResult.error ?: "")))
+            if (copyResult == null) {
+                statusCallback(DeploymentStatus.Error(context.getString(R.string.mcp_deployment_copy_failed, terminalPluginPath)))
                 return@withContext false
             }
             AppLogger.d(TAG, "成功复制插件目录: $terminalPluginPath -> $pluginDir")
@@ -338,7 +337,7 @@ class MCPDeployer(private val context: Context) {
             // 切换到插件目录
             statusCallback(DeploymentStatus.InProgress(context.getString(R.string.mcp_deployment_switching_directory)))
 
-            val cdExecuted = terminal.executeCommand(sessionId, "cd $pluginDir")
+            val cdExecuted = terminal.executeCommand(sessionId, "cd $quotedPluginDir")
             if (cdExecuted == null) {
                 statusCallback(DeploymentStatus.Error(context.getString(R.string.mcp_deployment_switch_failed)))
                 return@withContext false
@@ -346,20 +345,27 @@ class MCPDeployer(private val context: Context) {
 
             // 安装依赖并配置环境
             for ((index, command) in deployCommands.withIndex()) {
-                // 跳过启动命令，只执行依赖安装命令
-                if (command.contains("python -m") ||
-                                (command.contains("node ") &&
-                                        !command.contains(
-                                                "node ./node_modules/typescript"
-                                        )) ||
-                                command.contains("npm start") ||
-                                command.startsWith("#")
-                ) {
+                val cleanCommand = command.trim()
+                if (cleanCommand.isBlank()) continue
+
+                val skipReason = deploymentCommandSkipReason(cleanCommand)
+                if (skipReason != null) {
+                    AppLogger.d(TAG, "跳过部署命令: $cleanCommand; reason=$skipReason")
+                    statusCallback(
+                            DeploymentStatus.InProgress(
+                                    "Skipping runtime command during MCP deployment: $cleanCommand\n$skipReason"
+                            )
+                    )
                     continue
                 }
 
-                val cleanCommand = command.trim()
-                if (cleanCommand.isBlank()) continue
+                HostTerminalPolicy.rejectionReason(cleanCommand)?.let { reason ->
+                    val message =
+                            "$reason Configure this plugin as an MCP bridge service or a SmallPhoneAI service-manager service instead of launching it from deployment."
+                    AppLogger.w(TAG, "拒绝部署命令: $cleanCommand; reason=$message")
+                    statusCallback(DeploymentStatus.Error(message))
+                    return@withContext false
+                }
 
                 // 判断是否是非关键命令（如npm配置命令）
                 val isNonCriticalCommand =
@@ -436,6 +442,79 @@ class MCPDeployer(private val context: Context) {
                 }
             }
         }
+    }
+
+    private fun deploymentCommandSkipReason(command: String): String? {
+        if (command.startsWith("#")) {
+            return "Comment-only command."
+        }
+
+        val normalized = command.trim().lowercase(Locale.ROOT)
+        val isNodeRuntimeCommand = isNodeRuntimeCommand(normalized)
+        val isPythonModuleRuntimeCommand =
+                Regex("""(^|[;&|]\s*)python3?\s+-m\s+([a-z0-9_.-]+)""")
+                        .find(normalized)
+                        ?.groupValues
+                        ?.getOrNull(2)
+                        ?.let { moduleName -> !isPythonDeploymentModule(moduleName) }
+                        ?: false
+        val isPackageStartCommand =
+                Regex("""(^|[;&|]\s*)(npm|pnpm|yarn)\s+(run\s+)?start\b""")
+                        .containsMatchIn(normalized)
+
+        return if (isNodeRuntimeCommand || isPythonModuleRuntimeCommand || isPackageStartCommand) {
+            "MCP server runtime commands are started by the MCP bridge/service-manager path, not by deployment scripts."
+        } else {
+            null
+        }
+    }
+
+    private fun isPythonDeploymentModule(moduleName: String): Boolean {
+        val normalized = moduleName.trim().lowercase(Locale.ROOT)
+        return normalized == "venv" ||
+                normalized == "pip" ||
+                normalized.startsWith("pip.") ||
+                normalized == "build" ||
+                normalized == "compileall" ||
+                normalized == "ensurepip"
+    }
+
+    private fun isNodeRuntimeCommand(normalizedCommand: String): Boolean {
+        val nodeMatch =
+                Regex("""(^|[;&|]\s*)node\s+(.+)""")
+                        .find(normalizedCommand)
+                        ?: return false
+        val nodeArgs = nodeMatch.groupValues.getOrNull(2)?.trim().orEmpty()
+        if (nodeArgs.isBlank()) return false
+        if (nodeArgs.startsWith("-") || nodeArgs.contains(" --version")) return false
+        if (nodeArgs.contains("node_modules/typescript")) return false
+
+        val entry = nodeArgs.split(Regex("""\s+""")).firstOrNull().orEmpty().trim('"', '\'')
+        val entryName = entry.substringAfterLast('/')
+        val buildToolIndicators =
+                listOf(" tsc", " rollup", " webpack", " vite", " esbuild", " babel")
+        val buildScriptNameIndicators =
+                listOf("build", "compile", "transpile", "bundle", "prepare", "generate", "codegen")
+        if (buildToolIndicators.any { nodeArgs.contains(it) } ||
+                buildScriptNameIndicators.any { entryName.contains(it) }) {
+            return false
+        }
+
+        return entryName in setOf("index.js", "server.js", "main.js", "app.js", "cli.js") ||
+                entry.startsWith("dist/") ||
+                entry.startsWith("./dist/") ||
+                entry.startsWith("build/") ||
+                entry.startsWith("./build/")
+    }
+
+    private fun buildRuntimeCopyCommand(sourcePath: String, destinationPath: String): String {
+        val quotedSource = MCPHostPath.shellQuote(sourcePath)
+        val quotedDestination = MCPHostPath.shellQuote(destinationPath)
+        return listOf(
+                "rm -rf $quotedDestination",
+                "mkdir -p $quotedDestination",
+                "cp -a $quotedSource/. $quotedDestination/"
+        ).joinToString(" && ")
     }
 
     /**

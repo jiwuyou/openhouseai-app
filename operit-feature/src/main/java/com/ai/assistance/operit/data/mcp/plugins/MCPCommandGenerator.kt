@@ -147,13 +147,8 @@ class MCPCommandGenerator {
                     commands.add("pnpm config set registry https://registry.npmmirror.com")
                     commands.add("pnpm install")
                 }
-
-                val mainFile = projectStructure.mainJsFile
-                if (mainFile != null) {
-                    commands.add("node $mainFile")
-                } else {
-                    commands.add("pnpm start")
-                }
+                // Runtime startup belongs to the MCP bridge/service-manager path. Deployment only
+                // installs and builds dependencies in the OpenHouse/Termux-managed Linux runtime.
             }
             ProjectType.UNKNOWN -> {
                 // 无法确定项目类型，尝试通用命令

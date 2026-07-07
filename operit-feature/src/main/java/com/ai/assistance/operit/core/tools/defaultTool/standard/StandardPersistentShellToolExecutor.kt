@@ -6,10 +6,11 @@ import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.host.executePersistentShellCommand
+import com.ai.assistance.operit.host.terminal.HostTerminalPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
-/** Executes explicit last-resort persistent/background shell commands through the host. */
+/** Executes explicit last-resort long-timeout shell commands through the host. */
 class StandardPersistentShellToolExecutor {
 
     fun execute(tool: AITool): ToolResult {
@@ -20,6 +21,15 @@ class StandardPersistentShellToolExecutor {
                 success = false,
                 result = StringResultData(""),
                 error = "Missing required parameter: command"
+            )
+        }
+        HostTerminalPolicy.rejectionReason(command)?.let { reason ->
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error =
+                    "$reason Register long-running services with SmallPhoneAI service-manager instead of using persistent shell execution."
             )
         }
 

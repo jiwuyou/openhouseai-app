@@ -333,8 +333,8 @@ class TermuxHostTerminalAdapter {
                 ?.joinToString("; ")
                 .orEmpty()
         return buildString {
-            append("Ubuntu terminal is not ready yet; ran this DEFAULT command in Termux. ")
-            append("Complete the first-run Ubuntu setup to use Ubuntu as the default terminal.")
+            append("OpenHouse/Termux Ubuntu terminal is not ready yet; ran this DEFAULT command in Termux. ")
+            append("Complete the OpenHouse first-run Ubuntu setup to use Ubuntu as the default terminal.")
             if (reason.isNotBlank()) {
                 append(" Reason: ")
                 append(reason)

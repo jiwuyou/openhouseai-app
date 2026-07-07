@@ -8,6 +8,7 @@ import com.ai.assistance.operit.core.tools.mcp.MCPServerConfig
 import com.ai.assistance.operit.data.mcp.MCPLocalServer
 import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.core.tools.system.Terminal
+import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CoroutineScope
@@ -95,6 +96,47 @@ class MCPStarter(private val context: Context) {
     private suspend fun isTerminalServiceConnected(): Boolean {
         if (terminal.isConnected()) return true
         return terminal.initialize()
+    }
+
+    private suspend fun isPluginRuntimeReadyInHost(
+        mcpLocalServer: MCPLocalServer,
+        pluginId: String
+    ): Boolean {
+        val metadata = mcpLocalServer.getPluginMetadata(pluginId)
+        if (metadata?.type == "remote") {
+            return true
+        }
+
+        val pluginDir = mcpLocalServer.getPluginRuntimeDirectory(pluginId)
+        val commandName =
+            mcpLocalServer.getMCPServer(pluginId)
+                ?.command
+                ?.trim()
+                ?.substringAfterLast('/')
+                ?.substringAfterLast('\\')
+                ?.lowercase()
+        val filesRequired = commandName !in setOf("npx", "uvx", "uv")
+        val quotedPluginDir = MCPHostPath.shellQuote(pluginDir)
+        val checkCommand =
+            if (filesRequired) {
+                "[ -d $quotedPluginDir ] && [ -n \"$(find $quotedPluginDir -mindepth 1 -print -quit 2>/dev/null)\" ]"
+            } else {
+                "[ -d $quotedPluginDir ]"
+            }
+
+        return try {
+            val result =
+                terminal.executeHiddenCommand(
+                    command = checkCommand,
+                    executorKey = "mcp-runtime-ready",
+                    timeoutMs = 30_000L,
+                    target = HostTerminalTarget.DEFAULT
+                )
+            result.isOk
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error checking plugin runtime in host terminal: $pluginId", e)
+            false
+        }
     }
 
     /** Initialize and start the bridge */
@@ -193,7 +235,7 @@ class MCPStarter(private val context: Context) {
 
             // For local plugins, ensure the runtime workspace exists before spawn
             if (serviceType == "local") {
-                val isRuntimeReady = mcpLocalServer.isPluginRuntimeReady(pluginId)
+                val isRuntimeReady = isPluginRuntimeReadyInHost(mcpLocalServer, pluginId)
                 if (!isRuntimeReady) {
                     // 自动准备运行目录
                     statusCallback(StartStatus.InProgress(context.getString(R.string.plugin_deploying, pluginId)))
@@ -667,7 +709,7 @@ class MCPStarter(private val context: Context) {
 
             if (pluginInfo.type == "local") {
                 val mcpLocalServer = MCPLocalServer.getInstance(context)
-                if (!mcpLocalServer.isPluginRuntimeReady(pluginId)) {
+                if (!isPluginRuntimeReadyInHost(mcpLocalServer, pluginId)) {
                     val deployer = MCPDeployer(context)
                     val pluginPath = mcpRepository.getInstalledPluginPath(pluginId) ?: return null
                     progressListener?.onPluginLog(pluginId, context.getString(R.string.plugin_auto_deploy))
@@ -969,7 +1011,7 @@ class MCPStarter(private val context: Context) {
             // Get plugins whose runtime workspaces are ready
             val pluginList = mcpRepository.installedPluginIds.first()
             val runtimeReadyPlugins = pluginList.filter { pluginId ->
-                mcpLocalServer.isPluginRuntimeReady(pluginId)
+                isPluginRuntimeReadyInHost(mcpLocalServer, pluginId)
             }
 
             // Get registered services
@@ -1124,5 +1166,3 @@ class MCPStarter(private val context: Context) {
         val details: String = ""
     )
 }
-
-

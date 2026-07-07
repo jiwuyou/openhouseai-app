@@ -11,17 +11,61 @@ object HostTerminalPolicy {
             Regex("""(^|[;&|]\s*)pm2\s+(start|restart|resurrect)\b""", RegexOption.IGNORE_CASE),
             Regex("""(^|[;&|]\s*)systemctl\s+(start|restart|enable|daemon-reload)\b""", RegexOption.IGNORE_CASE),
             Regex("""(^|[;&|]\s*)service\s+\S+\s+(start|restart)\b""", RegexOption.IGNORE_CASE),
-            Regex("""(^|[;&|]\s*)/?service-manager\b""", RegexOption.IGNORE_CASE),
-            Regex("""(^|[^\S\r\n])&\s*($|[;|])""")
+            Regex("""(^|[;&|]\s*)/?service-manager\b""", RegexOption.IGNORE_CASE)
         )
 
     fun rejectionReason(command: String): String? {
         val normalized = command.trim()
         if (normalized.isBlank()) return "Command is empty"
-        if (backgroundPatterns.any { it.containsMatchIn(normalized) }) {
+        if (containsBackgroundOperator(normalized) ||
+            backgroundPatterns.any { it.containsMatchIn(normalized) }
+        ) {
             return "Long-running/background terminal commands must be managed by SmallPhoneAI service-manager."
         }
         return null
+    }
+
+    private fun containsBackgroundOperator(command: String): Boolean {
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        var escaped = false
+        var index = 0
+
+        while (index < command.length) {
+            val char = command[index]
+
+            if (escaped) {
+                escaped = false
+                index++
+                continue
+            }
+
+            if (char == '\\' && !inSingleQuote) {
+                escaped = true
+                index++
+                continue
+            }
+
+            when {
+                char == '\'' && !inDoubleQuote -> inSingleQuote = !inSingleQuote
+                char == '"' && !inSingleQuote -> inDoubleQuote = !inDoubleQuote
+                char == '&' && !inSingleQuote && !inDoubleQuote -> {
+                    val previous = command.getOrNull(index - 1)
+                    val next = command.getOrNull(index + 1)
+                    if (next == '&') {
+                        index += 2
+                        continue
+                    }
+                    if (previous != '>' && next != '>') {
+                        return true
+                    }
+                }
+            }
+
+            index++
+        }
+
+        return false
     }
 
     fun shellQuote(value: String): String = "'${value.replace("'", "'\"'\"'")}'"

@@ -40,11 +40,13 @@ public final class OperitRuntimeBridge {
     private static final int HTTP_READ_TIMEOUT_MS = 7_000;
     private static final long UBUNTU_LOGIN_PROBE_TIMEOUT_MS = 10_000L;
     private static final int MAX_CAPTURE_CHARS = 256 * 1024;
+    private static final String HOST_TERMINAL_PROVIDER = "openhouse-termux";
+    private static final String UBUNTU_TERMINAL_PROVIDER = "termux-proot-distro";
+    private static final String UBUNTU_CONTAINER_NAME = "ubuntu";
     private static final String UBUNTU_CURRENT_ROOTFS_RELATIVE_PATH =
         "var/lib/proot-distro/containers/ubuntu/rootfs";
     private static final String UBUNTU_LEGACY_ROOTFS_RELATIVE_PATH =
         "var/lib/proot-distro/installed-rootfs/ubuntu";
-    private static final Pattern BACKGROUND_OPERATOR_PATTERN = Pattern.compile("(?<![>&])&(?![&>])");
     private static final Pattern DAEMONIZER_COMMAND_PATTERN = Pattern.compile(
         "(?i)(?:^|[;|(){}]|&&|\\|\\|)\\s*(?:nohup|setsid|daemon|disown|supervisord)(?=$|[\\s;|(){}])"
     );
@@ -347,9 +349,9 @@ public final class OperitRuntimeBridge {
                     target,
                     cleanCommand,
                     COMMAND_NOT_FOUND_EXIT_CODE,
-                    "Ubuntu terminal is not ready yet because proot-distro is not installed: "
+                    "OpenHouse/Termux Ubuntu terminal is not ready yet because proot-distro is not installed: "
                         + prootDistro.getAbsolutePath()
-                        + ". Complete the first-run Ubuntu setup, then retry.",
+                        + ". Complete the OpenHouse first-run Ubuntu setup, then retry.",
                     startedAt
                 );
             }
@@ -360,10 +362,10 @@ public final class OperitRuntimeBridge {
                     target,
                     cleanCommand,
                     COMMAND_NOT_FOUND_EXIT_CODE,
-                    "Ubuntu terminal is not ready yet because the Ubuntu rootfs is not installed. "
+                    "OpenHouse/Termux Ubuntu terminal is not ready yet because the Ubuntu rootfs is not installed. "
                         + "Checked: "
                         + describeUbuntuRootfsCandidates()
-                        + ". Complete the first-run Ubuntu setup, then retry.",
+                        + ". Complete the OpenHouse first-run Ubuntu setup, then retry.",
                     startedAt
                 );
             }
@@ -373,9 +375,7 @@ public final class OperitRuntimeBridge {
                 return commandError(target, cleanCommand, COMMAND_ERROR_EXIT_CODE, loginError, startedAt);
             }
 
-            shellCommand = shellQuote(prootDistro.getAbsolutePath())
-                + " login ubuntu -- bash -lc "
-                + shellQuote(cleanCommand);
+            shellCommand = buildUbuntuLoginCommand(prootDistro, cleanCommand);
         }
 
         Process process = null;
@@ -390,7 +390,7 @@ public final class OperitRuntimeBridge {
             );
             processBuilder.directory(home);
             processBuilder.redirectErrorStream(false);
-            applyTermuxEnvironment(processBuilder.environment());
+            applyTermuxEnvironment(processBuilder.environment(), target);
 
             process = processBuilder.start();
             stdoutFuture = streamReaders.submit(new StreamReader(process.getInputStream(), "stdout"));
@@ -431,7 +431,7 @@ public final class OperitRuntimeBridge {
     }
 
     private static String validateShortLivedCommand(String command) {
-        if (BACKGROUND_OPERATOR_PATTERN.matcher(command).find()) {
+        if (containsBackgroundOperator(command)) {
             return "Background shell operators are not allowed through Operit runtime shell execution. Use service-manager typed APIs for long-running services. If service-manager itself is down, run /service-manager recover.";
         }
         if (DAEMONIZER_COMMAND_PATTERN.matcher(command).find()) {
@@ -444,6 +444,50 @@ public final class OperitRuntimeBridge {
             return "Service start/restart commands are not allowed through Operit runtime shell execution. Use service-manager typed APIs for long-running services. If service-manager itself is down, run /service-manager recover.";
         }
         return "";
+    }
+
+    private static boolean containsBackgroundOperator(String command) {
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+        boolean escaped = false;
+
+        for (int index = 0; index < command.length(); index++) {
+            char character = command.charAt(index);
+
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+
+            if (character == '\\' && !inSingleQuote) {
+                escaped = true;
+                continue;
+            }
+
+            if (character == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+                continue;
+            }
+
+            if (character == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+                continue;
+            }
+
+            if (character == '&' && !inSingleQuote && !inDoubleQuote) {
+                char previous = index > 0 ? command.charAt(index - 1) : '\0';
+                char next = index + 1 < command.length() ? command.charAt(index + 1) : '\0';
+                if (next == '&') {
+                    index++;
+                    continue;
+                }
+                if (previous != '>' && next != '>') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static boolean isExactServiceManagerRecoverCommand(String command) {
@@ -474,16 +518,125 @@ public final class OperitRuntimeBridge {
         );
     }
 
-    private static void applyTermuxEnvironment(Map<String, String> environment) {
+    private static String buildUbuntuLoginCommand(File prootDistro, String command) {
+        return shellQuote(prootDistro.getAbsolutePath())
+            + " login "
+            + shellQuote(UBUNTU_CONTAINER_NAME)
+            + " -- bash -lc "
+            + shellQuote(buildUbuntuInnerCommand(command));
+    }
+
+    private static String buildUbuntuInnerCommand(String command) {
+        return ubuntuExportCommand()
+            + "exec bash -lc "
+            + shellQuote(command);
+    }
+
+    private static String ubuntuExportCommand() {
+        String serviceManagerUrl = serviceManagerBaseUrl();
+        return "export "
+            + "OPENHOUSEAI_HOST_TERMINAL=1 "
+            + "SMALLPHONEAI_HOST_TERMINAL=1 "
+            + "OPERIT_HOST_TERMINAL=1 "
+            + "OPENHOUSEAI_TERMINAL_PROVIDER=" + shellQuote(HOST_TERMINAL_PROVIDER) + " "
+            + "SMALLPHONEAI_TERMINAL_PROVIDER=" + shellQuote(HOST_TERMINAL_PROVIDER) + " "
+            + "OPERIT_TERMINAL_PROVIDER=" + shellQuote(HOST_TERMINAL_PROVIDER) + " "
+            + "OPENHOUSEAI_HOST_TERMINAL_TARGET=ubuntu "
+            + "SMALLPHONEAI_HOST_TERMINAL_TARGET=ubuntu "
+            + "OPERIT_HOST_TERMINAL_TARGET=ubuntu "
+            + "OPENHOUSEAI_UBUNTU_PROVIDER=" + shellQuote(UBUNTU_TERMINAL_PROVIDER) + " "
+            + "SMALLPHONEAI_UBUNTU_PROVIDER=" + shellQuote(UBUNTU_TERMINAL_PROVIDER) + " "
+            + "OPERIT_UBUNTU_PROVIDER=" + shellQuote(UBUNTU_TERMINAL_PROVIDER) + " "
+            + "OPENHOUSEAI_UBUNTU_CONTAINER=" + shellQuote(UBUNTU_CONTAINER_NAME) + " "
+            + "SMALLPHONEAI_UBUNTU_CONTAINER=" + shellQuote(UBUNTU_CONTAINER_NAME) + " "
+            + "OPERIT_UBUNTU_CONTAINER=" + shellQuote(UBUNTU_CONTAINER_NAME) + " "
+            + "OPENHOUSEAI_SERVICE_MANAGER_URL=" + shellQuote(serviceManagerUrl) + " "
+            + "SMALLPHONEAI_SERVICE_MANAGER_URL=" + shellQuote(serviceManagerUrl) + " "
+            + "OPERIT_SERVICE_MANAGER_URL=" + shellQuote(serviceManagerUrl) + " "
+            + "OPENHOUSEAI_NO_AUTO_UBUNTU=1 "
+            + "SMALLPHONEAI_NO_AUTO_UBUNTU=1 "
+            + "TERMUX_NO_AUTO_UBUNTU=1 "
+            + "OPERIT_NO_AUTO_UBUNTU=1; ";
+    }
+
+    private static void applyTermuxEnvironment(Map<String, String> environment, OperitRuntimeTarget target) {
         environment.put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
         environment.put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
-        environment.put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":/system/bin");
-        environment.put("LD_LIBRARY_PATH", TermuxConstants.TERMUX_LIB_PREFIX_DIR_PATH);
+        environment.put(
+            "PATH",
+            ensurePathEntries(
+                environment.get("PATH"),
+                TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH,
+                "/system/bin"
+            )
+        );
+        environment.put(
+            "LD_LIBRARY_PATH",
+            ensurePathEntries(
+                environment.get("LD_LIBRARY_PATH"),
+                TermuxConstants.TERMUX_LIB_PREFIX_DIR_PATH
+            )
+        );
         environment.put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
-        environment.put("LANG", "C.UTF-8");
+        if (trim(environment.get("LANG")).isEmpty()) {
+            environment.put("LANG", "C.UTF-8");
+        }
+        applyHostTerminalEnvironment(environment, target);
+    }
+
+    private static void applyHostTerminalEnvironment(Map<String, String> environment, OperitRuntimeTarget target) {
+        String resolvedTarget = target == OperitRuntimeTarget.UBUNTU ? "ubuntu" : "termux";
+        String serviceManagerUrl = serviceManagerBaseUrl();
+        environment.put("OPENHOUSEAI_HOST_TERMINAL", "1");
+        environment.put("SMALLPHONEAI_HOST_TERMINAL", "1");
+        environment.put("OPERIT_HOST_TERMINAL", "1");
+        environment.put("OPENHOUSEAI_TERMINAL_PROVIDER", HOST_TERMINAL_PROVIDER);
+        environment.put("SMALLPHONEAI_TERMINAL_PROVIDER", HOST_TERMINAL_PROVIDER);
+        environment.put("OPERIT_TERMINAL_PROVIDER", HOST_TERMINAL_PROVIDER);
+        environment.put("OPENHOUSEAI_HOST_TERMINAL_TARGET", resolvedTarget);
+        environment.put("SMALLPHONEAI_HOST_TERMINAL_TARGET", resolvedTarget);
+        environment.put("OPERIT_HOST_TERMINAL_TARGET", resolvedTarget);
+        environment.put("OPENHOUSEAI_SERVICE_MANAGER_URL", serviceManagerUrl);
+        environment.put("SMALLPHONEAI_SERVICE_MANAGER_URL", serviceManagerUrl);
+        environment.put("OPERIT_SERVICE_MANAGER_URL", serviceManagerUrl);
         environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
         environment.put("SMALLPHONEAI_NO_AUTO_UBUNTU", "1");
         environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
+        environment.put("OPERIT_NO_AUTO_UBUNTU", "1");
+        if (target == OperitRuntimeTarget.UBUNTU) {
+            environment.put("OPENHOUSEAI_UBUNTU_PROVIDER", UBUNTU_TERMINAL_PROVIDER);
+            environment.put("SMALLPHONEAI_UBUNTU_PROVIDER", UBUNTU_TERMINAL_PROVIDER);
+            environment.put("OPERIT_UBUNTU_PROVIDER", UBUNTU_TERMINAL_PROVIDER);
+            environment.put("OPENHOUSEAI_UBUNTU_CONTAINER", UBUNTU_CONTAINER_NAME);
+            environment.put("SMALLPHONEAI_UBUNTU_CONTAINER", UBUNTU_CONTAINER_NAME);
+            environment.put("OPERIT_UBUNTU_CONTAINER", UBUNTU_CONTAINER_NAME);
+        }
+    }
+
+    private static String ensurePathEntries(String original, String... entries) {
+        String value = trim(original);
+        for (int i = entries.length - 1; i >= 0; i--) {
+            value = ensurePathEntry(value, entries[i]);
+        }
+        return value;
+    }
+
+    private static String ensurePathEntry(String original, String entry) {
+        String cleanEntry = trim(entry);
+        if (cleanEntry.isEmpty()) {
+            return trim(original);
+        }
+        String value = trim(original);
+        if (value.isEmpty()) {
+            return cleanEntry;
+        }
+        String[] parts = value.split(Pattern.quote(File.pathSeparator), -1);
+        for (String part : parts) {
+            if (cleanEntry.equals(part)) {
+                return value;
+            }
+        }
+        return cleanEntry + File.pathSeparator + value;
     }
 
     private static File findUbuntuRootfsDirectory() {
@@ -528,7 +681,7 @@ public final class OperitRuntimeBridge {
             );
             processBuilder.directory(home);
             processBuilder.redirectErrorStream(false);
-            applyTermuxEnvironment(processBuilder.environment());
+            applyTermuxEnvironment(processBuilder.environment(), OperitRuntimeTarget.UBUNTU);
 
             process = processBuilder.start();
             stdoutFuture = streamReaders.submit(new StreamReader(process.getInputStream(), "stdout"));
@@ -545,7 +698,7 @@ public final class OperitRuntimeBridge {
             String streamError = combineErrors(stdout.error, stderr.error);
             if (!finished) {
                 return combineErrors(
-                    "Ubuntu terminal login failed because proot-distro login ubuntu -- true timed out after "
+                    "OpenHouse/Termux Ubuntu terminal login failed because proot-distro login ubuntu -- true timed out after "
                         + probeTimeoutMs
                         + " ms.",
                     streamError
@@ -560,13 +713,14 @@ public final class OperitRuntimeBridge {
             String processOutput = combineErrors(stderr.text, stdout.text);
             String details = combineErrors(processOutput, streamError);
             return combineErrors(
-                "Ubuntu terminal login failed because proot-distro login ubuntu -- true exited with code "
+                "OpenHouse/Termux Ubuntu terminal login failed because proot-distro login ubuntu -- true exited with code "
                     + exitCode
                     + ".",
                 details
             );
         } catch (Exception e) {
-            return "Ubuntu terminal login failed before running the requested command: " + compactException(e);
+            return "OpenHouse/Termux Ubuntu terminal login failed before running the requested command: "
+                + compactException(e);
         } finally {
             if (process != null) {
                 process.destroy();

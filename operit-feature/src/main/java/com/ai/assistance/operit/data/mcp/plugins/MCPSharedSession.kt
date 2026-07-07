@@ -3,6 +3,7 @@ package com.ai.assistance.operit.data.mcp.plugins
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.system.Terminal
+import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -45,7 +46,7 @@ object MCPSharedSession {
             }
 
             // 创建共享会话
-            val sessionId = terminal.createSession(SESSION_NAME)
+            val sessionId = terminal.createSession(SESSION_NAME, HostTerminalTarget.DEFAULT)
             if (sessionId == null) {
                 AppLogger.e(TAG, "Failed to create shared session or session initialization timeout")
             } else {

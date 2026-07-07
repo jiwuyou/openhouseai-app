@@ -5,12 +5,10 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.OperitPaths
 import com.ai.assistance.operit.core.tools.system.Terminal
-import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.data.model.AITool
-import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.host.OperitHostServiceManagerResult
 import com.ai.assistance.operit.host.recoverServiceManagerControlPlane
+import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -48,7 +46,7 @@ class MCPBridge private constructor(private val context: Context) {
         private const val DEFAULT_HOST = "127.0.0.1"
         private const val BRIDGE_PORT = 8752  // 远程bridge监听的端口
         private const val CLIENT_PORT = 8751  // Android客户端连接的端口（SSH转发）
-        private const val TERMUX_BRIDGE_PATH = "~/bridge"
+        private const val HOST_LINUX_BRIDGE_PATH = "~/bridge"
         private const val START_COMMAND_THROTTLE_MS = 4000L
         private const val COMMAND_CONNECTION_KEEP_MS = 3500L
         private const val DETECT_PORT_CACHE_MS = 3500L
@@ -96,6 +94,21 @@ class MCPBridge private constructor(private val context: Context) {
 
         @Volatile
         private var INSTANCE: MCPBridge? = null
+
+        private fun buildBridgeDeployCommand(
+            sdcardBridgePath: String,
+            filesToCopy: List<String>
+        ): String {
+            val quotedBridgePath = MCPHostPath.shellQuote(HOST_LINUX_BRIDGE_PATH)
+            val quotedSources =
+                filesToCopy.joinToString(" ") { fileName ->
+                    MCPHostPath.shellQuote("$sdcardBridgePath/$fileName")
+                }
+            return listOf(
+                "mkdir -p $quotedBridgePath",
+                "cp -a $quotedSources $quotedBridgePath/"
+            ).joinToString(" && ")
+        }
 
         fun getInstance(context: Context): MCPBridge {
             return INSTANCE ?: synchronized(this) {
@@ -242,46 +255,30 @@ class MCPBridge private constructor(private val context: Context) {
 
                     // 使用传入的sessionId或创建新的会话
                     val actualSessionId = sessionId ?: run {
-                        val newSessionId = terminal.createSession("mcp-bridge-deploy")
-                        if (newSessionId == null) {
-                            AppLogger.e(TAG, "无法创建终端会话或会话初始化超时")
-                            return@withContext false
-                        }
-                        newSessionId
+                        terminal.createSession(
+                            "mcp-bridge-deploy",
+                            HostTerminalTarget.DEFAULT
+                        )
                     }
 
                     // 使用sdcard路径而不是Android storage路径
                     val sdcardBridgePath = OperitPaths.bridgePathSdcard()
 
-                    // 获取 AIToolHandler 实例
-                    val toolHandler = AIToolHandler.getInstance(context)
-
-                    // 先创建目标目录
-                    val mkdirCommand = "mkdir -p $TERMUX_BRIDGE_PATH"
-                    terminal.executeCommand(actualSessionId, mkdirCommand)
-                    delay(100) // 等待目录创建
-
-                    // 使用 AIToolHandler 复制打包后的文件（跨环境复制：Android -> Linux）
-                    // 打包后的文件已包含所有依赖，不需要 package.json 和 node_modules
+                    // 在同一个 DEFAULT 终端目标中创建目录并复制文件，避免 Termux/Ubuntu home 分裂。
                     val filesToCopy = listOf("index.js", "spawn-helper.js")
-
-                    for (fileName in filesToCopy) {
-                        val copyTool = AITool(
-                            name = "copy_file",
-                            parameters = listOf(
-                                ToolParameter("source", "$sdcardBridgePath/$fileName"),
-                                ToolParameter("destination", "$TERMUX_BRIDGE_PATH/$fileName"),
-                                ToolParameter("source_environment", "android"),
-                                ToolParameter("dest_environment", "linux"),
-                                ToolParameter("recursive", "false")
-                            )
+                    val deployCommand = buildBridgeDeployCommand(sdcardBridgePath, filesToCopy)
+                    val deployResult =
+                        terminal.executeCommandResult(
+                            sessionId = actualSessionId,
+                            command = deployCommand,
+                            timeoutMs = 30_000L
                         )
-
-                        val result = toolHandler.executeTool(copyTool)
-                        if (!result.success) {
-                            AppLogger.e(TAG, "复制文件 $fileName 失败: ${result.error}")
-                            return@withContext false
-                        }
+                    if (!deployResult.isOk) {
+                        val detail = deployResult.error.ifBlank { deployResult.rawOutputPreview }
+                        AppLogger.e(TAG, "复制桥接器文件失败: $detail")
+                        return@withContext false
+                    }
+                    for (fileName in filesToCopy) {
                         AppLogger.d(TAG, "成功复制文件: $fileName")
                     }
 

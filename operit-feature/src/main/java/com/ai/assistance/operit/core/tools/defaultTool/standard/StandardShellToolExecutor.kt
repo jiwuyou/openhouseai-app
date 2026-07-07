@@ -4,21 +4,24 @@ import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.ADBResultData
 import com.ai.assistance.operit.core.tools.StringResultData
-import com.ai.assistance.operit.core.tools.system.AndroidShellExecutor
-import com.ai.assistance.operit.core.tools.system.ShizukuAuthorizer
+import com.ai.assistance.operit.core.tools.system.Terminal
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.model.ToolValidationResult
+import com.ai.assistance.operit.host.terminal.HostTerminalPolicy
+import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import kotlinx.coroutines.runBlocking
 
 /**
- * Tool for executing ADB commands directly. This provides direct access to ADB shell commands for
- * system operations. Note: This requires Shizuku service to be running with proper permissions.
+ * Tool for Android/Termux-oriented shell commands.
+ *
+ * This path is intentionally pinned to TERMUX instead of DEFAULT because commands such as pm,
+ * settings, input and getprop target the Android-side shell surface, not the Ubuntu plugin runtime.
  */
 open class StandardShellToolExecutor(private val context: Context) {
 
     companion object {
-        private const val TAG = "ADBToolExecutor"
+        private const val TAG = "StandardShellToolExecutor"
         private const val DEFAULT_TIMEOUT = 15000L // 15 seconds
     }
 
@@ -35,52 +38,64 @@ open class StandardShellToolExecutor(private val context: Context) {
         }
 
         val command = tool.parameters.find { it.name == "command" }?.value ?: ""
-        // Timeout parameter is kept for API compatibility but not used by AdbCommandExecutor
+        val target = HostTerminalTarget.TERMUX
+
+        HostTerminalPolicy.rejectionReason(command)?.let { reason ->
+            return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = reason
+            )
+        }
 
         return try {
-            // Use AdbCommandExecutor to execute the command
-            val result = runBlocking { AndroidShellExecutor.executeShellCommand(command) }
+            val result =
+                    runBlocking {
+                        Terminal.getInstance(context).executeHiddenCommand(
+                                command = command,
+                                executorKey = "execute-shell-termux",
+                                timeoutMs = DEFAULT_TIMEOUT,
+                                target = target
+                        )
+                    }
 
-            if (result.success) {
+            if (result.isOk) {
                 ToolResult(
                         toolName = tool.name,
                         success = true,
                         result =
                                 ADBResultData(
                                         command = command,
-                                        output = result.stdout,
+                                        output = result.output,
                                         exitCode = result.exitCode
                                 )
                 )
             } else {
                 // Combine stdout and stderr for error reporting
                 val errorOutput =
-                        if (result.stderr.isNotEmpty()) {
-                            "${result.stderr.trim()}\n${result.stdout.trim()}"
-                        } else {
-                            result.stdout.trim()
-                        }
+                        result.error.ifBlank { result.rawOutputPreview }.trim()
 
                 ToolResult(
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
                         error =
-                                "ADB command execution failed (exit code: ${result.exitCode}): $errorOutput"
+                                "Termux host shell command failed (exit code: ${result.exitCode}): $errorOutput"
                 )
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Error executing ADB command", e)
+            AppLogger.e(TAG, "Error executing Termux host shell command", e)
             ToolResult(
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "ADB command execution failed: ${e.message}"
+                    error = "Termux host shell command failed: ${e.message}"
             )
         }
     }
 
-    /** Validates the parameters for the ADB tool. */
+    /** Validates the parameters for the Android/Termux shell tool. */
     fun validateParameters(tool: AITool): ToolValidationResult {
         val command = tool.parameters.find { it.name == "command" }?.value
 
