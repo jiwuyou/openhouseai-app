@@ -15,6 +15,7 @@ object SystemToolPrompts {
         "create_terminal_session",
         "execute_in_terminal_session",
         "execute_hidden_terminal_command",
+        "execute_persistent_shell_command",
         "input_in_terminal_session",
         "close_terminal_session",
         "get_terminal_session_screen"

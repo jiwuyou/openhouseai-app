@@ -4,6 +4,7 @@ import android.content.Context;
 
 import com.ai.assistance.operit.host.OperitHostCommandResult;
 import com.ai.assistance.operit.host.OperitHostContract;
+import com.ai.assistance.operit.host.OperitHostPersistentShellExecution;
 import com.ai.assistance.operit.host.OperitHostProvider;
 import com.ai.assistance.operit.host.OperitHostServiceManagerRecovery;
 import com.ai.assistance.operit.host.OperitHostServiceManagerResult;
@@ -12,7 +13,8 @@ import com.ai.assistance.operit.host.lifecycle.OperitHostLifecycleConfig;
 
 import kotlin.coroutines.Continuation;
 
-public final class SmallPhoneOperitHost implements OperitHostContract, OperitHostServiceManagerRecovery {
+public final class SmallPhoneOperitHost
+    implements OperitHostContract, OperitHostServiceManagerRecovery, OperitHostPersistentShellExecution {
 
     private static volatile SmallPhoneOperitHost instance;
 
@@ -76,6 +78,16 @@ public final class SmallPhoneOperitHost implements OperitHostContract, OperitHos
         Continuation<? super OperitHostCommandResult> continuation
     ) {
         OperitCommandResult result = runtimeBridge.executeUbuntu(command, timeoutMs);
+        return toHostCommandResult(result);
+    }
+
+    @Override
+    public Object executePersistentShellCommand(
+        String command,
+        long timeoutMs,
+        Continuation<? super OperitHostCommandResult> continuation
+    ) {
+        OperitCommandResult result = runtimeBridge.executePersistentShellCommand(command, timeoutMs);
         return toHostCommandResult(result);
     }
 

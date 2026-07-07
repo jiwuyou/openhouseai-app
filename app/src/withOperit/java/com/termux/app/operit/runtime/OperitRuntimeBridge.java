@@ -79,6 +79,16 @@ public final class OperitRuntimeBridge {
         return execute(OperitRuntimeTarget.UBUNTU, command, timeoutMs);
     }
 
+    public OperitCommandResult executePersistentShellCommand(String command, long timeoutMs) {
+        return executeShellCommand(
+            OperitRuntimeTarget.TERMUX,
+            command,
+            timeoutMs,
+            false,
+            false
+        );
+    }
+
     public OperitCommandResult execute(OperitRuntimeTarget target, String command) {
         return execute(target, command, DEFAULT_COMMAND_TIMEOUT_MS);
     }
@@ -243,6 +253,16 @@ public final class OperitRuntimeBridge {
     }
 
     public OperitCommandResult execute(OperitRuntimeTarget target, String command, long timeoutMs) {
+        return executeShellCommand(target, command, timeoutMs, true, true);
+    }
+
+    private OperitCommandResult executeShellCommand(
+        OperitRuntimeTarget target,
+        String command,
+        long timeoutMs,
+        boolean enforceShortLivedPolicy,
+        boolean routeServiceManagerRecovery
+    ) {
         long startedAt = System.currentTimeMillis();
         String cleanCommand = trim(command);
         if (target == null) {
@@ -271,12 +291,16 @@ public final class OperitRuntimeBridge {
             return commandError(target, "", COMMAND_ERROR_EXIT_CODE, "Command is empty.", startedAt);
         }
 
-        if (target == OperitRuntimeTarget.TERMUX && isExactServiceManagerRecoverCommand(cleanCommand)) {
+        if (
+            routeServiceManagerRecovery
+                && target == OperitRuntimeTarget.TERMUX
+                && isExactServiceManagerRecoverCommand(cleanCommand)
+        ) {
             return serviceManagerRecoveryAsCommand(cleanCommand, target, recoverServiceManager(), startedAt);
         }
 
         long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_COMMAND_TIMEOUT_MS;
-        if (effectiveTimeoutMs > MAX_SHORT_COMMAND_TIMEOUT_MS) {
+        if (enforceShortLivedPolicy && effectiveTimeoutMs > MAX_SHORT_COMMAND_TIMEOUT_MS) {
             return commandError(
                 target,
                 cleanCommand,
@@ -286,9 +310,11 @@ public final class OperitRuntimeBridge {
             );
         }
 
-        String policyError = validateShortLivedCommand(cleanCommand);
-        if (!policyError.isEmpty()) {
-            return commandError(target, cleanCommand, COMMAND_POLICY_EXIT_CODE, policyError, startedAt);
+        if (enforceShortLivedPolicy) {
+            String policyError = validateShortLivedCommand(cleanCommand);
+            if (!policyError.isEmpty()) {
+                return commandError(target, cleanCommand, COMMAND_POLICY_EXIT_CODE, policyError, startedAt);
+            }
         }
 
         File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");

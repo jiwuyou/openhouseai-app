@@ -365,6 +365,22 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     )
 
     handler.registerTool(
+            name = "execute_persistent_shell_command",
+            descriptionGenerator = { tool ->
+                val command = tool.parameters.find { it.name == "command" }?.value ?: ""
+                val timeoutMs =
+                        tool.parameters.find { it.name == "timeout_ms" }?.value ?: "600000"
+                "Execute persistent/background shell command: $command (timeout=${timeoutMs}ms). " +
+                        "Last resort only: prefer SmallPhoneAI service-manager first; if service-manager is unavailable, prefer /service-manager recover before using this tool. " +
+                        "仅作为兜底：优先使用 SmallPhoneAI service-manager；如 service-manager 不可用，优先使用 /service-manager recover。"
+            },
+            executor = { tool ->
+                val persistentShellTool = ToolGetter.getPersistentShellToolExecutor()
+                persistentShellTool.execute(tool)
+            }
+    )
+
+    handler.registerTool(
             name = "close_terminal_session",
             descriptionGenerator = { tool ->
                 val sessionId = tool.parameters.find { it.name == "session_id" }?.value

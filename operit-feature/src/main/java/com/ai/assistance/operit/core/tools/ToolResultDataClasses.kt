@@ -326,6 +326,44 @@ data class HiddenTerminalCommandResultData(
     }
 }
 
+/** 常驻/后台 shell 命令执行结果数据 */
+@Serializable
+data class PersistentShellCommandResultData(
+        val command: String,
+        val stdout: String,
+        val stderr: String,
+        val error: String,
+        val exitCode: Int,
+        val timeoutMs: Long,
+        val timedOut: Boolean = false,
+        val durationMs: Long = 0L
+) : ToolResultData() {
+    override fun toString(): String {
+        val sb = StringBuilder()
+        sb.appendLine("Persistent Shell Command Execution Result:")
+        sb.appendLine("Command: $command")
+        sb.appendLine("Exit Code: $exitCode")
+        sb.appendLine("Timeout Ms: $timeoutMs")
+        sb.appendLine("Duration Ms: $durationMs")
+        if (timedOut) {
+            sb.appendLine("Timed Out: true")
+        }
+        if (stdout.isNotBlank()) {
+            sb.appendLine("\nStdout:")
+            sb.appendLine(stdout)
+        }
+        if (stderr.isNotBlank()) {
+            sb.appendLine("\nStderr:")
+            sb.appendLine(stderr)
+        }
+        if (error.isNotBlank()) {
+            sb.appendLine("\nError:")
+            sb.appendLine(error)
+        }
+        return sb.toString()
+    }
+}
+
 /** 音乐播放结果数据 */
 @Serializable
 data class MusicPlaybackResultData(

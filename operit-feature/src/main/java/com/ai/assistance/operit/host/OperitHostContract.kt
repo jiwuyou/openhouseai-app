@@ -18,6 +18,13 @@ interface OperitHostServiceManagerRecovery {
     suspend fun recoverServiceManagerControlPlane(reason: String): OperitHostServiceManagerResult
 }
 
+interface OperitHostPersistentShellExecution {
+    suspend fun executePersistentShellCommand(
+        command: String,
+        timeoutMs: Long = 15_000L
+    ): OperitHostCommandResult
+}
+
 enum class OperitHostServiceManagerRecoveryAction(val wireName: String) {
     REPAIR("repair"),
     RECOVER("recover");
@@ -43,6 +50,17 @@ suspend fun OperitHostContract.recoverServiceManagerControlPlane(
         return recoveryHost.recoverServiceManagerControlPlane(reason)
     }
     return unsupportedServiceManagerRecovery(reason)
+}
+
+suspend fun OperitHostContract.executePersistentShellCommand(
+    command: String,
+    timeoutMs: Long = 15_000L
+): OperitHostCommandResult {
+    val persistentShellHost = this as? OperitHostPersistentShellExecution
+    if (persistentShellHost != null) {
+        return persistentShellHost.executePersistentShellCommand(command, timeoutMs)
+    }
+    return unsupportedPersistentShellExecution(command)
 }
 
 suspend fun OperitHostContract.executeServiceManagerRecoveryCommand(
@@ -98,6 +116,18 @@ private fun serviceManagerRecoveryException(
         serviceUrl = "",
         error = throwable.message ?: throwable::class.java.simpleName,
         durationMs = System.currentTimeMillis() - startedAtMs
+    )
+
+private fun unsupportedPersistentShellExecution(command: String): OperitHostCommandResult =
+    OperitHostCommandResult(
+        command = command,
+        exitCode = 127,
+        stdout = "",
+        stderr = "",
+        error = "Persistent/background shell execution is not implemented by this host. " +
+            "Host does not implement OperitHostPersistentShellExecution.",
+        timedOut = false,
+        durationMs = 0L
     )
 
 private fun OperitHostServiceManagerResult.toRecoveryCommandResult(

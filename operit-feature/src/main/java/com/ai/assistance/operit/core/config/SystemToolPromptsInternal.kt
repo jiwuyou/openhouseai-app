@@ -121,6 +121,26 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "execute_persistent_shell_command",
+                            description = "Last-resort tool for persistent/background shell commands such as nohup, setsid, '&', pm2 start, or commands that intentionally keep running. Service-manager first: normally prefer SmallPhoneAI service-manager for persistent tasks; if service-manager is unavailable, first use `/service-manager recover`; use this tool only when service-manager cannot currently complete the task. This is guidance only and not a runtime gate.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "command",
+                                        type = "string",
+                                        description = "persistent/background shell command to execute",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "optional, command timeout in milliseconds",
+                                        required = false,
+                                        default = "600000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "input_in_terminal_session",
                             description = "Write input to a terminal session. At least one of input or control is required. Typical usage is sending input first, then control=enter to submit.",
                             parametersStructured =
@@ -3083,6 +3103,26 @@ object SystemToolPromptsInternal {
                                         description = "可选，超时时间（毫秒）",
                                         required = false,
                                         default = "120000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "execute_persistent_shell_command",
+                            description = "用于常驻/后台 shell 命令的兜底工具，例如 nohup、setsid、`&`、pm2 start，或有意长期运行的命令。service-manager first：通常应优先使用 SmallPhoneAI service-manager 管理常驻任务；如果 service-manager 不可用，先使用 `/service-manager recover` 拉起；只有 service-manager 当前功能无法完成任务时再使用本工具。这只是提示词约束，不是运行时限制。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "command",
+                                        type = "string",
+                                        description = "要执行的常驻/后台 shell 命令",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "可选，超时时间（毫秒）",
+                                        required = false,
+                                        default = "600000"
                                     )
                                 )
                         ),

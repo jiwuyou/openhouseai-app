@@ -140,6 +140,14 @@ object ToolGetter {
     }
 
     /**
+     * 获取常驻/后台 shell 工具执行器
+     * @return 常驻/后台 shell 工具执行器实现（标准版本）
+     */
+    fun getPersistentShellToolExecutor(): StandardPersistentShellToolExecutor {
+        return StandardPersistentShellToolExecutor()
+    }
+
+    /**
      * 获取音乐播放工具执行器
      * @param context 应用上下文
      * @return 音乐播放工具执行器实现（标准版本）
