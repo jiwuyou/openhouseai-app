@@ -37,7 +37,14 @@ public class LocalFileRepository implements FileRepository {
 
     @Override
     public FileItem getRoot() throws FileOperationException {
-        ensureRootDirectory();
+        if (!root.isDirectory()) {
+            if (root.exists()) {
+                throw new FileOperationException(FileOperationException.Code.INVALID_PATH,
+                    "Root is not a directory: " + root.getAbsolutePath());
+            }
+            throw new FileOperationException(FileOperationException.Code.NOT_FOUND,
+                "Root does not exist: " + root.getAbsolutePath());
+        }
         return toItem(FileItem.ROOT_ID, root, FileItem.ROOT_ID);
     }
 
@@ -86,9 +93,7 @@ public class LocalFileRepository implements FileRepository {
         rejectSymlinkParentMutation(normalized, "write");
         File file = resolve(normalized);
         File parent = file.getParentFile();
-        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
-            throw new FileOperationException(FileOperationException.Code.PERMISSION_DENIED, "Cannot create parent directory: " + parent.getAbsolutePath());
-        }
+        ensureDirectory(parent);
         try {
             return new FileOutputStream(file);
         } catch (FileNotFoundException e) {
@@ -133,6 +138,7 @@ public class LocalFileRepository implements FileRepository {
         if (directory.exists()) {
             throw new FileOperationException(FileOperationException.Code.CONFLICT, "Directory already exists: " + id);
         }
+        ensureDirectory(directory.getParentFile());
         if (!directory.mkdirs()) {
             throw new FileOperationException(FileOperationException.Code.PERMISSION_DENIED, "Cannot create directory: " + directory.getAbsolutePath());
         }
@@ -174,13 +180,15 @@ public class LocalFileRepository implements FileRepository {
         return space.supports(operation);
     }
 
-    private void ensureRootDirectory() throws FileOperationException {
-        if (root.isDirectory()) return;
-        if (root.exists()) {
-            throw new FileOperationException(FileOperationException.Code.INVALID_PATH, "Root is not a directory: " + root.getAbsolutePath());
+    private static void ensureDirectory(File dir) throws FileOperationException {
+        if (dir == null || dir.isDirectory()) return;
+        if (dir.exists()) {
+            throw new FileOperationException(FileOperationException.Code.INVALID_PATH,
+                "Path is not a directory: " + dir.getAbsolutePath());
         }
-        if (!root.mkdirs()) {
-            throw new FileOperationException(FileOperationException.Code.PERMISSION_DENIED, "Cannot create root: " + root.getAbsolutePath());
+        if (!dir.mkdirs() && !dir.isDirectory()) {
+            throw new FileOperationException(FileOperationException.Code.PERMISSION_DENIED,
+                "Cannot create directory: " + dir.getAbsolutePath());
         }
     }
 

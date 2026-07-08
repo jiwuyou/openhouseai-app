@@ -60,6 +60,34 @@ public class LocalFileRepositoryTest {
     }
 
     @Test
+    public void getRootDoesNotCreateMissingRoot() throws Exception {
+        File missing = new File(temporaryFolder.getRoot(), "missing-root");
+        LocalFileRepository repository = new LocalFileRepository(space(), missing);
+
+        try {
+            repository.getRoot();
+            Assert.fail("Expected missing root to stay missing");
+        } catch (FileOperationException e) {
+            Assert.assertEquals(FileOperationException.Code.NOT_FOUND, e.getCode());
+        }
+
+        Assert.assertFalse(missing.exists());
+    }
+
+    @Test
+    public void uploadCreatesMissingRootOnMutation() throws Exception {
+        File missing = new File(temporaryFolder.getRoot(), "missing-root");
+        LocalFileRepository repository = new LocalFileRepository(space(), missing);
+
+        repository.upload(FileItem.ROOT_ID, "note.txt",
+            new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8)),
+            5,
+            "text/plain");
+
+        Assert.assertTrue(new File(missing, "note.txt").isFile());
+    }
+
+    @Test
     public void deleteDirectorySymlinkDoesNotDeleteTargetDirectory() throws Exception {
         File root = temporaryFolder.newFolder("root");
         File target = temporaryFolder.newFolder("target");

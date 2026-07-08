@@ -13,6 +13,7 @@ import android.webkit.MimeTypeMap;
 
 import com.termux.R;
 import com.termux.app.openhouse.files.core.OpenHouseWorkspacePaths;
+import com.termux.app.openhouse.files.core.OpenHouseUbuntuPaths;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.File;
@@ -268,8 +269,8 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
             "OpenHouse Workspace",
             workspace.getAbsolutePath(),
             workspace));
-        File ubuntuRoot = new File(new File(workspace, OpenHouseWorkspacePaths.DIR_UBUNTU), "root");
-        if (ubuntuRoot.exists()) {
+        File ubuntuRoot = OpenHouseUbuntuPaths.findUbuntuHomeDir(TERMUX_HOME_DIR);
+        if (ubuntuRoot != null) {
             roots.add(new RootConfig(
                 ROOT_UBUNTU_ROOT,
                 "Ubuntu Root",

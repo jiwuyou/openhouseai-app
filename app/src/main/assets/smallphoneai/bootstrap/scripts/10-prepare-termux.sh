@@ -782,6 +782,9 @@ safe_symlink() {
   if [ -L "$link_path" ]; then
     return 0
   fi
+  if [ -d "$link_path" ] && [ -z "$(find "$link_path" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+    rmdir "$link_path" 2>/dev/null || true
+  fi
   if [ -e "$link_path" ]; then
     log "软链接目标已存在，保留不改：$link_path"
     return 0

@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.os.Environment;
 
 import com.termux.app.openhouse.files.core.OpenHouseWorkspacePaths;
+import com.termux.app.openhouse.files.core.OpenHouseUbuntuPaths;
 import com.termux.app.openhouse.files.model.FileOperation;
 import com.termux.app.openhouse.files.model.FileRepository;
 import com.termux.app.openhouse.files.model.FileSpace;
@@ -68,18 +69,24 @@ public final class OpenHouseFileSpaceCatalog {
             "Termux Home",
             termuxHomeDir.getAbsolutePath(),
             termuxHomeDir));
-        entries.add(local(
-            SPACE_UBUNTU_ROOT,
-            FileSpaceType.UBUNTU,
-            "Ubuntu root",
-            paths.getSubdir(OpenHouseWorkspacePaths.DIR_UBUNTU).getAbsolutePath() + "/root",
-            new File(paths.getSubdir(OpenHouseWorkspacePaths.DIR_UBUNTU), "root")));
-        entries.add(local(
-            SPACE_UBUNTU_WORKSPACE,
-            FileSpaceType.UBUNTU,
-            "Ubuntu workspace",
-            paths.getSubdir(OpenHouseWorkspacePaths.DIR_UBUNTU).getAbsolutePath() + "/workspace",
-            new File(paths.getSubdir(OpenHouseWorkspacePaths.DIR_UBUNTU), "workspace")));
+        File ubuntuHome = OpenHouseUbuntuPaths.findUbuntuHomeDir(termuxHomeDir);
+        if (ubuntuHome != null) {
+            entries.add(local(
+                SPACE_UBUNTU_ROOT,
+                FileSpaceType.UBUNTU,
+                "Ubuntu root",
+                ubuntuHome.getAbsolutePath(),
+                ubuntuHome));
+            File ubuntuWorkspace = OpenHouseUbuntuPaths.findUbuntuWorkspaceDir(termuxHomeDir);
+            if (ubuntuWorkspace != null) {
+                entries.add(local(
+                    SPACE_UBUNTU_WORKSPACE,
+                    FileSpaceType.UBUNTU,
+                    "Ubuntu workspace",
+                    ubuntuWorkspace.getAbsolutePath(),
+                    ubuntuWorkspace));
+            }
+        }
         if (androidSharedDir != null) {
             entries.add(local(
                 SPACE_ANDROID_SHARED,
