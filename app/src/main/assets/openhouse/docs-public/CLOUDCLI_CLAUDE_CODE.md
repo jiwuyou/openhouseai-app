@@ -43,9 +43,12 @@ CloudCLI 的 Claude Code 模式会检查固定路径：
 URL:
 key/token:
 model id:
+协议类型或 provider 名称:
 ```
 
 不要让用户把真实 key/token 写入仓库、APK 资源、共享文档、截图或日志。只把它写入本机配置文件，并尽量避免在命令输出中回显。
+
+如果这些信息已经在 OpenHouseAI / AionUi 中测通，pi-agent 可以读取现有模型配置作为来源。AionUi 来源字段应按 `platform`、`name`、`base_url`、`api_key`、`models[]`、`model_protocols`、`model_health` 理解，并优先参考 AionUi 自带协议检测、Key 测试和模型健康检查结果；仍要确认 CloudCLI / Claude Code 当前版本需要的协议和配置格式。
 
 ## 入口关系
 
@@ -66,9 +69,10 @@ model id:
 2. 确认 CloudCLI 服务由 service-manager 管理。
 3. 确认 `cc/codex` 入口可访问。
 4. 根据用户提供的 URL、key/token、model id 配置 CloudCLI。
-5. 检查并修复 `agent.js` 的模式配置。
-6. 在 CloudCLI 中测通 Claude Code。
-7. 提醒用户通过菜单进入 `cc/codex`，登录 `admin / 123456`，选择默认模型。
+5. 可选安装并调用 cc-switch 作为 provider 配置执行器。
+6. 检查并修复 `agent.js` 的模式配置。
+7. 在 CloudCLI 中测通 Claude Code。
+8. 提醒用户通过菜单进入 `cc/codex`，登录 `admin / 123456`，选择默认模型。
 
 ## bypasspermissions 与 root
 
@@ -128,6 +132,29 @@ curl -fsS --max-time 5 http://127.0.0.1:30022/ >/dev/null || true
 - model id
 
 如果 CloudCLI 支持网页配置，优先通过网页配置完成。如果需要写本机配置文件，先备份原文件，再写入最小变更。
+
+## 可选使用 cc-switch
+
+配置 Claude Code 时，可以可选使用 APK 内置的 `cc-switch` CLI 辅助写入和切换 provider。它适合在用户已经提供 `URL`、`key/token`、`model id` 和协议类型后，降低手写配置文件出错概率。
+
+安装或检查：
+
+```bash
+/root/openhouse/scripts/install-cc-switch.sh
+command -v cc-switch
+cc-switch --version
+```
+
+使用边界：
+
+- cc-switch 是 provider 配置执行器，不是 Claude Code 本体。
+- cc-switch 不启动 CloudCLI，也不注册到 service-manager。
+- 使用前先阅读 `/root/openhouse/docs/cc-switch.md`。
+- 写入前先备份现有 Claude Code / CloudCLI 配置。
+- 输出 provider 摘要时必须脱敏 key/token。
+- 如果 cc-switch 当前版本不支持目标 provider、协议或 CloudCLI 配置路径，应回退到本文档的手动最小修改流程。
+
+调用后仍必须完成 CloudCLI 页面中的 Claude Code 实测。只看到 `cc-switch` 命令成功，不算配置完成。
 
 ## 测通步骤
 
