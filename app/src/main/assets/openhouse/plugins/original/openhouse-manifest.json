@@ -6,6 +6,20 @@
   "updatedAt": "2026-06-01",
   "bootstrapUrl": "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh",
   "defaultOneClickAction": "full",
+  "healthSignaturePolicy": {
+    "scope": "bootstrap_guidance",
+    "requiredStages": ["bootstrap-stage-1", "bootstrap-stage-2"],
+    "stageLabels": {
+      "bootstrap-stage-1": "一阶段引导 AI 签名",
+      "bootstrap-stage-2": "二阶段引导 AI 签名"
+    },
+    "requiresDistinctAi": true,
+    "completePassField": "healthSignatures.complete",
+    "partialStageOneMessage": "仅完成一阶段引导 AI 签名不能视作完整签名通过；必须找第二个 AI 完成二阶段引导签名。",
+    "fullHealthCheckReminderField": "fullHealthCheck.due",
+    "defaultFullHealthCheckIntervalDays": 7,
+    "overrideEnv": "OPENHOUSE_FULL_HEALTH_CHECK_INTERVAL_DAYS"
+  },
   "stageFlow": [
     {
       "title": "准备手机环境",

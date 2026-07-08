@@ -7,9 +7,33 @@
   "bootstrapUrl": "https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main/bootstrap.sh",
   "bootstrapUrlRole": "optional_update_only",
   "defaultOneClickAction": "install",
+  "healthSignaturePolicy": {
+    "scope": "bootstrap_guidance",
+    "requiredStages": ["bootstrap-stage-1", "bootstrap-stage-2"],
+    "stageLabels": {
+      "bootstrap-stage-1": "一阶段引导 AI 签名",
+      "bootstrap-stage-2": "二阶段引导 AI 签名"
+    },
+    "requiresDistinctAi": true,
+    "completePassField": "healthSignatures.complete",
+    "partialStageOneMessage": "仅完成一阶段引导 AI 签名不能视作完整签名通过；必须找第二个 AI 完成二阶段引导签名。",
+    "fullHealthCheckReminderField": "fullHealthCheck.due",
+    "defaultFullHealthCheckIntervalDays": 7,
+    "overrideEnv": "OPENHOUSE_FULL_HEALTH_CHECK_INTERVAL_DAYS"
+  },
   "machineReadable": {
-    "status": { "type": "bootstrap", "args": ["status"], "output": "json" },
-    "check": { "type": "bootstrap", "args": ["check"], "output": "json" },
+    "status": {
+      "type": "bootstrap",
+      "args": ["status"],
+      "output": "json",
+      "healthSignatureFields": ["healthSignatures", "completeSignaturePass", "fullHealthCheck", "fullHealthCheckDue"]
+    },
+    "check": {
+      "type": "bootstrap",
+      "args": ["check"],
+      "output": "json",
+      "healthSignatureFields": ["healthSignatures", "completeSignaturePass", "fullHealthCheck", "fullHealthCheckDue"]
+    },
     "hooks": { "type": "bootstrap", "args": ["hooks"], "output": "json" },
     "postApkUpdate": {
       "type": "bootstrap",

@@ -394,7 +394,7 @@ required_stage_scripts() {
         60-start-smallphone.sh \
         65-smallphone-status.sh
       ;;
-    status|hooks|check)
+    status|hooks|check|record-full-health-check|mark-full-health-check|full-health-check-complete|set-full-health-check-interval|configure-full-health-check-interval|sign-first-bootstrap-ai|sign-first-bootstrap|first-bootstrap-ai-sign|sign-second-bootstrap-ai|sign-second-bootstrap|second-bootstrap-ai-sign)
       printf '%s\n' 65-smallphone-status.sh
       ;;
     repair)
@@ -537,7 +537,7 @@ run_full_install() {
   run_stage 50-install-runtime-components.sh
   run_stage 48-sync-openhouse-registry.sh
   run_stage 60-start-smallphone.sh
-  run_machine_stage 65-smallphone-status.sh status
+  run_machine_stage 65-smallphone-status.sh record-full-health-check
 }
 
 show_menu() {
@@ -587,8 +587,16 @@ main() {
       run_full_install
       return
       ;;
-    check|status)
+    check)
+      run_machine_stage 65-smallphone-status.sh check
+      return
+      ;;
+    status)
       run_machine_stage 65-smallphone-status.sh status
+      return
+      ;;
+    record-full-health-check|mark-full-health-check|full-health-check-complete|set-full-health-check-interval|configure-full-health-check-interval|sign-first-bootstrap-ai|sign-first-bootstrap|first-bootstrap-ai-sign|sign-second-bootstrap-ai|sign-second-bootstrap|second-bootstrap-ai-sign)
+      run_machine_stage 65-smallphone-status.sh "$@"
       return
       ;;
     hooks)
