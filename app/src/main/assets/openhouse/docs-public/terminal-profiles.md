@@ -16,4 +16,3 @@ proot-distro login ubuntu -- bash -lc 'pwd; whoami'
 ```
 
 如果当前在 Ubuntu，需要处理 Termux 外层问题，优先通过 OpenHouse 的 Termux 终端入口或 App 维护入口，不要在 Ubuntu 内盲目修改 Termux prefix。
-

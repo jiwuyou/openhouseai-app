@@ -9,4 +9,3 @@ OpenHouse 可以通过内置浏览器或 WebView 打开本机服务，例如 pi-
 - 浏览器打开和 App 内 WebView 打开是否表现不同。
 
 如果 WebView 异常，先用本机浏览器或 curl 验证服务，再看 Android 日志和前端控制台可见错误。
-

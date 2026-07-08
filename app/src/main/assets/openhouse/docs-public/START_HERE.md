@@ -14,6 +14,25 @@ OpenHouseAI 是一个装在手机里的人机协作平台。它不是单纯的�
 
 pi-web 默认提示词应优先引用 `/root/openhouse/docs` 下的稳定文档路径；`/root/openhouseai-docs/official` 是兼容旧路径。源码里的同名 Markdown 文件会被同步到运行期文档目录。
 
+## 文档更新通道
+
+APK 会内置一份离线可用的公开文档快照。公开文档源仓库是：
+
+```text
+https://github.com/jiwuyou/openhouse-docs
+```
+
+如果只是文档更新，用户和 AI agent 可以不等待新 APK，直接更新公开文档仓库并同步到运行期路径：
+
+```bash
+git clone https://github.com/jiwuyou/openhouse-docs.git /root/openhouse-docs 2>/dev/null || true
+cd /root/openhouse-docs
+git pull --ff-only
+scripts/sync-runtime-docs.sh
+```
+
+这只刷新 `/root/openhouse/docs`、`/root/openhouseai-docs/official` 等文档路径，不会重装 APK，也不会删除用户数据。
+
 ## 如果你只想开始使用
 
 普通用户首次使用优先阅读：

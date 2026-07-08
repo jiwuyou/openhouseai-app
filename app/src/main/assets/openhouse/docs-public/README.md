@@ -2,7 +2,13 @@
 
 OpenHouseAI 是一个面向人机协作的移动端 AI 运行平台。它基于 Android、Termux 和 Ubuntu，让用户和 AI 可以共同使用终端、文件、服务、模型工具和插件能力。
 
-这组文档随 APK 内置，供用户、维护者和 AI agent 共同参考。
+这组文档随 APK 内置，供用户、维护者和 AI agent 共同参考。公开源仓库是：
+
+```text
+https://github.com/jiwuyou/openhouse-docs
+```
+
+APK 内的 `openhouse/docs-public` 是这个公开仓库的快照。只更新文档时，用户可以直接更新公开仓库并同步到本机运行期路径，不需要等待新 APK。
 
 安装完成后，官方文档目录统一为：
 
@@ -32,6 +38,19 @@ OpenHouseAI 是一个面向人机协作的移动端 AI 运行平台。它基于 
 - `/root/openhouse/docs/openhouse-runtime-policy.md`
 - `/root/openhouse/docs/openhouse-exit-all.md`
 - `/root/openhouse/docs/troubleshooting.md`
+
+## 不等 APK 更新文档
+
+如果只是文档有更新，可以在手机运行环境中执行：
+
+```bash
+git clone https://github.com/jiwuyou/openhouse-docs.git /root/openhouse-docs 2>/dev/null || true
+cd /root/openhouse-docs
+git pull --ff-only
+scripts/sync-runtime-docs.sh
+```
+
+同步后，`/root/openhouse/docs` 和兼容路径会指向新的公开文档内容。
 
 ## 三层路径速览
 

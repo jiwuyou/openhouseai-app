@@ -34,6 +34,16 @@ Operit 是 Android 侧完整可选构建能力，不是默认核心运行时。`
 app/src/main/assets/openhouse/docs-public/
 ```
 
+这套内置文档是公开文档仓库的随包快照：
+
+```text
+https://github.com/jiwuyou/openhouse-docs
+```
+
+发布 APK 前，应从 `/root/openhouse-docs/docs` 同步到
+`app/src/main/assets/openhouse/docs-public/`。只更新文档时，用户可以拉取
+`openhouse-docs` 并运行 `scripts/sync-runtime-docs.sh`，不需要等待新 APK。
+
 仓库级架构和集成文档位于：
 
 ```text

@@ -16,6 +16,11 @@ OpenHouseAI 文档：
 - [开源说明](docs/OPENHOUSEAI_OPEN_SOURCE.md)
 - [安全说明](SECURITY_OPENHOUSEAI.md)
 
+公开用户与 AI 文档的长期源仓库是 `https://github.com/jiwuyou/openhouse-docs`。
+APK 内的 `app/src/main/assets/openhouse/docs-public/` 是该仓库 `docs/` 的随包快照；
+只更新文档时，用户可以拉取公开文档仓库并运行 `scripts/sync-runtime-docs.sh`，
+不需要等待新的 APK。
+
 ## 当前范围
 
 - Android App 入口、权限引导、安装引导、状态展示、维护中心和原生桌面壳。

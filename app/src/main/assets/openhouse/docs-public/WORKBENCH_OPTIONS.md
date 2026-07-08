@@ -64,4 +64,3 @@ AI 应该先问清楚需求，再检索和比较可行项目，然后说明安�
 - 不确定配置格式时先检索，不硬猜。
 - 涉及 API key、token、cookie 时不要写进仓库、APK 资源、公共文档、日志或截图。
 - 若项目需要 GitHub 下载，网络慢时阅读 `GITHUB_NETWORK_MIRRORS.md`。
-
