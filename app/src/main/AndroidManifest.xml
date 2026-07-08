@@ -206,6 +206,22 @@
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
 
         <activity
+            android:name=".app.openhouse.files.ui.OpenHouseFilesActivity"
+            android:exported="false"
+            android:label="@string/openhouse_files_title"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
+            tools:targetApi="n" />
+
+        <activity
+            android:name=".app.openhouse.editor.OpenHouseEditorActivity"
+            android:exported="false"
+            android:label="@string/openhouse_editor_entry_title"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
+            tools:targetApi="n" />
+
+        <activity
             android:name=".app.activities.MaintenanceLogActivity"
             android:exported="false"
             android:label="@string/full_log_title"

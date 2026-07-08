@@ -1,5 +1,6 @@
 package com.termux.app.api.file;
 
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
@@ -8,12 +9,21 @@ import android.provider.OpenableColumns;
 import android.util.Patterns;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.termux.R;
+import com.termux.app.openhouse.files.core.OpenHouseFileNameSanitizer;
+import com.termux.app.openhouse.files.core.OpenHouseWorkspacePaths;
+import com.termux.app.openhouse.files.importing.OpenHouseFileImportManager;
+import com.termux.app.openhouse.files.importing.OpenHouseImportIntents;
+import com.termux.app.openhouse.files.importing.OpenHouseImportSource;
+import com.termux.app.openhouse.files.importing.OpenHouseImportSources;
+import com.termux.app.openhouse.files.importing.OpenHouseImportedFile;
 import com.termux.shared.android.PackageUtils;
 import com.termux.shared.data.DataUtils;
 import com.termux.shared.data.IntentUtils;
+import com.termux.shared.interact.ShareUtils;
 import com.termux.shared.net.uri.UriUtils;
 import com.termux.shared.interact.MessageDialogUtils;
 import com.termux.shared.net.uri.UriScheme;
@@ -30,17 +40,27 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 public class FileReceiverActivity extends AppCompatActivity {
 
-    static final String TERMUX_RECEIVEDIR = TermuxConstants.TERMUX_FILES_DIR_PATH + "/home/downloads";
+    static final String TERMUX_RECEIVEDIR = TermuxConstants.TERMUX_HOME_DIR_PATH + "/openhouse/workspace/inbox";
     static final String EDITOR_PROGRAM = TermuxConstants.TERMUX_HOME_DIR_PATH + "/bin/termux-file-editor";
     static final String URL_OPENER_PROGRAM = TermuxConstants.TERMUX_HOME_DIR_PATH + "/bin/termux-url-opener";
+    private static final int IMPORT_ACTION_SEND_TO_AI = 0;
+    private static final int IMPORT_ACTION_COPY_DESCRIPTION = 1;
+    private static final int IMPORT_ACTION_OPEN_EXTERNALLY = 2;
+    private static final int IMPORT_ACTION_LEGACY_TERMUX_EDITOR = 3;
+    private static final int IMPORT_ACTION_LEGACY_TERMUX_RECEIVE_DIR = 4;
+    private static final CharSequence[] IMPORT_RESULT_ACTIONS = new CharSequence[]{
+        "给 AI 描述",
+        "复制说明",
+        "下载/用其他应用打开",
+        "旧 Termux 编辑",
+        "旧 Termux 接收目录"
+    };
 
     /**
      * If the activity should be finished when the name input dialog is dismissed. This is disabled
@@ -49,6 +69,7 @@ public class FileReceiverActivity extends AppCompatActivity {
      * when showing the error dialog.
      */
     boolean mFinishOnDismissNameDialog = true;
+    private boolean mHandledIntent;
 
     private static final String API_TAG = TermuxConstants.TERMUX_APP_NAME + "FileReceiver";
 
@@ -64,6 +85,11 @@ public class FileReceiverActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+
+        if (mHandledIntent) {
+            return;
+        }
+        mHandledIntent = true;
 
         final Intent intent = getIntent();
         final String action = intent.getAction();
@@ -86,8 +112,7 @@ public class FileReceiverActivity extends AppCompatActivity {
                 } else {
                     String subject = IntentUtils.getStringExtraIfSet(intent, Intent.EXTRA_SUBJECT, null);
                     if (subject == null) subject = sharedTitle;
-                    if (subject != null) subject += ".txt";
-                    promptNameAndSave(new ByteArrayInputStream(sharedText.getBytes(StandardCharsets.UTF_8)), subject);
+                    importSharedText(sharedText, subject, type);
                 }
             } else {
                 showErrorDialogAndQuit("Send action without content - nothing to save.");
@@ -115,7 +140,14 @@ public class FileReceiverActivity extends AppCompatActivity {
                 File file = new File(path);
                 try {
                     FileInputStream in = new FileInputStream(file);
-                    promptNameAndSave(in, file.getName());
+                    OpenHouseImportSource source = OpenHouseImportSource.builder()
+                        .setSuggestedFileName(file.getName())
+                        .setMimeType(type)
+                        .setSizeBytes(file.length())
+                        .setAndroidUri(dataUri.toString())
+                        .setAndroidDisplayLocation(file.getAbsolutePath())
+                        .build();
+                    importStreamAndShowActions(in, source);
                 } catch (FileNotFoundException e) {
                     showErrorDialogAndQuit("Cannot open file: " + e.getMessage() + ".");
                 }
@@ -139,24 +171,114 @@ public class FileReceiverActivity extends AppCompatActivity {
             Logger.logVerbose(LOG_TAG, "uri: \"" + uri + "\", path: \"" + uri.getPath() + "\", fragment: \"" + uri.getFragment() + "\"");
 
             String attachmentFileName = null;
+            long attachmentSize = -1;
 
-            String[] projection = new String[]{OpenableColumns.DISPLAY_NAME};
+            String[] projection = new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE};
             try (Cursor c = getContentResolver().query(uri, projection, null, null, null)) {
                 if (c != null && c.moveToFirst()) {
                     final int fileNameColumnId = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                     if (fileNameColumnId >= 0) attachmentFileName = c.getString(fileNameColumnId);
+                    final int sizeColumnId = c.getColumnIndex(OpenableColumns.SIZE);
+                    if (sizeColumnId >= 0 && !c.isNull(sizeColumnId)) attachmentSize = c.getLong(sizeColumnId);
                 }
             }
 
-            if (attachmentFileName == null) attachmentFileName = subjectFromIntent;
-            if (attachmentFileName == null) attachmentFileName = UriUtils.getUriFileBasename(uri, true);
+            attachmentFileName = OpenHouseImportSources.chooseContentFileName(
+                attachmentFileName,
+                subjectFromIntent,
+                UriUtils.getUriFileBasename(uri, true)
+            );
 
             InputStream in = getContentResolver().openInputStream(uri);
-            promptNameAndSave(in, attachmentFileName);
+            String mimeType = getContentResolver().getType(uri);
+            if (mimeType == null) mimeType = getIntent().getType();
+            OpenHouseImportSource source = OpenHouseImportSource.builder()
+                .setSuggestedFileName(attachmentFileName)
+                .setMimeType(mimeType)
+                .setSizeBytes(attachmentSize)
+                .setAndroidUri(uri.toString())
+                .setAndroidDisplayLocation(OpenHouseImportSources.buildAndroidDisplayLocation(uri, attachmentFileName))
+                .build();
+            importStreamAndShowActions(in, source);
         } catch (Exception e) {
             showErrorDialogAndQuit("Unable to handle shared content:\n\n" + e.getMessage());
             Logger.logStackTraceWithMessage(LOG_TAG, "handleContentUri(uri=" + uri + ") failed", e);
         }
+    }
+
+    void importSharedText(String sharedText, String subject, String mimeType) {
+        importStreamAndShowActions(
+            new ByteArrayInputStream(OpenHouseImportSources.sharedTextBytes(sharedText)),
+            OpenHouseImportSources.forSharedText(sharedText, subject, mimeType)
+        );
+    }
+
+    void importStreamAndShowActions(InputStream in, OpenHouseImportSource source) {
+        try {
+            OpenHouseWorkspacePaths paths = OpenHouseWorkspacePaths.forTermuxHome(TermuxConstants.TERMUX_HOME_DIR_PATH);
+            OpenHouseImportedFile importedFile = new OpenHouseFileImportManager(paths).importStream(in, source);
+            showImportResultDialog(importedFile);
+        } catch (IOException e) {
+            showErrorDialogAndQuit("Error importing file into OpenHouse inbox:\n\n" + e.getMessage());
+            Logger.logStackTraceWithMessage(LOG_TAG, "Error importing file into OpenHouse inbox", e);
+        }
+    }
+
+    void showImportResultDialog(OpenHouseImportedFile importedFile) {
+        String message = "文件: " + importedFile.getDisplayName()
+            + "\nOpenHouse workspace: " + importedFile.getWorkspacePath()
+            + "\nTermux: " + importedFile.getTermuxPath()
+            + "\nUbuntu: " + importedFile.getUbuntuPath();
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("已导入 OpenHouse inbox")
+            .setMessage(message)
+            .setItems(IMPORT_RESULT_ACTIONS, (dialogInterface, which) -> handleImportResultAction(importedFile, which))
+            .setNegativeButton(android.R.string.cancel, (dialogInterface, which) -> finish())
+            .setOnCancelListener(dialogInterface -> finish())
+            .create();
+        dialog.show();
+    }
+
+    void handleImportResultAction(OpenHouseImportedFile importedFile, int action) {
+        if (action == IMPORT_ACTION_SEND_TO_AI) {
+            openIntentAndFinish(
+                Intent.createChooser(OpenHouseImportIntents.createShareAiDescriptionIntent(importedFile), "给 AI 描述"),
+                "No app is available to receive the AI file description."
+            );
+        } else if (action == IMPORT_ACTION_COPY_DESCRIPTION) {
+            ShareUtils.copyTextToClipboard(
+                this,
+                "OpenHouse AI file description",
+                importedFile.buildAiDescription(),
+                "已复制给 AI 的文件说明"
+            );
+            finish();
+        } else if (action == IMPORT_ACTION_OPEN_EXTERNALLY) {
+            openIntentAndFinish(
+                Intent.createChooser(OpenHouseImportIntents.createOpenExternallyIntent(this, importedFile), "用其他应用打开"),
+                "No app is available to open this file."
+            );
+        } else if (action == IMPORT_ACTION_LEGACY_TERMUX_EDITOR) {
+            openLegacyTermuxEditor(importedFile.getFile());
+        } else if (action == IMPORT_ACTION_LEGACY_TERMUX_RECEIVE_DIR) {
+            openLegacyTermuxReceiveDir();
+        } else {
+            finish();
+        }
+    }
+
+    void openIntentAndFinish(Intent intent, String errorMessage) {
+        try {
+            startActivity(intent);
+            finish();
+        } catch (ActivityNotFoundException e) {
+            showErrorDialogAndQuit(errorMessage);
+        }
+    }
+
+    String buildAndroidDisplayLocation(Uri uri, String attachmentFileName) {
+        return OpenHouseImportSources.buildAndroidDisplayLocation(uri, attachmentFileName);
     }
 
     void promptNameAndSave(final InputStream in, final String attachmentFileName) {
@@ -164,34 +286,11 @@ public class FileReceiverActivity extends AppCompatActivity {
             R.string.action_file_received_edit, text -> {
                 File outFile = saveStreamWithName(in, text);
                 if (outFile == null) return;
-
-                final File editorProgramFile = new File(EDITOR_PROGRAM);
-                if (!editorProgramFile.isFile()) {
-                    showErrorDialogAndQuit("The following file does not exist:\n$HOME/bin/termux-file-editor\n\n"
-                        + "Create this file as a script or a symlink - it will be called with the received file as only argument.");
-                    return;
-                }
-
-                // Do this for the user if necessary:
-                //noinspection ResultOfMethodCallIgnored
-                editorProgramFile.setExecutable(true);
-
-                final Uri scriptUri = UriUtils.getFileUri(EDITOR_PROGRAM);
-
-                Intent executeIntent = new Intent(TERMUX_SERVICE.ACTION_SERVICE_EXECUTE, scriptUri);
-                executeIntent.setClass(FileReceiverActivity.this, TermuxService.class);
-                executeIntent.putExtra(TERMUX_SERVICE.EXTRA_ARGUMENTS, new String[]{outFile.getAbsolutePath()});
-                startService(executeIntent);
-                finish();
+                openLegacyTermuxEditor(outFile);
             },
             R.string.action_file_received_open_directory, text -> {
                 if (saveStreamWithName(in, text) == null) return;
-
-                Intent executeIntent = new Intent(TERMUX_SERVICE.ACTION_SERVICE_EXECUTE);
-                executeIntent.putExtra(TERMUX_SERVICE.EXTRA_WORKDIR, TERMUX_RECEIVEDIR);
-                executeIntent.setClass(FileReceiverActivity.this, TermuxService.class);
-                startService(executeIntent);
-                finish();
+                openLegacyTermuxReceiveDir();
             },
             android.R.string.cancel, text -> finish(), dialog -> {
                 if (mFinishOnDismissNameDialog) finish();
@@ -199,33 +298,53 @@ public class FileReceiverActivity extends AppCompatActivity {
     }
 
     public File saveStreamWithName(InputStream in, String attachmentFileName) {
-        File receiveDir = new File(TERMUX_RECEIVEDIR);
-
         if (DataUtils.isNullOrEmpty(attachmentFileName)) {
             showErrorDialogAndQuit("File name cannot be null or empty");
             return null;
         }
 
-        if (!receiveDir.isDirectory() && !receiveDir.mkdirs()) {
-            showErrorDialogAndQuit("Cannot create directory: " + receiveDir.getAbsolutePath());
-            return null;
-        }
-
         try {
-            final File outFile = new File(receiveDir, attachmentFileName);
-            try (FileOutputStream f = new FileOutputStream(outFile)) {
-                byte[] buffer = new byte[4096];
-                int readBytes;
-                while ((readBytes = in.read(buffer)) > 0) {
-                    f.write(buffer, 0, readBytes);
-                }
-            }
-            return outFile;
+            OpenHouseWorkspacePaths paths = OpenHouseWorkspacePaths.forTermuxHome(TermuxConstants.TERMUX_HOME_DIR_PATH);
+            OpenHouseImportSource source = OpenHouseImportSource.builder()
+                .setSuggestedFileName(OpenHouseFileNameSanitizer.sanitize(attachmentFileName))
+                .setAndroidDisplayLocation("Termux file receiver")
+                .build();
+            return new OpenHouseFileImportManager(paths).importStream(in, source).getFile();
         } catch (IOException e) {
             showErrorDialogAndQuit("Error saving file:\n\n" + e);
             Logger.logStackTraceWithMessage(LOG_TAG, "Error saving file", e);
             return null;
         }
+    }
+
+    void openLegacyTermuxEditor(File file) {
+        final File editorProgramFile = new File(EDITOR_PROGRAM);
+        if (!editorProgramFile.isFile()) {
+            showErrorDialogAndQuit("The following file does not exist:\n$HOME/bin/termux-file-editor\n\n"
+                + "Create this file as a script or a symlink - it will be called with the received file as only argument.");
+            return;
+        }
+
+        // Do this for the user if necessary:
+        //noinspection ResultOfMethodCallIgnored
+        editorProgramFile.setExecutable(true);
+
+        startService(OpenHouseImportIntents.createLegacyEditorServiceIntent(
+            getPackageName(),
+            TermuxService.class,
+            EDITOR_PROGRAM,
+            file
+        ));
+        finish();
+    }
+
+    void openLegacyTermuxReceiveDir() {
+        startService(OpenHouseImportIntents.createLegacyOpenReceiveDirServiceIntent(
+            getPackageName(),
+            TermuxService.class,
+            TERMUX_RECEIVEDIR
+        ));
+        finish();
     }
 
     void handleUrlAndFinish(final String url) {

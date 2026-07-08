@@ -9,3 +9,17 @@ OpenHouse 可以通过内置浏览器或 WebView 打开本机服务，例如 pi-
 - 浏览器打开和 App 内 WebView 打开是否表现不同。
 
 如果 WebView 异常，先用本机浏览器或 curl 验证服务，再看 Android 日志和前端控制台可见错误。
+
+## 受控浏览器
+
+OpenHouse 的“受控浏览器”可以通过命令控制：
+
+```bash
+openhouse-browser --help
+openhouse-browser open http://127.0.0.1:30141/
+openhouse-browser tabs
+openhouse-browser text
+openhouse-browser screenshot --output /data/data/com.termux/files/home/.openhouse-browser/results/page.png
+```
+
+完整命令、JSON RPC、CDP 兼容子集和安全约束见 `BROWSER_AND_WEBVIEW.md` 的“受控浏览器命令”章节。

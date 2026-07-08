@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="openhouse_editor_title">编辑器</string>
+    <string name="openhouse_editor_open">打开</string>
+    <string name="openhouse_editor_save">保存</string>
+    <string name="openhouse_editor_export">导出</string>
+    <string name="openhouse_editor_preview">预览</string>
+    <string name="openhouse_editor_edit">编辑</string>
+    <string name="openhouse_editor_outline">大纲</string>
+    <string name="openhouse_editor_copy_ai">复制说明</string>
+    <string name="openhouse_editor_share_ai">给 AI</string>
+    <string name="openhouse_editor_ai_description">OpenHouse 编辑器文件说明</string>
+    <string name="openhouse_editor_loading">正在打开文件...</string>
+    <string name="openhouse_editor_draft_ready">新草稿</string>
+    <string name="openhouse_editor_non_text">这个文件不像文本/代码/Markdown，已按只读处理。</string>
+    <string name="openhouse_editor_large_file_read_only">文件超过 1 MiB，只加载前 1 MiB 并进入只读，避免误写截断内容。</string>
+    <string name="openhouse_editor_status_dirty">未保存</string>
+    <string name="openhouse_editor_status_clean">已同步</string>
+    <string name="openhouse_editor_status_read_only">只读</string>
+    <string name="openhouse_editor_status_repository_export">仓库临时副本</string>
+    <string name="openhouse_editor_status_truncated">内容截断</string>
+    <string name="openhouse_editor_save_disabled">当前内容只读，不能保存回原文件。</string>
+    <string name="openhouse_editor_saving">正在保存...</string>
+    <string name="openhouse_editor_saved">已保存，并已创建备份。</string>
+    <string name="openhouse_editor_save_failed">保存失败：%1$s</string>
+    <string name="openhouse_editor_open_failed">打开失败：%1$s</string>
+    <string name="openhouse_editor_exporting">正在导出...</string>
+    <string name="openhouse_editor_exported">已导出。</string>
+    <string name="openhouse_editor_no_outline">没有可用标题。</string>
+    <string name="openhouse_editor_copied">已复制。</string>
+</resources>

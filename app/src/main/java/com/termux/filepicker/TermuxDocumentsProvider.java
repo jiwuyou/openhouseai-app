@@ -12,34 +12,35 @@ import android.provider.DocumentsProvider;
 import android.webkit.MimeTypeMap;
 
 import com.termux.R;
+import com.termux.app.openhouse.files.core.OpenHouseWorkspacePaths;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
 
 /**
- * A document provider for the Storage Access Framework which exposes the files in the
- * $HOME/ directory to other apps.
- * <p/>
- * Note that this replaces providing an activity matching the ACTION_GET_CONTENT intent:
- * <p/>
- * "A document provider and ACTION_GET_CONTENT should be considered mutually exclusive. If you
- * support both of them simultaneously, your app will appear twice in the system picker UI,
- * offering two different ways of accessing your stored data. This would be confusing for users."
- * - http://developer.android.com/guide/topics/providers/document-provider.html#43
+ * DocumentsProvider exposing stable OpenHouse file roots through Android SAF.
  */
 public class TermuxDocumentsProvider extends DocumentsProvider {
 
     private static final String ALL_MIME_TYPES = "*/*";
+    static final String ROOT_TERMUX_HOME = "termux-home";
+    static final String ROOT_OPENHOUSE_WORKSPACE = "openhouse-workspace";
+    static final String ROOT_UBUNTU_ROOT = "ubuntu-root";
+    static final String DOC_ID_SEPARATOR = ":";
+    private static final int MAX_SEARCH_RESULTS = 50;
+    private static final int MAX_SEARCH_VISITED_DIRECTORIES = 2000;
 
-    private static final File BASE_DIR = TermuxConstants.TERMUX_HOME_DIR;
+    private static final File TERMUX_HOME_DIR = TermuxConstants.TERMUX_HOME_DIR;
 
-
-    // The default columns to return information about a root if no specific
-    // columns are requested in a query.
     private static final String[] DEFAULT_ROOT_PROJECTION = new String[]{
         Root.COLUMN_ROOT_ID,
         Root.COLUMN_MIME_TYPES,
@@ -51,8 +52,6 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
         Root.COLUMN_AVAILABLE_BYTES
     };
 
-    // The default columns to return information about a document if no specific
-    // columns are requested in a query.
     private static final String[] DEFAULT_DOCUMENT_PROJECTION = new String[]{
         Document.COLUMN_DOCUMENT_ID,
         Document.COLUMN_MIME_TYPE,
@@ -65,17 +64,9 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
     @Override
     public Cursor queryRoots(String[] projection) {
         final MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_ROOT_PROJECTION);
-        final String applicationName = getContext().getString(R.string.application_name);
-
-        final MatrixCursor.RowBuilder row = result.newRow();
-        row.add(Root.COLUMN_ROOT_ID, getDocIdForFile(BASE_DIR));
-        row.add(Root.COLUMN_DOCUMENT_ID, getDocIdForFile(BASE_DIR));
-        row.add(Root.COLUMN_SUMMARY, null);
-        row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE | Root.FLAG_SUPPORTS_SEARCH | Root.FLAG_SUPPORTS_IS_CHILD);
-        row.add(Root.COLUMN_TITLE, applicationName);
-        row.add(Root.COLUMN_MIME_TYPES, ALL_MIME_TYPES);
-        row.add(Root.COLUMN_AVAILABLE_BYTES, BASE_DIR.getFreeSpace());
-        row.add(Root.COLUMN_ICON, R.mipmap.ic_launcher);
+        for (RootConfig root : getRoots()) {
+            includeRoot(result, root);
+        }
         return result;
     }
 
@@ -90,8 +81,26 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
     public Cursor queryChildDocuments(String parentDocumentId, String[] projection, String sortOrder) throws FileNotFoundException {
         final MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOCUMENT_PROJECTION);
         final File parent = getFileForDocId(parentDocumentId);
-        for (File file : parent.listFiles()) {
-            includeFile(result, null, file);
+        File[] files = parent.listFiles();
+        if (files == null) {
+            return result;
+        }
+        List<File> sorted = new ArrayList<>();
+        Collections.addAll(sorted, files);
+        Collections.sort(sorted, new Comparator<File>() {
+            @Override
+            public int compare(File left, File right) {
+                boolean leftDir = isBrowsableDirectory(left);
+                boolean rightDir = isBrowsableDirectory(right);
+                if (leftDir != rightDir) return leftDir ? -1 : 1;
+                return left.getName().compareToIgnoreCase(right.getName());
+            }
+        });
+        for (File file : sorted) {
+            try {
+                includeFile(result, null, file);
+            } catch (FileNotFoundException ignored) {
+            }
         }
         return result;
     }
@@ -112,15 +121,21 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
 
     @Override
     public boolean onCreate() {
+        ensureOpenHouseWorkspaceRoot();
         return true;
     }
 
     @Override
     public String createDocument(String parentDocumentId, String mimeType, String displayName) throws FileNotFoundException {
-        File newFile = new File(parentDocumentId, displayName);
+        File parent = getFileForDocId(parentDocumentId);
+        if (!parent.isDirectory()) {
+            throw new FileNotFoundException("Parent is not a directory: " + parentDocumentId);
+        }
+        String safeDisplayName = sanitizeDisplayName(displayName);
+        File newFile = new File(parent, safeDisplayName);
         int noConflictId = 2;
         while (newFile.exists()) {
-            newFile = new File(parentDocumentId, displayName + " (" + noConflictId++ + ")");
+            newFile = new File(parent, safeDisplayName + " (" + noConflictId++ + ")");
         }
         try {
             boolean succeeded;
@@ -135,15 +150,34 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
         } catch (IOException e) {
             throw new FileNotFoundException("Failed to create document with id " + newFile.getPath());
         }
-        return newFile.getPath();
+        return getDocIdForFile(newFile);
     }
 
     @Override
     public void deleteDocument(String documentId) throws FileNotFoundException {
         File file = getFileForDocId(documentId);
-        if (!file.delete()) {
+        if (isRootDocumentId(documentId)) {
+            throw new FileNotFoundException("Cannot delete root document " + documentId);
+        }
+        if (!deleteRecursively(file)) {
             throw new FileNotFoundException("Failed to delete document with id " + documentId);
         }
+    }
+
+    @Override
+    public String renameDocument(String documentId, String displayName) throws FileNotFoundException {
+        File file = getFileForDocId(documentId);
+        if (isRootDocumentId(documentId)) {
+            throw new FileNotFoundException("Cannot rename root document " + documentId);
+        }
+        File target = new File(file.getParentFile(), sanitizeDisplayName(displayName));
+        if (target.exists()) {
+            throw new FileNotFoundException("Target already exists " + target.getAbsolutePath());
+        }
+        if (!file.renameTo(target)) {
+            throw new FileNotFoundException("Failed to rename document with id " + documentId);
+        }
+        return getDocIdForFile(target);
     }
 
     @Override
@@ -155,33 +189,36 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
     @Override
     public Cursor querySearchDocuments(String rootId, String query, String[] projection) throws FileNotFoundException {
         final MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOCUMENT_PROJECTION);
-        final File parent = getFileForDocId(rootId);
-
-        // This example implementation searches file names for the query and doesn't rank search
-        // results, so we can stop as soon as we find a sufficient number of matches.  Other
-        // implementations might rank results and use other data about files, rather than the file
-        // name, to produce a match.
+        RootConfig root = getRoot(rootId);
+        if (root == null) {
+            throw new FileNotFoundException("Unknown root " + rootId);
+        }
+        final File rootDir = root.baseDir;
         final LinkedList<File> pending = new LinkedList<>();
-        pending.add(parent);
+        final Set<String> visited = new HashSet<>();
+        pending.add(rootDir);
 
-        final int MAX_SEARCH_RESULTS = 50;
-        while (!pending.isEmpty() && result.getCount() < MAX_SEARCH_RESULTS) {
+        String normalizedQuery = query == null ? "" : query.toLowerCase();
+        int visitedDirectories = 0;
+        while (!pending.isEmpty()
+            && result.getCount() < MAX_SEARCH_RESULTS
+            && visitedDirectories < MAX_SEARCH_VISITED_DIRECTORIES) {
             final File file = pending.removeFirst();
-            // Avoid directories outside the $HOME directory linked with symlinks (to avoid e.g. search
-            // through the whole SD card).
-            boolean isInsideHome;
-            try {
-                isInsideHome = file.getCanonicalPath().startsWith(TermuxConstants.TERMUX_HOME_DIR_PATH);
-            } catch (IOException e) {
-                isInsideHome = true;
+            if (!isSameOrChild(rootDir, file)) {
+                continue;
             }
-            if (isInsideHome) {
-                if (file.isDirectory()) {
-                    Collections.addAll(pending, file.listFiles());
-                } else {
-                    if (file.getName().toLowerCase().contains(query)) {
-                        includeFile(result, null, file);
-                    }
+            if (isBrowsableDirectory(file)) {
+                String canonical = canonicalPath(file);
+                if (canonical != null && !visited.add(canonical)) {
+                    continue;
+                }
+                visitedDirectories++;
+                File[] children = file.listFiles();
+                if (children != null) Collections.addAll(pending, children);
+            } else if (file.getName().toLowerCase().contains(normalizedQuery)) {
+                try {
+                    includeFile(result, null, file);
+                } catch (FileNotFoundException ignored) {
                 }
             }
         }
@@ -191,50 +228,153 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
 
     @Override
     public boolean isChildDocument(String parentDocumentId, String documentId) {
-        return documentId.startsWith(parentDocumentId);
+        try {
+            RootConfig parentRoot = getRootForDocId(parentDocumentId);
+            RootConfig childRoot = getRootForDocId(documentId);
+            if (parentRoot == null || childRoot == null || !parentRoot.id.equals(childRoot.id)) {
+                return false;
+            }
+            File parent = getFileForDocId(parentDocumentId);
+            File child = getFileForDocId(documentId);
+            return isSameOrChild(parent, child);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
-    /**
-     * Get the document id given a file. This document id must be consistent across time as other
-     * applications may save the ID and use it to reference documents later.
-     * <p/>
-     * The reverse of @{link #getFileForDocId}.
-     */
-    private static String getDocIdForFile(File file) {
-        return file.getAbsolutePath();
+    private void includeRoot(MatrixCursor result, RootConfig root) {
+        final MatrixCursor.RowBuilder row = result.newRow();
+        row.add(Root.COLUMN_ROOT_ID, root.id);
+        row.add(Root.COLUMN_DOCUMENT_ID, getRootDocId(root.id));
+        row.add(Root.COLUMN_SUMMARY, root.summary);
+        row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE | Root.FLAG_SUPPORTS_SEARCH | Root.FLAG_SUPPORTS_IS_CHILD);
+        row.add(Root.COLUMN_TITLE, root.title);
+        row.add(Root.COLUMN_MIME_TYPES, ALL_MIME_TYPES);
+        row.add(Root.COLUMN_AVAILABLE_BYTES, root.baseDir.getFreeSpace());
+        row.add(Root.COLUMN_ICON, R.mipmap.ic_launcher);
     }
 
-    /**
-     * Get the file given a document id (the reverse of {@link #getDocIdForFile(File)}).
-     */
-    private static File getFileForDocId(String docId) throws FileNotFoundException {
+    private List<RootConfig> getRoots() {
+        ensureOpenHouseWorkspaceRoot();
+        List<RootConfig> roots = new ArrayList<>();
+        roots.add(new RootConfig(
+            ROOT_TERMUX_HOME,
+            "Termux Home",
+            TermuxConstants.TERMUX_HOME_DIR_PATH,
+            TERMUX_HOME_DIR));
+        File workspace = OpenHouseWorkspacePaths.forTermuxHome(TERMUX_HOME_DIR).getTermuxWorkspaceDir();
+        roots.add(new RootConfig(
+            ROOT_OPENHOUSE_WORKSPACE,
+            "OpenHouse Workspace",
+            workspace.getAbsolutePath(),
+            workspace));
+        File ubuntuRoot = new File(new File(workspace, OpenHouseWorkspacePaths.DIR_UBUNTU), "root");
+        if (ubuntuRoot.exists()) {
+            roots.add(new RootConfig(
+                ROOT_UBUNTU_ROOT,
+                "Ubuntu Root",
+                ubuntuRoot.getAbsolutePath(),
+                ubuntuRoot));
+        }
+        return roots;
+    }
+
+    private RootConfig getRoot(String rootId) {
+        for (RootConfig root : getRoots()) {
+            if (root.id.equals(rootId)) return root;
+        }
+        return null;
+    }
+
+    static String buildDocumentId(String rootId, String relativePath) {
+        String root = rootId == null ? "" : rootId.trim();
+        String relative = relativePath == null ? "" : relativePath.replace('\\', '/');
+        while (relative.startsWith("/")) relative = relative.substring(1);
+        return root + DOC_ID_SEPARATOR + relative;
+    }
+
+    static String getRootIdFromDocumentId(String documentId) {
+        int separator = documentId == null ? -1 : documentId.indexOf(DOC_ID_SEPARATOR);
+        if (separator <= 0) return "";
+        return documentId.substring(0, separator);
+    }
+
+    static String getRelativePathFromDocumentId(String documentId) {
+        int separator = documentId == null ? -1 : documentId.indexOf(DOC_ID_SEPARATOR);
+        if (separator < 0 || separator + DOC_ID_SEPARATOR.length() >= documentId.length()) return "";
+        return documentId.substring(separator + DOC_ID_SEPARATOR.length());
+    }
+
+    private static String getRootDocId(String rootId) {
+        return buildDocumentId(rootId, "");
+    }
+
+    private String getDocIdForFile(File file) throws FileNotFoundException {
+        RootConfig bestRoot = null;
+        String bestRelative = null;
+        for (RootConfig root : getRoots()) {
+            String relative = relativePath(root.baseDir, file);
+            if (relative != null && (bestRelative == null || relative.length() < bestRelative.length())) {
+                bestRoot = root;
+                bestRelative = relative;
+            }
+        }
+        if (bestRoot == null) {
+            throw new FileNotFoundException("File is outside exposed roots: " + file.getAbsolutePath());
+        }
+        return buildDocumentId(bestRoot.id, bestRelative);
+    }
+
+    private File getFileForDocId(String docId) throws FileNotFoundException {
+        if (docId == null || docId.trim().isEmpty()) {
+            throw new FileNotFoundException("Empty document id");
+        }
+        if (docId.startsWith("/")) {
+            return getLegacyFileForDocId(docId);
+        }
+        RootConfig root = getRootForDocId(docId);
+        if (root == null) {
+            throw new FileNotFoundException("Unknown root for document id " + docId);
+        }
+        String relative = getRelativePathFromDocumentId(docId);
+        File file = relative.isEmpty() ? root.baseDir : new File(root.baseDir, relative);
+        if (!isSameOrChild(root.baseDir, file)) {
+            throw new FileNotFoundException("Document escapes root " + docId);
+        }
+        if (!file.exists()) {
+            throw new FileNotFoundException(file.getAbsolutePath() + " not found");
+        }
+        return file;
+    }
+
+    private RootConfig getRootForDocId(String docId) {
+        String rootId = getRootIdFromDocumentId(docId);
+        return rootId.isEmpty() ? null : getRoot(rootId);
+    }
+
+    private File getLegacyFileForDocId(String docId) throws FileNotFoundException {
         final File f = new File(docId);
         if (!f.exists()) throw new FileNotFoundException(f.getAbsolutePath() + " not found");
+        if (!isSameOrChild(TERMUX_HOME_DIR, f)) {
+            throw new FileNotFoundException("Legacy document id outside Termux home: " + docId);
+        }
         return f;
     }
 
     private static String getMimeType(File file) {
-        if (file.isDirectory()) {
+        if (isBrowsableDirectory(file)) {
             return Document.MIME_TYPE_DIR;
-        } else {
-            final String name = file.getName();
-            final int lastDot = name.lastIndexOf('.');
-            if (lastDot >= 0) {
-                final String extension = name.substring(lastDot + 1).toLowerCase();
-                final String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
-                if (mime != null) return mime;
-            }
-            return "application/octet-stream";
         }
+        final String name = file.getName();
+        final int lastDot = name.lastIndexOf('.');
+        if (lastDot >= 0) {
+            final String extension = name.substring(lastDot + 1).toLowerCase();
+            final String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+            if (mime != null) return mime;
+        }
+        return "application/octet-stream";
     }
 
-    /**
-     * Add a representation of a file to a cursor.
-     *
-     * @param result the cursor to modify
-     * @param docId  the document ID representing the desired file (may be null if given file)
-     * @param file   the File object representing the desired file (may be null if given docID)
-     */
     private void includeFile(MatrixCursor result, String docId, File file)
         throws FileNotFoundException {
         if (docId == null) {
@@ -243,26 +383,130 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
             file = getFileForDocId(docId);
         }
 
+        boolean directory = isBrowsableDirectory(file);
         int flags = 0;
-        if (file.isDirectory()) {
+        if (directory) {
             if (file.canWrite()) flags |= Document.FLAG_DIR_SUPPORTS_CREATE;
         } else if (file.canWrite()) {
             flags |= Document.FLAG_SUPPORTS_WRITE;
         }
-        if (file.getParentFile().canWrite()) flags |= Document.FLAG_SUPPORTS_DELETE;
+        File parentFile = file.getParentFile();
+        if (!isRootDocumentId(docId) && parentFile != null && parentFile.canWrite()) {
+            flags |= Document.FLAG_SUPPORTS_DELETE | Document.FLAG_SUPPORTS_RENAME;
+        }
 
-        final String displayName = file.getName();
+        final String displayName = isRootDocumentId(docId) ? rootTitleForDocId(docId, file.getName()) : file.getName();
         final String mimeType = getMimeType(file);
         if (mimeType.startsWith("image/")) flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
 
         final MatrixCursor.RowBuilder row = result.newRow();
         row.add(Document.COLUMN_DOCUMENT_ID, docId);
         row.add(Document.COLUMN_DISPLAY_NAME, displayName);
-        row.add(Document.COLUMN_SIZE, file.length());
+        row.add(Document.COLUMN_SIZE, directory ? -1 : file.length());
         row.add(Document.COLUMN_MIME_TYPE, mimeType);
         row.add(Document.COLUMN_LAST_MODIFIED, file.lastModified());
         row.add(Document.COLUMN_FLAGS, flags);
         row.add(Document.COLUMN_ICON, R.mipmap.ic_launcher);
     }
 
+    private String rootTitleForDocId(String docId, String fallback) {
+        RootConfig root = getRootForDocId(docId);
+        return root == null ? fallback : root.title;
+    }
+
+    private static boolean isRootDocumentId(String docId) {
+        return docId != null && docId.endsWith(DOC_ID_SEPARATOR);
+    }
+
+    private static String sanitizeDisplayName(String displayName) throws FileNotFoundException {
+        if (displayName == null) throw new FileNotFoundException("Empty display name");
+        String name = displayName.trim();
+        if (name.isEmpty() || ".".equals(name) || "..".equals(name)
+            || name.contains("/") || name.contains("\\")) {
+            throw new FileNotFoundException("Invalid display name " + displayName);
+        }
+        return name;
+    }
+
+    private static boolean deleteRecursively(File file) {
+        if (isBrowsableDirectory(file)) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    if (!deleteRecursively(child)) return false;
+                }
+            }
+        }
+        return file.delete();
+    }
+
+    private static boolean isBrowsableDirectory(File file) {
+        return file != null && file.isDirectory() && !isSymlink(file);
+    }
+
+    private static boolean isSameOrChild(File root, File file) {
+        try {
+            String rootPath = root.getCanonicalPath();
+            String filePath = file.getCanonicalPath();
+            return filePath.equals(rootPath) || filePath.startsWith(rootPath + File.separator);
+        } catch (IOException e) {
+            String rootPath = root.getAbsolutePath();
+            String filePath = file.getAbsolutePath();
+            return filePath.equals(rootPath) || filePath.startsWith(rootPath + File.separator);
+        }
+    }
+
+    private static String relativePath(File root, File file) {
+        try {
+            String rootPath = root.getCanonicalPath();
+            String filePath = file.getCanonicalPath();
+            if (filePath.equals(rootPath)) return "";
+            if (filePath.startsWith(rootPath + File.separator)) {
+                return filePath.substring(rootPath.length() + 1).replace(File.separatorChar, '/');
+            }
+        } catch (IOException ignored) {
+        }
+        return null;
+    }
+
+    private static boolean isSymlink(File file) {
+        try {
+            File absolute = file.getAbsoluteFile();
+            File parent = absolute.getParentFile();
+            File canonicalParent = parent == null ? null : parent.getCanonicalFile();
+            File fileInCanonicalParent = canonicalParent == null ? absolute : new File(canonicalParent, absolute.getName());
+            return !fileInCanonicalParent.getAbsoluteFile().equals(fileInCanonicalParent.getCanonicalFile());
+        } catch (IOException e) {
+            return true;
+        }
+    }
+
+    private static String canonicalPath(File file) {
+        try {
+            return file.getCanonicalPath();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static void ensureOpenHouseWorkspaceRoot() {
+        try {
+            OpenHouseWorkspacePaths.forTermuxHome(TERMUX_HOME_DIR).ensureTermuxWorkspaceDirs();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static final class RootConfig {
+        final String id;
+        final String title;
+        final String summary;
+        final File baseDir;
+
+        RootConfig(String id, String title, String summary, File baseDir) {
+            this.id = id;
+            this.title = title;
+            this.summary = summary;
+            this.baseDir = baseDir;
+        }
+    }
 }

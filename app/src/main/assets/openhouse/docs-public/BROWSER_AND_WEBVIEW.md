@@ -15,6 +15,143 @@ OpenHouse 桌面页本身是原生桌面壳，不是全 WebView 多窗口。桌�
 | Hermes Web | 可选高级工作台 | 安装后应注册到 service-manager |
 | 用户自定义服务 | 开源工作台、知识库、项目管理系统 | 需要 service-manager 和侧边栏注册 |
 
+## 受控浏览器命令
+
+OpenHouse 还提供一个原生“受控浏览器”入口。它和普通 WebView App 不同：普通 WebView App 主要由顶部栏控制刷新、返回桌面和服务控制；受控浏览器可以被 Termux、Ubuntu 或 AI agent 通过命令控制。
+
+安装准备阶段会注入命令：
+
+```bash
+openhouse-browser --help
+```
+
+常见路径：
+
+```text
+/data/data/com.termux/files/usr/bin/openhouse-browser
+/usr/local/bin/openhouse-browser
+```
+
+第二个是 Ubuntu 内的 wrapper，最终仍调用 Termux 外层命令。使用前需要确保 OpenHouse App 可接收外部命令，准备阶段会写入 `allow-external-apps = true`。
+
+### 页面和标签页
+
+| 命令 | 用途 |
+| --- | --- |
+| `open URL` | 在当前标签页打开 URL 或搜索词。 |
+| `new-tab URL` | 新建标签页并打开 URL。 |
+| `switch INDEX_OR_ID` | 切换到指定标签页，参数可以是序号或 tab id。 |
+| `close` | 关闭当前标签页。 |
+| `reload` | 刷新当前标签页。 |
+| `back` | 当前标签页后退。 |
+| `forward` | 当前标签页前进。 |
+| `status` | 输出当前活动标签页、URL、加载状态和可前进/后退状态。 |
+| `tabs` | 输出所有标签页。 |
+
+示例：
+
+```bash
+openhouse-browser open http://127.0.0.1:30141/
+openhouse-browser new-tab https://example.com
+openhouse-browser tabs
+openhouse-browser switch 0
+```
+
+### 页面读取和自动化
+
+| 命令 | 用途 |
+| --- | --- |
+| `text` | 读取当前页面正文文本。 |
+| `html` | 读取当前页面 HTML。 |
+| `screenshot --output PATH` | 截图为 PNG，并把结果写入指定路径。 |
+| `eval CODE` | 在当前页面执行 JavaScript。 |
+| `eval-file FILE` | 从文件读取 JavaScript 后执行。 |
+| `click SELECTOR` | 点击 CSS selector 匹配的元素。 |
+| `fill SELECTOR VALUE` | 给输入框或可编辑元素填入文本，并触发 `input`/`change`。 |
+| `wait selector SELECTOR --timeout MS` | 等待 CSS selector 出现。 |
+| `wait-text TEXT --timeout MS` | 等待页面包含指定文本。 |
+| `tap X Y` | 按坐标触摸当前 WebView。 |
+| `type TEXT` | 向当前焦点元素输入文本。 |
+| `scroll DX DY` | 滚动当前页面。 |
+| `run FLOW_JSON` | 按 JSON 流程连续执行多步命令。 |
+
+示例：
+
+```bash
+openhouse-browser wait selector '#app' --timeout 10000
+openhouse-browser text
+openhouse-browser click 'button[type=submit]'
+openhouse-browser fill 'input[name=q]' 'OpenHouseAI'
+openhouse-browser type 'hello'
+openhouse-browser scroll 0 600
+openhouse-browser screenshot --output /data/data/com.termux/files/home/.openhouse-browser/results/page.png
+```
+
+`text`、`html`、`click`、`fill` 和 `tap` 也支持通过底层 JSON RPC 指定 selector；CLI 已封装常用形式。`screenshot --output` 的输出路径必须在 App files 目录内，推荐写入 `.openhouse-browser/results/`。
+
+### CDP 兼容子集
+
+`openhouse-browser cdp METHOD JSON_PARAMS` 提供少量 Chrome DevTools Protocol 兼容方法，方便已有自动化工具复用基本能力。它不是完整 CDP server。
+
+当前支持：
+
+```text
+Browser.getVersion
+Target.getTargets
+Target.activateTarget
+Page.navigate
+Page.reload
+Page.captureScreenshot
+Runtime.evaluate
+DOM.getDocument
+DOM.querySelector
+DOM.getOuterHTML
+Input.dispatchMouseEvent
+Input.dispatchKeyEvent
+```
+
+示例：
+
+```bash
+openhouse-browser cdp Browser.getVersion '{}'
+openhouse-browser cdp Page.navigate '{"url":"http://127.0.0.1:30141/"}'
+openhouse-browser cdp Runtime.evaluate '{"expression":"document.title"}'
+```
+
+### JSON 流程
+
+`run` 接收 JSON 数组或包含 `steps` 的对象。每一步都是一个受控浏览器命令对象。
+
+```bash
+openhouse-browser run '[
+  {"command":"open","url":"http://127.0.0.1:30141/"},
+  {"command":"wait","params":{"selector":"body"},"timeoutMs":10000},
+  {"command":"text"}
+]'
+```
+
+如果某一步失败，`run` 会停止后续步骤并返回失败步骤和已完成步骤的结果。
+
+### RPC 文件和安全约束
+
+底层通过 Android broadcast 发给 OpenHouse App：
+
+```text
+com.termux.app.browser.action.CONTROLLED_BROWSER_COMMAND
+```
+
+RPC 文件目录：
+
+```text
+$HOME/.openhouse-browser/requests
+$HOME/.openhouse-browser/results
+$HOME/.openhouse-browser/token
+```
+
+自动化命令会使用 token；请求和结果路径必须位于 `.openhouse-browser/requests` 或 `.openhouse-browser/results` 之下。AI agent 不应绕过这些路径限制，也不要把 token 写入聊天回复、日志或共享文档。
+
+受控浏览器适合短时页面检查、表单填写、截图和自动化验证。长期服务、模型进程、MCP server 或后台任务仍必须交给 service-manager 管理，不要用 WebView 或浏览器命令长期拉起。
+
 ## WebView 和外部浏览器差异
 
 可能出现的差异包括：

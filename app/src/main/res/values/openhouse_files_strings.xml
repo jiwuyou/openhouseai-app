@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="openhouse_files_title">文件</string>
+    <string name="openhouse_files_empty">这个目录为空</string>
+    <string name="openhouse_editor_entry_title">编辑器</string>
+</resources>

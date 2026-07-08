@@ -5,7 +5,10 @@ ENV_PROBE_COMMAND="$TERMUX_BIN_DIR/openhouseai-env-probe"
 BROWSER_COMMAND="$TERMUX_BIN_DIR/openhouse-browser"
 UBUNTU_BROWSER_COMMAND="$TERMUX_PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs/usr/local/bin/openhouse-browser"
 DOC_DIR="$TERMUX_HOME/openhouseai-docs"
-WORKSPACE_DIR="$TERMUX_HOME/workspace"
+OPENHOUSE_HOME_DIR="$TERMUX_HOME/openhouse"
+WORKSPACE_DIR="$OPENHOUSE_HOME_DIR/workspace"
+LEGACY_WORKSPACE_DIR="$TERMUX_HOME/workspace"
+ANDROID_SHARED_OPENHOUSE_DIR="$TERMUX_HOME/storage/shared/OpenHouse"
 TERMUX_CONFIG_DIR="$TERMUX_HOME/.termux"
 TERMUX_PROPERTIES_FILE="$TERMUX_CONFIG_DIR/termux.properties"
 
@@ -711,9 +714,72 @@ EOF
   log "已注入 Ubuntu 受控浏览器命令：$UBUNTU_BROWSER_COMMAND"
 }
 
+safe_symlink() {
+  local target="$1"
+  local link_path="$2"
+  if [ ! -e "$target" ] && [ ! -d "$target" ]; then
+    return 0
+  fi
+  if [ -L "$link_path" ]; then
+    return 0
+  fi
+  if [ -e "$link_path" ]; then
+    log "软链接目标已存在，保留不改：$link_path"
+    return 0
+  fi
+  ln -s "$target" "$link_path" 2>/dev/null || true
+}
+
+detect_ubuntu_rootfs_dir() {
+  local candidate
+  for candidate in \
+    "$TERMUX_PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs" \
+    "$TERMUX_PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu"; do
+    if [ -d "$candidate/root" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ensure_openhouse_workspace_layout() {
+  log "正在准备 OpenHouse 工作区。"
+  mkdir -p "$OPENHOUSE_HOME_DIR" "$WORKSPACE_DIR" \
+    "$WORKSPACE_DIR/android" \
+    "$WORKSPACE_DIR/termux" \
+    "$WORKSPACE_DIR/ubuntu" \
+    "$WORKSPACE_DIR/inbox" \
+    "$WORKSPACE_DIR/export" \
+    "$WORKSPACE_DIR/network" \
+    "$WORKSPACE_DIR/containers"
+  find "$OPENHOUSE_HOME_DIR" "$WORKSPACE_DIR" -maxdepth 1 -type d -exec chmod 700 {} + 2>/dev/null || true
+
+  if [ -d "$TERMUX_HOME/storage/shared" ]; then
+    mkdir -p "$ANDROID_SHARED_OPENHOUSE_DIR" 2>/dev/null || true
+    safe_symlink "$TERMUX_HOME/storage/shared" "$WORKSPACE_DIR/android/shared"
+    safe_symlink "$ANDROID_SHARED_OPENHOUSE_DIR" "$WORKSPACE_DIR/android/openhouse"
+  fi
+  safe_symlink "$TERMUX_HOME" "$WORKSPACE_DIR/termux/home"
+
+  local ubuntu_rootfs
+  if ubuntu_rootfs="$(detect_ubuntu_rootfs_dir 2>/dev/null)"; then
+    mkdir -p "$ubuntu_rootfs/root/openhouse/workspace" 2>/dev/null || true
+    safe_symlink "$ubuntu_rootfs/root" "$WORKSPACE_DIR/ubuntu/root"
+    safe_symlink "$ubuntu_rootfs/root/openhouse/workspace" "$WORKSPACE_DIR/ubuntu/workspace"
+  fi
+
+  if [ -L "$LEGACY_WORKSPACE_DIR" ] || [ ! -e "$LEGACY_WORKSPACE_DIR" ]; then
+    safe_symlink "$WORKSPACE_DIR" "$LEGACY_WORKSPACE_DIR"
+  else
+    log "兼容工作区已存在且不是软链接，保留不改：$LEGACY_WORKSPACE_DIR"
+  fi
+}
+
 log "正在确保 Termux 配置目录存在。"
-mkdir -p "$DOC_DIR" "$WORKSPACE_DIR" "$TERMUX_CONFIG_DIR"
-chmod 700 "$DOC_DIR" "$WORKSPACE_DIR" "$TERMUX_CONFIG_DIR" || true
+mkdir -p "$DOC_DIR" "$TERMUX_CONFIG_DIR"
+chmod 700 "$DOC_DIR" "$TERMUX_CONFIG_DIR" || true
+ensure_openhouse_workspace_layout
 
 log "正在在 $TERMUX_PROPERTIES_FILE 中启用 allow-external-apps"
 touch "$TERMUX_PROPERTIES_FILE"
@@ -742,7 +808,9 @@ OpenHouseAI 运行在 Android Termux 中，并通过 `proot-distro` 提供 Ubunt
 
 外部可选工具不作为内置组件打包进 APK，也不是首次安装默认阶段。如需自行下载、配置或迁移旧工具，请参考产品手册 `official/OPTIONAL_EXTERNAL_TOOLS.md`。
 
-工作区路径：`/data/data/com.termux/files/home/workspace`
+工作区路径：`/data/data/com.termux/files/home/openhouse/workspace`
+
+兼容路径：`/data/data/com.termux/files/home/workspace`
 EOF
 
 cat > "$DOC_DIR/MODEL_API_SETUP.md" <<'EOF'
@@ -760,4 +828,5 @@ install_controlled_browser_cli
 
 log "文档路径：$DOC_DIR"
 log "工作区路径：$WORKSPACE_DIR"
+log "兼容工作区路径：$LEGACY_WORKSPACE_DIR"
 log "配置文件：$TERMUX_PROPERTIES_FILE"

@@ -40,6 +40,7 @@
 | 前台保活 | `openhouse-runtime-policy.md` | 理解 Android 和 service-manager 的分工。 |
 | 停止运行栈 / 全部退出 | `openhouse-exit-all.md` | 明确停止范围、界面行为、保留范围和恢复行为。 |
 | 故障排查 | `troubleshooting.md`, `RECOVERY.md` | 按症状选择最小修复步骤。 |
+| 浏览器、WebView 和页面自动化 | `BROWSER_AND_WEBVIEW.md`, `browser-and-webview.md` | 区分普通 WebView 和受控浏览器，使用 `openhouse-browser` 读取页面、点击、填写、截图或执行短流程。 |
 | cc-switch | `cc-switch.md` | 作为模型配置执行器使用，不把它当服务。 |
 | 权限和降级 | `permissions.md` | 区分必需权限、可选权限和缺失时降级。 |
 | 失败边界 | `failure-boundaries.md` | 判断何时自动修复，何时提示重置或重装。 |

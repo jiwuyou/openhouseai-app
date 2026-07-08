@@ -72,6 +72,10 @@ fi
 
 TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
 UBUNTU_PROBE_STAGING="$TERMUX_HOME/.smallphoneai-bootstrap/smallphoneai-env-probe-ubuntu.sh"
+UBUNTU_WORKSPACE_STAGING="$TERMUX_HOME/.smallphoneai-bootstrap/ensure-openhouse-workspace-ubuntu.sh"
+OPENHOUSE_HOME_DIR="$TERMUX_HOME/openhouse"
+TERMUX_WORKSPACE_DIR="$OPENHOUSE_HOME_DIR/workspace"
+LEGACY_WORKSPACE_DIR="$TERMUX_HOME/workspace"
 
 ubuntu_rootfs_candidates() {
   if [ -n "${SMALLPHONEAI_UBUNTU_ROOTFS_URL:-}" ]; then
@@ -218,6 +222,122 @@ EOF
   log "已注入 Ubuntu 侧环境探测 CLI：~/bin/smallphoneai-env-probe"
 }
 
+safe_symlink() {
+  local target="$1"
+  local link_path="$2"
+  if [ ! -e "$target" ] && [ ! -d "$target" ]; then
+    return 0
+  fi
+  if [ -L "$link_path" ]; then
+    return 0
+  fi
+  if [ -e "$link_path" ]; then
+    log "软链接目标已存在，保留不改：$link_path"
+    return 0
+  fi
+  ln -s "$target" "$link_path" 2>/dev/null || true
+}
+
+detect_ubuntu_rootfs_dir() {
+  local candidate
+  for candidate in \
+    "${PREFIX:-/data/data/com.termux/files/usr}/var/lib/proot-distro/containers/ubuntu/rootfs" \
+    "${PREFIX:-/data/data/com.termux/files/usr}/var/lib/proot-distro/installed-rootfs/ubuntu"; do
+    if [ -d "$candidate/root" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ensure_termux_workspace_layout() {
+  log "正在准备 Termux 侧 OpenHouse 工作区。"
+  mkdir -p "$OPENHOUSE_HOME_DIR" "$TERMUX_WORKSPACE_DIR" \
+    "$TERMUX_WORKSPACE_DIR/android" \
+    "$TERMUX_WORKSPACE_DIR/termux" \
+    "$TERMUX_WORKSPACE_DIR/ubuntu" \
+    "$TERMUX_WORKSPACE_DIR/inbox" \
+    "$TERMUX_WORKSPACE_DIR/export" \
+    "$TERMUX_WORKSPACE_DIR/network" \
+    "$TERMUX_WORKSPACE_DIR/containers"
+  find "$OPENHOUSE_HOME_DIR" "$TERMUX_WORKSPACE_DIR" -maxdepth 1 -type d -exec chmod 700 {} + 2>/dev/null || true
+
+  safe_symlink "$TERMUX_HOME" "$TERMUX_WORKSPACE_DIR/termux/home"
+  if [ -d "$TERMUX_HOME/storage/shared" ]; then
+    mkdir -p "$TERMUX_HOME/storage/shared/OpenHouse" 2>/dev/null || true
+    safe_symlink "$TERMUX_HOME/storage/shared" "$TERMUX_WORKSPACE_DIR/android/shared"
+    safe_symlink "$TERMUX_HOME/storage/shared/OpenHouse" "$TERMUX_WORKSPACE_DIR/android/openhouse"
+  fi
+
+  local ubuntu_rootfs
+  if ubuntu_rootfs="$(detect_ubuntu_rootfs_dir 2>/dev/null)"; then
+    mkdir -p "$ubuntu_rootfs/root/openhouse/workspace" 2>/dev/null || true
+    safe_symlink "$ubuntu_rootfs/root" "$TERMUX_WORKSPACE_DIR/ubuntu/root"
+    safe_symlink "$ubuntu_rootfs/root/openhouse/workspace" "$TERMUX_WORKSPACE_DIR/ubuntu/workspace"
+  fi
+
+  if [ -L "$LEGACY_WORKSPACE_DIR" ] || [ ! -e "$LEGACY_WORKSPACE_DIR" ]; then
+    safe_symlink "$TERMUX_WORKSPACE_DIR" "$LEGACY_WORKSPACE_DIR"
+  else
+    log "兼容工作区已存在且不是软链接，保留不改：$LEGACY_WORKSPACE_DIR"
+  fi
+}
+
+ensure_ubuntu_workspace_layout() {
+  log "正在准备 Ubuntu 侧 OpenHouse 工作区。"
+  mkdir -p "$(dirname "$UBUNTU_WORKSPACE_STAGING")"
+  cat > "$UBUNTU_WORKSPACE_STAGING" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+safe_symlink() {
+  local target="$1"
+  local link_path="$2"
+  if [ ! -e "$target" ] && [ ! -d "$target" ]; then
+    return 0
+  fi
+  if [ -L "$link_path" ]; then
+    return 0
+  fi
+  if [ -e "$link_path" ]; then
+    return 0
+  fi
+  ln -s "$target" "$link_path" 2>/dev/null || true
+}
+
+workspace="/root/openhouse/workspace"
+mkdir -p "$workspace/android" \
+  "$workspace/termux" \
+  "$workspace/ubuntu" \
+  "$workspace/inbox" \
+  "$workspace/export" \
+  "$workspace/network" \
+  "$workspace/containers"
+chmod 700 "/root/openhouse" "$workspace" 2>/dev/null || true
+
+if [ -L "/root/workspace" ] || [ ! -e "/root/workspace" ]; then
+  safe_symlink "$workspace" "/root/workspace"
+fi
+
+safe_symlink "/root" "$workspace/ubuntu/root"
+safe_symlink "/data/data/com.termux/files/home" "$workspace/termux/home"
+safe_symlink "/data/data/com.termux/files/home/openhouse/workspace" "$workspace/termux/workspace"
+
+for android_shared in "/sdcard" "/storage/emulated/0" "/data/data/com.termux/files/home/storage/shared"; do
+  if [ -d "$android_shared" ]; then
+    mkdir -p "$android_shared/OpenHouse" 2>/dev/null || true
+    safe_symlink "$android_shared" "$workspace/android/shared"
+    safe_symlink "$android_shared/OpenHouse" "$workspace/android/openhouse"
+    break
+  fi
+done
+EOF
+  chmod 755 "$UBUNTU_WORKSPACE_STAGING"
+  run_logged proot-distro login ubuntu -- bash "/data/data/com.termux/files/home/.smallphoneai-bootstrap/ensure-openhouse-workspace-ubuntu.sh"
+  rm -f "$UBUNTU_WORKSPACE_STAGING"
+}
+
 if ! command -v proot-distro >/dev/null 2>&1; then
   log "缺少 proot-distro，请先运行：bash bootstrap.sh prepare"
   exit 2
@@ -235,6 +355,8 @@ else
 fi
 
 install_ubuntu_env_probe_cli
+ensure_termux_workspace_layout
+ensure_ubuntu_workspace_layout
 
 if proot-distro login ubuntu -- true >/dev/null 2>&1; then
   if [ "$ubuntu_was_present" -eq 1 ]; then

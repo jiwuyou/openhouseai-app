@@ -425,6 +425,22 @@ public final class OpenHouseComponentRegistry {
             "tools",
             45,
             "terminal"));
+        components.add(createDesktopActivityComponent(
+            "openhouse-files",
+            "文件",
+            "本机、文件容器和网络存储",
+            "tools",
+            47,
+            "folder",
+            "com.termux.app.openhouse.files.ui.OpenHouseFilesActivity"));
+        components.add(createDesktopActivityComponent(
+            "openhouse-editor",
+            "编辑器",
+            "代码、配置和 Markdown",
+            "tools",
+            48,
+            "edit",
+            "com.termux.app.openhouse.editor.OpenHouseEditorActivity"));
         components.add(createDesktopNativeComponent(
             "setup",
             "安装引导",
@@ -539,6 +555,39 @@ public final class OpenHouseComponentRegistry {
             null,
             null,
             null,
+            "",
+            false,
+            false,
+            false,
+            true,
+            "builtin",
+            Collections.emptyList(),
+            Collections.emptyList());
+    }
+
+    private static OpenHouseComponent createDesktopActivityComponent(String id,
+                                                                     String title,
+                                                                     String subtitle,
+                                                                     String section,
+                                                                     int desktopOrder,
+                                                                     String iconKey,
+                                                                     String activityClassName) {
+        return createComponent(
+            id,
+            title,
+            subtitle,
+            section,
+            1000 + desktopOrder,
+            iconKey,
+            defaultIconLabel(title),
+            desktopOrder,
+            false,
+            true,
+            true,
+            OpenHouseComponent.EntryType.ANDROID_ACTIVITY,
+            null,
+            null,
+            activityClassName,
             "",
             false,
             false,

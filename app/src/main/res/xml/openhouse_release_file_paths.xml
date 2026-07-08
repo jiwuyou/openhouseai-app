@@ -3,4 +3,10 @@
     <cache-path
         name="release_updates"
         path="release_updates/" />
+    <files-path
+        name="openhouse_inbox"
+        path="home/openhouse/workspace/inbox/" />
+    <files-path
+        name="openhouse_export"
+        path="home/openhouse/workspace/export/" />
 </paths>
