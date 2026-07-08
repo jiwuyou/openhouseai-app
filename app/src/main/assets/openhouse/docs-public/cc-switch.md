@@ -47,6 +47,23 @@ cc-switch 替代 service-manager
 - 不进入长期运行服务列表。
 - 只在配置、检测、切换 provider 时调用。
 
+当前 APK 内置版本：
+
+| 字段 | 值 |
+| --- | --- |
+| 版本 | `5.9.0` |
+| 源仓库 | `https://github.com/jiwuyou/cc-switch-cli.git` |
+| 源提交 | `890c20f3cc39b090a1e79851eee3314eb8fcf2bc` |
+| APK payload | `openhouse/product-payloads/cc-switch-cli-5.9.0-linux-arm64.tar.gz` |
+| payload sha256 | `46ce26be4c1eddfc7a3407eac8820395a2da42db4cb9bf11bf9d4a87b1cfb20e` |
+| binary sha256 | `5c59e8ea224d263c58f5665b64e54c9c334380e9e81210f3ee84708643d98cad` |
+
+安装入口：
+
+```bash
+/root/openhouse/scripts/install-cc-switch.sh
+```
+
 ## 与模型迁移的关系
 
 pi-agent 收到用户的 `base_url`、`key/token`、`model id` 和协议类型后，可以先判断目标工具，再决定是否调用 cc-switch。

@@ -159,6 +159,17 @@ printf '%s\n' 'CloudCLI 默认本机账号密码：admin / 123456。请在 Andro
 oh_next_docs
 EOF
 
+  cat > "$OFFICIAL_SCRIPT_DIR/install-cc-switch.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/_openhouse-postinstall-common.sh"
+oh_run_bootstrap cc-switch
+oh_check_tool_version cc-switch "cc-switch --version"
+printf '%s\n' 'cc-switch 是 provider 配置执行器，不是长期服务。请阅读 /root/openhouse/docs/cc-switch.md。'
+oh_next_docs
+EOF
+
   cat > "$OFFICIAL_SCRIPT_DIR/install-hermes.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -181,8 +192,9 @@ check Codex 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.loc
 check Claude-Code 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v claude && claude --version'
 check Claude-Code-native 'test -x "$HOME/.local/bin/claude" && "$HOME/.local/bin/claude" --version'
 check CloudCLI 'export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"; command -v cloudcli && (cloudcli version || cloudcli --version)'
+check cc-switch 'export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$HOME/.npm-global/bin:/usr/local/bin:$PATH"; command -v cc-switch && cc-switch --version'
 check Docs 'test -d /root/openhouse/docs && test -f /root/openhouse/docs/START_HERE.md'
-check Scripts 'test -d /root/openhouse/scripts && test -f /root/openhouse/scripts/install-codex.sh'
+check Scripts 'test -d /root/openhouse/scripts && test -f /root/openhouse/scripts/install-codex.sh && test -f /root/openhouse/scripts/install-cc-switch.sh'
 oh_run_bootstrap status || missing=1
 exit "$missing"
 EOF

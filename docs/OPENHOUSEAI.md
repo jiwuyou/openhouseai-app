@@ -26,6 +26,10 @@ OpenHouseAI 面向人机协作：
 
 Operit 是 Android 侧完整可选构建能力，不是默认核心运行时。`withOperit` 包含完整 Operit feature/module 和宿主桥接，`withoutOperit` 不依赖、不暴露 Operit；两个 flavor 的包名都保持 `com.termux`。OpenCode、Reasonix、Hermes 等仍作为可选外部或后置能力保留文档参考。
 
+cc-switch 随 APK 内置固定 arm64 payload，作为 pi-agent 可调用的 provider
+配置执行器。它只用于模型配置、检测和切换，不注册 service-manager，不作为
+长期后台服务，也不替代 pi-agent 对用户的解释和引导。
+
 ## 文档结构
 
 随 APK 内置的用户和 AI 参考文档位于：

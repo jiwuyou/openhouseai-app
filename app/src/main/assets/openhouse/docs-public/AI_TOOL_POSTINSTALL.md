@@ -1,6 +1,6 @@
 # 后置 AI 工具安装入口
 
-OpenHouse 首次安装只建立控制平面：Termux / Ubuntu、Node、文档、pi-agent / pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。Codex、Claude Code、CloudCLI 和 Hermes 是后置能力，由 pi-agent 在用户配置好 pi-web 模型后引导安装、配置、检查和修复。
+OpenHouse 首次安装只建立控制平面：Termux / Ubuntu、Node、文档、pi-agent / pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。Codex、Claude Code、CloudCLI、cc-switch 和 Hermes 是后置能力，由 pi-agent 在用户配置好 pi-web 模型后引导安装、配置、检查和修复。
 
 运行期脚本目录：
 
@@ -21,8 +21,9 @@ OpenHouse 首次安装只建立控制平面：Termux / Ubuntu、Node、文档、
 | `/root/openhouse/scripts/install-codex.sh` | 后置安装或检查 Codex CLI。 |
 | `/root/openhouse/scripts/install-claude-code.sh` | 后置安装或检查 Claude Code。 |
 | `/root/openhouse/scripts/install-cloudcli.sh` | 后置安装或检查 CloudCLI / ClaudeCodeUI，刷新服务注册，并只尝试启动 `cloudcli` 本服务。 |
+| `/root/openhouse/scripts/install-cc-switch.sh` | 从 APK 内置 arm64 payload 安装或检查 cc-switch provider 配置工具。 |
 | `/root/openhouse/scripts/install-hermes.sh` | 准备 Hermes WebUI 的独立 uv 环境；前台测通后再注册服务。 |
-| `/root/openhouse/scripts/check-ai-tools.sh` | 检查 Node、Codex、Claude Code、CloudCLI、文档、脚本和基础运行栈。 |
+| `/root/openhouse/scripts/check-ai-tools.sh` | 检查 Node、Codex、Claude Code、CloudCLI、cc-switch、文档、脚本和基础运行栈。 |
 
 这些脚本必须可以反复执行。已经安装时应检查版本和路径；缺失时再安装；失败时输出下一步，不应删除用户项目、清理 Ubuntu 或覆盖密钥。
 
@@ -37,11 +38,12 @@ Claude Code 的后置检查必须同时满足两点：
 
 1. 阅读 `/root/openhouse/docs/START_HERE.md`、`OPENHOUSE_FIRST_CONFIGURATION.md`、`MODEL_API_SETUP.md`、`SERVICE_MANAGER.md`。
 2. 执行 `/root/openhouse/scripts/check-ai-tools.sh`，确认哪些后置能力缺失。
-3. 如果用户需要 Codex，执行 `install-codex.sh`。
-4. 如果用户需要 Claude Code，执行 `install-claude-code.sh`。
-5. 如果用户需要 `cc/codex` 网页入口，执行 `install-cloudcli.sh`，再按 `CLOUDCLI_CLAUDE_CODE.md` 配置模型并测通。
-6. 如果用户明确选择 Hermes，执行 `install-hermes.sh` 准备环境，然后按 `HERMES_SETUP.md` 前台测通和注册 service-manager。
-7. 完成后再次运行 `check-ai-tools.sh`，并把成功项、失败项和下一步告诉用户。
+3. 如果用户需要 provider 配置迁移辅助，执行 `install-cc-switch.sh`，再阅读 `cc-switch.md`。
+4. 如果用户需要 Codex，执行 `install-codex.sh`。
+5. 如果用户需要 Claude Code，执行 `install-claude-code.sh`。
+6. 如果用户需要 `cc/codex` 网页入口，执行 `install-cloudcli.sh`，再按 `CLOUDCLI_CLAUDE_CODE.md` 配置模型并测通。
+7. 如果用户明确选择 Hermes，执行 `install-hermes.sh` 准备环境，然后按 `HERMES_SETUP.md` 前台测通和注册 service-manager。
+8. 完成后再次运行 `check-ai-tools.sh`，并把成功项、失败项和下一步告诉用户。
 
 ## 运行层要求
 
@@ -62,6 +64,7 @@ proot-distro login ubuntu -- bash -lc '/root/openhouse/scripts/check-ai-tools.sh
 - CloudCLI 默认本机账号密码 `admin / 123456` 只用于首次本机使用，后续可修改。
 - 不把“命令存在”当成“模型已测通”。CloudCLI / Claude Code 必须完成一次最小请求。
 - 不把 Hermes 当成默认核心能力。它是可选高级工作台，安装耗时较久。
+- 不把 cc-switch 当成长期服务或一级入口。它只作为 provider 配置执行器使用，涉及 key/token 的输出必须脱敏。
 
 ## 失败处理
 

@@ -39,6 +39,18 @@
       "size": 357095493,
       "platform": "linux-arm64",
       "version": "2.1.25"
+    },
+    {
+      "id": "cc-switch",
+      "archive": "cc-switch-cli-5.9.0-linux-arm64.tar.gz",
+      "sha256": "46ce26be4c1eddfc7a3407eac8820395a2da42db4cb9bf11bf9d4a87b1cfb20e",
+      "size": 6693477,
+      "platform": "linux-arm64",
+      "version": "5.9.0",
+      "sourceRepo": "https://github.com/jiwuyou/cc-switch-cli.git",
+      "sourceCommit": "890c20f3cc39b090a1e79851eee3314eb8fcf2bc",
+      "binarySha256": "5c59e8ea224d263c58f5665b64e54c9c334380e9e81210f3ee84708643d98cad",
+      "binarySize": 15427096
     }
   ]
 }

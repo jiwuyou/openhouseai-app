@@ -367,6 +367,9 @@ required_stage_scripts() {
     codex)
       printf '%s\n' 42-install-codex.sh
       ;;
+    cc-switch)
+      printf '%s\n' 43-install-cc-switch.sh
+      ;;
     claude-code)
       printf '%s\n' 44-install-claude-code.sh
       ;;
@@ -551,16 +554,17 @@ SmallPhoneAI Installer
 8. 设置默认进入 Ubuntu
 9. 只安装 Node.js 24 LTS
 10. 后置安装 Codex
-11. 后置安装 Claude Code
-12. 后置安装 ClaudeCodeUI / CloudCLI
-13. 安装/注册 SmallPhone 运行组件
-14. 同步 OpenHouseAI registry
-15. 启动 SmallPhone 运行栈
-16. 修复 SmallPhone 运行栈
-17. APK 更新后同步核心运行栈
-18. 查看 App Shell hooks
-19. 只检查 Termux 环境
-20. 退出
+11. 后置安装 cc-switch
+12. 后置安装 Claude Code
+13. 后置安装 ClaudeCodeUI / CloudCLI
+14. 安装/注册 SmallPhone 运行组件
+15. 同步 OpenHouseAI registry
+16. 启动 SmallPhone 运行栈
+17. 修复 SmallPhone 运行栈
+18. APK 更新后同步核心运行栈
+19. 查看 App Shell hooks
+20. 只检查 Termux 环境
+21. 退出
 EOF
 }
 
@@ -627,6 +631,10 @@ main() {
       run_stage 42-install-codex.sh
       return
       ;;
+    cc-switch)
+      run_stage 43-install-cc-switch.sh
+      return
+      ;;
     claude-code)
       run_stage 44-install-claude-code.sh
       return
@@ -671,7 +679,7 @@ main() {
 
   while true; do
     show_menu
-    printf '请选择 [1-20]: '
+    printf '请选择 [1-21]: '
     read -r choice
     case "$choice" in
       1) run_full_install ;;
@@ -684,17 +692,18 @@ main() {
       8) run_stage 70-configure-entry-ubuntu.sh ;;
       9) run_stage 38-install-node.sh ;;
       10) run_stage 42-install-codex.sh ;;
-      11) run_stage 44-install-claude-code.sh ;;
-      12) run_stage 45-install-claude-code-ui.sh ;;
-      13) run_stage 50-install-runtime-components.sh ;;
-      14) run_stage 48-sync-openhouse-registry.sh ;;
-      15) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      16) run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      17) SMALLPHONEAI_FORCE_PAYLOAD_REFRESH=1 run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      18) run_machine_stage 65-smallphone-status.sh hooks ;;
-      19) run_stage 00-check-termux.sh ;;
-      20) exit 0 ;;
-      *) log "请输入 1 到 20。" ;;
+      11) run_stage 43-install-cc-switch.sh ;;
+      12) run_stage 44-install-claude-code.sh ;;
+      13) run_stage 45-install-claude-code-ui.sh ;;
+      14) run_stage 50-install-runtime-components.sh ;;
+      15) run_stage 48-sync-openhouse-registry.sh ;;
+      16) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      17) run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      18) SMALLPHONEAI_FORCE_PAYLOAD_REFRESH=1 run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      19) run_machine_stage 65-smallphone-status.sh hooks ;;
+      20) run_stage 00-check-termux.sh ;;
+      21) exit 0 ;;
+      *) log "请输入 1 到 21。" ;;
     esac
   done
 }

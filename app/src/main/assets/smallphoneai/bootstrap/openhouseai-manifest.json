@@ -56,6 +56,14 @@
         "title": "Pi Web",
         "apkAssetPath": "openhouse/product-payloads/pi-web.tar",
         "targetDir": "$HOME/smallphoneai-repos/pi-web"
+      },
+      {
+        "id": "cc-switch",
+        "title": "cc-switch provider 配置工具",
+        "apkAssetPath": "openhouse/product-payloads/cc-switch-cli-5.9.0-linux-arm64.tar.gz",
+        "targetDir": "$HOME/.local/bin",
+        "optional": true,
+        "service": false
       }
     ]
   },
@@ -149,7 +157,7 @@
       "id": "agent_cli_repair",
       "type": "actions",
       "title": "后置 AI 能力补装与修复",
-      "description": "供 pi-agent 或人工单独补装/检查 Node.js、Codex、Claude Code 和 CloudCLI；这些能力不阻塞默认首次安装。",
+      "description": "供 pi-agent 或人工单独补装/检查 Node.js、Codex、Claude Code、CloudCLI 和 cc-switch；这些能力不阻塞默认首次安装。",
       "items": [
         {
           "id": "install_node",
@@ -178,6 +186,13 @@
           "label": "安装 CloudCLI",
           "description": "后置能力：在 Ubuntu 内安装或检查 ClaudeCodeUI / CloudCLI。",
           "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
+        },
+        {
+          "id": "install_cc_switch",
+          "type": "button",
+          "label": "安装 cc-switch",
+          "description": "后置能力：从 APK 内置 arm64 payload 安装 provider 配置执行器；不注册长期服务。",
+          "action": { "type": "bootstrap", "args": ["cc-switch"] }
         }
       ]
     }
@@ -248,6 +263,12 @@
       "title": "安装 CloudCLI",
       "description": "后置能力：通过 npm 安装或检查 ClaudeCodeUI / CloudCLI。",
       "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
+    },
+    {
+      "id": "install_cc_switch",
+      "title": "安装 cc-switch",
+      "description": "后置能力：从 APK 内置 arm64 payload 安装 provider 配置执行器；不注册长期服务。",
+      "action": { "type": "bootstrap", "args": ["cc-switch"] }
     },
     {
       "id": "runtime_components",
