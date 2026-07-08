@@ -68,7 +68,10 @@ public final class SafTreeUriGuard {
 
     public static boolean isDocumentIdInsideTree(String treeDocumentId, String documentId) {
         if (treeDocumentId == null || documentId == null) return false;
-        return documentId.equals(treeDocumentId) || documentId.startsWith(treeDocumentId + "/");
+        if (documentId.equals(treeDocumentId) || documentId.startsWith(treeDocumentId + "/")) {
+            return true;
+        }
+        return treeDocumentId.endsWith(":") && documentId.startsWith(treeDocumentId);
     }
 
     private static boolean containsDotPathSegment(String suffix) {

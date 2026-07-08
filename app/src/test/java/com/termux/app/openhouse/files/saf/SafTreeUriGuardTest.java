@@ -33,6 +33,16 @@ public class SafTreeUriGuardTest {
     }
 
     @Test
+    public void acceptsProviderRootColonDocumentIdsWithoutSlash() throws Exception {
+        Uri tree = treeUri("com.termux.documents", "ubuntu-root:");
+        Uri child = DocumentsContract.buildDocumentUriUsingTree(tree, "ubuntu-root:.aionui-web");
+
+        SafTreeUriGuard.validateDocumentUri(tree, child);
+
+        Assert.assertTrue(SafTreeUriGuard.isDocumentIdInsideTree("ubuntu-root:", "ubuntu-root:.aionui-web"));
+    }
+
+    @Test
     public void rejectsCrossTreeAndCrossProviderDocumentUris() throws Exception {
         Uri tree = treeUri("com.example.documents", "primary:OpenHouse");
         assertInvalid(tree, DocumentsContract.buildDocumentUriUsingTree(
@@ -44,6 +54,14 @@ public class SafTreeUriGuardTest {
         assertInvalid(tree, DocumentsContract.buildDocumentUriUsingTree(
             tree,
             "primary:Other/notes/report.md"));
+        assertInvalid(treeUri("com.termux.documents", "ubuntu-root:"),
+            DocumentsContract.buildDocumentUriUsingTree(
+                treeUri("com.termux.documents", "ubuntu-root:"),
+                "termux-home:.ssh/config"));
+        assertInvalid(treeUri("com.termux.documents", "ubuntu-root:"),
+            DocumentsContract.buildDocumentUriUsingTree(
+                treeUri("com.termux.documents", "ubuntu-root:"),
+                "ubuntu-rootfs:.ssh/config"));
     }
 
     @Test
