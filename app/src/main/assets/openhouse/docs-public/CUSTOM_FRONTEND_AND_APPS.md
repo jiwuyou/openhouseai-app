@@ -34,6 +34,8 @@ app/src/main/assets/openhouse/docs-public/examples/custom-phone-shell
 
 这是默认建议，不是强制一刀切。目标是让新 App 容易维护，同时不把很小的本地工具做复杂。
 
+第一原则是简单。能用一个清晰页面、一个本地服务和少量命令解决的问题，不要先堆复杂框架；只有 App 会长期维护、交互变复杂或多人协作时，再按下面的 TypeScript 建议升级。
+
 默认使用场景是手机上的 OpenHouse / SmallPhone WebView，不是桌面浏览器。AI 生成 App 时应按手机优先设计：
 
 - 第一屏在手机竖屏可直接完成主要操作。
