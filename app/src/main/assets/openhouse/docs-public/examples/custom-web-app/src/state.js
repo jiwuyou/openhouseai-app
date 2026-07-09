@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const APP_ID = "hello-openhouse";
+const APP_ID = "memo-openhouse";
 const APP_ROOT = path.resolve(__dirname, "..");
 const DATA_DIR = path.resolve(process.env.OPENHOUSE_CUSTOM_APP_DATA_DIR || path.join(APP_ROOT, "data"));
 const STATE_FILE = path.join(DATA_DIR, "state.json");
@@ -35,10 +35,10 @@ async function ensureState() {
     await writeState({
       app: APP_ID,
       updatedAt: nowIso(),
-      tasks: [
+      memos: [
         {
           id: createId(),
-          title: "从 OpenHouse 桌面打开这个自定义 App",
+          text: "从 OpenHouse 桌面打开这个备忘录 App",
           createdAt: nowIso(),
         },
       ],
@@ -53,7 +53,7 @@ async function readState() {
   return {
     app: APP_ID,
     ...state,
-    tasks: Array.isArray(state.tasks) ? state.tasks : [],
+    memos: Array.isArray(state.memos) ? state.memos : [],
   };
 }
 
@@ -69,41 +69,41 @@ async function writeState(state) {
   return next;
 }
 
-async function addTask(title) {
-  const cleanTitle = String(title || "").trim();
-  if (!cleanTitle) {
-    throw new Error("title is required");
+async function addMemo(text) {
+  const cleanText = String(text || "").trim();
+  if (!cleanText) {
+    throw new Error("text is required");
   }
 
   const state = await readState();
   return writeState({
     ...state,
-    tasks: [
+    memos: [
       {
         id: createId(),
-        title: cleanTitle,
+        text: cleanText,
         createdAt: nowIso(),
       },
-      ...state.tasks,
+      ...state.memos,
     ],
   });
 }
 
-async function listTasks() {
+async function listMemos() {
   const state = await readState();
-  return { ok: true, app: APP_ID, tasks: state.tasks, updatedAt: state.updatedAt };
+  return { ok: true, app: APP_ID, memos: state.memos, updatedAt: state.updatedAt };
 }
 
-async function deleteTask(id) {
-  const taskId = String(id || "").trim();
-  if (!taskId) {
+async function deleteMemo(id) {
+  const memoId = String(id || "").trim();
+  if (!memoId) {
     throw new Error("id is required");
   }
 
   const state = await readState();
   return writeState({
     ...state,
-    tasks: state.tasks.filter((task) => task.id !== taskId),
+    memos: state.memos.filter((memo) => memo.id !== memoId),
   });
 }
 
@@ -112,9 +112,9 @@ module.exports = {
   APP_ROOT,
   DATA_DIR,
   STATE_FILE,
-  addTask,
-  deleteTask,
+  addMemo,
+  deleteMemo,
   health,
-  listTasks,
+  listMemos,
   readState,
 };

@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 
 const readline = require("readline");
-const { addTask, deleteTask, health, listTasks, readState } = require("./state");
+const { addMemo, deleteMemo, health, listMemos, readState } = require("./state");
 
 const SERVER_INFO = {
-  name: "hello-openhouse",
+  name: "memo-openhouse",
   version: "0.1.0",
 };
 
 const TOOLS = [
   {
-    name: "hello_openhouse_health",
-    description: "Check the local Hello OpenHouse app module.",
+    name: "memo_openhouse_health",
+    description: "Check the local OpenHouse Memo app module.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -19,8 +19,8 @@ const TOOLS = [
     },
   },
   {
-    name: "hello_openhouse_state",
-    description: "Read the current Hello OpenHouse app state.",
+    name: "memo_openhouse_state",
+    description: "Read the current OpenHouse Memo app state.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -28,8 +28,8 @@ const TOOLS = [
     },
   },
   {
-    name: "hello_openhouse_list_tasks",
-    description: "List Hello OpenHouse tasks.",
+    name: "memo_openhouse_list_memos",
+    description: "List saved OpenHouse Memo entries.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -37,24 +37,24 @@ const TOOLS = [
     },
   },
   {
-    name: "hello_openhouse_add_task",
-    description: "Add a task to the Hello OpenHouse app.",
+    name: "memo_openhouse_add_memo",
+    description: "Add a memo to the OpenHouse Memo app.",
     inputSchema: {
       type: "object",
       properties: {
-        title: { type: "string", description: "Task title." },
+        text: { type: "string", description: "Memo text." },
       },
-      required: ["title"],
+      required: ["text"],
       additionalProperties: false,
     },
   },
   {
-    name: "hello_openhouse_delete_task",
-    description: "Delete a task from the Hello OpenHouse app.",
+    name: "memo_openhouse_delete_memo",
+    description: "Delete a memo from the OpenHouse Memo app.",
     inputSchema: {
       type: "object",
       properties: {
-        id: { type: "string", description: "Task id." },
+        id: { type: "string", description: "Memo id." },
       },
       required: ["id"],
       additionalProperties: false,
@@ -87,16 +87,16 @@ function asToolContent(value) {
 
 async function callTool(name, args) {
   switch (name) {
-    case "hello_openhouse_health":
+    case "memo_openhouse_health":
       return asToolContent(health("mcp"));
-    case "hello_openhouse_state":
+    case "memo_openhouse_state":
       return asToolContent(await readState());
-    case "hello_openhouse_list_tasks":
-      return asToolContent(await listTasks());
-    case "hello_openhouse_add_task":
-      return asToolContent(await addTask(args && args.title));
-    case "hello_openhouse_delete_task":
-      return asToolContent(await deleteTask(args && args.id));
+    case "memo_openhouse_list_memos":
+      return asToolContent(await listMemos());
+    case "memo_openhouse_add_memo":
+      return asToolContent(await addMemo(args && args.text));
+    case "memo_openhouse_delete_memo":
+      return asToolContent(await deleteMemo(args && args.id));
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

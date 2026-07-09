@@ -1,7 +1,7 @@
 const statusEl = document.querySelector("#status");
-const taskListEl = document.querySelector("#task-list");
-const taskFormEl = document.querySelector("#task-form");
-const taskInputEl = document.querySelector("#task-input");
+const memoListEl = document.querySelector("#memo-list");
+const memoFormEl = document.querySelector("#memo-form");
+const memoInputEl = document.querySelector("#memo-input");
 const refreshButtonEl = document.querySelector("#refresh-button");
 
 function setStatus(message) {
@@ -30,35 +30,35 @@ function formatTime(value) {
 }
 
 function renderState(state) {
-  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
-  taskListEl.replaceChildren();
+  const memos = Array.isArray(state.memos) ? state.memos : [];
+  memoListEl.replaceChildren();
 
-  if (!tasks.length) {
+  if (!memos.length) {
     const empty = document.createElement("li");
-    empty.textContent = "还没有任务。";
-    taskListEl.append(empty);
+    empty.textContent = "还没有备忘录。";
+    memoListEl.append(empty);
     return;
   }
 
-  for (const task of tasks) {
+  for (const memo of memos) {
     const item = document.createElement("li");
     const content = document.createElement("div");
-    const title = document.createElement("div");
+    const text = document.createElement("div");
     const meta = document.createElement("div");
     const remove = document.createElement("button");
 
-    title.className = "task-title";
-    title.textContent = task.title || "Untitled";
-    meta.className = "task-meta";
-    meta.textContent = formatTime(task.createdAt);
-    content.append(title, meta);
+    text.className = "memo-text";
+    text.textContent = memo.text || "";
+    meta.className = "memo-meta";
+    meta.textContent = formatTime(memo.createdAt);
+    content.append(text, meta);
 
     remove.type = "button";
     remove.textContent = "删除";
     remove.addEventListener("click", async () => {
       try {
         setStatus("正在删除。");
-        const next = await requestJson(`/api/tasks/${encodeURIComponent(task.id)}`, {
+        const next = await requestJson(`/api/memos/${encodeURIComponent(memo.id)}`, {
           method: "DELETE",
         });
         renderState(next);
@@ -69,7 +69,7 @@ function renderState(state) {
     });
 
     item.append(content, remove);
-    taskListEl.append(item);
+    memoListEl.append(item);
   }
 }
 
@@ -84,20 +84,20 @@ async function loadState() {
   }
 }
 
-taskFormEl.addEventListener("submit", async (event) => {
+memoFormEl.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const title = taskInputEl.value.trim();
-  if (!title) {
-    taskInputEl.focus();
+  const text = memoInputEl.value.trim();
+  if (!text) {
+    memoInputEl.focus();
     return;
   }
   try {
     setStatus("正在添加。");
-    const next = await requestJson("/api/tasks", {
+    const next = await requestJson("/api/memos", {
       method: "POST",
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ text }),
     });
-    taskInputEl.value = "";
+    memoInputEl.value = "";
     renderState(next);
     setStatus("已添加。");
   } catch (error) {
@@ -107,4 +107,3 @@ taskFormEl.addEventListener("submit", async (event) => {
 
 refreshButtonEl.addEventListener("click", loadState);
 loadState();
-

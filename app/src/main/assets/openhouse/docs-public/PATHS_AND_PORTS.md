@@ -106,8 +106,8 @@ OpenHouse registry 和 AI 文档：
 | `23080` | 保留 / component target | controlled-browser | 受控浏览器入口端口；当前服务可能是事件驱动 helper，不代表一定有 HTTP server。 |
 | `23083` | 默认 | CloudCLI / CC/Codex | Claude Code / CloudCLI / Codex 相关 Web 入口。 |
 | `23084` | 默认 component target | Hermes WebUI | OpenHouse component registry 当前 Hermes 目标端口；若手工安装 Hermes，仍以实际服务定义为准。 |
-| `23110` | 示例 / reserved when installed | hello-openhouse | `CUSTOM_FRONTEND_AND_APPS.md` 的示例 App 默认端口。 |
-| `23120` | 内置 / reserved | GitHub 本地配置助手 | `github-config-helper` 默认端口。 |
+| `23110` | 示例 / reserved when installed | memo-openhouse | `CUSTOM_FRONTEND_AND_APPS.md` 的 OpenHouse Memo 备忘录示例 App 默认端口。 |
+| `23120` | 内置 / reserved | GitHub 本地配置助手 | `github-config-helper` 默认端口；这是 APK 内置功能，不是自定义 App 示例。 |
 | `30141` | 默认 | pi-web | pi-agent 背后的本地 Web runtime，由 service-manager 托管。 |
 | `4096` | 外部 / historical | OpenCode | 老文档和外部 OpenCode 默认端口；不是 OpenHouse 核心默认端口。 |
 | `8000` | 外部默认 / optional | SillyTavern | SillyTavern 上游默认端口；OpenHouse 只在用户安装该能力时注册。 |
@@ -121,7 +121,7 @@ OpenHouse registry 和 AI 文档：
 
 ## 新 App 选端口规则
 
-用户自定义长期 App 默认从 `23100-23999` 选择端口。示例 `hello-openhouse` 使用 `23110`，GitHub 配置助手使用 `23120`；新 App 不要复用已安装服务的端口。
+用户自定义长期 App 默认从 `23100-23999` 选择端口。备忘录示例 `memo-openhouse` 使用 `23110`。GitHub 配置助手 `github-config-helper` 使用 `23120`，它是 APK 内置功能，不是自定义 App 示例；新 App 不要复用已安装服务的端口。
 
 推荐流程：
 

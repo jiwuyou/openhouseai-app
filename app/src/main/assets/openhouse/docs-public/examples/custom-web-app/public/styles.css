@@ -42,7 +42,7 @@ button:hover {
 }
 
 button.secondary,
-.task-list button {
+.memo-list button {
   background: transparent;
   color: var(--danger);
   border: 1px solid var(--line);
@@ -103,14 +103,14 @@ h2 {
   gap: 12px;
 }
 
-.task-form {
+.memo-form {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 10px;
   margin: 18px 0 10px;
 }
 
-.task-form input {
+.memo-form input {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -126,7 +126,7 @@ h2 {
   color: var(--muted);
 }
 
-.task-list {
+.memo-list {
   list-style: none;
   display: grid;
   gap: 10px;
@@ -134,7 +134,7 @@ h2 {
   padding: 0;
 }
 
-.task-list li {
+.memo-list li {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 10px;
@@ -146,12 +146,12 @@ h2 {
   background: #fbfcfe;
 }
 
-.task-title {
+.memo-text {
   overflow-wrap: anywhere;
   font-weight: 650;
 }
 
-.task-meta {
+.memo-meta {
   margin-top: 4px;
   color: var(--muted);
   font-size: 12px;
@@ -162,8 +162,8 @@ h2 {
     padding: 18px;
   }
 
-  .task-form,
-  .task-list li {
+  .memo-form,
+  .memo-list li {
     grid-template-columns: 1fr;
   }
 
@@ -171,4 +171,3 @@ h2 {
     align-items: flex-start;
   }
 }
-

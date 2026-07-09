@@ -84,7 +84,7 @@ app/src/main/assets/openhouse/docs-public/examples/custom-phone-shell
 /root/openhouse/docs/PATHS_AND_PORTS.md
 ```
 
-新 App 不要随便占用 OpenHouse 控制平面、桥接、SmallPhone 平台服务或内置 App 端口。用户自定义长期 App 默认从 `23100-23999` 选择未使用端口；临时调试用 `24000-24999`；长期服务必须注册到 service-manager。本文示例 `hello-openhouse` 使用 `23110`，真实 App 应先检查当前 service-manager 和 component registry，再选择尚未被占用的端口。
+新 App 不要随便占用 OpenHouse 控制平面、桥接、SmallPhone 平台服务或内置 App 端口。用户自定义长期 App 默认从 `23100-23999` 选择未使用端口；临时调试用 `24000-24999`；长期服务必须注册到 service-manager。本文示例是备忘录 App `memo-openhouse`，使用 `23110`。GitHub 配置助手 `github-config-helper` 是 APK 内置功能，不是自定义 App 示例。真实 App 应先检查当前 service-manager 和 component registry，再选择尚未被占用的端口。
 
 ## 路径约定
 
@@ -123,7 +123,7 @@ $SMALLPHONE_HOME/shells/<shell-id>   # 用户自定义前端 shell
 ```text
 custom-web-app/
   package.json
-  bin/hello-openhouse.js
+  bin/memo-openhouse.js
   src/server.js
   src/state.js
   src/mcp-server.js
@@ -147,14 +147,14 @@ bash register-openhouse.sh
 脚本会把代码复制到：
 
 ```text
-/root/smallphoneai-repos/smallphone-home/apps/hello-openhouse
+/root/smallphoneai-repos/smallphone-home/apps/memo-openhouse
 ```
 
 然后调用 service-manager：
 
 ```text
 POST /api/v1/registry/apply
-POST /api/v1/services/hello-openhouse/start
+POST /api/v1/services/memo-openhouse/start
 ```
 
 成功后 App 地址是：
@@ -188,18 +188,18 @@ CLI 需要同时包含两种模式：
 <namespace>-<app-id>
 ```
 
-`namespace` 是用户、团队、厂商或作者自己的短命名；`app-id` 是稳定 App ID。命令名只使用字母、数字、点、下划线和短横线。示例使用 `demo-hello-openhouse`，真实用户可以用 `alice-hello-openhouse`、`jiwuyou-notes` 这类名字。不要直接占用 `notes`、`todo`、`agent` 这类未来市场中很容易冲突的全局命令名。
+`namespace` 是用户、团队、厂商或作者自己的短命名；`app-id` 是稳定 App ID。命令名只使用字母、数字、点、下划线和短横线。备忘录示例使用 `demo-memo-openhouse`，真实用户可以用 `alice-memo-openhouse`、`jiwuyou-notes` 这类名字。不要直接占用 `notes`、`todo`、`agent` 这类未来市场中很容易冲突的全局命令名。
 
 推荐 CLI 形态：
 
 ```bash
-demo-hello-openhouse health
-demo-hello-openhouse state
-demo-hello-openhouse list
-demo-hello-openhouse add "新的任务"
-demo-hello-openhouse delete "<task-id>"
-demo-hello-openhouse --url http://127.0.0.1:23110 state
-demo-hello-openhouse --url http://127.0.0.1:23110 add "通过 HTTP 控制"
+demo-memo-openhouse health
+demo-memo-openhouse state
+demo-memo-openhouse list
+demo-memo-openhouse add "新的备忘录"
+demo-memo-openhouse delete "<memo-id>"
+demo-memo-openhouse --url http://127.0.0.1:23110 state
+demo-memo-openhouse --url http://127.0.0.1:23110 add "通过 HTTP 添加备忘录"
 ```
 
 CLI 输出默认应是 JSON。需要给人看的帮助信息只在 `help`、`--help` 或命令错误时输出。安装脚本应支持 `OPENHOUSE_CLI_NAMESPACE` 或类似环境变量，让用户或市场发布者指定自己的 namespace。
@@ -207,15 +207,16 @@ CLI 输出默认应是 JSON。需要给人看的帮助信息只在 `help`、`--h
 推荐 MCP 形态：
 
 ```bash
-node /root/smallphoneai-repos/smallphone-home/apps/hello-openhouse/src/mcp-server.js
+node /root/smallphoneai-repos/smallphone-home/apps/memo-openhouse/src/mcp-server.js
 ```
 
 MCP server 使用 stdio transport，工具名稳定，例如：
 
 ```text
-hello_openhouse_state
-hello_openhouse_add_task
-hello_openhouse_delete_task
+memo_openhouse_state
+memo_openhouse_list_memos
+memo_openhouse_add_memo
+memo_openhouse_delete_memo
 ```
 
 Web API、CLI 和 MCP 应共用同一个状态模块或业务模块。示例 App 使用 `src/state.js` 作为共享实现。
@@ -229,17 +230,17 @@ Web API、CLI 和 MCP 应共用同一个状态模块或业务模块。示例 App
 ```json
 {
   "schemaVersion": 1,
-  "id": "hello-openhouse",
+  "id": "memo-openhouse",
   "service": {
-    "name": "hello-openhouse",
-    "description": "OpenHouse custom web app example",
+    "name": "memo-openhouse",
+    "description": "OpenHouse Memo custom web app example",
     "provider": "process",
     "command": ["node", "src/server.js"],
-    "working_dir": "/root/smallphoneai-repos/smallphone-home/apps/hello-openhouse",
+    "working_dir": "/root/smallphoneai-repos/smallphone-home/apps/memo-openhouse",
     "env": {
       "HOST": "127.0.0.1",
       "PORT": "23110",
-      "OPENHOUSE_CUSTOM_APP_DATA_DIR": "/root/smallphoneai-repos/smallphone-home/apps/hello-openhouse/data"
+      "OPENHOUSE_CUSTOM_APP_DATA_DIR": "/root/smallphoneai-repos/smallphone-home/apps/memo-openhouse/data"
     },
     "runtime": {},
     "restart": {
@@ -259,8 +260,8 @@ Web API、CLI 和 MCP 应共用同一个状态模块或业务模块。示例 App
       "openhouseai",
       "smallphone",
       "group:local-stack",
-      "openhouse-component:hello-openhouse",
-      "smallphone-app:hello-openhouse"
+      "openhouse-component:memo-openhouse",
+      "smallphone-app:memo-openhouse"
     ]
   }
 }
@@ -282,9 +283,9 @@ Web API、CLI 和 MCP 应共用同一个状态模块或业务模块。示例 App
 ```json
 {
   "schemaVersion": 1,
-  "id": "hello-openhouse",
-  "title": "Hello OpenHouse",
-  "description": "最小自定义 Web App 示例",
+  "id": "memo-openhouse",
+  "title": "OpenHouse Memo",
+  "description": "最小自定义备忘录 App 示例",
   "kind": "app",
   "shellMenu": {
     "visible": true,
@@ -296,8 +297,8 @@ Web API、CLI 和 MCP 应共用同一个状态模块或业务模块。示例 App
     },
     "controlEntry": {
       "type": "service-control",
-      "serviceNames": ["hello-openhouse"],
-      "serviceRefs": ["service-manager://services/hello-openhouse"]
+      "serviceNames": ["memo-openhouse"],
+      "serviceRefs": ["service-manager://services/memo-openhouse"]
     }
   },
   "smallphoneApp": {
@@ -311,33 +312,33 @@ Web API、CLI 和 MCP 应共用同一个状态模块或业务模块。示例 App
     },
     "controlEntry": {
       "type": "service-control",
-      "serviceNames": ["hello-openhouse"],
-      "serviceRefs": ["service-manager://services/hello-openhouse"]
+      "serviceNames": ["memo-openhouse"],
+      "serviceRefs": ["service-manager://services/memo-openhouse"]
     }
   },
   "serviceManager": {
     "required": true,
     "services": [
       {
-        "name": "hello-openhouse",
-        "title": "Hello OpenHouse",
+        "name": "memo-openhouse",
+        "title": "OpenHouse Memo",
         "role": "web",
         "port": 23110,
         "url": "http://127.0.0.1:23110/",
-        "serviceRef": "service-manager://services/hello-openhouse",
+        "serviceRef": "service-manager://services/memo-openhouse",
         "health": {
           "type": "http",
           "url": "http://127.0.0.1:23110/health"
         },
         "controls": ["status", "start", "stop", "restart", "logs", "repair"],
-        "repairActionRef": "service-manager://actions/hello-openhouse.repair"
+        "repairActionRef": "service-manager://actions/memo-openhouse.repair"
       }
     ]
   },
   "ai": {
     "visible": true,
-    "summaryDoc": "/root/.config/openhouseai/ai-docs/hello-openhouse/openhouse.ai.md",
-    "capabilities": "/root/.config/openhouseai/ai-docs/hello-openhouse/capabilities.json",
+    "summaryDoc": "/root/.config/openhouseai/ai-docs/memo-openhouse/openhouse.ai.md",
+    "capabilities": "/root/.config/openhouseai/ai-docs/memo-openhouse/capabilities.json",
     "intents": [
       { "name": "open", "target": "smallphoneApp.entry" },
       { "name": "control", "target": "smallphoneApp.controlEntry" }
@@ -379,14 +380,14 @@ payload 结构：
 ```json
 {
   "components": [
-    { "id": "hello-openhouse", "shellMenu": {}, "smallphoneApp": {}, "serviceManager": {}, "ai": {} }
+    { "id": "memo-openhouse", "shellMenu": {}, "smallphoneApp": {}, "serviceManager": {}, "ai": {} }
   ],
   "services": [
     {
       "schemaVersion": 1,
-      "id": "hello-openhouse",
+      "id": "memo-openhouse",
       "service": {
-        "name": "hello-openhouse",
+        "name": "memo-openhouse",
         "provider": "process",
         "command": ["node", "src/server.js"]
       }
@@ -394,8 +395,8 @@ payload 结构：
   ],
   "aiDocs": [
     {
-      "path": "hello-openhouse/openhouse.ai.md",
-      "content": "# Hello OpenHouse\n\nAI-readable app summary.\n"
+      "path": "memo-openhouse/openhouse.ai.md",
+      "content": "# OpenHouse Memo\n\nAI-readable memo app summary.\n"
     }
   ]
 }
@@ -535,7 +536,7 @@ esac
 curl -fsS "${SM_URL%/}/api/v1/health"
 TOKEN="$(service-manager token show | head -n1)"
 curl -fsS -H "Authorization: Bearer $TOKEN" \
-  "${SM_URL%/}/api/v1/services/hello-openhouse/status"
+  "${SM_URL%/}/api/v1/services/memo-openhouse/status"
 ```
 
 检查 SmallPhone Core：

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const path = require("path");
-const { addTask, deleteTask, health, listTasks, readState } = require("../src/state");
+const { addMemo, deleteMemo, health, listMemos, readState } = require("../src/state");
 
 const DEFAULT_HTTP_URL = "http://127.0.0.1:23110";
 
@@ -10,7 +10,7 @@ function printJson(value) {
 }
 
 function commandName() {
-  return path.basename(process.argv[1] || "demo-hello-openhouse");
+  return path.basename(process.argv[1] || "demo-memo-openhouse");
 }
 
 function usage() {
@@ -21,10 +21,10 @@ Usage:
   ${name} health
   ${name} state
   ${name} list
-  ${name} add <title>
-  ${name} delete <task-id>
+  ${name} add <memo-text>
+  ${name} delete <memo-id>
   ${name} --url ${DEFAULT_HTTP_URL} state
-  ${name} --url ${DEFAULT_HTTP_URL} add <title>
+  ${name} --url ${DEFAULT_HTTP_URL} add <memo-text>
 
 Without --url, commands use the local app data directory directly.
 With --url, commands use the running HTTP service.
@@ -92,22 +92,22 @@ async function runHttp(url, command, args) {
 
     case "list": {
       const state = await requestJson(url, "/api/state");
-      printJson({ ok: true, tasks: state.tasks || [], updatedAt: state.updatedAt });
+      printJson({ ok: true, memos: state.memos || [], updatedAt: state.updatedAt });
       return;
     }
 
     case "add":
       printJson(
-        await requestJson(url, "/api/tasks", {
+        await requestJson(url, "/api/memos", {
           method: "POST",
-          body: JSON.stringify({ title: requireValue(args.join(" "), "title") }),
+          body: JSON.stringify({ text: requireValue(args.join(" "), "memo text") }),
         })
       );
       return;
 
     case "delete":
       printJson(
-        await requestJson(url, `/api/tasks/${encodeURIComponent(requireValue(args[0], "task id"))}`, {
+        await requestJson(url, `/api/memos/${encodeURIComponent(requireValue(args[0], "memo id"))}`, {
           method: "DELETE",
         })
       );
@@ -131,16 +131,16 @@ async function runLocal(command, args) {
       return;
 
     case "list": {
-      printJson(await listTasks());
+      printJson(await listMemos());
       return;
     }
 
     case "add":
-      printJson(await addTask(requireValue(args.join(" "), "title")));
+      printJson(await addMemo(requireValue(args.join(" "), "memo text")));
       return;
 
     case "delete":
-      printJson(await deleteTask(requireValue(args[0], "task id")));
+      printJson(await deleteMemo(requireValue(args[0], "memo id")));
       return;
 
     default:

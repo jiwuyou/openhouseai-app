@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -eu
 
-APP_ID="hello-openhouse"
-APP_TITLE="Hello OpenHouse"
+APP_ID="memo-openhouse"
+APP_TITLE="OpenHouse Memo"
 APP_PORT="${APP_PORT:-23110}"
 APP_HOST="${APP_HOST:-127.0.0.1}"
 CLI_NAMESPACE="${OPENHOUSE_CLI_NAMESPACE:-demo}"
@@ -16,11 +16,11 @@ DATA_DIR="$INSTALL_DIR/data"
 SM_URL="${SERVICE_MANAGER_URL:-http://127.0.0.1:20087}"
 
 log() {
-  printf '[hello-openhouse] %s\n' "$*"
+  printf '[memo-openhouse] %s\n' "$*"
 }
 
 fail() {
-  printf '[hello-openhouse] %s\n' "$*" >&2
+  printf '[memo-openhouse] %s\n' "$*" >&2
   exit 1
 }
 
@@ -78,14 +78,14 @@ cp "$SCRIPT_DIR/package.json" "$INSTALL_DIR/package.json"
 cp "$SCRIPT_DIR/src/server.js" "$INSTALL_DIR/src/server.js"
 cp "$SCRIPT_DIR/src/state.js" "$INSTALL_DIR/src/state.js"
 cp "$SCRIPT_DIR/src/mcp-server.js" "$INSTALL_DIR/src/mcp-server.js"
-cp "$SCRIPT_DIR/bin/hello-openhouse.js" "$INSTALL_DIR/bin/hello-openhouse.js"
+cp "$SCRIPT_DIR/bin/memo-openhouse.js" "$INSTALL_DIR/bin/memo-openhouse.js"
 cp "$SCRIPT_DIR/public/index.html" "$INSTALL_DIR/public/index.html"
 cp "$SCRIPT_DIR/public/styles.css" "$INSTALL_DIR/public/styles.css"
 cp "$SCRIPT_DIR/public/app.js" "$INSTALL_DIR/public/app.js"
-chmod +x "$INSTALL_DIR/bin/hello-openhouse.js" "$INSTALL_DIR/src/mcp-server.js"
-ln -sf "$INSTALL_DIR/bin/hello-openhouse.js" "$HOME/.local/bin/$CLI_NAME"
+chmod +x "$INSTALL_DIR/bin/memo-openhouse.js" "$INSTALL_DIR/src/mcp-server.js"
+ln -sf "$INSTALL_DIR/bin/memo-openhouse.js" "$HOME/.local/bin/$CLI_NAME"
 
-PAYLOAD_FILE="$(mktemp "${TMPDIR:-/tmp}/hello-openhouse-registry.XXXXXX.json")"
+PAYLOAD_FILE="$(mktemp "${TMPDIR:-/tmp}/memo-openhouse-registry.XXXXXX.json")"
 cleanup() {
   rm -f "$PAYLOAD_FILE"
 }
@@ -103,14 +103,14 @@ data_dir = pathlib.Path(sys.argv[4])
 host = sys.argv[5]
 port = int(sys.argv[6])
 cli_name = sys.argv[7]
-app_id = "hello-openhouse"
+app_id = "memo-openhouse"
 url = f"http://{host}:{port}/"
 health_url = f"http://{host}:{port}/health"
 
 component = {
     "schemaVersion": 1,
     "id": app_id,
-    "title": "Hello OpenHouse",
+    "title": "OpenHouse Memo",
     "description": "最小自定义 Web App 示例。",
     "kind": "app",
     "shellMenu": {
@@ -141,7 +141,7 @@ component = {
         "services": [
             {
                 "name": app_id,
-                "title": "Hello OpenHouse",
+                "title": "OpenHouse Memo",
                 "role": "web",
                 "port": port,
                 "url": url,
@@ -170,7 +170,7 @@ service = {
     "id": app_id,
     "service": {
         "name": app_id,
-        "description": "OpenHouse custom web app example",
+        "description": "OpenHouse Memo custom app example",
         "provider": "process",
         "command": ["node", "src/server.js"],
         "working_dir": str(install_dir),
@@ -206,11 +206,11 @@ payload = {
     "aiDocs": [
         {
             "path": f"{app_id}/openhouse.ai.md",
-            "content": (script_dir / "ai-docs" / "openhouse.ai.md").read_text(encoding="utf-8").replace("demo-hello-openhouse", cli_name),
+            "content": (script_dir / "ai-docs" / "openhouse.ai.md").read_text(encoding="utf-8").replace("demo-memo-openhouse", cli_name),
         },
         {
             "path": f"{app_id}/capabilities.json",
-            "content": (script_dir / "ai-docs" / "capabilities.json").read_text(encoding="utf-8").replace("demo-hello-openhouse", cli_name),
+            "content": (script_dir / "ai-docs" / "capabilities.json").read_text(encoding="utf-8").replace("demo-memo-openhouse", cli_name),
         },
     ],
 }

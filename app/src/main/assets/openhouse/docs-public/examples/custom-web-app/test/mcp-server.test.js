@@ -15,7 +15,7 @@ function parseToolContent(result) {
 }
 
 test("MCP stdio supports initialize, tools/list, and tools/call", async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "hello-openhouse-mcp-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "memo-openhouse-mcp-"));
   const child = spawn(process.execPath, [MCP_SERVER], {
     cwd: APP_ROOT,
     env: {
@@ -47,24 +47,25 @@ test("MCP stdio supports initialize, tools/list, and tools/call", async () => {
 
   try {
     const initialized = await request("initialize", { protocolVersion: "2024-11-05" });
-    assert.equal(initialized.result.serverInfo.name, "hello-openhouse");
+    assert.equal(initialized.result.serverInfo.name, "memo-openhouse");
 
     const listed = await request("tools/list");
     const toolNames = listed.result.tools.map((tool) => tool.name);
-    assert.equal(toolNames.includes("hello_openhouse_health"), true);
-    assert.equal(toolNames.includes("hello_openhouse_add_task"), true);
-    assert.equal(toolNames.includes("hello_openhouse_delete_task"), true);
+    assert.equal(toolNames.includes("memo_openhouse_health"), true);
+    assert.equal(toolNames.includes("memo_openhouse_list_memos"), true);
+    assert.equal(toolNames.includes("memo_openhouse_add_memo"), true);
+    assert.equal(toolNames.includes("memo_openhouse_delete_memo"), true);
 
     const added = await request("tools/call", {
-      name: "hello_openhouse_add_task",
-      arguments: { title: "mcp task from test" },
+      name: "memo_openhouse_add_memo",
+      arguments: { text: "mcp memo from test" },
     });
     const addedState = parseToolContent(added.result);
-    assert.equal(addedState.tasks[0].title, "mcp task from test");
+    assert.equal(addedState.memos[0].text, "mcp memo from test");
 
-    const state = await request("tools/call", { name: "hello_openhouse_state", arguments: {} });
+    const state = await request("tools/call", { name: "memo_openhouse_state", arguments: {} });
     const currentState = parseToolContent(state.result);
-    assert.equal(currentState.tasks[0].title, "mcp task from test");
+    assert.equal(currentState.memos[0].text, "mcp memo from test");
   } finally {
     rl.close();
     child.kill("SIGTERM");

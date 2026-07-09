@@ -1,7 +1,7 @@
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
-const { addTask, deleteTask, health, readState } = require("./state");
+const { addMemo, deleteMemo, health, readState } = require("./state");
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number.parseInt(process.env.PORT || "23110", 10);
@@ -105,22 +105,22 @@ async function handleApi(req, res, url) {
     return true;
   }
 
-  if (req.method === "POST" && url.pathname === "/api/tasks") {
+  if (req.method === "POST" && url.pathname === "/api/memos") {
     const body = await readJsonBody(req);
-    const title = String(body.title || "").trim();
-    if (!title) {
-      sendJson(res, 400, { error: "title is required" });
+    const text = String(body.text || "").trim();
+    if (!text) {
+      sendJson(res, 400, { error: "text is required" });
       return true;
     }
-    const next = await addTask(title);
+    const next = await addMemo(text);
     sendJson(res, 201, next);
     return true;
   }
 
-  const deleteMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+  const deleteMatch = url.pathname.match(/^\/api\/memos\/([^/]+)$/);
   if (req.method === "DELETE" && deleteMatch) {
     const id = decodeURIComponent(deleteMatch[1]);
-    const next = await deleteTask(id);
+    const next = await deleteMemo(id);
     sendJson(res, 200, next);
     return true;
   }
@@ -151,7 +151,7 @@ function createServer() {
 if (require.main === module) {
   const server = createServer();
   server.listen(PORT, HOST, () => {
-    console.log(`[hello-openhouse] listening on http://${HOST}:${PORT}/`);
+    console.log(`[memo-openhouse] listening on http://${HOST}:${PORT}/`);
   });
 
   process.on("SIGTERM", () => {

@@ -7,7 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const APP_ROOT = path.resolve(__dirname, "..");
-const CLI = path.join(APP_ROOT, "bin", "hello-openhouse.js");
+const CLI = path.join(APP_ROOT, "bin", "memo-openhouse.js");
 const SERVER = path.join(APP_ROOT, "src", "server.js");
 
 function freePort() {
@@ -52,7 +52,7 @@ function runCli(dataDir, url, args) {
 }
 
 test("CLI HTTP mode uses the running Web API on a temporary port", async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "hello-openhouse-cli-http-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "memo-openhouse-cli-http-"));
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   const server = spawn(process.execPath, [SERVER], {
@@ -73,15 +73,15 @@ test("CLI HTTP mode uses the running Web API on a temporary port", async () => {
     assert.equal(health.ok, true);
     assert.equal(health.mode, "http");
 
-    const added = runCli(dataDir, url, ["add", "http task from test"]);
-    assert.equal(added.tasks[0].title, "http task from test");
+    const added = runCli(dataDir, url, ["add", "http memo from test"]);
+    assert.equal(added.memos[0].text, "http memo from test");
 
     const listed = runCli(dataDir, url, ["list"]);
     assert.equal(listed.ok, true);
-    assert.equal(listed.tasks[0].title, "http task from test");
+    assert.equal(listed.memos[0].text, "http memo from test");
 
-    const deleted = runCli(dataDir, url, ["delete", added.tasks[0].id]);
-    assert.equal(deleted.tasks.some((task) => task.id === added.tasks[0].id), false);
+    const deleted = runCli(dataDir, url, ["delete", added.memos[0].id]);
+    assert.equal(deleted.memos.some((memo) => memo.id === added.memos[0].id), false);
   } finally {
     server.kill("SIGTERM");
     await new Promise((resolve) => server.once("exit", resolve));

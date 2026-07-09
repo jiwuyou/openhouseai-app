@@ -1,18 +1,18 @@
 {
-  "name": "openhouse-custom-web-app-example",
+  "name": "openhouse-memo-custom-app-example",
   "version": "0.1.0",
   "private": true,
-  "description": "Minimal OpenHouse custom web app example.",
+  "description": "Minimal OpenHouse Memo custom app example.",
   "main": "src/server.js",
   "bin": {
-    "demo-hello-openhouse": "bin/hello-openhouse.js"
+    "demo-memo-openhouse": "bin/memo-openhouse.js"
   },
   "scripts": {
     "start": "node src/server.js",
-    "cli": "node bin/hello-openhouse.js",
+    "cli": "node bin/memo-openhouse.js",
     "mcp": "node src/mcp-server.js",
     "test": "node --test test/*.test.js",
-    "check": "node --check src/server.js src/state.js src/mcp-server.js bin/hello-openhouse.js public/app.js && node --test test/*.test.js"
+    "check": "node --check src/server.js src/state.js src/mcp-server.js bin/memo-openhouse.js public/app.js && node --test test/*.test.js"
   },
   "dependencies": {}
 }
