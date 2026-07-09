@@ -23,8 +23,9 @@ public class OpenHouseFileSpaceCatalogTest {
 
         List<OpenHouseFileSpaceEntry> entries = OpenHouseFileSpaceCatalog.buildBuiltInLocalEntries(home, androidShared);
 
-        Assert.assertEquals(3, entries.size());
+        Assert.assertEquals(4, entries.size());
         assertSpace(entries, OpenHouseFileSpaceCatalog.SPACE_OPENHOUSE_WORKSPACE, FileSpaceType.OPENHOUSE_WORKSPACE);
+        assertSpace(entries, OpenHouseFileSpaceCatalog.SPACE_OPENHOUSE_INBOX, FileSpaceType.OPENHOUSE_WORKSPACE);
         assertSpace(entries, OpenHouseFileSpaceCatalog.SPACE_TERMUX_HOME, FileSpaceType.TERMUX);
         assertSpace(entries, OpenHouseFileSpaceCatalog.SPACE_ANDROID_SHARED, FileSpaceType.ANDROID_SHARED);
     }

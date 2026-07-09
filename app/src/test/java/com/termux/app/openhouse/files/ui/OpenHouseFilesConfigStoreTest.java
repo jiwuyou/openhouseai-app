@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 
+import com.termux.app.openhouse.files.importing.OpenHouseInboxGrouping;
+
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -14,14 +16,58 @@ import org.robolectric.RuntimeEnvironment;
 @RunWith(RobolectricTestRunner.class)
 public class OpenHouseFilesConfigStoreTest {
 
+    private SharedPreferences prefs;
     private OpenHouseFilesConfigStore store;
 
     @Before
     public void setUp() {
         Context context = RuntimeEnvironment.getApplication();
-        SharedPreferences prefs = context.getSharedPreferences(OpenHouseFilesConfigStore.PREFS_NAME, Context.MODE_PRIVATE);
+        prefs = context.getSharedPreferences(OpenHouseFilesConfigStore.PREFS_NAME, Context.MODE_PRIVATE);
         prefs.edit().clear().commit();
         store = new OpenHouseFilesConfigStore(prefs);
+    }
+
+    @Test
+    public void inboxGroupingDefaultsToMonth() {
+        Assert.assertEquals(OpenHouseInboxGrouping.MONTH, store.getInboxGrouping());
+    }
+
+    @Test
+    public void inboxGroupingPersists() {
+        store.setInboxGrouping(OpenHouseInboxGrouping.DAY);
+
+        OpenHouseFilesConfigStore reloaded = new OpenHouseFilesConfigStore(prefs);
+
+        Assert.assertEquals(OpenHouseInboxGrouping.DAY, reloaded.getInboxGrouping());
+    }
+
+    @Test
+    public void invalidInboxGroupingFallsBackToMonth() {
+        prefs.edit().putString("inbox_grouping", "quarter").commit();
+
+        Assert.assertEquals(OpenHouseInboxGrouping.MONTH, store.getInboxGrouping());
+
+        store.setInboxGrouping(null);
+
+        Assert.assertEquals(OpenHouseInboxGrouping.MONTH, store.getInboxGrouping());
+    }
+
+    @Test
+    public void hiddenFilesDefaultToVisible() {
+        Assert.assertTrue(store.shouldShowHiddenFiles());
+    }
+
+    @Test
+    public void hiddenFileVisibilityPersists() {
+        store.setShowHiddenFiles(false);
+
+        OpenHouseFilesConfigStore reloaded = new OpenHouseFilesConfigStore(prefs);
+
+        Assert.assertFalse(reloaded.shouldShowHiddenFiles());
+
+        reloaded.setShowHiddenFiles(true);
+
+        Assert.assertTrue(new OpenHouseFilesConfigStore(prefs).shouldShowHiddenFiles());
     }
 
     @Test

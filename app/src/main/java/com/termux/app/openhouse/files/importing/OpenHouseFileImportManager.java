@@ -7,18 +7,37 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Date;
 
 public final class OpenHouseFileImportManager {
 
     private static final int BUFFER_SIZE = 16 * 1024;
 
     private final OpenHouseWorkspacePaths paths;
+    private final OpenHouseInboxGrouping defaultGrouping;
+    private final DateProvider dateProvider;
 
     public OpenHouseFileImportManager(OpenHouseWorkspacePaths paths) {
+        this(paths, OpenHouseInboxGrouping.DEFAULT);
+    }
+
+    public OpenHouseFileImportManager(OpenHouseWorkspacePaths paths, OpenHouseInboxGrouping defaultGrouping) {
+        this(paths, defaultGrouping, Date::new);
+    }
+
+    OpenHouseFileImportManager(OpenHouseWorkspacePaths paths, OpenHouseInboxGrouping defaultGrouping, DateProvider dateProvider) {
+        if (paths == null) throw new IllegalArgumentException("paths == null");
         this.paths = paths;
+        this.defaultGrouping = defaultGrouping == null ? OpenHouseInboxGrouping.DEFAULT : defaultGrouping;
+        this.dateProvider = dateProvider == null ? Date::new : dateProvider;
     }
 
     public OpenHouseImportedFile importStream(InputStream inputStream, OpenHouseImportSource source) throws IOException {
+        return importStream(inputStream, source, defaultGrouping);
+    }
+
+    public OpenHouseImportedFile importStream(InputStream inputStream, OpenHouseImportSource source,
+                                              OpenHouseInboxGrouping grouping) throws IOException {
         if (inputStream == null) {
             throw new IOException("Input stream is null");
         }
@@ -27,7 +46,8 @@ public final class OpenHouseFileImportManager {
         }
 
         paths.ensureTermuxWorkspaceDirs();
-        File inboxDir = paths.getInboxDir();
+        File inboxDir = resolveInboxDir(grouping);
+        ensureDirectory(inboxDir);
         String safeFileName = OpenHouseFileNameSanitizer.sanitize(source.getSuggestedFileName());
         File target = createNonConflictingFile(inboxDir, safeFileName);
 
@@ -44,6 +64,27 @@ public final class OpenHouseFileImportManager {
         }
 
         return new OpenHouseImportedFile(target, source, paths);
+    }
+
+    private File resolveInboxDir(OpenHouseInboxGrouping grouping) {
+        OpenHouseInboxGrouping safeGrouping = grouping == null ? OpenHouseInboxGrouping.DEFAULT : grouping;
+        String child = safeGrouping.getDirectoryName(dateProvider.now());
+        if (child.isEmpty()) {
+            return paths.getInboxDir();
+        }
+        return new File(paths.getInboxDir(), child);
+    }
+
+    private static void ensureDirectory(File directory) throws IOException {
+        if (directory.isDirectory()) {
+            return;
+        }
+        if (directory.exists()) {
+            throw new IOException("Path exists but is not a directory: " + directory.getAbsolutePath());
+        }
+        if (!directory.mkdirs() && !directory.isDirectory()) {
+            throw new IOException("Cannot create directory: " + directory.getAbsolutePath());
+        }
     }
 
     static File createNonConflictingFile(File directory, String fileName) throws IOException {
@@ -67,5 +108,9 @@ public final class OpenHouseFileImportManager {
             }
         }
         throw new IOException("Cannot create a non-conflicting file name in " + directory.getAbsolutePath());
+    }
+
+    interface DateProvider {
+        Date now();
     }
 }

@@ -1,13 +1,17 @@
 package com.termux.app.api.file;
 
+import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+
+import androidx.core.content.FileProvider;
 
 import com.termux.app.TermuxService;
 import com.termux.app.api.file.FileReceiverActivity;
 import com.termux.app.openhouse.files.core.OpenHouseWorkspacePaths;
 import com.termux.app.openhouse.files.importing.OpenHouseFileImportManager;
+import com.termux.app.openhouse.files.importing.OpenHouseInboxGrouping;
 import com.termux.app.openhouse.files.importing.OpenHouseImportIntents;
 import com.termux.app.openhouse.files.importing.OpenHouseImportSource;
 import com.termux.app.openhouse.files.importing.OpenHouseImportSources;
@@ -15,19 +19,29 @@ import com.termux.app.openhouse.files.importing.OpenHouseImportedFile;
 import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE;
 
 import org.junit.Assert;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.Date;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @RunWith(RobolectricTestRunner.class)
 public class FileReceiverActivityTest {
+
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     @Test
     public void testIsSharedTextAnUrl() {
@@ -112,14 +126,38 @@ public class FileReceiverActivityTest {
         Assert.assertEquals("OpenHouse 文件说明: notes.md", intent.getStringExtra(Intent.EXTRA_SUBJECT));
         String text = intent.getStringExtra(Intent.EXTRA_TEXT);
         Assert.assertNotNull(text);
-        Assert.assertTrue(text.contains("openhouse/workspace/inbox/notes.md"));
-        Assert.assertTrue(text.contains("/root/openhouse/workspace/inbox/notes.md"));
+        Assert.assertTrue(text.contains("openhouse/workspace/inbox/"));
+        Assert.assertTrue(text.contains("/root/openhouse/workspace/inbox/"));
+        Assert.assertTrue(text.contains("notes.md"));
+    }
+
+    @Test
+    public void aiDescriptionIntentSupportsMultipleImportedFiles() throws Exception {
+        Context context = RuntimeEnvironment.getApplication();
+        OpenHouseImportedFile first = importTestFile(context, "notes.md", "text/markdown");
+        OpenHouseImportedFile second = importAdditionalTestFile(context, "photo.jpg", "image/jpeg");
+        ArrayList<OpenHouseImportedFile> importedFiles = new ArrayList<>();
+        importedFiles.add(first);
+        importedFiles.add(second);
+
+        Intent intent = OpenHouseImportIntents.createShareAiDescriptionIntent(importedFiles);
+
+        Assert.assertEquals(Intent.ACTION_SEND, intent.getAction());
+        Assert.assertEquals("text/plain", intent.getType());
+        Assert.assertEquals("OpenHouse 文件说明: 2 个文件", intent.getStringExtra(Intent.EXTRA_SUBJECT));
+        String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+        Assert.assertNotNull(text);
+        Assert.assertTrue(text.contains("以下文件已导入 OpenHouse 文件中转站，共 2 个。"));
+        Assert.assertTrue(text.contains("notes.md"));
+        Assert.assertTrue(text.contains("photo.jpg"));
+        Assert.assertTrue(text.contains("openhouse/workspace/inbox/"));
     }
 
     @Test
     public void openExternallyIntentUsesInboxFileProviderUri() throws Exception {
         Context context = RuntimeEnvironment.getApplication();
         OpenHouseImportedFile importedFile = importTestFile(context, "open-me.md", "text/markdown");
+        clearFileProviderCache();
 
         Intent intent = OpenHouseImportIntents.createOpenExternallyIntent(context, importedFile);
 
@@ -130,6 +168,32 @@ public class FileReceiverActivityTest {
         Assert.assertEquals("content", intent.getData().getScheme());
         Assert.assertTrue(intent.getData().toString().contains("openhouse_inbox"));
         Assert.assertEquals(intent.getData(), intent.getParcelableExtra(Intent.EXTRA_STREAM));
+    }
+
+    @Test
+    public void openExternallyIntentSupportsMultipleImportedFiles() throws Exception {
+        Context context = RuntimeEnvironment.getApplication();
+        OpenHouseImportedFile first = importTestFile(context, "open-me.md", "text/markdown");
+        OpenHouseImportedFile second = importAdditionalTestFile(context, "photo.jpg", "image/jpeg");
+        ArrayList<OpenHouseImportedFile> importedFiles = new ArrayList<>();
+        importedFiles.add(first);
+        importedFiles.add(second);
+        clearFileProviderCache();
+
+        Intent intent = OpenHouseImportIntents.createOpenExternallyIntent(context, importedFiles);
+
+        Assert.assertEquals(Intent.ACTION_SEND_MULTIPLE, intent.getAction());
+        Assert.assertEquals("*/*", intent.getType());
+        Assert.assertTrue((intent.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0);
+        ArrayList<Uri> streams = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+        Assert.assertNotNull(streams);
+        Assert.assertEquals(2, streams.size());
+        Assert.assertEquals("content", streams.get(0).getScheme());
+        Assert.assertTrue(streams.get(0).toString().contains("openhouse_inbox"));
+        Assert.assertTrue(streams.get(1).toString().contains("openhouse_inbox"));
+        ClipData clipData = intent.getClipData();
+        Assert.assertNotNull(clipData);
+        Assert.assertEquals(2, clipData.getItemCount());
     }
 
     @Test
@@ -168,9 +232,95 @@ public class FileReceiverActivityTest {
         );
     }
 
+    @Test
+    public void importIntentSendTextCopiesIntoConfiguredDayInbox() throws Exception {
+        TestFileReceiverActivity activity = testActivity(OpenHouseInboxGrouping.DAY);
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_SUBJECT, "meeting");
+        intent.putExtra(Intent.EXTRA_TEXT, "hello from share sheet");
+
+        FileReceiverActivity.ImportBatchResult result = activity.importIntent(intent);
+
+        Assert.assertFalse(result.hasFailures());
+        Assert.assertEquals(1, result.getImportedFiles().size());
+        OpenHouseImportedFile importedFile = result.getImportedFiles().get(0);
+        Assert.assertEquals(
+            "inbox/" + OpenHouseInboxGrouping.DAY.getDirectoryName(new Date()) + "/meeting.txt",
+            activity.paths.getWorkspaceRelativePath(importedFile.getFile()));
+        Assert.assertTrue(importedFile.getFile().isFile());
+    }
+
+    @Test
+    public void importIntentViewFileCopiesIntoUngroupedInbox() throws Exception {
+        TestFileReceiverActivity activity = testActivity(OpenHouseInboxGrouping.NONE);
+        File source = temporaryFolder.newFile("view-me.md");
+        writeText(source, "view payload");
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(Uri.fromFile(source), "text/markdown");
+
+        FileReceiverActivity.ImportBatchResult result = activity.importIntent(intent);
+
+        Assert.assertFalse(result.hasFailures());
+        Assert.assertEquals(1, result.getImportedFiles().size());
+        Assert.assertEquals("inbox/view-me.md",
+            activity.paths.getWorkspaceRelativePath(result.getImportedFiles().get(0).getFile()));
+    }
+
+    @Test
+    public void importIntentViewContentCopiesIntoInbox() throws Exception {
+        Context context = RuntimeEnvironment.getApplication();
+        clearFileProviderCache();
+        TestFileReceiverActivity activity = testActivity(OpenHouseInboxGrouping.NONE);
+        File providerRoot = new File(context.getFilesDir(), "home/openhouse/workspace/inbox");
+        Assert.assertTrue(providerRoot.isDirectory() || providerRoot.mkdirs());
+        File source = new File(providerRoot, "content-source.txt");
+        writeText(source, "content payload");
+        Uri contentUri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", source);
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(contentUri, "text/plain");
+
+        FileReceiverActivity.ImportBatchResult result = activity.importIntent(intent);
+
+        Assert.assertFalse(result.hasFailures());
+        Assert.assertEquals(1, result.getImportedFiles().size());
+        Assert.assertEquals("inbox/content-source.txt",
+            activity.paths.getWorkspaceRelativePath(result.getImportedFiles().get(0).getFile()));
+    }
+
+    @Test
+    public void importIntentSendMultipleKeepsSuccessfulFilesWhenOneFails() throws Exception {
+        TestFileReceiverActivity activity = testActivity(OpenHouseInboxGrouping.NONE);
+        File source = temporaryFolder.newFile("good.txt");
+        writeText(source, "ok");
+        ArrayList<Uri> streams = new ArrayList<>();
+        streams.add(Uri.fromFile(source));
+        streams.add(Uri.fromFile(new File(temporaryFolder.getRoot(), "missing.txt")));
+        Intent intent = new Intent(Intent.ACTION_SEND_MULTIPLE);
+        intent.setType("text/plain");
+        intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, streams);
+
+        FileReceiverActivity.ImportBatchResult result = activity.importIntent(intent);
+
+        Assert.assertTrue(result.hasFailures());
+        Assert.assertEquals(1, result.getImportedFiles().size());
+        Assert.assertEquals("inbox/good.txt",
+            activity.paths.getWorkspaceRelativePath(result.getImportedFiles().get(0).getFile()));
+    }
+
     private OpenHouseImportedFile importTestFile(Context context, String fileName, String mimeType) throws Exception {
+        return importTestFile(context, fileName, mimeType, true);
+    }
+
+    private OpenHouseImportedFile importAdditionalTestFile(Context context, String fileName, String mimeType) throws Exception {
+        return importTestFile(context, fileName, mimeType, false);
+    }
+
+    private OpenHouseImportedFile importTestFile(Context context, String fileName, String mimeType, boolean resetHome) throws Exception {
         File homeDir = new File(context.getFilesDir(), "home");
-        deleteRecursively(homeDir);
+        if (resetHome) {
+            deleteRecursively(homeDir);
+        }
         OpenHouseWorkspacePaths paths = OpenHouseWorkspacePaths.forTermuxHome(homeDir);
         OpenHouseImportSource source = OpenHouseImportSource.builder()
             .setSuggestedFileName(fileName)
@@ -181,6 +331,41 @@ public class FileReceiverActivityTest {
             new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8)),
             source
         );
+    }
+
+    private TestFileReceiverActivity testActivity(OpenHouseInboxGrouping grouping) throws Exception {
+        TestFileReceiverActivity activity = Robolectric.buildActivity(TestFileReceiverActivity.class).get();
+        activity.paths = OpenHouseWorkspacePaths.forTermuxHome(temporaryFolder.newFolder("import-home-" + grouping.getPreferenceValue()));
+        activity.grouping = grouping;
+        return activity;
+    }
+
+    private static void writeText(File file, String text) throws Exception {
+        try (FileOutputStream output = new FileOutputStream(file)) {
+            output.write(text.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    public static class TestFileReceiverActivity extends FileReceiverActivity {
+        OpenHouseWorkspacePaths paths;
+        OpenHouseInboxGrouping grouping;
+
+        @Override
+        OpenHouseWorkspacePaths createImportWorkspacePaths() {
+            return paths;
+        }
+
+        @Override
+        OpenHouseInboxGrouping getInboxGrouping() {
+            return grouping;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void clearFileProviderCache() throws Exception {
+        Field cacheField = FileProvider.class.getDeclaredField("sCache");
+        cacheField.setAccessible(true);
+        ((Map<String, ?>) cacheField.get(null)).clear();
     }
 
     private void deleteRecursively(File file) {

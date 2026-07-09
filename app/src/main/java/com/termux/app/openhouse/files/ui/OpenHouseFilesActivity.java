@@ -14,6 +14,7 @@ import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -25,9 +26,11 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.PopupMenu;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -41,6 +44,7 @@ import com.termux.app.openhouse.files.core.OpenHouseAiFileDescriptionBuilder;
 import com.termux.app.openhouse.files.core.OpenHouseFileNameSanitizer;
 import com.termux.app.openhouse.files.core.OpenHouseFileReference;
 import com.termux.app.openhouse.files.core.OpenHouseWorkspacePaths;
+import com.termux.app.openhouse.files.importing.OpenHouseInboxGrouping;
 import com.termux.app.openhouse.files.model.FileItem;
 import com.termux.app.openhouse.files.model.FileOperation;
 import com.termux.app.openhouse.files.model.FileOperationException;
@@ -65,6 +69,10 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
     private static final int REQUEST_ADD_SAF_TREE = 4101;
     private static final int REQUEST_UPLOAD_FILE = 4102;
     private static final String FILE_PROVIDER_AUTHORITY_SUFFIX = ".fileprovider";
+    private static final int MENU_ACTION_OPEN = 1;
+    private static final int MENU_ACTION_DESCRIBE = 2;
+    private static final int MENU_ACTION_RENAME = 3;
+    private static final int MENU_ACTION_DELETE = 4;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -73,7 +81,7 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
 
     private OpenHouseFilesConfigStore configStore;
     private OpenHouseFileSpaceCatalog catalog;
-    private ArrayAdapter<OpenHouseFileSpaceEntry> spaceAdapter;
+    private SpaceEntryAdapter spaceAdapter;
     private List<OpenHouseFileSpaceEntry> spaces = new ArrayList<>();
     private OpenHouseFileSpaceEntry currentEntry;
     private FileItem selectedItem;
@@ -137,10 +145,11 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         spaceSpinner = new Spinner(this);
-        spaceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, spaces);
-        spaceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spaceAdapter = new SpaceEntryAdapter(this, spaces);
         spaceSpinner.setAdapter(spaceAdapter);
         topRow.addView(spaceSpinner, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        spaceSpinner.post(() -> spaceSpinner.setDropDownWidth(
+            Math.max(spaceSpinner.getWidth(), getResources().getDisplayMetrics().widthPixels - dp(24))));
 
         Button addSafButton = smallButton("容器");
         addSafButton.setOnClickListener(v -> launchAddSafContainer());
@@ -150,6 +159,10 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
         addNetworkButton.setOnClickListener(v -> showAddNetworkDialog());
         topRow.addView(addNetworkButton);
 
+        Button settingsButton = smallButton("设置");
+        settingsButton.setOnClickListener(v -> showFilesSettingsDialog());
+        topRow.addView(settingsButton);
+
         pathView = new TextView(this);
         pathView.setTextSize(13);
         pathView.setSingleLine(false);
@@ -157,29 +170,34 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
         root.addView(pathView, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        HorizontalScrollView actionScroll = new HorizontalScrollView(this);
-        actionScroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout actionRow = new LinearLayout(this);
-        actionRow.setOrientation(LinearLayout.HORIZONTAL);
-        actionScroll.addView(actionRow);
-        root.addView(actionScroll, new LinearLayout.LayoutParams(
+        LinearLayout actionPanel = new LinearLayout(this);
+        actionPanel.setOrientation(LinearLayout.VERTICAL);
+        root.addView(actionPanel, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        LinearLayout navigationRow = actionRow();
+        actionPanel.addView(navigationRow);
         upButton = actionButton("上级", v -> navigateUp());
-        actionRow.addView(upButton);
-        actionRow.addView(actionButton("刷新", v -> loadDirectory(currentDirectoryId, false, currentLabel())));
+        addActionButton(navigationRow, upButton);
+        addActionButton(navigationRow, actionButton("刷新", v -> loadDirectory(currentDirectoryId, false, currentLabel())));
         uploadButton = actionButton("上传", v -> launchUploadFile());
-        actionRow.addView(uploadButton);
+        addActionButton(navigationRow, uploadButton);
+
+        LinearLayout fileRow = actionRow();
+        actionPanel.addView(fileRow);
         mkdirButton = actionButton("新文件夹", v -> showCreateDirectoryDialog());
-        actionRow.addView(mkdirButton);
+        addActionButton(fileRow, mkdirButton);
         renameButton = actionButton("重命名", v -> showRenameDialog());
-        actionRow.addView(renameButton);
+        addActionButton(fileRow, renameButton);
         deleteButton = actionButton("删除", v -> showDeleteDialog());
-        actionRow.addView(deleteButton);
+        addActionButton(fileRow, deleteButton);
+
+        LinearLayout selectedRow = actionRow();
+        actionPanel.addView(selectedRow);
         openButton = actionButton("打开", v -> openSelectedItem());
-        actionRow.addView(openButton);
+        addActionButton(selectedRow, openButton);
         describeButton = actionButton("AI说明", v -> describeSelectedItem());
-        actionRow.addView(describeButton);
+        addActionButton(selectedRow, describeButton);
 
         statusView = new TextView(this);
         statusView.setTextSize(12);
@@ -197,14 +215,11 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
         listView.setEmptyView(emptyView);
         listView.setOnItemClickListener((parent, view, position, id) -> {
             FileItem item = fileItemAdapter.getItem(position);
-            selectedItem = item;
-            updateActionState();
+            selectItem(item);
             if (item != null) openItem(item);
         });
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
-            selectedItem = fileItemAdapter.getItem(position);
-            listView.setItemChecked(position, true);
-            updateActionState();
+            selectItem(fileItemAdapter.getItem(position));
             return true;
         });
 
@@ -288,6 +303,7 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
         }, new UiTask<List<FileItem>>() {
             @Override
             public void run(List<FileItem> items) {
+                List<FileItem> visibleItems = filterHiddenItems(items);
                 currentDirectoryId = directoryId == null ? FileItem.ROOT_ID : directoryId;
                 if (push) {
                     directoryStack.add(new DirectoryCrumb(currentDirectoryId, label));
@@ -298,8 +314,8 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
                 }
                 selectedItem = null;
                 listView.clearChoices();
-                fileItemAdapter.setItems(items);
-                setStatus(items.size() + " 项");
+                fileItemAdapter.setItems(visibleItems);
+                setStatus(buildDirectoryStatus(items, visibleItems));
                 updatePath();
                 updateActionState();
             }
@@ -650,6 +666,67 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
             .show();
     }
 
+    private void showFilesSettingsDialog() {
+        final OpenHouseInboxGrouping[] groupings = new OpenHouseInboxGrouping[]{
+            OpenHouseInboxGrouping.NONE,
+            OpenHouseInboxGrouping.DAY,
+            OpenHouseInboxGrouping.MONTH,
+            OpenHouseInboxGrouping.YEAR
+        };
+        OpenHouseInboxGrouping current = configStore.getInboxGrouping();
+
+        LinearLayout form = formLayout();
+        TextView groupingTitle = new TextView(this);
+        groupingTitle.setText("中转站分组");
+        groupingTitle.setTextSize(15);
+        groupingTitle.setPadding(0, 0, 0, dp(4));
+        form.addView(groupingTitle);
+
+        RadioGroup groupingGroup = new RadioGroup(this);
+        groupingGroup.setOrientation(RadioGroup.VERTICAL);
+        int[] radioIds = new int[groupings.length];
+        for (int i = 0; i < groupings.length; i++) {
+            RadioButton button = new RadioButton(this);
+            button.setText(inboxGroupingLabel(groupings[i]));
+            button.setId(View.generateViewId());
+            radioIds[i] = button.getId();
+            groupingGroup.addView(button);
+            if (groupings[i] == current) groupingGroup.check(button.getId());
+        }
+        groupingGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            for (int i = 0; i < radioIds.length; i++) {
+                if (radioIds[i] == checkedId) {
+                    configStore.setInboxGrouping(groupings[i]);
+                    setStatus("中转站分组: " + inboxGroupingLabel(groupings[i]));
+                    return;
+                }
+            }
+        });
+        form.addView(groupingGroup);
+
+        CheckBox showHiddenFiles = new CheckBox(this);
+        showHiddenFiles.setText("显示隐藏文件");
+        showHiddenFiles.setChecked(configStore.shouldShowHiddenFiles());
+        showHiddenFiles.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            configStore.setShowHiddenFiles(isChecked);
+            reloadCurrentDirectory();
+        });
+        form.addView(showHiddenFiles);
+
+        new AlertDialog.Builder(this)
+            .setTitle("文件设置")
+            .setView(form)
+            .setPositiveButton(android.R.string.ok, null)
+            .show();
+    }
+
+    private String inboxGroupingLabel(OpenHouseInboxGrouping grouping) {
+        if (grouping == OpenHouseInboxGrouping.NONE) return "不分组";
+        if (grouping == OpenHouseInboxGrouping.DAY) return "按天";
+        if (grouping == OpenHouseInboxGrouping.YEAR) return "按年";
+        return "按月";
+    }
+
     private void showWebDavDialog() {
         LinearLayout form = formLayout();
         EditText name = formInput(form, "名称", "WebDAV");
@@ -737,6 +814,48 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
         return selectedItem;
     }
 
+    private void selectItem(FileItem item) {
+        selectedItem = item;
+        if (listView != null) {
+            int position = fileItemAdapter.indexOf(item);
+            if (position >= 0) {
+                listView.setItemChecked(position, true);
+            } else {
+                listView.clearChoices();
+            }
+        }
+        updateActionState();
+    }
+
+    private void showItemContextMenu(final FileItem item, View anchor) {
+        if (item == null) return;
+        selectItem(item);
+        PopupMenu popup = new PopupMenu(this, anchor);
+        popup.getMenu().add(0, MENU_ACTION_OPEN, 0, item.isDirectory() ? "进入" : "打开");
+        popup.getMenu().add(0, MENU_ACTION_DESCRIBE, 1, "AI说明");
+        if (supportsCurrent(FileOperation.RENAME)) {
+            popup.getMenu().add(0, MENU_ACTION_RENAME, 2, "重命名");
+        }
+        if (supportsCurrent(FileOperation.DELETE) && item.isDeletable()) {
+            popup.getMenu().add(0, MENU_ACTION_DELETE, 3, "删除");
+        }
+        popup.setOnMenuItemClickListener(menuItem -> {
+            selectItem(item);
+            int action = menuItem.getItemId();
+            if (action == MENU_ACTION_OPEN) {
+                openItem(item);
+            } else if (action == MENU_ACTION_DESCRIBE) {
+                describeSelectedItem();
+            } else if (action == MENU_ACTION_RENAME) {
+                showRenameDialog();
+            } else if (action == MENU_ACTION_DELETE) {
+                showDeleteDialog();
+            }
+            return true;
+        });
+        popup.show();
+    }
+
     private void updateActionState() {
         boolean hasSpace = currentEntry != null;
         boolean hasSelection = selectedItem != null;
@@ -761,6 +880,34 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
     private String currentLabel() {
         if (directoryStack.isEmpty()) return currentEntry == null ? "" : currentEntry.getDisplayName();
         return directoryStack.get(directoryStack.size() - 1).label;
+    }
+
+    private void reloadCurrentDirectory() {
+        if (currentEntry == null) return;
+        loadDirectory(currentDirectoryId, false, currentLabel());
+    }
+
+    private List<FileItem> filterHiddenItems(List<FileItem> items) {
+        if (items == null) return new ArrayList<>();
+        if (configStore == null || configStore.shouldShowHiddenFiles()) return items;
+        List<FileItem> visibleItems = new ArrayList<>();
+        for (FileItem item : items) {
+            if (!isHiddenItem(item)) visibleItems.add(item);
+        }
+        return visibleItems;
+    }
+
+    private boolean isHiddenItem(FileItem item) {
+        String displayName = item == null ? "" : item.getDisplayName();
+        return displayName.startsWith(".");
+    }
+
+    private String buildDirectoryStatus(List<FileItem> allItems, List<FileItem> visibleItems) {
+        int total = allItems == null ? 0 : allItems.size();
+        int visible = visibleItems == null ? 0 : visibleItems.size();
+        int hidden = Math.max(0, total - visible);
+        if (hidden > 0) return visible + " 项 · 已隐藏 " + hidden + " 项";
+        return visible + " 项";
     }
 
     private void setStatus(String status) {
@@ -915,6 +1062,24 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
         return button;
     }
 
+    private LinearLayout actionRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, 0, 0, dp(4));
+        row.setLayoutParams(new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return row;
+    }
+
+    private void addActionButton(LinearLayout row, Button button) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        params.setMargins(0, 0, dp(6), 0);
+        button.setLayoutParams(params);
+        row.addView(button);
+    }
+
     private void showKeyboard(final EditText input) {
         input.postDelayed(new Runnable() {
             @Override
@@ -976,6 +1141,50 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
         }
     }
 
+    private final class SpaceEntryAdapter extends ArrayAdapter<OpenHouseFileSpaceEntry> {
+
+        SpaceEntryAdapter(Context context, List<OpenHouseFileSpaceEntry> entries) {
+            super(context, 0, entries);
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            TextView view = spaceTextView(convertView);
+            OpenHouseFileSpaceEntry entry = getItem(position);
+            view.setSingleLine(true);
+            view.setMaxLines(1);
+            view.setText(entry == null ? "" : entry.getDisplayName());
+            return view;
+        }
+
+        @Override
+        public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            TextView view = spaceTextView(convertView);
+            OpenHouseFileSpaceEntry entry = getItem(position);
+            view.setSingleLine(false);
+            view.setMaxLines(2);
+            view.setText(entry == null ? "" : spaceDropdownText(entry));
+            return view;
+        }
+
+        private TextView spaceTextView(View convertView) {
+            TextView view = convertView instanceof TextView ? (TextView) convertView : new TextView(getContext());
+            view.setGravity(Gravity.CENTER_VERTICAL);
+            view.setTextSize(15);
+            view.setEllipsize(TextUtils.TruncateAt.END);
+            view.setPadding(dp(8), dp(8), dp(8), dp(8));
+            return view;
+        }
+
+        private String spaceDropdownText(OpenHouseFileSpaceEntry entry) {
+            String summary = entry.getSummary();
+            if (summary == null || summary.trim().isEmpty()) {
+                return entry.getDisplayName();
+            }
+            return entry.getDisplayName() + "\n" + summary;
+        }
+    }
+
     private final class FileItemAdapter extends BaseAdapter {
         private final List<FileItem> items = new ArrayList<>();
         private final DateFormat dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT);
@@ -984,6 +1193,20 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
             items.clear();
             if (newItems != null) items.addAll(newItems);
             notifyDataSetChanged();
+        }
+
+        int indexOf(FileItem item) {
+            if (item == null) return -1;
+            for (int i = 0; i < items.size(); i++) {
+                FileItem candidate = items.get(i);
+                if (candidate == item) return i;
+                if (candidate != null
+                    && firstNonBlank(candidate.getSpaceId(), "").equals(firstNonBlank(item.getSpaceId(), ""))
+                    && firstNonBlank(candidate.getId(), "").equals(firstNonBlank(item.getId(), ""))) {
+                    return i;
+                }
+            }
+            return -1;
         }
 
         @Override
@@ -1004,55 +1227,154 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
             LinearLayout row;
-            TextView title;
-            TextView summary;
-            if (convertView instanceof LinearLayout) {
+            FileItemRowHolder holder;
+            if (convertView instanceof LinearLayout && convertView.getTag() instanceof FileItemRowHolder) {
                 row = (LinearLayout) convertView;
-                title = (TextView) row.getChildAt(0);
-                summary = (TextView) row.getChildAt(1);
+                holder = (FileItemRowHolder) row.getTag();
             } else {
                 row = new LinearLayout(OpenHouseFilesActivity.this);
-                row.setOrientation(LinearLayout.VERTICAL);
-                row.setPadding(dp(10), dp(8), dp(10), dp(8));
-                title = new TextView(OpenHouseFilesActivity.this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(8), dp(6), dp(4), dp(6));
+
+                TextView icon = new TextView(OpenHouseFilesActivity.this);
+                icon.setTextSize(20);
+                icon.setGravity(Gravity.CENTER);
+                row.addView(icon, new LinearLayout.LayoutParams(dp(44), dp(44)));
+
+                LinearLayout textColumn = new LinearLayout(OpenHouseFilesActivity.this);
+                textColumn.setOrientation(LinearLayout.VERTICAL);
+                textColumn.setGravity(Gravity.CENTER_VERTICAL);
+
+                TextView title = new TextView(OpenHouseFilesActivity.this);
                 title.setTextSize(16);
-                summary = new TextView(OpenHouseFilesActivity.this);
+                title.setSingleLine(true);
+                title.setEllipsize(TextUtils.TruncateAt.END);
+
+                TextView summary = new TextView(OpenHouseFilesActivity.this);
                 summary.setTextSize(12);
-                row.addView(title);
-                row.addView(summary);
+                summary.setSingleLine(true);
+                summary.setEllipsize(TextUtils.TruncateAt.END);
+
+                textColumn.addView(title);
+                textColumn.addView(summary);
+                row.addView(textColumn, new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+                Button overflow = smallButton("⋮");
+                overflow.setContentDescription("更多操作");
+                overflow.setMinWidth(dp(44));
+                overflow.setMinimumWidth(dp(44));
+                overflow.setPadding(0, 0, 0, 0);
+                overflow.setFocusable(false);
+                overflow.setFocusableInTouchMode(false);
+                row.addView(overflow, new LinearLayout.LayoutParams(
+                    dp(48), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                holder = new FileItemRowHolder(icon, title, summary, overflow);
+                row.setTag(holder);
             }
             FileItem item = getItem(position);
-            if (item == null) return row;
-            title.setText((item.isDirectory() ? "[DIR] " : "[FILE] ") + item.getDisplayName());
-            summary.setText(buildSummary(item));
+            if (item == null) {
+                holder.icon.setText("");
+                holder.title.setText("");
+                holder.summary.setText("");
+                holder.overflow.setOnClickListener(null);
+                holder.overflow.setEnabled(false);
+                return row;
+            }
+            FileTypeInfo typeInfo = fileTypeInfo(item);
+            holder.icon.setText(typeInfo.icon);
+            holder.title.setText(item.getDisplayName());
+            holder.summary.setText(buildSummary(item, typeInfo.label));
+            holder.overflow.setEnabled(true);
+            holder.overflow.setOnClickListener(v -> showItemContextMenu(item, v));
             return row;
         }
 
-        private String buildSummary(FileItem item) {
+        private String buildSummary(FileItem item, String typeLabel) {
             StringBuilder builder = new StringBuilder();
-            if (item.isDirectory()) {
-                builder.append("folder");
-            } else {
-                builder.append(formatSize(item.getSize()));
-            }
+            builder.append(typeLabel);
+            if (!item.isDirectory()) builder.append(" · ").append(formatSize(item.getSize()));
             if (item.getLastModifiedMillis() > 0) {
                 builder.append(" · ").append(dateFormat.format(new Date(item.getLastModifiedMillis())));
-            }
-            String location = item.getNativeLocation();
-            if (location != null && !location.trim().isEmpty()) {
-                builder.append(" · ").append(location);
             }
             return builder.toString();
         }
 
         private String formatSize(long size) {
-            if (size < 0) return "unknown";
+            if (size < 0) return "大小未知";
             if (size < 1024) return size + " B";
             double kib = size / 1024d;
             if (kib < 1024) return String.format(Locale.US, "%.1f KiB", kib);
             double mib = kib / 1024d;
             if (mib < 1024) return String.format(Locale.US, "%.1f MiB", mib);
             return String.format(Locale.US, "%.1f GiB", mib / 1024d);
+        }
+
+        private FileTypeInfo fileTypeInfo(FileItem item) {
+            if (item.isDirectory()) return new FileTypeInfo("📁", "文件夹");
+            String mimeType = firstNonBlank(item.getMimeType(), "").toLowerCase(Locale.US);
+            String name = firstNonBlank(item.getDisplayName(), "").toLowerCase(Locale.US);
+            if (mimeType.contains("pdf") || name.endsWith(".pdf")) return new FileTypeInfo("PDF", "PDF");
+            if (mimeType.startsWith("image/")) return new FileTypeInfo("🖼", "图片");
+            if (mimeType.startsWith("audio/")) return new FileTypeInfo("♪", "音频");
+            if (mimeType.startsWith("video/")) return new FileTypeInfo("▶", "视频");
+            if (isArchive(name, mimeType)) return new FileTypeInfo("ZIP", "压缩包");
+            if (isTable(name, mimeType)) return new FileTypeInfo("表", "表格");
+            if (isCode(name, mimeType)) return new FileTypeInfo("{}", "代码");
+            if (isTextLike(item)) return new FileTypeInfo("TXT", "文本");
+            return new FileTypeInfo("📄", "文件");
+        }
+
+        private boolean isArchive(String name, String mimeType) {
+            return mimeType.contains("zip") || mimeType.contains("tar") || mimeType.contains("gzip")
+                || mimeType.contains("compressed") || hasAnyExtension(name, ".zip", ".rar", ".7z", ".tar",
+                ".gz", ".tgz", ".bz2", ".xz", ".apk", ".jar");
+        }
+
+        private boolean isTable(String name, String mimeType) {
+            return mimeType.contains("spreadsheet") || mimeType.contains("excel") || mimeType.contains("csv")
+                || hasAnyExtension(name, ".csv", ".tsv", ".xls", ".xlsx", ".ods");
+        }
+
+        private boolean isCode(String name, String mimeType) {
+            return mimeType.contains("json") || mimeType.contains("xml") || mimeType.contains("javascript")
+                || mimeType.contains("x-sh") || hasAnyExtension(name, ".java", ".kt", ".kts", ".js",
+                ".ts", ".tsx", ".jsx", ".py", ".sh", ".bash", ".zsh", ".css", ".scss", ".html",
+                ".htm", ".c", ".cc", ".cpp", ".h", ".hpp", ".rs", ".go", ".rb", ".php", ".sql",
+                ".gradle", ".xml", ".json", ".yaml", ".yml", ".toml");
+        }
+
+        private boolean hasAnyExtension(String name, String... extensions) {
+            for (String extension : extensions) {
+                if (name.endsWith(extension)) return true;
+            }
+            return false;
+        }
+    }
+
+    private static final class FileTypeInfo {
+        final String icon;
+        final String label;
+
+        FileTypeInfo(String icon, String label) {
+            this.icon = icon;
+            this.label = label;
+        }
+    }
+
+    private static final class FileItemRowHolder {
+        final TextView icon;
+        final TextView title;
+        final TextView summary;
+        final Button overflow;
+
+        FileItemRowHolder(TextView icon, TextView title, TextView summary, Button overflow) {
+            this.icon = icon;
+            this.title = title;
+            this.summary = summary;
+            this.overflow = overflow;
         }
     }
 }

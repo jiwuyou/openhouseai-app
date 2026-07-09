@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 
+import com.termux.app.openhouse.files.importing.OpenHouseInboxGrouping;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -22,6 +24,8 @@ public final class OpenHouseFilesConfigStore {
     private static final String KEY_SAF_CONTAINERS = "saf_containers";
     private static final String KEY_WEBDAV_SPACES = "webdav_spaces";
     private static final String KEY_S3_SPACES = "s3_spaces";
+    private static final String KEY_INBOX_GROUPING = "inbox_grouping";
+    private static final String KEY_SHOW_HIDDEN_FILES = "show_hidden_files";
 
     private final SharedPreferences prefs;
 
@@ -33,6 +37,23 @@ public final class OpenHouseFilesConfigStore {
     OpenHouseFilesConfigStore(SharedPreferences prefs) {
         if (prefs == null) throw new IllegalArgumentException("prefs == null");
         this.prefs = prefs;
+    }
+
+    public OpenHouseInboxGrouping getInboxGrouping() {
+        return OpenHouseInboxGrouping.fromPreferenceValue(prefs.getString(KEY_INBOX_GROUPING, null));
+    }
+
+    public void setInboxGrouping(OpenHouseInboxGrouping grouping) {
+        OpenHouseInboxGrouping safeGrouping = grouping == null ? OpenHouseInboxGrouping.DEFAULT : grouping;
+        prefs.edit().putString(KEY_INBOX_GROUPING, safeGrouping.getPreferenceValue()).commit();
+    }
+
+    public boolean shouldShowHiddenFiles() {
+        return prefs.getBoolean(KEY_SHOW_HIDDEN_FILES, true);
+    }
+
+    public void setShowHiddenFiles(boolean showHiddenFiles) {
+        prefs.edit().putBoolean(KEY_SHOW_HIDDEN_FILES, showHiddenFiles).commit();
     }
 
     public List<SafContainerRecord> getSafContainers() {

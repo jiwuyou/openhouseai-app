@@ -29,6 +29,7 @@ import okhttp3.OkHttpClient;
 public final class OpenHouseFileSpaceCatalog {
 
     public static final String SPACE_OPENHOUSE_WORKSPACE = "openhouse-workspace";
+    public static final String SPACE_OPENHOUSE_INBOX = "openhouse-inbox";
     public static final String SPACE_TERMUX_HOME = "termux-home";
     public static final String SPACE_UBUNTU_ROOT = "ubuntu-root";
     public static final String SPACE_UBUNTU_WORKSPACE = "ubuntu-workspace";
@@ -63,6 +64,12 @@ public final class OpenHouseFileSpaceCatalog {
             "OpenHouse workspace",
             "Termux: " + paths.getTermuxWorkspaceDir().getAbsolutePath(),
             paths.getTermuxWorkspaceDir()));
+        entries.add(local(
+            SPACE_OPENHOUSE_INBOX,
+            FileSpaceType.OPENHOUSE_WORKSPACE,
+            "文件中转站",
+            "Termux: " + paths.getInboxDir().getAbsolutePath(),
+            paths.getInboxDir()));
         entries.add(local(
             SPACE_TERMUX_HOME,
             FileSpaceType.TERMUX,
