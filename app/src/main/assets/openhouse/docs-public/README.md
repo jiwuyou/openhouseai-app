@@ -126,7 +126,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `failure-boundaries.md`：自动修复、需用户确认、建议重置或重装的边界。
 - `SERVICE_MANAGER.md`：安装完成后的服务控制平面说明。
 - `CUSTOM_FRONTEND_AND_APPS.md`：给 AI 和开发者的自定义前端/App 实作手册，说明如何把真实代码注册到桌面和 service-manager。
-- `BROWSER_AND_WEBVIEW.md`：内置浏览器、本地页面、WebView 差异、受控浏览器命令和调试建议。
+- `BROWSER_AND_WEBVIEW.md`：内置浏览器、本地页面、WebView 页壳、窗口保留策略、受控浏览器命令和调试建议。
 - `ANDROID_CONTROL_SHIZUKU.md`：Shizuku 可选授权后的 Android 侧增强能力和边界。
 - `FILE_TRANSFER_STAGING.md`：文件中转站、共享路径和让 AI 处理文件的方式。
 - `CLAUDE_CODE_HANDOFF.md`：完成首次配置后，交给 Claude Code 时应复制的文档阅读提示。

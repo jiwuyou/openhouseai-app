@@ -43,6 +43,8 @@ app/src/main/assets/openhouse/docs-public/examples/custom-phone-shell
 - 页面必须适配窄屏，文本不能溢出按钮、卡片或工具栏。
 - 默认访问本机服务，例如 `http://127.0.0.1:<port>/`。
 - 不假设用户会打开桌面浏览器、开发者控制台或命令行。
+- App 页面不要假设外层页壳会显示 App 名；App 名只用于桌面、列表、服务/状态和无障碍，页面自己的标题由 App 自己设计。
+- WebView 可能只保留最近少量窗口；App 必须能从持久化状态恢复，不能依赖 WebView 一直后台存活。
 
 长期维护的 App 默认使用 TypeScript：
 
@@ -84,7 +86,7 @@ app/src/main/assets/openhouse/docs-public/examples/custom-phone-shell
 /root/openhouse/docs/PATHS_AND_PORTS.md
 ```
 
-新 App 不要随便占用 OpenHouse 控制平面、桥接、SmallPhone 平台服务或内置 App 端口。用户自定义长期 App 默认从 `23100-23999` 选择未使用端口；临时调试用 `24000-24999`；长期服务必须注册到 service-manager。本文示例是备忘录 App `memo-openhouse`，使用 `23110`。GitHub 配置助手 `github-config-helper` 是 APK 内置功能，不是自定义 App 示例。真实 App 应先检查当前 service-manager 和 component registry，再选择尚未被占用的端口。
+新 App 不要随便占用 OpenHouse 控制平面、桥接、SmallPhone 平台服务或内置 App 端口。用户自定义长期 App 默认从 `23100-23999` 选择未使用端口；临时调试用 `24000-24999`；长期服务必须注册到 service-manager。本文示例是备忘录 App `memo-openhouse`，使用 `23110`。GitHub 配置助手 `github-config-helper` 是 APK 内置功能，不是自定义 App 示例，也不是自定义 App 模板。真实 App 应先检查当前 service-manager 和 component registry，再选择尚未被占用的端口。
 
 ## 路径约定
 
@@ -174,6 +176,8 @@ OpenHouse / SmallPhone 桌面会通过组件注册读取入口。
 | 手机 WebView | 用户 | 放在 OpenHouse / SmallPhone 桌面上，第一屏完成主要操作。 |
 | CLI | AI、脚本、人 | 默认输出 JSON，适合 Codex / Claude Code 调用，也方便用户在终端排障。 |
 | MCP | AI | 给支持 MCP 的客户端发现工具并结构化调用。 |
+
+WebView 入口只负责展示当前页面和承载用户交互。OpenHouse 外层页壳会提供侧栏、桌面、刷新、收起、控制和“用浏览器打开”等动作，但不会重复显示 App 名。外层可能只保留最近 `2` 个 WebView，配置范围是 `0-5`，并按同 App/URL 复用和 LRU 清理。自定义 App 必须把关键数据保存到后端、文件、SQLite、IndexedDB、localStorage 或可恢复 URL，不要依赖 WebView 一直留在后台。
 
 CLI 也是给 AI 使用的，不只是给人手敲。AI 能用 CLI 时，不要绕过 App 的业务函数去直接改数据文件。CLI 应该调用和 Web API 相同的实现。
 

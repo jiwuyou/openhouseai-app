@@ -105,9 +105,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PREF_TOP_ACTION_BAR_COLLAPSED = "top_action_bar_collapsed";
     private static final String PREF_TOP_ACTION_BAR_BUBBLE_EDGE = "top_action_bar_bubble_edge";
     private static final String PREF_TOP_ACTION_BAR_BUBBLE_Y_RATIO = "top_action_bar_bubble_y_ratio";
+    private static final String PREF_DYNAMIC_WEBVIEW_RETAIN_COUNT = "dynamic_webview_retain_count";
     private static final String PREF_AI_RESCUE_PORT = "ai_rescue_port";
     private static final int MIN_AI_RESCUE_PORT = 1024;
     private static final int MAX_AI_RESCUE_PORT = 65535;
+    private static final int MIN_DYNAMIC_WEBVIEW_RETAIN_COUNT = 0;
+    private static final int MAX_DYNAMIC_WEBVIEW_RETAIN_COUNT = 5;
+    private static final int DEFAULT_DYNAMIC_WEBVIEW_RETAIN_COUNT = 2;
     private static final String START_MODE_DESKTOP = "desktop";
     private static final String START_MODE_HOME = "home";
     private static final String START_MODE_LAST = "last";
@@ -226,6 +230,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private TextView dynamicWebStatusView;
     private OpenHouseComponent dynamicWebComponent;
     private boolean dynamicWebLoadFailed = false;
+    private final Map<String, DynamicWebPageRecord> dynamicWebPagePool = new HashMap<>();
+    private DynamicWebPageRecord activeDynamicWebPage;
+    private long dynamicWebUseSequence = 0L;
     private boolean firstLaunchGateForwarded;
     private String renderedCloudCliUrl;
     private String renderedPiWebUrl;
@@ -238,6 +245,22 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private long aiFriendHelpShutdownRequestedAtMs;
     private boolean aiFriendHelpLaunchFailureNotified;
     private String pendingDesktopOpenAppId;
+
+    private static final class DynamicWebPageRecord {
+        final String key;
+        OpenHouseComponent component;
+        LinearLayout pageView;
+        WebView webView;
+        LinearLayout fallbackView;
+        TextView statusView;
+        boolean loadFailed;
+        long lastUsedOrder;
+
+        DynamicWebPageRecord(String key, OpenHouseComponent component) {
+            this.key = key;
+            this.component = component;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -329,10 +352,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             }
             controlledBrowserView = null;
         }
-        if (dynamicWebView != null) {
-            dynamicWebView.destroy();
-            dynamicWebView = null;
-        }
+        releaseAllDynamicWebPages();
         backgroundExecutor.shutdownNow();
         super.onDestroy();
     }
@@ -350,7 +370,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_SMALLPHONE.equals(currentPage)
             && isCurrentDynamicWebComponent(findSmallPhoneComponent())
             && dynamicWebView != null) {
-            dynamicWebView.onResume();
+            resumeActiveDynamicWebPage();
         } else if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
             smallPhoneController.onResume(false);
         } else if (PAGE_PI_WEB.equals(currentPage) && piWebView != null) {
@@ -362,11 +382,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage)
             && isCurrentDynamicWebComponent(findControlledBrowserComponent())
             && dynamicWebView != null) {
-            dynamicWebView.onResume();
+            resumeActiveDynamicWebPage();
         } else if (PAGE_CONTROLLED_BROWSER.equals(currentPage) && controlledBrowserView != null) {
             controlledBrowserView.onHostResume();
         } else if (isComponentPage(currentPage) && dynamicWebView != null) {
-            dynamicWebView.onResume();
+            resumeActiveDynamicWebPage();
         }
         scheduleResumePendingUsageTutorial();
     }
@@ -1087,7 +1107,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             copyCurrentButton.setEnabled(!isBlank(browserUrl) || !isBlank(getCurrentCopyText()));
         }
         if (openCurrentBrowserButton != null) {
-            openCurrentBrowserButton.setEnabled(!isBlank(browserUrl));
+            boolean hasBrowserUrl = !isBlank(browserUrl);
+            openCurrentBrowserButton.setText(R.string.openhouse_action_open_in_browser);
+            openCurrentBrowserButton.setEnabled(hasBrowserUrl);
+            openCurrentBrowserButton.setAlpha(hasBrowserUrl ? 1f : 0.45f);
         }
         if (returnDesktopButton != null) {
             returnDesktopButton.setEnabled(!isDesktop);
@@ -1268,9 +1291,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private boolean isCurrentDynamicWebComponent(OpenHouseComponent component) {
-        return component != null
-            && dynamicWebComponent != null
-            && component.id.equals(dynamicWebComponent.id);
+        String key = getDynamicWebPageKey(component);
+        return !isBlank(key)
+            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
+            && activeDynamicWebPage != null
+            && key.equals(activeDynamicWebPage.key);
     }
 
     private void showScrollContent() {
@@ -2058,62 +2083,68 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (embeddedContentView == null) {
             return;
         }
-        if (dynamicWebComponent == null
-            || !dynamicWebComponent.id.equals(component.id)
-            || !dynamicWebComponent.title.equals(component.title)
-            || !dynamicWebComponent.url.equals(component.url)
-            || dynamicWebPageView == null) {
-            if (dynamicWebView != null) {
-                dynamicWebView.destroy();
-                dynamicWebView = null;
-            }
-            dynamicWebComponent = component;
-            dynamicWebPageView = createDynamicWebViewPage(component);
+        String key = getDynamicWebPageKey(component);
+        if (isBlank(key)) {
+            return;
         }
-        attachEmbeddedView(dynamicWebPageView);
-        if (dynamicWebView != null) {
-            dynamicWebView.onResume();
-            if (dynamicWebView.getUrl() == null) {
-                reloadDynamicWebView();
+        DynamicWebPageRecord record = dynamicWebPagePool.get(key);
+        if (record == null || record.pageView == null || record.webView == null) {
+            record = createDynamicWebPageRecord(key, component);
+            dynamicWebPagePool.put(key, record);
+        } else {
+            record.component = component;
+            if (record.statusView != null && record.webView.getUrl() == null && !record.loadFailed) {
+                record.statusView.setText(component.title + " 地址：" + component.url);
             }
         }
+        setActiveDynamicWebPage(record);
+        markDynamicWebPageUsed(record);
+        attachEmbeddedView(record.pageView);
+        resumeActiveDynamicWebPage();
+        if (record.webView != null && record.webView.getUrl() == null) {
+            reloadDynamicWebView(record);
+        }
+        trimDynamicWebPagePool();
     }
 
-    private LinearLayout createDynamicWebViewPage(OpenHouseComponent component) {
+    private DynamicWebPageRecord createDynamicWebPageRecord(String key, OpenHouseComponent component) {
+        DynamicWebPageRecord record = new DynamicWebPageRecord(key, component);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
 
-        dynamicWebStatusView = new TextView(this);
-        dynamicWebStatusView.setText(component.title + " 地址：" + component.url);
-        dynamicWebStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
-        dynamicWebStatusView.setTextSize(12);
-        dynamicWebStatusView.setPadding(dp(12), dp(6), dp(12), dp(6));
-        dynamicWebStatusView.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
-        page.addView(dynamicWebStatusView, new LinearLayout.LayoutParams(
+        record.statusView = new TextView(this);
+        record.statusView.setText(component.title + " 地址：" + component.url);
+        record.statusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        record.statusView.setTextSize(12);
+        record.statusView.setPadding(dp(12), dp(6), dp(12), dp(6));
+        record.statusView.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
+        page.addView(record.statusView, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT));
 
         FrameLayout browserHost = new FrameLayout(this);
-        dynamicWebView = new WebView(this);
-        configureDynamicWebView(dynamicWebView);
-        browserHost.addView(dynamicWebView, new FrameLayout.LayoutParams(
+        record.webView = new WebView(this);
+        configureDynamicWebView(record);
+        browserHost.addView(record.webView, new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT));
 
-        dynamicWebFallbackView = createDynamicWebFallbackView(component);
-        dynamicWebFallbackView.setVisibility(View.GONE);
-        browserHost.addView(dynamicWebFallbackView, new FrameLayout.LayoutParams(
+        record.fallbackView = createDynamicWebFallbackView(record);
+        record.fallbackView.setVisibility(View.GONE);
+        browserHost.addView(record.fallbackView, new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT));
         page.addView(browserHost, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             0,
             1));
-        return page;
+        record.pageView = page;
+        return record;
     }
 
-    private LinearLayout createDynamicWebFallbackView(OpenHouseComponent component) {
+    private LinearLayout createDynamicWebFallbackView(DynamicWebPageRecord record) {
+        OpenHouseComponent component = record.component;
         LinearLayout fallback = new LinearLayout(this);
         fallback.setOrientation(LinearLayout.VERTICAL);
         fallback.setGravity(Gravity.CENTER);
@@ -2142,19 +2173,26 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addButtonRow(fallback,
             compactButton(component.hasControlEntry() ? "服务控制" : "维护中心",
                 v -> {
-                    if (component.hasControlEntry()) {
-                        openComponentControl(component);
+                    OpenHouseComponent current = record.component;
+                    if (current != null && current.hasControlEntry()) {
+                        openComponentControl(current);
                     } else {
                         openMaintenanceCenter();
                     }
                 },
                 true),
-            compactButton("刷新", v -> reloadDynamicWebView(), true));
-        fallback.addView(button("复制地址", v -> copyText(component.title, component.url)));
+            compactButton("刷新", v -> reloadDynamicWebView(record), true));
+        fallback.addView(button("复制地址", v -> {
+            OpenHouseComponent current = record.component;
+            if (current != null) {
+                copyText(current.title, current.url);
+            }
+        }));
         return fallback;
     }
 
-    private void configureDynamicWebView(WebView webView) {
+    private void configureDynamicWebView(DynamicWebPageRecord record) {
+        WebView webView = record.webView;
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -2167,64 +2205,201 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                dynamicWebLoadFailed = false;
-                setDynamicWebFallbackVisible(false);
-                setDynamicWebStatus("正在连接：" + url);
+                setDynamicWebLoadFailed(record, false);
+                setDynamicWebFallbackVisible(record, false);
+                setDynamicWebStatus(record, "正在连接：" + url);
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                if (!dynamicWebLoadFailed) {
-                    setDynamicWebFallbackVisible(false);
-                    setDynamicWebStatus("已连接：" + url);
-                    clearPendingDesktopOpenIfMatches(dynamicWebComponent);
+                if (!record.loadFailed) {
+                    setDynamicWebFallbackVisible(record, false);
+                    setDynamicWebStatus(record, "已连接：" + url);
+                    clearPendingDesktopOpenIfMatches(record.component);
                 }
             }
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request != null && request.isForMainFrame()) {
-                    showDynamicWebUnavailable();
+                    showDynamicWebUnavailable(record);
                 }
             }
 
             @SuppressWarnings("deprecation")
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                showDynamicWebUnavailable();
+                showDynamicWebUnavailable(record);
             }
         });
     }
 
     private void reloadDynamicWebView() {
-        dynamicWebLoadFailed = false;
-        setDynamicWebFallbackVisible(false);
-        if (dynamicWebComponent != null) {
-            setDynamicWebStatus("正在刷新：" + dynamicWebComponent.url);
+        reloadDynamicWebView(activeDynamicWebPage);
+    }
+
+    private void reloadDynamicWebView(DynamicWebPageRecord record) {
+        if (record == null || record.component == null) {
+            return;
         }
-        if (dynamicWebView != null && dynamicWebComponent != null) {
-            dynamicWebView.loadUrl(dynamicWebComponent.url);
+        markDynamicWebPageUsed(record);
+        setDynamicWebLoadFailed(record, false);
+        setDynamicWebFallbackVisible(record, false);
+        setDynamicWebStatus(record, "正在刷新：" + record.component.url);
+        if (record.webView != null) {
+            record.webView.loadUrl(record.component.url);
         }
     }
 
     private void showDynamicWebUnavailable() {
-        dynamicWebLoadFailed = true;
-        if (dynamicWebComponent != null) {
-            setDynamicWebStatus("未连接：" + dynamicWebComponent.url);
+        showDynamicWebUnavailable(activeDynamicWebPage);
+    }
+
+    private void showDynamicWebUnavailable(DynamicWebPageRecord record) {
+        if (record == null || record.component == null) {
+            return;
         }
-        setDynamicWebFallbackVisible(true);
-        notifyDesktopOpenFailedIfNeeded(dynamicWebComponent, "网页没有响应，可以重启服务或进入服务控制查看状态。");
+        setDynamicWebLoadFailed(record, true);
+        setDynamicWebStatus(record, "未连接：" + record.component.url);
+        setDynamicWebFallbackVisible(record, true);
+        notifyDesktopOpenFailedIfNeeded(record.component, "网页没有响应，可以重启服务或进入服务控制查看状态。");
     }
 
     private void setDynamicWebFallbackVisible(boolean visible) {
-        if (dynamicWebFallbackView != null) {
-            dynamicWebFallbackView.setVisibility(visible ? View.VISIBLE : View.GONE);
+        setDynamicWebFallbackVisible(activeDynamicWebPage, visible);
+    }
+
+    private void setDynamicWebFallbackVisible(DynamicWebPageRecord record, boolean visible) {
+        if (record != null && record.fallbackView != null) {
+            record.fallbackView.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
     }
 
     private void setDynamicWebStatus(String text) {
-        if (dynamicWebStatusView != null) {
-            dynamicWebStatusView.setText(text);
+        setDynamicWebStatus(activeDynamicWebPage, text);
+    }
+
+    private void setDynamicWebStatus(DynamicWebPageRecord record, String text) {
+        if (record != null && record.statusView != null) {
+            record.statusView.setText(text);
+        }
+    }
+
+    private String getDynamicWebPageKey(OpenHouseComponent component) {
+        if (component == null || isBlank(component.id) || isBlank(component.url)) {
+            return null;
+        }
+        return component.id.trim() + "\n" + component.url.trim();
+    }
+
+    private void setActiveDynamicWebPage(DynamicWebPageRecord record) {
+        activeDynamicWebPage = record;
+        if (record == null) {
+            dynamicWebPageView = null;
+            dynamicWebView = null;
+            dynamicWebFallbackView = null;
+            dynamicWebStatusView = null;
+            dynamicWebComponent = null;
+            dynamicWebLoadFailed = false;
+            return;
+        }
+        dynamicWebPageView = record.pageView;
+        dynamicWebView = record.webView;
+        dynamicWebFallbackView = record.fallbackView;
+        dynamicWebStatusView = record.statusView;
+        dynamicWebComponent = record.component;
+        dynamicWebLoadFailed = record.loadFailed;
+    }
+
+    private void clearActiveDynamicWebPage() {
+        setActiveDynamicWebPage(null);
+    }
+
+    private void markDynamicWebPageUsed(DynamicWebPageRecord record) {
+        if (record != null) {
+            record.lastUsedOrder = ++dynamicWebUseSequence;
+        }
+    }
+
+    private void resumeActiveDynamicWebPage() {
+        if (activeDynamicWebPage != null && activeDynamicWebPage.webView != null) {
+            activeDynamicWebPage.webView.onResume();
+        }
+    }
+
+    private void setDynamicWebLoadFailed(DynamicWebPageRecord record, boolean loadFailed) {
+        if (record == null) {
+            return;
+        }
+        record.loadFailed = loadFailed;
+        if (record == activeDynamicWebPage) {
+            dynamicWebLoadFailed = loadFailed;
+        }
+    }
+
+    private int getDynamicWebViewRetainCount() {
+        int value = getOpenHouseHomePrefs().getInt(
+            PREF_DYNAMIC_WEBVIEW_RETAIN_COUNT,
+            DEFAULT_DYNAMIC_WEBVIEW_RETAIN_COUNT);
+        return clampInt(value, MIN_DYNAMIC_WEBVIEW_RETAIN_COUNT, MAX_DYNAMIC_WEBVIEW_RETAIN_COUNT);
+    }
+
+    private void setDynamicWebViewRetainCount(int value) {
+        int count = clampInt(value, MIN_DYNAMIC_WEBVIEW_RETAIN_COUNT, MAX_DYNAMIC_WEBVIEW_RETAIN_COUNT);
+        getOpenHouseHomePrefs().edit()
+            .putInt(PREF_DYNAMIC_WEBVIEW_RETAIN_COUNT, count)
+            .apply();
+        trimDynamicWebPagePool();
+        Toast.makeText(this, "已设置保留 WebView 窗口：" + count + " 个", Toast.LENGTH_SHORT).show();
+    }
+
+    private void trimDynamicWebPagePool() {
+        int retainCount = getDynamicWebViewRetainCount();
+        int allowedCount = activeDynamicWebPage == null ? retainCount : Math.max(1, retainCount);
+        while (dynamicWebPagePool.size() > allowedCount) {
+            DynamicWebPageRecord oldest = null;
+            for (DynamicWebPageRecord record : dynamicWebPagePool.values()) {
+                if (record == activeDynamicWebPage) {
+                    continue;
+                }
+                if (oldest == null || record.lastUsedOrder < oldest.lastUsedOrder) {
+                    oldest = record;
+                }
+            }
+            if (oldest == null) {
+                break;
+            }
+            dynamicWebPagePool.remove(oldest.key);
+            destroyDynamicWebPageRecord(oldest);
+        }
+    }
+
+    private void releaseAllDynamicWebPages() {
+        List<DynamicWebPageRecord> records = new ArrayList<>(dynamicWebPagePool.values());
+        dynamicWebPagePool.clear();
+        for (DynamicWebPageRecord record : records) {
+            destroyDynamicWebPageRecord(record);
+        }
+        clearActiveDynamicWebPage();
+    }
+
+    private void destroyDynamicWebPageRecord(DynamicWebPageRecord record) {
+        if (record == null) {
+            return;
+        }
+        if (record.webView != null) {
+            record.webView.onPause();
+            record.webView.destroy();
+            record.webView = null;
+        }
+        if (record.pageView != null && record.pageView.getParent() instanceof ViewGroup) {
+            ((ViewGroup) record.pageView.getParent()).removeView(record.pageView);
+        }
+        record.pageView = null;
+        record.fallbackView = null;
+        record.statusView = null;
+        if (record == activeDynamicWebPage) {
+            clearActiveDynamicWebPage();
         }
     }
 
@@ -2280,8 +2455,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             releaseControlledBrowserView();
         }
         if (!shouldKeepDynamicWebPage(targetPage)) {
-            releaseDynamicWebPage();
+            if (activeDynamicWebPage != null && activeDynamicWebPage.webView != null) {
+                activeDynamicWebPage.webView.onPause();
+            }
+            clearActiveDynamicWebPage();
         }
+        trimDynamicWebPagePool();
     }
 
     private boolean shouldKeepPiWebPage(String targetPage) {
@@ -2364,16 +2543,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void releaseDynamicWebPage() {
-        if (dynamicWebView != null) {
-            dynamicWebView.onPause();
-            dynamicWebView.destroy();
-            dynamicWebView = null;
-        }
-        dynamicWebPageView = null;
-        dynamicWebFallbackView = null;
-        dynamicWebStatusView = null;
-        dynamicWebComponent = null;
-        dynamicWebLoadFailed = false;
+        releaseAllDynamicWebPages();
     }
 
     private void openComponent(OpenHouseComponent component) {
@@ -4799,6 +4969,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addStatusRow(panel, "默认打开", getLaunchModeDisplayTitle());
         addStatusRow(panel, "控制平面", "service-manager");
         addStatusRow(panel, "菜单注册", registryResult.toShortStatusText());
+        int dynamicWebViewRetainCount = getDynamicWebViewRetainCount();
+        addStatusRow(panel, "保留 WebView 窗口", dynamicWebViewRetainCount + " 个");
+        addStatusRow(panel, "当前保留窗口", dynamicWebPagePool.size() + " 个");
+        addBody(panel, "只影响动态 App WebView。0 表示离开页面后销毁，默认保留最近 2 个窗口。");
+        addDynamicWebViewRetainButtons(panel, dynamicWebViewRetainCount);
         addBody(panel, registryResult.toDiagnosticText());
         addButtonRow(panel,
             compactButton("默认桌面", v -> setStartPageMode(START_MODE_DESKTOP), true),
@@ -4824,6 +4999,26 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addBody(panel, "这个提示用于告诉第一次使用的用户点击菜单。关闭后，回到终端或重新打开软件时不再显示。");
         panel.addView(button("复制在线手册地址", v -> copyText("在线手册地址", getString(R.string.openhouse_url_manual))));
         contentView.addView(panel);
+    }
+
+    private void addDynamicWebViewRetainButtons(LinearLayout panel, int currentCount) {
+        addButtonRow(panel,
+            dynamicWebViewRetainButton(0, currentCount),
+            dynamicWebViewRetainButton(1, currentCount));
+        addButtonRow(panel,
+            dynamicWebViewRetainButton(2, currentCount),
+            dynamicWebViewRetainButton(3, currentCount));
+        addButtonRow(panel,
+            dynamicWebViewRetainButton(4, currentCount),
+            dynamicWebViewRetainButton(5, currentCount));
+    }
+
+    private Button dynamicWebViewRetainButton(int count, int currentCount) {
+        String label = count + " 个" + (count == currentCount ? "（当前）" : "");
+        return compactButton(label, v -> {
+            setDynamicWebViewRetainCount(count);
+            renderPage();
+        }, true);
     }
 
     private void addManualSection(String title, String body) {

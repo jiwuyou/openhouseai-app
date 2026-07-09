@@ -24,8 +24,8 @@
 
             <Button
                 android:id="@+id/buttonOpenDrawer"
-                android:layout_width="52dp"
-                android:layout_height="48dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
                 android:background="@drawable/one_click_item_bg"
                 android:minWidth="0dp"
                 android:padding="0dp"
@@ -36,8 +36,8 @@
 
             <Button
                 android:id="@+id/buttonReturnDesktop"
-                android:layout_width="52dp"
-                android:layout_height="48dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
                 android:layout_marginStart="6dp"
                 android:background="@drawable/one_click_item_bg"
                 android:minWidth="0dp"
@@ -47,26 +47,31 @@
                 android:textColor="@color/textPrimary"
                 android:textSize="12sp" />
 
-            <TextView
-                android:id="@+id/openhousePageTitle"
+            <Button
+                android:id="@+id/buttonOpenCurrentBrowser"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginStart="8dp"
-                android:layout_marginEnd="8dp"
+                android:layout_height="46dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
-                android:gravity="center_vertical"
+                android:gravity="center"
+                android:background="@drawable/one_click_item_bg"
                 android:maxLines="1"
+                android:minWidth="0dp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
                 android:singleLine="true"
-                android:text="@string/openhouse_home_title"
+                android:text="@string/openhouse_action_open_in_browser"
+                android:textAllCaps="false"
                 android:textColor="@color/textPrimary"
-                android:textSize="14sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <Button
                 android:id="@+id/buttonRefreshCurrent"
-                android:layout_width="52dp"
-                android:layout_height="48dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
                 android:background="@drawable/one_click_item_bg"
                 android:minWidth="0dp"
                 android:padding="0dp"
@@ -77,8 +82,8 @@
 
             <Button
                 android:id="@+id/buttonCollapseTopAction"
-                android:layout_width="52dp"
-                android:layout_height="48dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
                 android:layout_marginStart="6dp"
                 android:background="@drawable/one_click_item_bg"
                 android:minWidth="0dp"
@@ -90,8 +95,8 @@
 
             <Button
                 android:id="@+id/buttonOpenCurrentControl"
-                android:layout_width="52dp"
-                android:layout_height="48dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
                 android:layout_marginStart="6dp"
                 android:background="@drawable/one_click_item_bg"
                 android:minWidth="0dp"
@@ -114,10 +119,11 @@
                 android:layout_height="0dp"
                 android:visibility="gone" />
 
-            <Button
-                android:id="@+id/buttonOpenCurrentBrowser"
+            <TextView
+                android:id="@+id/openhousePageTitle"
                 android:layout_width="0dp"
                 android:layout_height="0dp"
+                android:text="@string/openhouse_home_title"
                 android:visibility="gone" />
         </LinearLayout>
 

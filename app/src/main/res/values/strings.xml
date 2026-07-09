@@ -529,6 +529,7 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="smallphone_browser_refresh">刷新</string>
     <string name="smallphone_browser_go">前往</string>
     <string name="smallphone_browser_address_hint">输入网址或搜索</string>
+    <string name="openhouse_action_open_in_browser">用浏览器打开</string>
     <string name="status_ready_title">维护环境就绪</string>
     <string name="status_running_title">阶段执行中</string>
     <string name="status_terminal_starting">正在启动维护终端</string>
