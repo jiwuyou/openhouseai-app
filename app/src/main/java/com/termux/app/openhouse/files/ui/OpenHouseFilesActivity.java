@@ -138,30 +138,34 @@ public class OpenHouseFilesActivity extends AppCompatActivity {
         root.setPadding(dp(12), dp(10), dp(12), dp(10));
         setContentView(root);
 
-        LinearLayout topRow = new LinearLayout(this);
-        topRow.setOrientation(LinearLayout.HORIZONTAL);
-        topRow.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(topRow, new LinearLayout.LayoutParams(
+        LinearLayout spaceRow = new LinearLayout(this);
+        spaceRow.setOrientation(LinearLayout.HORIZONTAL);
+        spaceRow.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(spaceRow, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         spaceSpinner = new Spinner(this);
         spaceAdapter = new SpaceEntryAdapter(this, spaces);
         spaceSpinner.setAdapter(spaceAdapter);
-        topRow.addView(spaceSpinner, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        spaceRow.addView(spaceSpinner, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         spaceSpinner.post(() -> spaceSpinner.setDropDownWidth(
             Math.max(spaceSpinner.getWidth(), getResources().getDisplayMetrics().widthPixels - dp(24))));
 
+        LinearLayout topControlsRow = actionRow();
+        root.addView(topControlsRow);
+
         Button addSafButton = smallButton("容器");
         addSafButton.setOnClickListener(v -> launchAddSafContainer());
-        topRow.addView(addSafButton);
+        addActionButton(topControlsRow, addSafButton);
 
         Button addNetworkButton = smallButton("网络");
         addNetworkButton.setOnClickListener(v -> showAddNetworkDialog());
-        topRow.addView(addNetworkButton);
+        addActionButton(topControlsRow, addNetworkButton);
 
         Button settingsButton = smallButton("设置");
         settingsButton.setOnClickListener(v -> showFilesSettingsDialog());
-        topRow.addView(settingsButton);
+        addActionButton(topControlsRow, settingsButton);
 
         pathView = new TextView(this);
         pathView.setTextSize(13);
