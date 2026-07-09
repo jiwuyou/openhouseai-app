@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "componentId": "hello-openhouse",
+  "capabilities": [
+    {
+      "id": "open",
+      "description": "Open the Hello OpenHouse WebView app.",
+      "entry": "smallphoneApp.entry"
+    },
+    {
+      "id": "service-control",
+      "description": "Control the app through service-manager.",
+      "serviceRef": "service-manager://services/hello-openhouse",
+      "controls": ["status", "start", "stop", "restart", "logs", "repair"]
+    }
+  ]
+}
+

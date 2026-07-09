@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "openhouse-custom-shell",
+  "name": "OpenHouse Custom Shell",
+  "source": "user",
+  "entry": "index.html"
+}
+

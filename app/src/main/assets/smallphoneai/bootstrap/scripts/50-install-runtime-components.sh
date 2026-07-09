@@ -180,6 +180,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
         SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
         SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
+        SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR="${SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR:-}" \
         SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" \
         SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-}" \
         SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}" \
@@ -263,7 +264,7 @@ validate_component_targets() {
     [ -n "$item" ] || continue
     target="$(normalize_target "$item")"
     case "$target" in
-      service-manager|cc-connect|smallphone|pi-agent|pi-web)
+      service-manager|cc-connect|smallphone|pi-agent|pi-web|github-config-helper)
         ;;
       *)
         warn "未知组件目标：$item"
@@ -1286,12 +1287,14 @@ selected_components_need_service_manager_context() {
   should_run_component "pi-agent" \
     || should_run_component "pi-web" \
     || should_run_component "cc-connect" \
-    || should_run_component "smallphone"
+    || should_run_component "smallphone" \
+    || should_run_component "github-config-helper"
 }
 
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path openhouse-connect)}"
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path smallphone-active)}"
+github_config_helper_dir="${SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR:-$(default_path github-config-helper)}"
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path pi-agent)}}"
 pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path pi-web)}}"
 service_manager_bind="$(configured_service_manager_bind)"
@@ -1310,7 +1313,7 @@ fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"
 else
-  log "本次处理默认组件：先安装 pi-agent/pi-web，再准备 service-manager，随后注册基础栈、openhouse-connect 和 SmallPhone 兼容服务。"
+  log "本次处理默认组件：先安装 pi-agent/pi-web，再准备 service-manager，随后注册基础栈、GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容服务。"
 fi
 
 validate_component_targets
@@ -1344,6 +1347,9 @@ fi
 if should_run_component "pi-web" && [ "$pi_web_component_ready" = "1" ]; then
   component_check "pi-web" "$pi_web_dir" "1" "pi-web"
   component_register "pi-web" "$pi_web_dir" "pi-web"
+fi
+if should_run_component "github-config-helper"; then
+  run_component "GitHub config helper" "$github_config_helper_dir" "${SMALLPHONEAI_GITHUB_CONFIG_HELPER_GIT_URL:-}" "0" "github-config-helper"
 fi
 if should_run_component "cc-connect"; then
   run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "${SMALLPHONEAI_CC_CONNECT_GIT_URL:-https://github.com/jiwuyou/openhouse-connect-fresh.git}" "1" "openhouse-connect"

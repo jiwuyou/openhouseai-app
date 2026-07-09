@@ -33,7 +33,10 @@ APK 内的 `openhouse/docs-public` 是这个公开仓库的快照。只更新文
 - `/root/openhouse/docs/model-config-migration.md`
 - `/root/openhouse/docs/cloudcli-claude-code-setup.md`
 - `/root/openhouse/docs/codex-setup.md`
+- `/root/openhouse/docs/GITHUB_CONFIG_HELPER.md`
+- `/root/openhouse/docs/github-config-helper.md`
 - `/root/openhouse/docs/service-manager.md`
+- `/root/openhouse/docs/CUSTOM_FRONTEND_AND_APPS.md`
 - `/root/openhouse/docs/OPENHOUSE_DESKTOP.md`
 - `/root/openhouse/docs/openhouse-runtime-policy.md`
 - `/root/openhouse/docs/openhouse-exit-all.md`
@@ -75,6 +78,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `USER_SCENARIOS.md`：日常协作、智能操作系统、人生管理、知识库和人机编程等使用场景。
 - `WORKBENCH_OPTIONS.md`：主工作台选择说明。Claude Code、Codex、Hermes Web 或其它开源项目都可以成为用户自己的工作台。
 - `OPENHOUSE_DESKTOP.md`：原生桌面、默认入口策略、菜单总览 App、横向分页稀疏槽位、跨屏拖动、编辑模式、改名/改图标、App 顶部栏、可拖动悬浮球和桌面 App 类型。
+- `CUSTOM_FRONTEND_AND_APPS.md`：自定义前端 shell 和自定义 Web App 编程指南，包含可运行代码、service-manager 服务定义、组件 manifest 和 AI 更新流程。
 - `START_HERE.md`：首次阅读入口。
 
 ### 2. 运行环境和配置
@@ -88,6 +92,8 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `pi-agent-first-use.md`：pi-agent 作为首次配置助手的目标、提示词和验收。
 - `cloudcli-claude-code-setup.md`：CloudCLI / Claude Code 后置配置、端口、权限模式和实测标准。
 - `codex-setup.md`：Codex 后置配置和实测标准。
+- `GITHUB_CONFIG_HELPER.md`：GitHub 本地配置助手，说明如何复用 GitHub CLI 官方 OAuth 流程完成 `gh` 登录、`git` credential helper 配置，以及让 Codex / Claude Code 后续直接调用 `git` 和 `gh`。
+- `github-config-helper.md`：GitHub 本地配置助手的小写稳定入口。
 - `cc-switch.md`：cc-switch 作为 provider 配置执行器的定位和边界。
 - `OPENHOUSE_FIRST_CONFIGURATION.md`：pi-web 模型可用后，由 pi-agent 完成首次 OpenHouse 配置的流程。
 - `OPENHOUSE_HEALTH_SIGNOFF.md`：全面健康检查的一阶段/二阶段引导 AI 签名规则和二阶段复制提示词依据。
@@ -111,10 +117,12 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `openhouse-runtime-policy.md`：App 前台自动保活和默认长期服务策略。
 - `openhouse-exit-all.md`：停止运行栈和全部退出 OpenHouse 的停止范围、界面行为、保留范围和恢复行为。
 - `openhouse-runtime-repair.md`：修复运行控制、注册表、端口健康和重复服务的规则。
+- `GITHUB_CONFIG_HELPER.md`：给 AI 和维护者的 GitHub 授权配置手册，强调不需要 OAuth App、不接触 token、只执行白名单 `gh` 命令，并说明 scopes、权限边界、同 `$HOME` 限制和 APK 内置方式。
 - `troubleshooting.md`：排障入口，覆盖安装、运行、模型配置、安全日志和失败边界。
 - `permissions.md`：后台、通知、存储、Shizuku、无障碍等权限和降级行为。
 - `failure-boundaries.md`：自动修复、需用户确认、建议重置或重装的边界。
 - `SERVICE_MANAGER.md`：安装完成后的服务控制平面说明。
+- `CUSTOM_FRONTEND_AND_APPS.md`：给 AI 和开发者的自定义前端/App 实作手册，说明如何把真实代码注册到桌面和 service-manager。
 - `BROWSER_AND_WEBVIEW.md`：内置浏览器、本地页面、WebView 差异、受控浏览器命令和调试建议。
 - `ANDROID_CONTROL_SHIZUKU.md`：Shizuku 可选授权后的 Android 侧增强能力和边界。
 - `FILE_TRANSFER_STAGING.md`：文件中转站、共享路径和让 AI 处理文件的方式。

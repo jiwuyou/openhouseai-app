@@ -42,6 +42,13 @@
       "size": 114452480
     },
     {
+      "id": "github-config-helper",
+      "archive": "github-config-helper.tar",
+      "targetDir": "github-config-helper",
+      "sha256": "5dfd1550d04635c071387ee539065beec37fa91f11f100e5eedf5f54ae0156d4",
+      "size": 71680
+    },
+    {
       "id": "aionui-web",
       "archive": "aionui-web-2.1.25-linux-arm64.tgz",
       "targetDir": "aionui-web",

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hello OpenHouse</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <p class="eyebrow">Custom App</p>
+        <h1>Hello OpenHouse</h1>
+        <p class="summary">这是一个最小自定义 Web App。它由 service-manager 托管，并通过 component registry 出现在桌面。</p>
+      </section>
+
+      <section class="panel" aria-labelledby="tasks-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Local Data</p>
+            <h2 id="tasks-title">任务</h2>
+          </div>
+          <button id="refresh-button" type="button">刷新</button>
+        </div>
+
+        <form id="task-form" class="task-form">
+          <input id="task-input" name="title" type="text" placeholder="写一条任务" autocomplete="off" />
+          <button type="submit">添加</button>
+        </form>
+
+        <p id="status" class="status">正在读取本地状态。</p>
+        <ul id="task-list" class="task-list"></ul>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
+

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "github-config-helper",
+  "title": "GitHub 配置助手",
+  "description": "本机 Ubuntu GitHub 授权与 git/gh 环境配置助手。",
+  "kind": "app",
+  "shellMenu": {
+    "visible": true,
+    "section": "setup",
+    "order": 90,
+    "entry": {
+      "type": "webview",
+      "url": "http://127.0.0.1:23120/"
+    },
+    "controlEntry": {
+      "type": "service-control",
+      "serviceNames": ["github-config-helper"],
+      "serviceRefs": ["service-manager://services/github-config-helper"]
+    }
+  },
+  "smallphoneApp": {
+    "visible": true,
+    "section": "setup",
+    "order": 90,
+    "icon": "github",
+    "entry": {
+      "type": "webview",
+      "url": "http://127.0.0.1:23120/"
+    },
+    "controlEntry": {
+      "type": "service-control",
+      "serviceNames": ["github-config-helper"],
+      "serviceRefs": ["service-manager://services/github-config-helper"]
+    }
+  },
+  "serviceManager": {
+    "required": true,
+    "services": [
+      {
+        "name": "github-config-helper",
+        "title": "GitHub 配置助手",
+        "role": "web",
+        "port": 23120,
+        "url": "http://127.0.0.1:23120/",
+        "serviceRef": "service-manager://services/github-config-helper",
+        "health": {
+          "type": "http",
+          "url": "http://127.0.0.1:23120/health"
+        },
+        "controls": ["status", "start", "stop", "restart", "logs", "repair"],
+        "repairActionRef": "service-manager://actions/github-config-helper.repair"
+      }
+    ]
+  },
+  "ai": {
+    "visible": true,
+    "summaryDoc": "/root/.config/openhouseai/ai-docs/github-config-helper/openhouse.ai.md",
+    "capabilities": "/root/.config/openhouseai/ai-docs/github-config-helper/capabilities.json",
+    "intents": [
+      {
+        "name": "open",
+        "target": "smallphoneApp.entry"
+      },
+      {
+        "name": "control",
+        "target": "smallphoneApp.controlEntry"
+      }
+    ]
+  }
+}

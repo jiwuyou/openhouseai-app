@@ -156,6 +156,6 @@ export DEBIAN_FRONTEND=noninteractive
 echo "正在确认 Ubuntu 软件包状态可继续安装"
 dpkg --configure -a
 apt -f install -y
-apt install -y curl ca-certificates git procps ripgrep unzip'
+apt install -y curl ca-certificates git gh procps ripgrep unzip'
 
 log "Ubuntu 软件包阶段完成。"

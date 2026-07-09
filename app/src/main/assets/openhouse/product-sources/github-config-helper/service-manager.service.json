@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "github-config-helper",
+  "service": {
+    "name": "github-config-helper",
+    "description": "Local GitHub authorization and git credential setup helper for Codex and Claude Code.",
+    "provider": "process",
+    "command": ["node", "src/server.js"],
+    "working_dir": "/root/smallphoneai-repos/github-config-helper",
+    "env": {
+      "NODE_ENV": "production",
+      "GITHUB_CONFIG_HELPER_HOST": "127.0.0.1",
+      "GITHUB_CONFIG_HELPER_PORT": "23120",
+      "GITHUB_CONFIG_HELPER_DATA_DIR": "/root/smallphoneai-repos/github-config-helper/data"
+    },
+    "runtime": {},
+    "restart": {
+      "mode": "always",
+      "max_retries": 0
+    },
+    "health": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:23120/health",
+        "interval": "30s",
+        "timeout": "5s"
+      }
+    ],
+    "enabled": true,
+    "tags": [
+      "openhouseai",
+      "smallphone",
+      "group:local-stack",
+      "openhouse-component:github-config-helper",
+      "smallphone-app:github-config-helper",
+      "github"
+    ]
+  }
+}

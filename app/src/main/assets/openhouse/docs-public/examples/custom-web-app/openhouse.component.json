@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "id": "hello-openhouse",
+  "title": "Hello OpenHouse",
+  "description": "最小自定义 Web App 示例。",
+  "kind": "app",
+  "shellMenu": {
+    "visible": true,
+    "section": "apps",
+    "order": 120,
+    "entry": {
+      "type": "webview",
+      "url": "http://127.0.0.1:23110/"
+    },
+    "controlEntry": {
+      "type": "service-control",
+      "serviceNames": ["hello-openhouse"],
+      "serviceRefs": ["service-manager://services/hello-openhouse"]
+    }
+  },
+  "smallphoneApp": {
+    "visible": true,
+    "section": "apps",
+    "order": 120,
+    "icon": "sparkles",
+    "entry": {
+      "type": "webview",
+      "url": "http://127.0.0.1:23110/"
+    },
+    "controlEntry": {
+      "type": "service-control",
+      "serviceNames": ["hello-openhouse"],
+      "serviceRefs": ["service-manager://services/hello-openhouse"]
+    }
+  },
+  "serviceManager": {
+    "required": true,
+    "services": [
+      {
+        "name": "hello-openhouse",
+        "title": "Hello OpenHouse",
+        "role": "web",
+        "port": 23110,
+        "url": "http://127.0.0.1:23110/",
+        "serviceRef": "service-manager://services/hello-openhouse",
+        "health": {
+          "type": "http",
+          "url": "http://127.0.0.1:23110/health"
+        },
+        "controls": ["status", "start", "stop", "restart", "logs", "repair"],
+        "repairActionRef": "service-manager://actions/hello-openhouse.repair"
+      }
+    ]
+  },
+  "ai": {
+    "visible": true,
+    "summaryDoc": "/root/.config/openhouseai/ai-docs/hello-openhouse/openhouse.ai.md",
+    "capabilities": "/root/.config/openhouseai/ai-docs/hello-openhouse/capabilities.json",
+    "intents": [
+      {
+        "name": "open",
+        "target": "smallphoneApp.entry"
+      },
+      {
+        "name": "control",
+        "target": "smallphoneApp.controlEntry"
+      }
+    ]
+  }
+}
+

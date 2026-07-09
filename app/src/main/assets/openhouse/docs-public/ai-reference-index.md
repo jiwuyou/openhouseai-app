@@ -36,7 +36,9 @@
 | 模型配置迁移 | `model-config-migration.md`, `MODEL_API_SETUP.md` | 按协议迁移 `base_url`、key/token、model id。 |
 | Claude Code / CloudCLI | `cloudcli-claude-code-setup.md`, `CLOUDCLI_CLAUDE_CODE.md` | 安装、配置并测通 CloudCLI 中的 Claude Code。 |
 | Codex | `codex-setup.md`, `MODEL_API_SETUP.md` | 配置并实测 Codex。 |
+| GitHub 本地授权和 gh 配置 | `GITHUB_CONFIG_HELPER.md`, `github-config-helper.md`, `GITHUB_NETWORK_MIRRORS.md` | 复用 GitHub CLI 官方 OAuth 流程，不注册 OAuth App，配置 `gh auth login` 和 `gh auth setup-git`，让同一 Ubuntu 用户和同一 `$HOME` 下的 Codex / Claude Code 直接调用 `git` 和 `gh`。 |
 | service-manager | `service-manager.md`, `SERVICE_MANAGER.md` | 注册、启动、停止、修复长期服务。 |
+| 自定义前端或 App | `CUSTOM_FRONTEND_AND_APPS.md`, `custom-frontend-and-apps.md`, `SERVICE_MANAGER.md` | 生成真实代码，注册 component manifest 和 service-manager 服务，并按 AI 更新流程维护。 |
 | 前台保活 | `openhouse-runtime-policy.md` | 理解 Android 和 service-manager 的分工。 |
 | 停止运行栈 / 全部退出 | `openhouse-exit-all.md` | 明确停止范围、界面行为、保留范围和恢复行为。 |
 | 故障排查 | `troubleshooting.md`, `RECOVERY.md` | 按症状选择最小修复步骤。 |
@@ -53,6 +55,7 @@
 - App 前台默认保持 `service-manager`、`smallphone`、`pi-agent`、`cloudcli` 可用。
 - `pi-agent` 是首次配置助手，不是唯一主工作台。
 - `cc-switch` 是配置工具箱，不是长期服务。
+- GitHub 配置助手只做本机授权和环境配置；后续 GitHub 操作应交给 Codex / Claude Code 调用 `git` 和 `gh`。
 - 首次教学不进入终端教学。
 - 配置模型必须按协议判断，不能只按 provider 名称判断。
 - 任何日志、回复和诊断报告不得泄露 key/token。

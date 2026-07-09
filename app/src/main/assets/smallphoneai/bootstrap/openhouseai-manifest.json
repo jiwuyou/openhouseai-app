@@ -82,6 +82,12 @@
         "targetDir": "$HOME/smallphoneai-repos/pi-web"
       },
       {
+        "id": "github-config-helper",
+        "title": "GitHub 本地配置助手",
+        "apkAssetPath": "openhouse/product-payloads/github-config-helper.tar",
+        "targetDir": "$HOME/smallphoneai-repos/github-config-helper"
+      },
+      {
         "id": "cc-switch",
         "title": "cc-switch provider 配置工具",
         "apkAssetPath": "openhouse/product-payloads/cc-switch-cli-5.9.0-linux-arm64.tar.gz",
@@ -104,7 +110,7 @@
     },
     {
       "title": "建立 OpenHouse 控制平面",
-      "description": "先解包/安装 pi-agent 和 pi-web，再安装并准备 service-manager，随后注册基础栈、openhouse-connect 和 SmallPhone 兼容服务。",
+      "description": "先解包/安装 pi-agent 和 pi-web，再安装并准备 service-manager，随后注册基础栈、GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容服务。",
       "stages": ["runtime_components", "sync_openhouse_registry"]
     },
     {
@@ -167,7 +173,7 @@
           "id": "sync_core_stack",
           "type": "button",
           "label": "同步核心运行栈",
-          "description": "APK 更新后同步内置 service-manager、openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
+          "description": "APK 更新后同步内置 service-manager、GitHub 配置助手、openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
           "action": {
             "type": "bootstrap",
             "args": ["sync-core-stack"],
@@ -255,7 +261,7 @@
     {
       "id": "ubuntu_packages",
       "title": "安装 Ubuntu 基础包",
-      "description": "apt 安装 curl、ca-certificates、git、procps、ripgrep、unzip。",
+      "description": "apt 安装 curl、ca-certificates、git、gh、procps、ripgrep、unzip。",
       "action": { "type": "bootstrap", "args": ["ubuntu-packages"] }
     },
     {
@@ -297,7 +303,7 @@
     {
       "id": "runtime_components",
       "title": "安装 OpenHouse 运行组件",
-      "description": "从 APK 内置运行组件包先安装 pi-agent/pi-web，再准备 service-manager，随后检查并注册 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容组件。",
+      "description": "从 APK 内置运行组件包先安装 pi-agent/pi-web，再准备 service-manager，随后检查并注册 pi-agent、pi-web、GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容组件。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {
@@ -331,7 +337,7 @@
     {
       "id": "sync_core_stack",
       "title": "同步核心运行栈",
-      "description": "APK 更新后同步内置运行组件、registry 和本机服务状态，不执行首次安装的系统包或 AI CLI 安装阶段。",
+      "description": "APK 更新后同步内置运行组件、GitHub 配置助手、registry 和本机服务状态，不执行首次安装的系统包或 AI CLI 安装阶段。",
       "action": {
         "type": "bootstrap",
         "args": ["sync-core-stack"],

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitHub 配置助手</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Ubuntu 本地环境</p>
+          <h1>GitHub 配置助手</h1>
+          <p class="summary">
+            授权后，本机 Ubuntu 里的 Codex / Claude Code 可以通过 git 和 gh 管理你的 GitHub 资源。
+          </p>
+        </div>
+        <div id="overall-state" class="state-pill">检查中</div>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <h2>环境状态</h2>
+          <button id="refresh-status" class="icon-button" type="button" title="刷新状态">刷新</button>
+        </div>
+        <div id="tool-grid" class="tool-grid"></div>
+        <div id="install-hint" class="notice hidden"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <h2>GitHub 授权</h2>
+          <span id="account-label" class="muted">未连接</span>
+        </div>
+        <div class="actions">
+          <button id="login-button" class="primary" type="button">授权 GitHub 完整访问</button>
+          <button id="refresh-button" type="button">重新授权</button>
+          <button id="setup-git-button" type="button">配置 git</button>
+          <button id="logout-button" class="danger" type="button">断开连接</button>
+        </div>
+        <dl id="github-details" class="details"></dl>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="section-title">
+          <h2>任务进度</h2>
+          <span id="task-state" class="muted">空闲</span>
+        </div>
+        <pre id="task-log" class="task-log"></pre>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

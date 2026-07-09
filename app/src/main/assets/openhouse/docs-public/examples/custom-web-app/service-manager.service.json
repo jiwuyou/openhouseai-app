@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "hello-openhouse",
+  "service": {
+    "name": "hello-openhouse",
+    "description": "OpenHouse custom web app example",
+    "provider": "process",
+    "command": ["node", "src/server.js"],
+    "working_dir": "/root/smallphoneai-repos/smallphone-home/apps/hello-openhouse",
+    "env": {
+      "HOST": "127.0.0.1",
+      "PORT": "23110",
+      "OPENHOUSE_CUSTOM_APP_DATA_DIR": "/root/smallphoneai-repos/smallphone-home/apps/hello-openhouse/data"
+    },
+    "runtime": {},
+    "restart": {
+      "mode": "always",
+      "max_retries": 0
+    },
+    "health": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:23110/health",
+        "interval": "30s",
+        "timeout": "5s"
+      }
+    ],
+    "enabled": true,
+    "tags": [
+      "openhouseai",
+      "smallphone",
+      "group:local-stack",
+      "openhouse-component:hello-openhouse",
+      "smallphone-app:hello-openhouse"
+    ]
+  }
+}
+

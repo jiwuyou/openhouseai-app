@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenHouse Custom Shell</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <p class="eyebrow">OpenHouse</p>
+          <h1>Custom Shell</h1>
+        </div>
+        <button id="reload-button" type="button">刷新应用</button>
+        <p id="registry-status" class="status">正在读取 App registry。</p>
+        <nav id="app-list" class="app-list" aria-label="Apps"></nav>
+      </aside>
+
+      <main class="stage">
+        <header class="stage-header">
+          <div>
+            <p class="eyebrow">Current App</p>
+            <h2 id="app-title">未打开 App</h2>
+          </div>
+          <div id="service-controls" class="service-controls"></div>
+        </header>
+        <p id="app-description" class="description">从左侧选择一个已注册 App。</p>
+        <div id="viewer-empty" class="viewer-empty">等待打开 WebView 入口。</div>
+        <iframe id="app-frame" class="app-frame" title="App preview"></iframe>
+      </main>
+    </div>
+
+    <script src="./main.js"></script>
+  </body>
+</html>
+

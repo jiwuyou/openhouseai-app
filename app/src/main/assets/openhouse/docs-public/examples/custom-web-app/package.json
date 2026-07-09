@@ -1,0 +1,13 @@
+{
+  "name": "openhouse-custom-web-app-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal OpenHouse custom web app example.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js"
+  },
+  "dependencies": {}
+}
+

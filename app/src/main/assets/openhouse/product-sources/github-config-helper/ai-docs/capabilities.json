@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "github-config-helper",
+  "title": "GitHub 配置助手",
+  "summary": "本机 Ubuntu GitHub CLI 授权与 git credential helper 配置工具。",
+  "service": {
+    "id": "github-config-helper",
+    "url": "http://127.0.0.1:23120/",
+    "health": "http://127.0.0.1:23120/health"
+  },
+  "capabilities": [
+    {
+      "id": "status",
+      "title": "检查本机环境",
+      "endpoint": "GET /api/status",
+      "description": "检查 git、gh、Codex、Claude Code、GitHub 登录状态和 git credential helper。"
+    },
+    {
+      "id": "login",
+      "title": "授权 GitHub 完整访问",
+      "endpoint": "POST /api/auth/login",
+      "description": "使用 GitHub CLI 官方浏览器 OAuth 流程授权，成功后自动配置 git credential helper。"
+    },
+    {
+      "id": "refresh",
+      "title": "重新授权 scopes",
+      "endpoint": "POST /api/auth/refresh",
+      "description": "刷新当前 GitHub CLI 授权 scopes。"
+    },
+    {
+      "id": "setup-git",
+      "title": "配置 git credential helper",
+      "endpoint": "POST /api/auth/setup-git",
+      "description": "让 git 通过 GitHub CLI 获取 GitHub 凭据。"
+    },
+    {
+      "id": "logout",
+      "title": "断开 GitHub 连接",
+      "endpoint": "POST /api/auth/logout",
+      "description": "退出当前 Ubuntu 用户下的 GitHub CLI 登录。"
+    }
+  ],
+  "security": {
+    "noGenericShell": true,
+    "redactsSecrets": true,
+    "localOnly": true,
+    "bind": "127.0.0.1"
+  }
+}

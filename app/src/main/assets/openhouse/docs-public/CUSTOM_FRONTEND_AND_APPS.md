@@ -1,0 +1,444 @@
+# 自定义前端和 App 编程指南
+
+本文给用户、维护者和 AI agent 使用。目标是让 AI 可以真正写出一个可运行的自定义前端或 App，把它安装到首次 APK 确定的路径中，注册到 OpenHouse / SmallPhone 桌面，并交给 service-manager 管理长期进程。
+
+本文根据以下代码和文档整理：
+
+- `service-manager`：`/api/v1/registry/apply`、`components.d`、`service-manager/services.d`、`ServiceSpec`。
+- `smallphone-active`：`openhouse-components/openhouse.ai.md`、`smallphone-app/packages/domain/component-registry.js`、`generic-mini-phone-beta/docs/backend-integration.md`。
+
+完整可运行样例在：
+
+```text
+/root/openhouse/docs/examples/custom-web-app
+/root/openhouse/docs/examples/custom-phone-shell
+```
+
+源码仓库中对应：
+
+```text
+app/src/main/assets/openhouse/docs-public/examples/custom-web-app
+app/src/main/assets/openhouse/docs-public/examples/custom-phone-shell
+```
+
+## 先区分两种东西
+
+| 类型 | 放在哪里 | 是否需要 service-manager | 典型入口 |
+| --- | --- | --- | --- |
+| 自定义 App | `SMALLPHONE_HOME/apps/<app-id>` | 需要，除非只是静态文件 | OpenHouse / SmallPhone 桌面图标打开 WebView |
+| 自定义前端 shell | `SMALLPHONE_HOME/shells/<shell-id>` | 不需要单独服务，由 `smallphone-core` 托管 | 替换 SmallPhone 桌面壳 |
+
+不要把两者混在一起。App 是被桌面打开的业务页面；shell 是桌面本身。
+
+## 路径约定
+
+安装后的手机环境应优先使用这些稳定路径：
+
+```text
+/root/smallphoneai-repos/service-manager
+/root/smallphoneai-repos/pi-agent
+/root/smallphoneai-repos/pi-web
+/root/smallphoneai-repos/openhouse-connect
+/root/smallphoneai-repos/smallphone-active
+/root/smallphoneai-repos/smallphone-home
+```
+
+开发机上可能仍有旧路径，例如 `/root/projects/smallphone/smallphone-active`。AI 写安装脚本时不要把开发机路径写死，应按下面方式解析：
+
+```bash
+REPOS_ROOT="${OPENHOUSE_REPOS_DIR:-/root/smallphoneai-repos}"
+SMALLPHONE_ACTIVE="${SMALLPHONE_ACTIVE:-$REPOS_ROOT/smallphone-active}"
+SMALLPHONE_HOME="${SMALLPHONE_HOME:-$REPOS_ROOT/smallphone-home}"
+```
+
+用户内容放在 `SMALLPHONE_HOME`，不要写进系统仓库：
+
+```text
+$SMALLPHONE_HOME/apps/<app-id>       # 用户 App 代码、SQLite、上传目录、数据
+$SMALLPHONE_HOME/shells/<shell-id>   # 用户自定义前端 shell
+```
+
+系统代码可以由 AI 更新；用户目录必须保留。
+
+## App 最小代码
+
+完整代码见 `examples/custom-web-app`。它是一个无第三方依赖的 Node App：
+
+```text
+custom-web-app/
+  package.json
+  src/server.js
+  public/index.html
+  public/styles.css
+  public/app.js
+  openhouse.component.json
+  service-manager.service.json
+  register-openhouse.sh
+  ai-docs/openhouse.ai.md
+  ai-docs/capabilities.json
+```
+
+运行方式：
+
+```bash
+cd /root/openhouse/docs/examples/custom-web-app
+bash register-openhouse.sh
+```
+
+脚本会把代码复制到：
+
+```text
+/root/smallphoneai-repos/smallphone-home/apps/hello-openhouse
+```
+
+然后调用 service-manager：
+
+```text
+POST /api/v1/registry/apply
+POST /api/v1/services/hello-openhouse/start
+```
+
+成功后 App 地址是：
+
+```text
+http://127.0.0.1:23110/
+```
+
+OpenHouse / SmallPhone 桌面会通过组件注册读取入口。
+
+## App 服务定义
+
+长期运行的 App 必须用 service-manager 管理，服务命令写在 `ServiceSpec`，不要写进组件 manifest。
+
+最小服务定义结构：
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "hello-openhouse",
+  "service": {
+    "name": "hello-openhouse",
+    "description": "OpenHouse custom web app example",
+    "provider": "process",
+    "command": ["node", "src/server.js"],
+    "working_dir": "/root/smallphoneai-repos/smallphone-home/apps/hello-openhouse",
+    "env": {
+      "HOST": "127.0.0.1",
+      "PORT": "23110",
+      "OPENHOUSE_CUSTOM_APP_DATA_DIR": "/root/smallphoneai-repos/smallphone-home/apps/hello-openhouse/data"
+    },
+    "runtime": {},
+    "restart": {
+      "mode": "always",
+      "max_retries": 0
+    },
+    "health": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:23110/health",
+        "interval": "30s",
+        "timeout": "5s"
+      }
+    ],
+    "enabled": true,
+    "tags": [
+      "openhouseai",
+      "smallphone",
+      "group:local-stack",
+      "openhouse-component:hello-openhouse",
+      "smallphone-app:hello-openhouse"
+    ]
+  }
+}
+```
+
+关键规则：
+
+- `name` 和 `id` 使用稳定小写 ID。
+- `provider: "process"` 管理本机前台长进程。
+- `command` 是 argv 数组，不是随意拼接的 shell 字符串。
+- 服务监听 `127.0.0.1`，除非用户明确要求 Tailscale 或局域网访问。
+- `health` 必须验证真实页面或 API 可用。
+- `tags` 用 `group:local-stack` 让运行栈可以统一控制。
+
+## App 组件 manifest
+
+组件 manifest 描述 UI 入口、桌面菜单、服务引用和 AI 可读说明。它必须包含四层对象：
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "hello-openhouse",
+  "title": "Hello OpenHouse",
+  "description": "最小自定义 Web App 示例",
+  "kind": "app",
+  "shellMenu": {
+    "visible": true,
+    "section": "apps",
+    "order": 120,
+    "entry": {
+      "type": "webview",
+      "url": "http://127.0.0.1:23110/"
+    },
+    "controlEntry": {
+      "type": "service-control",
+      "serviceNames": ["hello-openhouse"],
+      "serviceRefs": ["service-manager://services/hello-openhouse"]
+    }
+  },
+  "smallphoneApp": {
+    "visible": true,
+    "section": "apps",
+    "order": 120,
+    "icon": "sparkles",
+    "entry": {
+      "type": "webview",
+      "url": "http://127.0.0.1:23110/"
+    },
+    "controlEntry": {
+      "type": "service-control",
+      "serviceNames": ["hello-openhouse"],
+      "serviceRefs": ["service-manager://services/hello-openhouse"]
+    }
+  },
+  "serviceManager": {
+    "required": true,
+    "services": [
+      {
+        "name": "hello-openhouse",
+        "title": "Hello OpenHouse",
+        "role": "web",
+        "port": 23110,
+        "url": "http://127.0.0.1:23110/",
+        "serviceRef": "service-manager://services/hello-openhouse",
+        "health": {
+          "type": "http",
+          "url": "http://127.0.0.1:23110/health"
+        },
+        "controls": ["status", "start", "stop", "restart", "logs", "repair"],
+        "repairActionRef": "service-manager://actions/hello-openhouse.repair"
+      }
+    ]
+  },
+  "ai": {
+    "visible": true,
+    "summaryDoc": "/root/.config/openhouseai/ai-docs/hello-openhouse/openhouse.ai.md",
+    "capabilities": "/root/.config/openhouseai/ai-docs/hello-openhouse/capabilities.json",
+    "intents": [
+      { "name": "open", "target": "smallphoneApp.entry" },
+      { "name": "control", "target": "smallphoneApp.controlEntry" }
+    ]
+  }
+}
+```
+
+禁止在组件 manifest 中出现这些 key：
+
+```text
+command
+shell
+script
+args
+```
+
+SmallPhone 读取 `smallphoneApp` 创建桌面 App；Android shell 读取 `shellMenu`；AI 通过 `/api/ai-capabilities` 读取 `ai` 和 `serviceManager`。
+
+## 一次性注册
+
+优先用 service-manager 的 registry apply API。它会校验组件、服务和 AI 文档，并同步到运行期注册目录。
+
+```bash
+TOKEN="$(service-manager token show | head -n1)"
+curl -fsS \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  --data-binary @registry-apply.json \
+  http://127.0.0.1:20087/api/v1/registry/apply
+```
+
+payload 结构：
+
+```json
+{
+  "components": [
+    { "id": "hello-openhouse", "shellMenu": {}, "smallphoneApp": {}, "serviceManager": {}, "ai": {} }
+  ],
+  "services": [
+    {
+      "schemaVersion": 1,
+      "id": "hello-openhouse",
+      "service": {
+        "name": "hello-openhouse",
+        "provider": "process",
+        "command": ["node", "src/server.js"]
+      }
+    }
+  ],
+  "aiDocs": [
+    {
+      "path": "hello-openhouse/openhouse.ai.md",
+      "content": "# Hello OpenHouse\n\nAI-readable app summary.\n"
+    }
+  ]
+}
+```
+
+手工文件路径也可以使用，但要记得同步或重启：
+
+```text
+$HOME/.config/openhouseai/components.d/<app-id>.json
+$HOME/.config/openhouseai/service-manager/services.d/<app-id>.json
+$HOME/.config/openhouseai/ai-docs/<app-id>/openhouse.ai.md
+$HOME/.config/openhouseai/ai-docs/<app-id>/capabilities.json
+```
+
+## 自定义前端 shell
+
+如果用户要改的是 SmallPhone 桌面壳，而不是新增 App，用 `examples/custom-phone-shell`。
+
+自定义前端的代码可以和现有官方前端代码一致，而且这是推荐基线。正确做法不是直接改 `smallphone-active/generic-mini-phone-beta`，而是把它复制或 fork 到用户 shell 目录：
+
+```text
+$SMALLPHONE_HOME/shells/<shell-id>
+```
+
+这样系统仓库可以继续更新，用户自己的前端 shell 也能保留。
+
+从现有 beta 前端复制安装为自定义 shell：
+
+```bash
+cd /root/openhouse/docs/examples/custom-phone-shell
+bash install-from-existing-frontend.sh
+```
+
+默认源目录解析顺序：
+
+```text
+$SMALLPHONE_FRONTEND_SOURCE
+$SMALLPHONE_ACTIVE/generic-mini-phone-beta
+/root/smallphoneai-repos/smallphone-active/generic-mini-phone-beta
+/root/projects/smallphone/smallphone-active/generic-mini-phone-beta
+```
+
+复制内容包括：
+
+```text
+index.html
+style.css
+scripts/
+apps/
+assets/    # 如果存在
+```
+
+复制完成后脚本会通过 smallphone-core 的 `/api/user-content` 注册并可选设为当前 active shell。
+
+如果只是学习最小 shell，可以使用随文档提供的简化示例：
+
+安装：
+
+```bash
+cd /root/openhouse/docs/examples/custom-phone-shell
+bash install-shell.sh
+```
+
+安装位置：
+
+```text
+/root/smallphoneai-repos/smallphone-home/shells/openhouse-custom-shell
+```
+
+访问：
+
+```text
+http://127.0.0.1:22000/shells/openhouse-custom-shell/
+```
+
+它通过 smallphone-core 公开 API 获取 App 列表：
+
+```text
+GET /api/app-registry
+GET /api/components
+GET /api/ai-capabilities
+GET /api/service-manager/services
+GET /api/service-manager/services/:id/status
+POST /api/service-manager/services/:id/start
+POST /api/service-manager/services/:id/stop
+POST /api/service-manager/services/:id/restart
+POST /api/service-manager/services/:id/repair
+```
+
+前端 shell 只处理公开数据。不要在 shell 里保存 service-manager token、模型 key、cc-connect token 或 provider secret。
+
+## AI 更新流程
+
+用户第一次拿到的 App 不一定是 Git 仓库。为了让用户方便更新，AI 应把“更新”做成一次可解释、可回滚的任务，而不是要求用户手工 git 操作。
+
+标准步骤：
+
+1. 读取 `/api/components`、`/api/app-registry` 或 `~/.config/openhouseai/components.d/<id>.json`，找到 App ID、服务 ID、安装目录和当前端口。
+2. 判断安装目录是否是 Git 仓库：有 `.git` 就用 `git fetch`、`git status`、`git diff`；没有 `.git` 就把它当作普通 bundle。
+3. 更新代码时保留 `data/`、`uploads/`、SQLite、`.env.local`、用户配置和 `SMALLPHONE_HOME`。
+4. 更新或重写 `ServiceSpec`、component manifest、AI 文档，再调用 `/api/v1/registry/apply`。
+5. 调用 service-manager `restart`，再检查 `/health`、`/api/service-manager/services/:id/status`、`/api/app-registry` 和 `/api/ai-capabilities`。
+6. 把改动摘要、服务状态和失败恢复方式告诉用户。
+
+如果手机 Ubuntu 需要代理才能访问 GitHub，AI 可以临时使用用户配置的代理。不要把代理写死进 App：
+
+```bash
+export http_proxy="http://100.75.71.23:7897"
+export https_proxy="http://100.75.71.23:7897"
+git -C "$APP_DIR" fetch --all --tags
+```
+
+如果不是 Git 仓库，推荐 AI 采用这个 bundle 更新策略：
+
+```text
+$APP_DIR/releases/<timestamp>/     # 新版本解包
+$APP_DIR/current -> releases/...   # 可选软链接
+$APP_DIR/data/                     # 持久化数据，不随版本覆盖
+```
+
+然后把 service-manager 的 `working_dir` 指向当前版本目录，或保持固定目录并只覆盖代码文件。不要删除用户数据。
+
+## 调试清单
+
+检查 service-manager：
+
+```bash
+curl -fsS http://127.0.0.1:20087/api/v1/health
+TOKEN="$(service-manager token show | head -n1)"
+curl -fsS -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:20087/api/v1/services/hello-openhouse/status
+```
+
+检查 SmallPhone Core：
+
+```bash
+curl -fsS http://127.0.0.1:22000/api/app-registry
+curl -fsS http://127.0.0.1:22000/api/components
+curl -fsS http://127.0.0.1:22000/api/ai-capabilities
+```
+
+检查 App：
+
+```bash
+curl -fsS http://127.0.0.1:23110/health
+curl -fsS http://127.0.0.1:23110/api/state
+```
+
+如果桌面没出现入口：
+
+- 确认 component manifest 的 `id` 和文件名一致。
+- 确认 `smallphoneApp.entry.type` 是 `webview` 且有 `url`。
+- 确认 manifest 没有 `command`、`shell`、`script`、`args`。
+- 确认服务 ID 与 `serviceManager.services[*].name`、`controlEntry.serviceNames` 一致。
+- 回到桌面或刷新 SmallPhone 前端，让它重新读取 registry。
+
+## 红线
+
+- 不用 `nohup`、后台 shell 或终端会话长期运行 App。
+- 不把命令写进 component manifest。
+- 不把 token/key 写入前端、URL、localStorage、manifest、AI 文档或可分享日志。
+- 不把用户 App 数据写进 `smallphone-active` 系统仓库。
+- 不要求用户理解 Git；更新应由 AI 读取文档、检查状态、执行并汇报。
