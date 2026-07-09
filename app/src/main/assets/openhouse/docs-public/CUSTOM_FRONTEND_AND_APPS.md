@@ -30,6 +30,42 @@ app/src/main/assets/openhouse/docs-public/examples/custom-phone-shell
 
 不要把两者混在一起。App 是被桌面打开的业务页面；shell 是桌面本身。
 
+## 技术栈建议
+
+这是默认建议，不是强制一刀切。目标是让新 App 容易维护，同时不把很小的本地工具做复杂。
+
+默认使用场景是手机上的 OpenHouse / SmallPhone WebView，不是桌面浏览器。AI 生成 App 时应按手机优先设计：
+
+- 第一屏在手机竖屏可直接完成主要操作。
+- 控件适合触摸，按钮和输入框不要太小。
+- 页面必须适配窄屏，文本不能溢出按钮、卡片或工具栏。
+- 默认访问本机服务，例如 `http://127.0.0.1:<port>/`。
+- 不假设用户会打开桌面浏览器、开发者控制台或命令行。
+
+长期维护的 App 默认使用 TypeScript：
+
+- 前端默认用 `Vite + TypeScript`。
+- 复杂交互前端可以用 `React + TypeScript`。
+- 后端默认用 `Node.js 24 LTS + TypeScript`。
+- 包管理默认用 `npm`，避免让用户多理解 `pnpm`、`yarn` 等额外工具。
+- 长任务默认用后端任务接口加 SSE 进度流。
+
+可以继续使用 shell 或原生 JavaScript 的情况：
+
+- 安装、检查、注册、迁移、修复等一次性脚本，例如 `scripts/install.sh`、`scripts/check.sh`、`scripts/register-service.sh`。
+- 非常小的本地工具页面，例如只有一个页面、几个按钮、状态检查和日志输出的工具。
+- APK bootstrap、apt 安装、payload 解压、service-manager 注册等底层入口。
+
+简单规则：
+
+```text
+长期维护的正式 App：默认 TypeScript。
+默认使用场景：手机 WebView，手机优先设计。
+安装脚本、bootstrap 脚本、极小本地工具：可以用 shell 或原生 JavaScript。
+```
+
+本文里的 `examples/custom-web-app` 使用原生 JavaScript，是为了提供最小可运行示例。AI 为用户生成新的长期 App 时，应优先生成 TypeScript 版本；只有在用户明确要求“越简单越好”或工具足够小时，才保留原生 JavaScript。
+
 ## 路径约定
 
 安装后的手机环境应优先使用这些稳定路径：
