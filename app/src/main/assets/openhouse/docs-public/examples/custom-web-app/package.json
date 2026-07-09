@@ -4,10 +4,15 @@
   "private": true,
   "description": "Minimal OpenHouse custom web app example.",
   "main": "src/server.js",
+  "bin": {
+    "demo-hello-openhouse": "bin/hello-openhouse.js"
+  },
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js"
+    "cli": "node bin/hello-openhouse.js",
+    "mcp": "node src/mcp-server.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/server.js src/state.js src/mcp-server.js bin/hello-openhouse.js public/app.js && node --test test/*.test.js"
   },
   "dependencies": {}
 }
-

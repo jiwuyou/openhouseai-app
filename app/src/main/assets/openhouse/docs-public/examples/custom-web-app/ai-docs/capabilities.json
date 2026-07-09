@@ -12,7 +12,33 @@
       "description": "Control the app through service-manager.",
       "serviceRef": "service-manager://services/hello-openhouse",
       "controls": ["status", "start", "stop", "restart", "logs", "repair"]
+    },
+    {
+      "id": "cli",
+      "description": "Use the JSON-first CLI. This is for AI agents, scripts, and humans. It supports local command mode and HTTP mode.",
+      "commands": [
+        "demo-hello-openhouse health",
+        "demo-hello-openhouse state",
+        "demo-hello-openhouse list",
+        "demo-hello-openhouse add <title>",
+        "demo-hello-openhouse delete <task-id>",
+        "demo-hello-openhouse --url http://127.0.0.1:23110 state",
+        "demo-hello-openhouse --url http://127.0.0.1:23110 add <title>",
+        "demo-hello-openhouse --url http://127.0.0.1:23110 delete <task-id>"
+      ]
+    },
+    {
+      "id": "mcp",
+      "description": "Use the MCP stdio server for AI tool discovery and structured calls.",
+      "transport": "stdio",
+      "command": "node /root/smallphoneai-repos/smallphone-home/apps/hello-openhouse/src/mcp-server.js",
+      "tools": [
+        "hello_openhouse_health",
+        "hello_openhouse_state",
+        "hello_openhouse_list_tasks",
+        "hello_openhouse_add_task",
+        "hello_openhouse_delete_task"
+      ]
     }
   ]
 }
-

@@ -5,6 +5,8 @@ APP_ID="hello-openhouse"
 APP_TITLE="Hello OpenHouse"
 APP_PORT="${APP_PORT:-23110}"
 APP_HOST="${APP_HOST:-127.0.0.1}"
+CLI_NAMESPACE="${OPENHOUSE_CLI_NAMESPACE:-demo}"
+CLI_NAME="${OPENHOUSE_APP_CLI_NAME:-$CLI_NAMESPACE-$APP_ID}"
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 REPOS_ROOT="${OPENHOUSE_REPOS_DIR:-/root/smallphoneai-repos}"
@@ -17,11 +19,13 @@ log() {
   printf '[hello-openhouse] %s\n' "$*"
 }
 
+fail() {
+  printf '[hello-openhouse] %s\n' "$*" >&2
+  exit 1
+}
+
 need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || {
-    printf 'missing command: %s\n' "$1" >&2
-    exit 1
-  }
+  command -v "$1" >/dev/null 2>&1 || fail "missing command: $1"
 }
 
 resolve_token() {
@@ -42,6 +46,21 @@ need_cmd curl
 need_cmd python3
 need_cmd node
 
+if [[ ! "$CLI_NAMESPACE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  fail "invalid OPENHOUSE_CLI_NAMESPACE: $CLI_NAMESPACE"
+fi
+
+if [[ ! "$CLI_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  fail "invalid CLI command name: $CLI_NAME"
+fi
+
+case "$CLI_NAME" in
+  *-"$APP_ID") ;;
+  *)
+    fail "CLI command name must follow <namespace>-$APP_ID, got: $CLI_NAME"
+    ;;
+esac
+
 TOKEN="$(resolve_token || true)"
 if [ -z "$TOKEN" ]; then
   printf 'service-manager token not found. Run: service-manager token show\n' >&2
@@ -54,12 +73,17 @@ if ! curl -fsS --max-time 2 "$SM_URL/api/v1/health" >/dev/null; then
 fi
 
 log "installing app code to $INSTALL_DIR"
-mkdir -p "$INSTALL_DIR" "$DATA_DIR" "$INSTALL_DIR/public" "$INSTALL_DIR/src"
+mkdir -p "$INSTALL_DIR" "$DATA_DIR" "$INSTALL_DIR/public" "$INSTALL_DIR/src" "$INSTALL_DIR/bin" "$HOME/.local/bin"
 cp "$SCRIPT_DIR/package.json" "$INSTALL_DIR/package.json"
 cp "$SCRIPT_DIR/src/server.js" "$INSTALL_DIR/src/server.js"
+cp "$SCRIPT_DIR/src/state.js" "$INSTALL_DIR/src/state.js"
+cp "$SCRIPT_DIR/src/mcp-server.js" "$INSTALL_DIR/src/mcp-server.js"
+cp "$SCRIPT_DIR/bin/hello-openhouse.js" "$INSTALL_DIR/bin/hello-openhouse.js"
 cp "$SCRIPT_DIR/public/index.html" "$INSTALL_DIR/public/index.html"
 cp "$SCRIPT_DIR/public/styles.css" "$INSTALL_DIR/public/styles.css"
 cp "$SCRIPT_DIR/public/app.js" "$INSTALL_DIR/public/app.js"
+chmod +x "$INSTALL_DIR/bin/hello-openhouse.js" "$INSTALL_DIR/src/mcp-server.js"
+ln -sf "$INSTALL_DIR/bin/hello-openhouse.js" "$HOME/.local/bin/$CLI_NAME"
 
 PAYLOAD_FILE="$(mktemp "${TMPDIR:-/tmp}/hello-openhouse-registry.XXXXXX.json")"
 cleanup() {
@@ -67,7 +91,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-python3 - "$PAYLOAD_FILE" "$SCRIPT_DIR" "$INSTALL_DIR" "$DATA_DIR" "$APP_HOST" "$APP_PORT" <<'PY'
+python3 - "$PAYLOAD_FILE" "$SCRIPT_DIR" "$INSTALL_DIR" "$DATA_DIR" "$APP_HOST" "$APP_PORT" "$CLI_NAME" <<'PY'
 import json
 import pathlib
 import sys
@@ -78,6 +102,7 @@ install_dir = pathlib.Path(sys.argv[3])
 data_dir = pathlib.Path(sys.argv[4])
 host = sys.argv[5]
 port = int(sys.argv[6])
+cli_name = sys.argv[7]
 app_id = "hello-openhouse"
 url = f"http://{host}:{port}/"
 health_url = f"http://{host}:{port}/health"
@@ -134,6 +159,8 @@ component = {
         "intents": [
             {"name": "open", "target": "smallphoneApp.entry"},
             {"name": "control", "target": "smallphoneApp.controlEntry"},
+            {"name": "cli", "target": "ai.capabilities"},
+            {"name": "mcp", "target": "ai.capabilities"},
         ],
     },
 }
@@ -179,11 +206,11 @@ payload = {
     "aiDocs": [
         {
             "path": f"{app_id}/openhouse.ai.md",
-            "content": (script_dir / "ai-docs" / "openhouse.ai.md").read_text(encoding="utf-8"),
+            "content": (script_dir / "ai-docs" / "openhouse.ai.md").read_text(encoding="utf-8").replace("demo-hello-openhouse", cli_name),
         },
         {
             "path": f"{app_id}/capabilities.json",
-            "content": (script_dir / "ai-docs" / "capabilities.json").read_text(encoding="utf-8"),
+            "content": (script_dir / "ai-docs" / "capabilities.json").read_text(encoding="utf-8").replace("demo-hello-openhouse", cli_name),
         },
     ],
 }
@@ -207,5 +234,5 @@ curl -fsS \
 
 log "$APP_TITLE registered"
 log "app url: http://$APP_HOST:$APP_PORT/"
+log "cli: $CLI_NAME"
 log "service status: $SM_URL/api/v1/services/$APP_ID/status"
-

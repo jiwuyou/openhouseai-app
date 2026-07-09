@@ -64,8 +64,15 @@
       {
         "name": "control",
         "target": "smallphoneApp.controlEntry"
+      },
+      {
+        "name": "cli",
+        "target": "ai.capabilities"
+      },
+      {
+        "name": "mcp",
+        "target": "ai.capabilities"
       }
     ]
   }
 }
-

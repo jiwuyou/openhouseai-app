@@ -26,6 +26,7 @@ APK 内的 `openhouse/docs-public` 是这个公开仓库的快照。只更新文
 - `/root/openhouse/docs/START_HERE.md`
 - `/root/openhouse/docs/PRODUCT_OVERVIEW.md`
 - `/root/openhouse/docs/CAPABILITIES_MAP.md`
+- `/root/openhouse/docs/PATHS_AND_PORTS.md`
 - `/root/openhouse/docs/openhouse-install-flow.md`
 - `/root/openhouse/docs/openhouse-cn-network-retry.md`
 - `/root/openhouse/docs/first-use-tutorial.md`
@@ -87,6 +88,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `openhouse-cn-network-retry.md`：国内网络重试固定路径、镜像策略、payload fallback 和 sha256 校验。
 - `first-use-tutorial.md`：首次教学脚本，明确界面、箭头、点击主体和 20 秒跳过规则；终端教学不进入首次教学。
 - `ENVIRONMENT.md`：Android、Termux、Ubuntu、路径和默认安装范围。
+- `PATHS_AND_PORTS.md`：正式路径和端口规范，说明稳定运行路径、端口分段、已用/保留端口和自定义 App 选端口规则。
 - `MODEL_API_SETUP.md`：Codex、Claude Code 和 CloudCLI 的登录/API 配置。
 - `model-config-migration.md`：pi-web 模型配置迁移到 Claude Code、Codex、CloudCLI 的规则。
 - `pi-agent-first-use.md`：pi-agent 作为首次配置助手的目标、提示词和验收。
@@ -112,6 +114,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `implementation-acceptance-checklist.md`：下一轮代码实现的唯一放行清单。
 - `AI_AGENT_REFERENCE.md`：AI agent 的默认操作规则和安全边界。
 - `terminal-guide.md`：独立终端教学，说明 Termux、Ubuntu、路径和跨层调用。
+- `PATHS_AND_PORTS.md`：AI 创建或排障本地服务前必须参考的路径和端口规范。
 - `TERMINAL_PROFILES.md`：Termux 终端、Ubuntu 终端和自定义终端的分工。
 - `service-manager.md`：service-manager 的稳定小写入口，强调安装完成后的运行控制平面。
 - `openhouse-runtime-policy.md`：App 前台自动保活和默认长期服务策略。

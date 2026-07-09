@@ -53,6 +53,8 @@ scripts/sync-runtime-docs.sh
    - 了解默认入口、桌面横向分页、编辑模式、拖动、改名、改图标和 App 页控制栏。
 8. `CUSTOM_FRONTEND_AND_APPS.md`
    - 需要让 AI 帮你做一个自定义前端、桌面 shell 或本地 Web App 时阅读，里面有完整可运行代码样例。
+9. `PATHS_AND_PORTS.md`
+   - 需要确认安装路径、服务端口、端口冲突或自定义 App 选端口时阅读。
 
 普通用户不需要先学习终端。终端教学在 `terminal-guide.md`，需要时再看。
 
@@ -65,6 +67,7 @@ AI agent 优先阅读：
 3. `AI_AGENT_REFERENCE.md`
 4. `service-manager.md`
 5. `troubleshooting.md`
+6. `PATHS_AND_PORTS.md`
 
 如果你要实现或审查下一轮代码改动，还必须阅读：
 
@@ -110,19 +113,21 @@ openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
    - 了解首次教学脚本，终端教学为什么后置。
 7. `ENVIRONMENT.md`
    - 确认当前 Android、Termux、Ubuntu 和默认安装范围。
-8. `PI_AGENT_PLUGIN_SYSTEM.md`
+8. `PATHS_AND_PORTS.md`
+   - 确认稳定运行路径、service-manager endpoint、已用端口和自定义 App 端口范围。
+9. `PI_AGENT_PLUGIN_SYSTEM.md`
    - 了解 pi、pi-web、插件目录和默认搜索插件。
-9. `AI_TOOL_POSTINSTALL.md`
+10. `AI_TOOL_POSTINSTALL.md`
    - 需要后置安装 Codex、Claude Code、CloudCLI 或 Hermes 时，先看这里的脚本入口。
-10. `MODEL_API_SETUP.md`
+11. `MODEL_API_SETUP.md`
    - 需要使用 Codex、Claude Code 或 CloudCLI 时，再配置登录或模型 API。
-11. `GITHUB_CONFIG_HELPER.md`
+12. `GITHUB_CONFIG_HELPER.md`
    - 需要让 Codex / Claude Code 后续直接使用 `git` 和 `gh` 管理 GitHub 时阅读。
-12. `OPENHOUSE_FIRST_CONFIGURATION.md`
+13. `OPENHOUSE_FIRST_CONFIGURATION.md`
    - pi-web 模型可用后，让 pi-agent 完成模型迁移、CloudCLI/Claude Code 配置和连通测试。
-13. `CLOUDCLI_CLAUDE_CODE.md`
+14. `CLOUDCLI_CLAUDE_CODE.md`
    - 需要让 pi-agent 配置 CloudCLI 中的 Claude Code 时阅读。
-14. `HERMES_SETUP.md`
+15. `HERMES_SETUP.md`
    - 需要安装 Hermes 时阅读。Hermes 是可选高级能力，安装和配置会花比较久。
 
 ## 给 AI agent 的入口
@@ -179,6 +184,6 @@ OpenCode、Reasonix 等外部工具不是 APK 默认核心能力。Hermes 不进
 | 选择主工作台 | `/root/openhouse/docs/WORKBENCH_OPTIONS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md` | 让用户选择 Claude Code、Codex、Hermes Web 或其它开源项目作为长期工作台。 |
 | 安装和配置 Hermes | `/root/openhouse/docs/HERMES_SETUP.md`, `/root/openhouse/docs/OPTIONAL_EXTERNAL_TOOLS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md` | 可选高级能力，耗时较久，使用独立 uv 环境。 |
 | 熟悉 OpenHouse 整个系统 | `/root/openhouse/docs/PRODUCT_OVERVIEW.md`, `/root/openhouse/docs/SERVICE_MANAGER.md`, `/root/openhouse/docs/RECOVERY.md`, `/root/openhouse/docs/AI_AGENT_REFERENCE.md` | 理解系统入口、服务控制、修复和终端分层。 |
-| 编写自定义前端或 App | `/root/openhouse/docs/CUSTOM_FRONTEND_AND_APPS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md`, `/root/openhouse/docs/OPENHOUSE_DESKTOP.md` | 让 AI 生成真实代码，注册组件和服务，并支持后续 AI 更新。 |
+| 编写自定义前端或 App | `/root/openhouse/docs/CUSTOM_FRONTEND_AND_APPS.md`, `/root/openhouse/docs/PATHS_AND_PORTS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md`, `/root/openhouse/docs/OPENHOUSE_DESKTOP.md` | 让 AI 生成真实代码，先按规范选择路径和端口，再注册组件和服务，并支持后续 AI 更新。 |
 
 首次安装不要求配置默认模型或 API key。安装完成后，用户先在 pi-web 完成模型配置；检测到模型可用后，再点击首次 OpenHouse 配置入口，让 `pi-agent` 根据文档完成模型迁移和 CloudCLI/Claude Code 连通测试。

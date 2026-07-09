@@ -49,6 +49,13 @@ app/src/main/assets/openhouse/docs-public/examples/custom-phone-shell
 - 后端默认用 `Node.js 24 LTS + TypeScript`。
 - 包管理默认用 `npm`，避免让用户多理解 `pnpm`、`yarn` 等额外工具。
 - 长任务默认用后端任务接口加 SSE 进度流。
+- 能做出来时同时提供 WebView、CLI 和 MCP 三种入口，让人和 AI 都能控制同一套动作。
+
+三种控制入口的分工：
+
+- WebView：手机用户默认入口，适合点击、查看状态和完成主流程。
+- CLI：AI、脚本和人都能使用的稳定命令入口；默认输出 JSON，方便 Codex / Claude Code 解析；应同时支持本地命令模式和 HTTP 模式。
+- MCP：给支持 MCP 的 AI 工具发现能力和结构化调用，底层仍应复用 App 的同一套业务函数。
 
 可以继续使用 shell 或原生 JavaScript 的情况：
 
@@ -61,10 +68,21 @@ app/src/main/assets/openhouse/docs-public/examples/custom-phone-shell
 ```text
 长期维护的正式 App：默认 TypeScript。
 默认使用场景：手机 WebView，手机优先设计。
+控制入口：尽量同时提供 WebView、CLI、MCP。
 安装脚本、bootstrap 脚本、极小本地工具：可以用 shell 或原生 JavaScript。
 ```
 
 本文里的 `examples/custom-web-app` 使用原生 JavaScript，是为了提供最小可运行示例。AI 为用户生成新的长期 App 时，应优先生成 TypeScript 版本；只有在用户明确要求“越简单越好”或工具足够小时，才保留原生 JavaScript。
+
+## 先选路径和端口
+
+写新 App 前先阅读：
+
+```text
+/root/openhouse/docs/PATHS_AND_PORTS.md
+```
+
+新 App 不要随便占用 OpenHouse 控制平面、桥接、SmallPhone 平台服务或内置 App 端口。用户自定义长期 App 默认从 `23100-23999` 选择未使用端口；临时调试用 `24000-24999`；长期服务必须注册到 service-manager。本文示例 `hello-openhouse` 使用 `23110`，真实 App 应先检查当前 service-manager 和 component registry，再选择尚未被占用的端口。
 
 ## 路径约定
 
@@ -103,7 +121,10 @@ $SMALLPHONE_HOME/shells/<shell-id>   # 用户自定义前端 shell
 ```text
 custom-web-app/
   package.json
+  bin/hello-openhouse.js
   src/server.js
+  src/state.js
+  src/mcp-server.js
   public/index.html
   public/styles.css
   public/app.js
@@ -141,6 +162,61 @@ http://127.0.0.1:23110/
 ```
 
 OpenHouse / SmallPhone 桌面会通过组件注册读取入口。
+
+## 人机控制入口
+
+每个长期维护的 App 都应尽量把同一套能力暴露为三种入口：
+
+| 入口 | 默认使用者 | 说明 |
+| --- | --- | --- |
+| 手机 WebView | 用户 | 放在 OpenHouse / SmallPhone 桌面上，第一屏完成主要操作。 |
+| CLI | AI、脚本、人 | 默认输出 JSON，适合 Codex / Claude Code 调用，也方便用户在终端排障。 |
+| MCP | AI | 给支持 MCP 的客户端发现工具并结构化调用。 |
+
+CLI 也是给 AI 使用的，不只是给人手敲。AI 能用 CLI 时，不要绕过 App 的业务函数去直接改数据文件。CLI 应该调用和 Web API 相同的实现。
+
+CLI 需要同时包含两种模式：
+
+- 本地命令模式：直接调用 App 本地业务模块或数据目录，适合服务未启动、安装修复、迁移和离线维护。
+- HTTP 模式：通过 `--url http://127.0.0.1:<port>` 调用正在运行的本机服务，适合 AI 在不直接碰数据文件的情况下控制 App。
+
+终端命令名不要用容易冲突的通用名字。推荐格式：
+
+```text
+<namespace>-<app-id>
+```
+
+`namespace` 是用户、团队、厂商或作者自己的短命名；`app-id` 是稳定 App ID。命令名只使用字母、数字、点、下划线和短横线。示例使用 `demo-hello-openhouse`，真实用户可以用 `alice-hello-openhouse`、`jiwuyou-notes` 这类名字。不要直接占用 `notes`、`todo`、`agent` 这类未来市场中很容易冲突的全局命令名。
+
+推荐 CLI 形态：
+
+```bash
+demo-hello-openhouse health
+demo-hello-openhouse state
+demo-hello-openhouse list
+demo-hello-openhouse add "新的任务"
+demo-hello-openhouse delete "<task-id>"
+demo-hello-openhouse --url http://127.0.0.1:23110 state
+demo-hello-openhouse --url http://127.0.0.1:23110 add "通过 HTTP 控制"
+```
+
+CLI 输出默认应是 JSON。需要给人看的帮助信息只在 `help`、`--help` 或命令错误时输出。安装脚本应支持 `OPENHOUSE_CLI_NAMESPACE` 或类似环境变量，让用户或市场发布者指定自己的 namespace。
+
+推荐 MCP 形态：
+
+```bash
+node /root/smallphoneai-repos/smallphone-home/apps/hello-openhouse/src/mcp-server.js
+```
+
+MCP server 使用 stdio transport，工具名稳定，例如：
+
+```text
+hello_openhouse_state
+hello_openhouse_add_task
+hello_openhouse_delete_task
+```
+
+Web API、CLI 和 MCP 应共用同一个状态模块或业务模块。示例 App 使用 `src/state.js` 作为共享实现。
 
 ## App 服务定义
 
@@ -284,13 +360,16 @@ SmallPhone 读取 `smallphoneApp` 创建桌面 App；Android shell 读取 `shell
 优先用 service-manager 的 registry apply API。它会校验组件、服务和 AI 文档，并同步到运行期注册目录。
 
 ```bash
+SM_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}"
+SM_ADDR="$(sed -n 's/.*"\(listen_addr\|listenAddr\|base_url\|baseUrl\|baseURL\|url\)"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\2/p' "$SM_CONFIG" 2>/dev/null | head -n 1)"
+SM_URL="${SERVICE_MANAGER_URL:-${SM_ADDR:-http://127.0.0.1:20087}}"
 TOKEN="$(service-manager token show | head -n1)"
 curl -fsS \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -X POST \
   --data-binary @registry-apply.json \
-  http://127.0.0.1:20087/api/v1/registry/apply
+  "${SM_URL%/}/api/v1/registry/apply"
 ```
 
 payload 结构：
@@ -442,10 +521,19 @@ $APP_DIR/data/                     # 持久化数据，不随版本覆盖
 检查 service-manager：
 
 ```bash
-curl -fsS http://127.0.0.1:20087/api/v1/health
+SM_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}"
+SM_ADDR="$(sed -n 's/.*"\(listen_addr\|listenAddr\|base_url\|baseUrl\|baseURL\|url\)"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\2/p' "$SM_CONFIG" 2>/dev/null | head -n 1)"
+SM_URL="${SERVICE_MANAGER_URL:-${SM_ADDR:-http://127.0.0.1:20087}}"
+case "$SM_URL" in
+  http://0.0.0.0*) SM_URL="http://127.0.0.1${SM_URL#http://0.0.0.0}" ;;
+  https://0.0.0.0*) SM_URL="https://127.0.0.1${SM_URL#https://0.0.0.0}" ;;
+  :*) SM_URL="http://127.0.0.1$SM_URL" ;;
+  0.0.0.0:*) SM_URL="http://127.0.0.1:${SM_URL#0.0.0.0:}" ;;
+esac
+curl -fsS "${SM_URL%/}/api/v1/health"
 TOKEN="$(service-manager token show | head -n1)"
 curl -fsS -H "Authorization: Bearer $TOKEN" \
-  http://127.0.0.1:20087/api/v1/services/hello-openhouse/status
+  "${SM_URL%/}/api/v1/services/hello-openhouse/status"
 ```
 
 检查 SmallPhone Core：

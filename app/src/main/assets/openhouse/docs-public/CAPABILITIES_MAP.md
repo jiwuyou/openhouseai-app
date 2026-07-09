@@ -18,6 +18,7 @@ OpenHouse 帮用户在手机上构建自己的 AI 工作环境。用户可以直
 | 自定义前端和 App | 让用户把自己的页面、工具或桌面壳接入 OpenHouse | 生成真实代码，注册到 component registry 和 service-manager，并负责后续更新 | `CUSTOM_FRONTEND_AND_APPS.md` |
 | Termux | Android 侧 Linux 底座和救援入口 | 修复 Ubuntu、调用 Android 侧桥接能力 | `TERMINAL_PROFILES.md`, `RECOVERY.md` |
 | Ubuntu in Termux | 主要开发环境 | 运行 Node/Python/uv/npm/git/pi，以及后置安装完成后的 Codex/Claude Code | `ENVIRONMENT.md` |
+| 路径和端口规范 | 避免 App、服务和调试端口互相冲突 | 新建或排障本地服务前确认路径、端口分段、已用端口和自定义 App 端口范围 | `PATHS_AND_PORTS.md` |
 | service-manager | 统一管理后台服务 | 启动、停止、修复、查日志和注册服务 | `SERVICE_MANAGER.md` |
 | CloudCLI / Claude Code | 后置编程工作台和网页入口 | 通过脚本安装，配置模型、测试连通、交给用户继续使用 | `AI_TOOL_POSTINSTALL.md`, `CLOUDCLI_CLAUDE_CODE.md` |
 | Codex | 后置命令行编程能力 | 通过脚本安装，在 Ubuntu 项目目录中执行开发任务 | `AI_TOOL_POSTINSTALL.md`, `MODEL_API_SETUP.md` |
@@ -39,6 +40,7 @@ OpenHouse 的能力应该被理解为一个开放平台，而不是固定功能�
 - 让 AI 帮自己配置开发环境和大模型。
 - 在手机上运行 pi-agent，并按需后置安装 Claude Code、Codex、CloudCLI、Hermes 等工具。
 - 用 GitHub 本地配置助手完成一次授权，让 Codex / Claude Code 后续通过 `git` 和 `gh` 操作 GitHub。
+- 按路径和端口规范选择本地 App 端口，避免占用 OpenHouse 控制平面、桥接或 SmallPhone 平台服务。
 - 用 service-manager 启动、停止、修复和托管后台服务。
 - 打开内置浏览器查看本地 Web 工作台。
 - 让 AI 使用 Termux 或 Ubuntu 命令完成文件、项目、构建和排障任务。

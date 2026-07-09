@@ -1,14 +1,12 @@
-const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const { addTask, deleteTask, health, readState } = require("./state");
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number.parseInt(process.env.PORT || "23110", 10);
 const APP_ROOT = path.resolve(__dirname, "..");
 const PUBLIC_ROOT = path.join(APP_ROOT, "public");
-const DATA_DIR = path.resolve(process.env.OPENHOUSE_CUSTOM_APP_DATA_DIR || path.join(APP_ROOT, "data"));
-const STATE_FILE = path.join(DATA_DIR, "state.json");
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -21,50 +19,6 @@ const MIME_TYPES = {
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
 };
-
-async function ensureState() {
-  await fs.promises.mkdir(DATA_DIR, { recursive: true });
-  try {
-    await fs.promises.access(STATE_FILE, fs.constants.R_OK);
-  } catch {
-    await writeState({
-      app: "hello-openhouse",
-      updatedAt: new Date().toISOString(),
-      tasks: [
-        {
-          id: createId(),
-          title: "从 OpenHouse 桌面打开这个自定义 App",
-          createdAt: new Date().toISOString(),
-        },
-      ],
-    });
-  }
-}
-
-async function readState() {
-  await ensureState();
-  const raw = await fs.promises.readFile(STATE_FILE, "utf8");
-  return JSON.parse(raw);
-}
-
-async function writeState(state) {
-  await fs.promises.mkdir(DATA_DIR, { recursive: true });
-  const next = {
-    ...state,
-    updatedAt: new Date().toISOString(),
-  };
-  const tmp = `${STATE_FILE}.${process.pid}.tmp`;
-  await fs.promises.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  await fs.promises.rename(tmp, STATE_FILE);
-  return next;
-}
-
-function createId() {
-  if (typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 function sendJson(res, status, payload) {
   const body = `${JSON.stringify(payload, null, 2)}\n`;
@@ -141,9 +95,7 @@ async function serveStatic(res, pathname) {
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/health") {
     sendJson(res, 200, {
-      ok: true,
-      app: "hello-openhouse",
-      time: new Date().toISOString(),
+      ...health("http"),
     });
     return true;
   }
@@ -160,18 +112,7 @@ async function handleApi(req, res, url) {
       sendJson(res, 400, { error: "title is required" });
       return true;
     }
-    const state = await readState();
-    const next = await writeState({
-      ...state,
-      tasks: [
-        {
-          id: createId(),
-          title,
-          createdAt: new Date().toISOString(),
-        },
-        ...state.tasks,
-      ],
-    });
+    const next = await addTask(title);
     sendJson(res, 201, next);
     return true;
   }
@@ -179,11 +120,7 @@ async function handleApi(req, res, url) {
   const deleteMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
   if (req.method === "DELETE" && deleteMatch) {
     const id = decodeURIComponent(deleteMatch[1]);
-    const state = await readState();
-    const next = await writeState({
-      ...state,
-      tasks: state.tasks.filter((task) => task.id !== id),
-    });
+    const next = await deleteTask(id);
     sendJson(res, 200, next);
     return true;
   }
@@ -191,29 +128,38 @@ async function handleApi(req, res, url) {
   return false;
 }
 
-const server = http.createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
-    if (await handleApi(req, res, url)) {
-      return;
+function createServer() {
+  return http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
+      if (await handleApi(req, res, url)) {
+        return;
+      }
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        sendText(res, 405, "Method not allowed");
+        return;
+      }
+      await serveStatic(res, url.pathname);
+    } catch (error) {
+      sendJson(res, 500, {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
-    if (req.method !== "GET" && req.method !== "HEAD") {
-      sendText(res, 405, "Method not allowed");
-      return;
-    }
-    await serveStatic(res, url.pathname);
-  } catch (error) {
-    sendJson(res, 500, {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-});
+  });
+}
 
-server.listen(PORT, HOST, () => {
-  console.log(`[hello-openhouse] listening on http://${HOST}:${PORT}/`);
-});
+if (require.main === module) {
+  const server = createServer();
+  server.listen(PORT, HOST, () => {
+    console.log(`[hello-openhouse] listening on http://${HOST}:${PORT}/`);
+  });
 
-process.on("SIGTERM", () => {
-  server.close(() => process.exit(0));
-});
+  process.on("SIGTERM", () => {
+    server.close(() => process.exit(0));
+  });
+}
 
+module.exports = {
+  createServer,
+  handleApi,
+};
