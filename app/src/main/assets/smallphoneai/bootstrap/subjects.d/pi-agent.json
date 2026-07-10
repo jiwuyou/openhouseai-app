@@ -5,9 +5,24 @@
   "summary": "OpenHouse main AI workbench and human-facing web entry.",
   "serviceRefs": [
     {
+      "id": "pi-agent",
+      "runtime": "termux",
+      "manager": "service-manager",
+      "home": "/data/data/com.termux/files/home",
+      "workingDirectory": "$HOME/smallphoneai-repos/pi-agent",
+      "workdir": "$HOME/smallphoneai-repos/pi-agent",
+      "command": "openhouse-pi-agent-sentinel",
+      "entryCommand": "openhouse-pi-agent-sentinel"
+    },
+    {
       "id": "pi-web",
-      "runtime": "ubuntu",
-      "manager": "service-manager"
+      "runtime": "termux",
+      "manager": "service-manager",
+      "home": "/data/data/com.termux/files/home",
+      "workingDirectory": "$HOME/smallphoneai-repos/pi-web",
+      "workdir": "$HOME/smallphoneai-repos/pi-web",
+      "command": "openhouse-pi-web-start",
+      "entryCommand": "openhouse-pi-web-start"
     }
   ],
   "entries": [
@@ -19,14 +34,33 @@
   ],
   "locations": [
     {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-agent",
+      "purpose": "Termux native pi-agent payload and npm package install source"
+    },
+    {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-web",
+      "purpose": "Termux native pi-web payload install source"
+    },
+    {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/home/.pi",
+      "purpose": "Termux native Pi Agent data, extensions, and runtime state"
+    },
+    {
       "runtime": "ubuntu",
-      "path": "/root/smallphoneai-repos/smallphone-active",
-      "purpose": "business application repo"
+      "user": "root",
+      "home": "/root",
+      "path": "$HOME/smallphoneai-repos/smallphone-active",
+      "workingDirectory": "$HOME/smallphoneai-repos/smallphone-active",
+      "workdir": "$HOME/smallphoneai-repos/smallphone-active",
+      "purpose": "Ubuntu AI workbench and compatibility/fallback repo; root is only the first-install default user, not the meaning of runtime=ubuntu"
     }
   ],
   "ai": {
     "description": "Pi Agent is the primary OpenHouse AI workbench. Its service state is controlled by service-manager through the pi-web service id.",
-    "whenUnavailable": "First inspect service-manager status and logs for pi-web. If pi-web is running, run openhouse-system check pi-agent to probe the web endpoint and declared paths."
+    "whenUnavailable": "First inspect service-manager status and logs for pi-agent/pi-web. If the services are running, run openhouse-system check pi-agent to probe the web endpoint and declared paths."
   },
   "checks": {
     "serviceTimeoutSeconds": 5,
@@ -38,8 +72,14 @@
       },
       {
         "type": "pathExists",
-        "runtime": "ubuntu",
-        "path": "/root/smallphoneai-repos/smallphone-active",
+        "runtime": "termux",
+        "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-agent",
+        "timeoutSeconds": 4
+      },
+      {
+        "type": "pathExists",
+        "runtime": "termux",
+        "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-web",
         "timeoutSeconds": 4
       }
     ]

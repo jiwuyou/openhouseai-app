@@ -108,11 +108,6 @@ validate_subject_file() {
     warn "invalid subject shape: $file"
     return 1
   }
-
-  jq -e '[.. | objects | select(has("command"))] | length == 0' "$file" >/dev/null || {
-    warn "subject must not contain service command definitions; use serviceRefs only: $file"
-    return 1
-  }
 }
 
 cmd_validate() {
@@ -368,16 +363,68 @@ path_test_flag_for_type() {
   esac
 }
 
+home_for_declared_user() {
+  local user="$1"
+  local home="$2"
+  if [ -n "$home" ]; then
+    printf '%s\n' "$home"
+    return 0
+  fi
+  case "$user" in
+    root)
+      printf '/root\n'
+      ;;
+    "")
+      printf '\n'
+      ;;
+    *)
+      printf '/home/%s\n' "$user"
+      ;;
+  esac
+}
+
+expand_path_with_declared_home() {
+  local path="$1"
+  local home="$2"
+  [ -n "$home" ] || {
+    printf '%s\n' "$path"
+    return 0
+  }
+  case "$path" in
+    '$HOME')
+      printf '%s\n' "$home"
+      ;;
+    '$HOME/'*)
+      printf '%s/%s\n' "$home" "${path#\$HOME/}"
+      ;;
+    '~')
+      printf '%s\n' "$home"
+      ;;
+    '~/'*)
+      printf '%s/%s\n' "$home" "${path#\~/}"
+      ;;
+    *)
+      printf '%s\n' "$path"
+      ;;
+  esac
+}
+
 check_path_like() {
   local check_json="$1"
   local check_type="$2"
   local runtime
   local path
+  local user
+  local home
+  local working_directory
   local timeout_seconds
   local flag
   local status=0
   runtime="$(printf '%s\n' "$check_json" | jq -r '.runtime // "local"')"
-  path="$(printf '%s\n' "$check_json" | jq -r '.path // empty')"
+  path="$(printf '%s\n' "$check_json" | jq -r '.path // .workingDirectory // .working_dir // .workdir // empty')"
+  user="$(printf '%s\n' "$check_json" | jq -r '.user // .runAs // empty')"
+  home="$(printf '%s\n' "$check_json" | jq -r '.home // empty')"
+  working_directory="$(printf '%s\n' "$check_json" | jq -r '.workingDirectory // .working_dir // .workdir // empty')"
   timeout_seconds="$(printf '%s\n' "$check_json" | jq -r '.timeoutSeconds // 3')"
   flag="$(path_test_flag_for_type "$check_type")"
 
@@ -386,13 +433,24 @@ check_path_like() {
       '{type:$type,state:$state,message:$message}'
     return 0
   fi
+  home="$(home_for_declared_user "$user" "$home")"
+  path="$(expand_path_with_declared_home "$path" "$home")"
+  working_directory="$(expand_path_with_declared_home "$working_directory" "$home")"
 
   case "$runtime" in
     ubuntu)
       if [ -f /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release; then
-        run_with_timeout "$timeout_seconds" test "$flag" "$path" || status=$?
+        if [ -n "$working_directory" ]; then
+          run_with_timeout "$timeout_seconds" sh -c 'cd "$1" && test "$2" "$3"' _ "$working_directory" "$flag" "$path" || status=$?
+        else
+          run_with_timeout "$timeout_seconds" test "$flag" "$path" || status=$?
+        fi
       elif command -v proot-distro >/dev/null 2>&1; then
-        run_with_timeout "$timeout_seconds" proot-distro login ubuntu -- test "$flag" "$path" || status=$?
+        if [ -n "$working_directory" ]; then
+          run_with_timeout "$timeout_seconds" proot-distro login ubuntu -- sh -c 'cd "$1" && test "$2" "$3"' _ "$working_directory" "$flag" "$path" || status=$?
+        else
+          run_with_timeout "$timeout_seconds" proot-distro login ubuntu -- test "$flag" "$path" || status=$?
+        fi
       else
         jq -n --arg type "$check_type" --arg runtime "$runtime" --arg target "$path" \
           --arg state "skipped" --arg message "proot-distro is not available" \
@@ -401,7 +459,11 @@ check_path_like() {
       fi
       ;;
     local|termux|android)
-      run_with_timeout "$timeout_seconds" test "$flag" "$path" || status=$?
+      if [ -n "$working_directory" ]; then
+        run_with_timeout "$timeout_seconds" sh -c 'cd "$1" && test "$2" "$3"' _ "$working_directory" "$flag" "$path" || status=$?
+      else
+        run_with_timeout "$timeout_seconds" test "$flag" "$path" || status=$?
+      fi
       ;;
     *)
       jq -n --arg type "$check_type" --arg runtime "$runtime" --arg target "$path" \

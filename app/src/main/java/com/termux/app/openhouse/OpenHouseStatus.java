@@ -8,6 +8,8 @@ public final class OpenHouseStatus {
     public final boolean ubuntuInstalled;
     public final boolean officialDocsSynced;
     public final boolean entryUbuntuConfigured;
+    public final boolean termuxNodeInstalled;
+    public final boolean ubuntuNodeInstalled;
     public final boolean nodeInstalled;
     public final boolean codexInstalled;
     public final boolean claudeCodeInstalled;
@@ -34,6 +36,8 @@ public final class OpenHouseStatus {
                            boolean ubuntuInstalled,
                            boolean officialDocsSynced,
                            boolean entryUbuntuConfigured,
+                           boolean termuxNodeInstalled,
+                           boolean ubuntuNodeInstalled,
                            boolean nodeInstalled,
                            boolean codexInstalled,
                            boolean claudeCodeInstalled,
@@ -59,6 +63,8 @@ public final class OpenHouseStatus {
         this.ubuntuInstalled = ubuntuInstalled;
         this.officialDocsSynced = officialDocsSynced;
         this.entryUbuntuConfigured = entryUbuntuConfigured;
+        this.termuxNodeInstalled = termuxNodeInstalled;
+        this.ubuntuNodeInstalled = ubuntuNodeInstalled;
         this.nodeInstalled = nodeInstalled;
         this.codexInstalled = codexInstalled;
         this.claudeCodeInstalled = claudeCodeInstalled;
@@ -83,7 +89,7 @@ public final class OpenHouseStatus {
     public static OpenHouseStatus checking() {
         return new OpenHouseStatus(false, false, false, false, false, false,
             false, false, false, false, false, false, false, false, false,
-            false, false, false, false, false, false, false, "", false, "");
+            false, false, false, false, false, false, false, false, false, "", false, "");
     }
 
     public boolean isDeploymentComplete() {
@@ -101,6 +107,10 @@ public final class OpenHouseStatus {
     public boolean isRuntimeEnvironmentPrepared() {
         return termuxReady
             && productPrepared
+            && termuxNodeInstalled
+            && serviceManagerInstalled
+            && piAgentInstalled
+            && piWebInstalled
             && ubuntuInstalled
             && entryUbuntuConfigured;
     }
@@ -130,11 +140,12 @@ public final class OpenHouseStatus {
         }
 
         int done = 0;
-        int total = 15;
+        int total = 16;
         if (termuxReady) done++;
         if (productPrepared) done++;
+        if (termuxNodeInstalled) done++;
         if (ubuntuInstalled) done++;
-        if (nodeInstalled) done++;
+        if (ubuntuNodeInstalled) done++;
         if (officialDocsSynced) done++;
         if (serviceManagerInstalled) done++;
         if (piAgentInstalled) done++;
@@ -152,9 +163,10 @@ public final class OpenHouseStatus {
     public String getNextStepLabel() {
         if (isFirstUseReady()) return "AI 功能已可使用";
         if (!termuxReady || !productPrepared) return "准备基础组件";
+        if (!termuxNodeInstalled) return "准备 Termux Node.js 24 LTS/npm";
         if (!ubuntuInstalled || !entryUbuntuConfigured) return "准备运行环境";
-        if (!nodeInstalled
-            || !officialDocsSynced
+        if (!ubuntuNodeInstalled) return "准备 Ubuntu Node.js 24 LTS 工作台运行时";
+        if (!officialDocsSynced
             || !serviceManagerInstalled
             || !piAgentInstalled
             || !piWebInstalled

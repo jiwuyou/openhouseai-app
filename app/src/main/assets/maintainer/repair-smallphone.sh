@@ -21,7 +21,11 @@ find_smallphoneai_bootstrap() {
 bootstrap="$(find_smallphoneai_bootstrap || true)"
 if [ -n "$bootstrap" ]; then
   log "正在执行 SmallPhoneAI runtime hook：$bootstrap repair"
-  run_logged bash "$bootstrap" repair
+  run_logged env \
+    OPENHOUSE_PI_RUNTIME="${OPENHOUSE_PI_RUNTIME:-termux}" \
+    SMALLPHONEAI_PI_RUNTIME="${SMALLPHONEAI_PI_RUNTIME:-termux}" \
+    OPENHOUSE_PI_NODE_RUNTIME="${OPENHOUSE_PI_NODE_RUNTIME:-termux}" \
+    bash "$bootstrap" repair
   exit $?
 fi
 

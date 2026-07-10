@@ -5,8 +5,8 @@
     {
       "id": "service-manager",
       "archive": "service-manager.tar",
-      "sha256": "dea8200257cec77379b42927d99960732729ab2cfa94d9109835b356af8407c3",
-      "size": 6000640
+      "sha256": "ce91f5570b43a06ea42a961f7a177e475bf2ee4978426cdf03e3392bf79d84c5",
+      "size": 6338560
     },
     {
       "id": "openhouse-connect",

@@ -21,11 +21,17 @@ find_smallphoneai_bootstrap() {
 bootstrap="$(find_smallphoneai_bootstrap || true)"
 if [ -n "$bootstrap" ]; then
   log "正在执行 SmallPhoneAI runtime hook：$bootstrap start"
-  run_logged bash "$bootstrap" start
+  run_logged env \
+    OPENHOUSE_PI_RUNTIME="${OPENHOUSE_PI_RUNTIME:-termux}" \
+    SMALLPHONEAI_PI_RUNTIME="${SMALLPHONEAI_PI_RUNTIME:-termux}" \
+    OPENHOUSE_PI_NODE_RUNTIME="${OPENHOUSE_PI_NODE_RUNTIME:-termux}" \
+    SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-pi-agent,pi-web}" \
+    bash "$bootstrap" start
   exit $?
 fi
 
 log "未找到 SmallPhoneAI bootstrap.sh，使用 APK 内置启动钩子启动已安装组件。"
+export SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-pi-agent,pi-web}"
 require_ubuntu
 
 run_ubuntu_logged bash <<'SMALLPHONEAI_START'
@@ -195,11 +201,65 @@ service_manager_ready() {
   probe_url "$sm_url/api/v1/health" || probe_url "$sm_url/"
 }
 
+normalize_start_target() {
+  case "${1:-}" in
+    pi|pi-agent)
+      printf 'pi-agent'
+      ;;
+    web|pi-web)
+      printf 'pi-web'
+      ;;
+    smallphone|phone)
+      printf 'smallphone'
+      ;;
+    smallphone-core|core)
+      printf 'smallphone-core'
+      ;;
+    cc|cc-connect|openhouse-connect)
+      printf 'cc-connect'
+      ;;
+    *)
+      printf '%s' "${1:-}"
+      ;;
+  esac
+}
+
+start_target_requested() {
+  local target="$1"
+  local rest item wanted
+  [ -n "${SMALLPHONEAI_START_TARGETS:-}" ] || return 0
+
+  rest="${SMALLPHONEAI_START_TARGETS:-}"
+  while [ -n "$rest" ]; do
+    case "$rest" in
+      *,*)
+        item="${rest%%,*}"
+        rest="${rest#*,}"
+        ;;
+      *)
+        item="$rest"
+        rest=""
+        ;;
+    esac
+    wanted="$(normalize_start_target "$item")"
+    [ "$wanted" = "$target" ] && return 0
+  done
+
+  return 1
+}
+
 stack_ready() {
-  service_manager_ready \
-    && probe_url "$pi_web_url" \
-    && probe_url "$smallphone_url" \
-    && probe_url "$smallphone_core_url"
+  service_manager_ready || return 1
+  if start_target_requested "pi-web" && ! probe_url "$pi_web_url"; then
+    return 1
+  fi
+  if start_target_requested "smallphone" && ! probe_url "$smallphone_url"; then
+    return 1
+  fi
+  if start_target_requested "smallphone-core" && ! probe_url "$smallphone_core_url"; then
+    return 1
+  fi
+  return 0
 }
 
 json_escape() {
@@ -347,10 +407,10 @@ else
   exit 1
 fi
 
-register_if_present "cc-connect/openhouse-connect" "$cc_connect_dir"
-register_if_present "SmallPhone" "$smallphone_dir"
-register_if_present "pi-agent" "$pi_agent_dir"
-register_if_present "pi-web" "$pi_web_dir"
+start_target_requested "cc-connect" && register_if_present "cc-connect/openhouse-connect" "$cc_connect_dir"
+start_target_requested "smallphone" && register_if_present "SmallPhone" "$smallphone_dir"
+start_target_requested "pi-agent" && register_if_present "pi-agent" "$pi_agent_dir"
+start_target_requested "pi-web" && register_if_present "pi-web" "$pi_web_dir"
 
 if ! command -v curl >/dev/null 2>&1; then
   warn "缺少 curl，无法调用 service-manager。"
@@ -377,8 +437,25 @@ cleanup() {
 trap cleanup EXIT INT HUP TERM
 printf 'header = "Authorization: Bearer %s"\n' "$sm_token" > "$work_dir/curl.cfg"
 
-log "正在通过 service-manager 启动 group:local-stack。"
-curl -q -fsS --max-time 10 -X POST -K "$work_dir/curl.cfg" "$sm_url/api/v1/groups/local-stack/start" >/dev/null
+start_service_if_present() {
+  local service_id="$1"
+  if curl -q -fsS --max-time 10 -X POST -K "$work_dir/curl.cfg" "$sm_url/api/v1/services/$service_id/start" >/dev/null 2>&1; then
+    log "service-manager: 已请求启动 $service_id。"
+  else
+    warn "service-manager: 无法单独启动 $service_id，继续等待核心状态。"
+  fi
+}
+
+if [ -n "${SMALLPHONEAI_START_TARGETS:-}" ]; then
+  log "正在通过 service-manager 启动指定服务：${SMALLPHONEAI_START_TARGETS}"
+  start_target_requested "pi-agent" && start_service_if_present "pi-agent"
+  start_target_requested "pi-web" && start_service_if_present "pi-web"
+  start_target_requested "smallphone-core" && start_service_if_present "smallphone-core"
+  start_target_requested "smallphone" && start_service_if_present "smallphone-frontend-beta"
+else
+  log "正在通过 service-manager 启动 group:local-stack。"
+  curl -q -fsS --max-time 10 -X POST -K "$work_dir/curl.cfg" "$sm_url/api/v1/groups/local-stack/start" >/dev/null
+fi
 
 for _ in $(seq 1 45); do
   if stack_ready; then

@@ -349,6 +349,9 @@ required_stage_scripts() {
     termux-packages)
       printf '%s\n' 12-update-termux-packages.sh
       ;;
+    termux-node|termux-nodejs|termux-npm)
+      printf '%s\n' 13-install-termux-node.sh
+      ;;
     ubuntu)
       printf '%s\n' 20-install-ubuntu.sh
       ;;
@@ -413,6 +416,10 @@ required_stage_scripts() {
         00-check-termux.sh \
         10-prepare-termux.sh \
         12-update-termux-packages.sh \
+        13-install-termux-node.sh \
+        50-install-runtime-components.sh \
+        openhouse-system \
+        60-start-smallphone.sh \
         20-install-ubuntu.sh \
         30-update-ubuntu-packages.sh \
         70-configure-entry-ubuntu.sh \
@@ -509,6 +516,9 @@ cleanup_stage_retry_temp() {
     38-install-node.sh)
       rm -rf "$HOME/.local/node-download" 2>/dev/null || true
       ;;
+    13-install-termux-node.sh)
+      npm cache verify >/dev/null 2>&1 || true
+      ;;
     50-install-runtime-components.sh)
       find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'smallphoneai-payload.*' -exec rm -rf {} + 2>/dev/null || true
       ;;
@@ -534,12 +544,17 @@ run_full_install() {
   run_stage 00-check-termux.sh
   run_stage 10-prepare-termux.sh
   run_stage 12-update-termux-packages.sh
+  run_stage 13-install-termux-node.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=service-manager,pi-agent,pi-web run_stage 50-install-runtime-components.sh
+  SMALLPHONEAI_START_TARGETS=pi-agent,pi-web \
+    SMALLPHONEAI_START_READY_TIMEOUT="${SMALLPHONEAI_EARLY_PI_START_READY_TIMEOUT:-45}" \
+    run_stage 60-start-smallphone.sh
   run_stage 20-install-ubuntu.sh
   run_stage 30-update-ubuntu-packages.sh
   run_stage 70-configure-entry-ubuntu.sh
   run_stage 38-install-node.sh
   run_stage 35-sync-docs.sh
-  run_stage 50-install-runtime-components.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=github-config-helper,cc-connect,smallphone run_stage 50-install-runtime-components.sh
   run_stage 48-sync-openhouse-registry.sh
   run_stage 60-start-smallphone.sh
   run_machine_stage 65-smallphone-status.sh record-full-health-check
@@ -553,23 +568,24 @@ SmallPhoneAI Installer
 2. 查看 SmallPhoneAI 机器可读状态
 3. 只准备 Termux 路径、配置和文档
 4. 只安装 Termux 基础包
-5. 只安装 Ubuntu
-6. 只同步 SmallPhoneAI 文档
-7. 只更新 Ubuntu 软件包
-8. 设置默认进入 Ubuntu
-9. 只安装 Node.js 24 LTS
-10. 后置安装 Codex
-11. 后置安装 cc-switch
-12. 后置安装 Claude Code
-13. 后置安装 ClaudeCodeUI / CloudCLI
-14. 安装/注册 SmallPhone 运行组件
-15. 同步 OpenHouseAI registry
-16. 启动 SmallPhone 运行栈
-17. 修复 SmallPhone 运行栈
-18. APK 更新后同步核心运行栈
-19. 查看 App Shell hooks
-20. 只检查 Termux 环境
-21. 退出
+5. 只安装 Termux Node/npm
+6. 只安装 Ubuntu
+7. 只同步 SmallPhoneAI 文档
+8. 只更新 Ubuntu 软件包
+9. 设置默认进入 Ubuntu
+10. 只安装 Ubuntu Node.js 24 LTS
+11. 后置安装 Codex
+12. 后置安装 cc-switch
+13. 后置安装 Claude Code
+14. 后置安装 ClaudeCodeUI / CloudCLI
+15. 安装/注册 SmallPhone 运行组件
+16. 同步 OpenHouseAI registry
+17. 启动 SmallPhone 运行栈
+18. 修复 SmallPhone 运行栈
+19. APK 更新后同步核心运行栈
+20. 查看 App Shell hooks
+21. 只检查 Termux 环境
+22. 退出
 EOF
 }
 
@@ -618,6 +634,10 @@ main() {
       ;;
     termux-packages)
       run_stage 12-update-termux-packages.sh
+      return
+      ;;
+    termux-node|termux-nodejs|termux-npm)
+      run_stage 13-install-termux-node.sh
       return
       ;;
     ubuntu)
@@ -692,31 +712,32 @@ main() {
 
   while true; do
     show_menu
-    printf '请选择 [1-21]: '
+    printf '请选择 [1-22]: '
     read -r choice
     case "$choice" in
       1) run_full_install ;;
       2) run_machine_stage 65-smallphone-status.sh status ;;
       3) run_stage 10-prepare-termux.sh ;;
       4) run_stage 12-update-termux-packages.sh ;;
-      5) run_stage 20-install-ubuntu.sh ;;
-      6) run_stage 35-sync-docs.sh ;;
-      7) run_stage 30-update-ubuntu-packages.sh ;;
-      8) run_stage 70-configure-entry-ubuntu.sh ;;
-      9) run_stage 38-install-node.sh ;;
-      10) run_stage 42-install-codex.sh ;;
-      11) run_stage 43-install-cc-switch.sh ;;
-      12) run_stage 44-install-claude-code.sh ;;
-      13) run_stage 45-install-claude-code-ui.sh ;;
-      14) run_stage 50-install-runtime-components.sh ;;
-      15) run_stage 48-sync-openhouse-registry.sh ;;
-      16) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      17) run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      18) SMALLPHONEAI_FORCE_PAYLOAD_REFRESH=1 run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
-      19) run_machine_stage 65-smallphone-status.sh hooks ;;
-      20) run_stage 00-check-termux.sh ;;
-      21) exit 0 ;;
-      *) log "请输入 1 到 21。" ;;
+      5) run_stage 13-install-termux-node.sh ;;
+      6) run_stage 20-install-ubuntu.sh ;;
+      7) run_stage 35-sync-docs.sh ;;
+      8) run_stage 30-update-ubuntu-packages.sh ;;
+      9) run_stage 70-configure-entry-ubuntu.sh ;;
+      10) run_stage 38-install-node.sh ;;
+      11) run_stage 42-install-codex.sh ;;
+      12) run_stage 43-install-cc-switch.sh ;;
+      13) run_stage 44-install-claude-code.sh ;;
+      14) run_stage 45-install-claude-code-ui.sh ;;
+      15) run_stage 50-install-runtime-components.sh ;;
+      16) run_stage 48-sync-openhouse-registry.sh ;;
+      17) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      18) run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      19) SMALLPHONEAI_FORCE_PAYLOAD_REFRESH=1 run_stage 50-install-runtime-components.sh; run_stage 48-sync-openhouse-registry.sh; run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;
+      20) run_machine_stage 65-smallphone-status.sh hooks ;;
+      21) run_stage 00-check-termux.sh ;;
+      22) exit 0 ;;
+      *) log "请输入 1 到 22。" ;;
     esac
   done
 }

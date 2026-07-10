@@ -44,8 +44,8 @@
   },
   "runtimePayloads": {
     "firstRunSource": "apk_bundled_packages",
-    "networkRole": "required_for_system_base_tools_not_pi_web_runtime",
-    "description": "APK 内置运行组件包；pi-web 首装使用 APK 内置完整 runtime，只做解压、校验、注册和启动，不通过 npm install 安装 pi-web。",
+    "networkRole": "required_for_termux_node_and_ubuntu_ai_workbench_packages",
+    "description": "APK 内置运行组件包；pi-agent 和 pi-web 默认解包到 Termux native 并使用 Termux Node/npm 运行，Ubuntu 仅作为 AI 工作台和显式 fallback。",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
     "installRoot": "$HOME/smallphoneai-repos",
@@ -100,17 +100,17 @@
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "准备 Termux、Ubuntu 和基础系统依赖。",
-      "stages": ["env_check", "prepare", "termux_packages", "install_ubuntu", "ubuntu_packages", "entry_ubuntu"]
+      "description": "准备 Termux、Termux Node/npm，先建立 service-manager + pi-agent/pi-web 常驻入口，再继续准备 Ubuntu 和基础系统依赖。",
+      "stages": ["env_check", "prepare", "termux_packages", "termux_node", "runtime_components", "start_smallphone", "install_ubuntu", "ubuntu_packages", "entry_ubuntu"]
     },
     {
-      "title": "准备控制平面依赖",
-      "description": "安装 Node.js 并同步 OpenHouse 文档；Codex、Claude Code、CloudCLI 和 Hermes 改为 pi-agent 后置引导安装。",
+      "title": "准备 Ubuntu AI 工作台依赖",
+      "description": "安装 Ubuntu Node.js 并同步 OpenHouse 文档；Termux Node/npm 专用于 pi-agent/pi-web 常驻层。",
       "stages": ["install_node", "sync_official_docs"]
     },
     {
       "title": "建立 OpenHouse 控制平面",
-      "description": "先解包/安装 pi-agent 和 pi-web，再安装并准备 service-manager，随后注册基础栈、GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容服务。",
+      "description": "Termux Node 后先确保 service-manager，再逐个安装/注册 pi-agent 和 pi-web；Ubuntu 准备完成后继续注册 GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容服务。",
       "stages": ["runtime_components", "sync_openhouse_registry"]
     },
     {
@@ -130,7 +130,7 @@
           "id": "install",
           "type": "button",
           "label": "安装 OpenHouse 控制平面",
-          "description": "完整准备 Termux/Ubuntu、Node.js、OpenHouse 文档、Pi Agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务，并输出最终健康状态；Codex、Claude Code、CloudCLI 和 Hermes 由 pi-agent 后置引导安装。",
+          "description": "一键完整准备 Termux 常驻层，先启动 Pi Agent/pi-web，再继续 Ubuntu AI 工作台层、openhouse-connect 和 SmallPhone 兼容服务，并输出最终健康状态；内部分阶段固定执行。",
           "action": {
             "type": "bootstrap",
             "args": ["install"],
@@ -187,12 +187,12 @@
       "id": "agent_cli_repair",
       "type": "actions",
       "title": "后置 AI 能力补装与修复",
-      "description": "供 pi-agent 或人工单独补装/检查 Node.js、Codex、Claude Code、CloudCLI 和 cc-switch；这些能力不阻塞默认首次安装。",
+      "description": "供 pi-agent 或人工单独补装/检查 Ubuntu Node.js、Codex、Claude Code、CloudCLI 和 cc-switch；这些能力属于 Ubuntu AI 工作台层。",
       "items": [
         {
           "id": "install_node",
           "type": "button",
-          "label": "安装 Node.js",
+          "label": "安装 Ubuntu Node.js",
           "description": "在 Ubuntu 内安装或检查 Node.js 24 LTS 和 npm。",
           "action": { "type": "bootstrap", "args": ["node"] }
         },
@@ -247,6 +247,12 @@
       "action": { "type": "bootstrap", "args": ["termux-packages"] }
     },
     {
+      "id": "termux_node",
+      "title": "安装 Termux Node/npm",
+      "description": "使用 Termux pkg/apt 优先安装 nodejs-lts、npm 和 native build 依赖，失败才 fallback 到 nodejs；最终验证 Node.js major >= 24。Ubuntu 也以 Node.js 24 LTS 为目标，但由 Ubuntu 阶段使用自己的安装来源；不下载 nodejs.org Linux/glibc tarball。",
+      "action": { "type": "bootstrap", "args": ["termux-node"] }
+    },
+    {
       "id": "install_ubuntu",
       "title": "安装 Ubuntu rootfs",
       "description": "通过 proot-distro 安装可重复进入的 Ubuntu rootfs。",
@@ -272,8 +278,8 @@
     },
     {
       "id": "install_node",
-      "title": "安装 Node.js",
-      "description": "安装或检查 OpenHouse 控制平面和后置 AI 工具共用的 Node.js 24 LTS 和 npm。",
+      "title": "安装 Ubuntu Node.js",
+      "description": "安装或检查 Ubuntu AI 工作台和后置 AI 工具共用的 Node.js 24 LTS 和 npm。",
       "action": { "type": "bootstrap", "args": ["node"] }
     },
     {
@@ -303,7 +309,7 @@
     {
       "id": "runtime_components",
       "title": "安装 OpenHouse 运行组件",
-      "description": "从 APK 内置运行组件包先安装 pi-agent/pi-web，再准备 service-manager，随后检查并注册 pi-agent、pi-web、GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容组件。",
+      "description": "默认先在 Termux native 确保 service-manager，再安装、检查并注册 pi-agent/pi-web；Ubuntu 仅用于 AI 工作台/显式 fallback 和后置兼容组件。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {

@@ -51,30 +51,34 @@ public final class OpenHouseInstallController {
     private static final Stage[] RUNTIME_ENVIRONMENT_STAGE_SEQUENCE = new Stage[] {
         Stage.PREPARE,
         Stage.TERMUX_PACKAGES,
+        Stage.INSTALL_TERMUX_NODE,
+        Stage.RUNTIME_COMPONENTS,
+        Stage.START_SMALLPHONE,
         Stage.INSTALL_UBUNTU,
         Stage.UBUNTU_PACKAGES,
         Stage.CONFIGURE_ENTRY_UBUNTU
     };
     private static final Stage[] AI_FEATURES_STAGE_SEQUENCE = new Stage[] {
+        Stage.RUNTIME_COMPONENTS,
+        Stage.START_SMALLPHONE,
         Stage.INSTALL_NODE,
         Stage.SYNC_OFFICIAL_DOCS,
-        Stage.RUNTIME_COMPONENTS,
+        Stage.INSTALL_AIONUI,
         Stage.SYNC_OPENHOUSE_REGISTRY,
-        Stage.START_SMALLPHONE,
-        Stage.INSTALL_AIONUI
     };
     private static final Stage[] FULL_STAGE_SEQUENCE = new Stage[] {
         Stage.PREPARE,
         Stage.TERMUX_PACKAGES,
+        Stage.INSTALL_TERMUX_NODE,
+        Stage.RUNTIME_COMPONENTS,
+        Stage.START_SMALLPHONE,
         Stage.INSTALL_UBUNTU,
         Stage.UBUNTU_PACKAGES,
         Stage.CONFIGURE_ENTRY_UBUNTU,
         Stage.INSTALL_NODE,
         Stage.SYNC_OFFICIAL_DOCS,
-        Stage.RUNTIME_COMPONENTS,
+        Stage.INSTALL_AIONUI,
         Stage.SYNC_OPENHOUSE_REGISTRY,
-        Stage.START_SMALLPHONE,
-        Stage.INSTALL_AIONUI
     };
 
     private static volatile OpenHouseInstallController instance;
@@ -657,11 +661,11 @@ public final class OpenHouseInstallController {
             : System.currentTimeMillis();
         while (true) {
             try {
-                if (statusRepository.isPiWebReachable()) {
+                if (statusRepository.isFirstUseReady()) {
                     return true;
                 }
             } catch (Exception e) {
-                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to verify OpenHouseAI pi-web readiness", e);
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to verify OpenHouseAI first-use readiness", e);
             }
 
             long remainingMs = deadlineMs - System.currentTimeMillis();
@@ -1331,7 +1335,8 @@ public final class OpenHouseInstallController {
                                       OpenHouseBundledRuntimeSync.Result runtimeSync) {
         environment.put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
         environment.put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
-        environment.put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":/system/bin");
+        environment.put("PATH", TermuxConstants.TERMUX_HOME_DIR_PATH + "/.npm-global/bin:"
+            + TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":/system/bin");
         environment.put("LD_LIBRARY_PATH", TermuxConstants.TERMUX_LIB_PREFIX_DIR_PATH);
         environment.put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
         environment.put("LANG", "C.UTF-8");
@@ -1432,7 +1437,7 @@ public final class OpenHouseInstallController {
         builder.append("set -euo pipefail\n");
         builder.append("export HOME=\"${HOME:-/data/data/com.termux/files/home}\"\n");
         builder.append("export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"\n");
-        builder.append("export PATH=\"$PREFIX/bin:/system/bin:${PATH:-}\"\n");
+        builder.append("export PATH=\"$HOME/.npm-global/bin:$PREFIX/bin:/system/bin:${PATH:-}\"\n");
         builder.append("export LD_LIBRARY_PATH=\"$PREFIX/lib:${LD_LIBRARY_PATH:-}\"\n");
         builder.append("export TMPDIR=\"${TMPDIR:-$PREFIX/tmp}\"\n");
         builder.append("export TERM=\"xterm-256color\"\n");
@@ -1660,14 +1665,15 @@ public final class OpenHouseInstallController {
     private enum Stage {
         PREPARE("prepare", "prepare-product.sh", "准备本机目录", "正在创建文档目录和工作区。"),
         TERMUX_PACKAGES("termux_packages", "update-termux-packages.sh", "准备 Linux 环境", "正在安装 Termux 基础包。"),
+        INSTALL_TERMUX_NODE("install_termux_node", "install-termux-node.sh", "安装 Termux Node.js 24 LTS", "正在安装或检查 Termux native Node.js 24 LTS/npm，供 pi-agent 和 pi-web 常驻服务使用。"),
         INSTALL_UBUNTU("install_ubuntu", "install-ubuntu.sh", "下载 Linux 系统", "正在下载并安装 Ubuntu。"),
         SYNC_OFFICIAL_DOCS("sync_official_docs", "sync-official-docs.sh", "同步使用文档", "正在同步 OpenHouseAI 使用文档。"),
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh", "安装 Linux 基础工具", "正在安装 curl、git 等基础工具。"),
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh", "设置启动方式", "正在配置默认进入 Ubuntu。"),
-        INSTALL_NODE("install_node", "install-node.sh", "安装 Node.js 24 LTS", "正在安装或检查 Node.js 24 LTS，pi-agent 和 pi-web 会复用这一套 Node 运行时。"),
-        RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装本机 Agent 运行栈", "正在从 APK 内置组件包安装 pi-agent、pi-web 和 SmallPhone 兼容组件；service-manager 控制面要求运行在 Termux native，cc-connect 作为可修复连接服务处理。"),
+        INSTALL_NODE("install_node", "install-node.sh", "安装 Ubuntu Node.js 24 LTS", "正在 Ubuntu AI 工作台层安装或检查 Node.js 24 LTS，供 AionUI、OpenHouseAI 工作台和 AI CLI 工具使用。"),
+        RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装本机 Agent 运行栈", "正在先确保 Termux native service-manager 可用，再按 pi-agent、pi-web 顺序安装并逐个注册；Ubuntu 工作台仍属于后续准备运行环境。"),
         SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh", "同步 OpenHouseAI 注册表", "正在把 Ubuntu mirror 同步到 Termux canonical，供 App、SmallPhone 和 AI 读取。"),
-        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动本机 pi-agent", "正在通过 Termux native service-manager 启动 pi-agent、pi-web 和 SmallPhone 兼容服务，并尝试拉起 openhouse-connect。"),
+        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动本机 pi-agent", "正在通过 Termux native service-manager 先启动 pi-agent 和 pi-web，让主入口先可用；后续继续准备 Ubuntu 工作台。"),
         INSTALL_AIONUI("install_aionui", "install-aionui.sh", "安装 AI 工作台", "正在从 APK 内置离线包安装 AionUi 工作台，并检查本机入口。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),

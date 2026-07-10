@@ -51,13 +51,21 @@ public final class OpenHouseStatusRepository {
         }
         boolean ubuntuInstalled = ubuntuCheck.isSuccess();
         boolean entryUbuntuConfigured = termuxReady && runTermuxCommand("test \"$(tr -d '[:space:]' < \"$HOME/.openhouseai/entry-mode\" 2>/dev/null || true)\" = ubuntu && test -f \"$HOME/.openhouseai/entry.sh\" && { grep -Fq '# OpenHouseAI startup entry' \"$HOME/.bashrc\" 2>/dev/null || grep -Fq '# SmallPhoneAI startup entry' \"$HOME/.bashrc\" 2>/dev/null; }", 8).isSuccess();
-        boolean nodeInstalled = ubuntuInstalled && runUbuntuCheck("command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && node -e \"process.exit(parseInt(process.versions.node.split('.')[0], 10) >= 24 ? 0 : 1)\"", 12);
+        boolean termuxNodeInstalled = termuxReady && isTermuxNodeInstalled();
+        boolean ubuntuNodeInstalled = ubuntuInstalled && isUbuntuNodeInstalled();
+        boolean nodeInstalled = ubuntuNodeInstalled;
         boolean codexInstalled = ubuntuInstalled && runUbuntuCheck("command -v codex >/dev/null 2>&1", 12);
         boolean claudeCodeInstalled = ubuntuInstalled && runUbuntuCheck("command -v claude >/dev/null 2>&1", 12);
         boolean cloudCliInstalled = ubuntuInstalled && runUbuntuCheck("command -v cloudcli >/dev/null 2>&1 && test -s \"$HOME/.config/openhouseai/claude-code-ui-port\" && test -s \"$HOME/.config/openhouseai/claude-code-ui-url\"", 12);
         boolean serviceManagerInstalled = termuxReady && runTermuxCommand("{ command -v service-manager >/dev/null 2>&1 && service-manager --version >/dev/null 2>&1; } || { test -x \"$PREFIX/bin/service-manager\" && \"$PREFIX/bin/service-manager\" --version >/dev/null 2>&1; } || { test -x \"$HOME/.local/bin/service-manager\" && \"$HOME/.local/bin/service-manager\" --version >/dev/null 2>&1; }", 8).isSuccess();
-        boolean piAgentInstalled = ubuntuInstalled && runUbuntuCheck("{ test -d \"$HOME/smallphoneai-repos/pi-agent\" && { test -f \"$HOME/smallphoneai-repos/pi-agent/scripts/register-service.sh\" || test -x \"$HOME/smallphoneai-repos/pi-agent/bin/openhouse-pi-agent-sentinel\" || test -f \"$HOME/smallphoneai-repos/pi-agent/package.json\"; }; } || command -v pi >/dev/null 2>&1", 12);
-        boolean piWebInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/pi-web\" && { test -f \"$HOME/smallphoneai-repos/pi-web/runtime/pi-web/server.js\" || test -f \"$HOME/smallphoneai-repos/pi-web/server.js\" || test -x \"$HOME/smallphoneai-repos/pi-web/bin/openhouse-pi-web-start\" || test -f \"$HOME/smallphoneai-repos/pi-web/scripts/register-service.sh\"; }", 12);
+        boolean piAgentInstalled = termuxReady && isTermuxPiAgentInstalled();
+        if (!piAgentInstalled && ubuntuInstalled) {
+            piAgentInstalled = isUbuntuPiAgentInstalled();
+        }
+        boolean piWebInstalled = termuxReady && isTermuxPiWebInstalled();
+        if (!piWebInstalled && ubuntuInstalled) {
+            piWebInstalled = isUbuntuPiWebInstalled();
+        }
         boolean openhouseConnectInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/openhouse-connect\" && { test -f \"$HOME/smallphoneai-repos/openhouse-connect/scripts/register-service.sh\" || test -f \"$HOME/smallphoneai-repos/openhouse-connect/package.json\" || test -f \"$HOME/smallphoneai-repos/openhouse-connect/Makefile\"; }", 12);
         boolean smallPhoneRuntimeInstalled = ubuntuInstalled && runUbuntuCheck("test -d \"$HOME/smallphoneai-repos/smallphone-active\" && { test -d \"$HOME/smallphoneai-repos/smallphone-active/openhouse-components\" || test -d \"$HOME/smallphoneai-repos/smallphone-active/standalone-apps\" || test -f \"$HOME/smallphoneai-repos/smallphone-active/package.json\"; }", 12);
         boolean aionUiInstalled = ubuntuInstalled && isAionUiInstalled();
@@ -78,6 +86,8 @@ public final class OpenHouseStatusRepository {
             ubuntuInstalled,
             isOfficialDocsSynced(),
             entryUbuntuConfigured,
+            termuxNodeInstalled,
+            ubuntuNodeInstalled,
             nodeInstalled,
             codexInstalled,
             claudeCodeInstalled,
@@ -133,16 +143,7 @@ public final class OpenHouseStatusRepository {
     }
 
     public boolean isPiWebReachable() {
-        if (!probeUrl(PI_WEB_DEFAULT_URL)) {
-            return false;
-        }
-        if (!isTermuxReady()) {
-            return false;
-        }
-        boolean ubuntuInstalled = runTermuxCommand("proot-distro login ubuntu -- true", 10).isSuccess();
-        return ubuntuInstalled
-            && isAionUiInstalled()
-            && isAionUiReachable(resolveAionUiUrl(true));
+        return probeUrl(PI_WEB_DEFAULT_URL);
     }
 
     public OpenHouseOnboardingState loadOnboardingState() {
@@ -313,6 +314,62 @@ public final class OpenHouseStatusRepository {
             "for dir in \"$HOME/aionui-web\" \"$HOME/openhouse/aionui-web\" \"$HOME/openhouseai/aionui-web\" \"$HOME/.local/share/openhouseai/aionui-web\" \"$HOME/.local/opt/aionui-web\" \"$HOME/smallphoneai-repos/aionui-web\" \"/opt/openhouseai/aionui-web\"; do "
                 + "[ -x \"$dir/aionui-web\" ] && [ -f \"$dir/static/index.html\" ] && exit 0; "
                 + "done; command -v aionui-web >/dev/null 2>&1",
+            12);
+    }
+
+    private boolean isTermuxNodeInstalled() {
+        return runTermuxCommand(
+            "command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 "
+                + "&& node -e \"process.exit(parseInt(process.versions.node.split('.')[0], 10) >= 24 ? 0 : 1)\"",
+            12).isSuccess();
+    }
+
+    private boolean isUbuntuNodeInstalled() {
+        return runUbuntuCheck(
+            "command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 "
+                + "&& node -e \"process.exit(parseInt(process.versions.node.split('.')[0], 10) >= 24 ? 0 : 1)\"",
+            12);
+    }
+
+    private boolean isTermuxPiAgentInstalled() {
+        return runTermuxCommand(
+            "{ test -d \"$HOME/smallphoneai-repos/pi-agent\" "
+                + "&& { test -f \"$HOME/smallphoneai-repos/pi-agent/scripts/register-service.sh\" "
+                + "|| test -x \"$HOME/smallphoneai-repos/pi-agent/bin/openhouse-pi-agent-sentinel\" "
+                + "|| test -f \"$HOME/smallphoneai-repos/pi-agent/package.json\"; }; } "
+                + "|| command -v pi >/dev/null 2>&1",
+            12).isSuccess();
+    }
+
+    private boolean isUbuntuPiAgentInstalled() {
+        return runUbuntuCheck(
+            "{ test -d \"$HOME/smallphoneai-repos/pi-agent\" "
+                + "&& { test -f \"$HOME/smallphoneai-repos/pi-agent/scripts/register-service.sh\" "
+                + "|| test -x \"$HOME/smallphoneai-repos/pi-agent/bin/openhouse-pi-agent-sentinel\" "
+                + "|| test -f \"$HOME/smallphoneai-repos/pi-agent/package.json\"; }; } "
+                + "|| command -v pi >/dev/null 2>&1",
+            12);
+    }
+
+    private boolean isTermuxPiWebInstalled() {
+        return runTermuxCommand(
+            "test -d \"$HOME/smallphoneai-repos/pi-web\" "
+                + "&& { test -f \"$HOME/smallphoneai-repos/pi-web/runtime/pi-web/server.js\" "
+                + "|| test -f \"$HOME/smallphoneai-repos/pi-web/server.js\" "
+                + "|| test -x \"$HOME/smallphoneai-repos/pi-web/bin/openhouse-pi-web-start\" "
+                + "|| test -f \"$HOME/smallphoneai-repos/pi-web/scripts/register-service.sh\" "
+                + "|| test -f \"$HOME/smallphoneai-repos/pi-web/package.json\"; }",
+            12).isSuccess();
+    }
+
+    private boolean isUbuntuPiWebInstalled() {
+        return runUbuntuCheck(
+            "test -d \"$HOME/smallphoneai-repos/pi-web\" "
+                + "&& { test -f \"$HOME/smallphoneai-repos/pi-web/runtime/pi-web/server.js\" "
+                + "|| test -f \"$HOME/smallphoneai-repos/pi-web/server.js\" "
+                + "|| test -x \"$HOME/smallphoneai-repos/pi-web/bin/openhouse-pi-web-start\" "
+                + "|| test -f \"$HOME/smallphoneai-repos/pi-web/scripts/register-service.sh\" "
+                + "|| test -f \"$HOME/smallphoneai-repos/pi-web/package.json\"; }",
             12);
     }
 

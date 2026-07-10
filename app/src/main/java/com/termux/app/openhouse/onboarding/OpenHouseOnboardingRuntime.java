@@ -250,8 +250,9 @@ public final class OpenHouseOnboardingRuntime {
             return 0;
         }
         int done = 0;
-        int total = 10;
-        if (status.nodeInstalled) done++;
+        int total = 11;
+        if (status.termuxNodeInstalled) done++;
+        if (status.ubuntuNodeInstalled) done++;
         if (status.officialDocsSynced) done++;
         if (status.serviceManagerInstalled) done++;
         if (status.piAgentInstalled) done++;
@@ -287,8 +288,11 @@ public final class OpenHouseOnboardingRuntime {
         if (status == null) {
             return "正在安装 AI 功能";
         }
-        if (!status.nodeInstalled || !status.serviceManagerInstalled || !status.piAgentInstalled || !status.piWebInstalled) {
-            return "正在安装 AI 功能";
+        if (!status.termuxNodeInstalled || !status.serviceManagerInstalled || !status.piAgentInstalled || !status.piWebInstalled) {
+            return "正在安装 Termux Pi 运行栈";
+        }
+        if (!status.ubuntuNodeInstalled) {
+            return "正在安装 Ubuntu Node.js 24 LTS 工作台运行时";
         }
         if (!status.aionUiInstalled) {
             return "正在安装本地 AI 页面";

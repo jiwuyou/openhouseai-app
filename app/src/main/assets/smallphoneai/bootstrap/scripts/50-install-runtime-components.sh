@@ -1,42 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/_retry-profile.sh" ]; then
-  # shellcheck source=_retry-profile.sh
-  . "$SCRIPT_DIR/_retry-profile.sh"
-fi
-
-if ! command -v smallphoneai_retry_mode >/dev/null 2>&1; then
-  smallphoneai_retry_mode() {
-    local raw
-    raw="${OPENHOUSE_RETRY_MODE:-${SMALLPHONEAI_RETRY_MODE:-normal}}"
-    raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
-    case "$raw" in
-      cn|china|mainland|domestic|china-mainland) printf 'cn' ;;
-      *) printf 'normal' ;;
-    esac
-  }
-
-  smallphoneai_is_cn_retry() {
-    [ "$(smallphoneai_retry_mode)" = "cn" ]
-  }
-
-  smallphoneai_maybe_rewrite_github_url() {
-    local url="$1"
-    local prefix="${SMALLPHONEAI_GITHUB_PROXY_PREFIX:-${OPENHOUSE_GITHUB_PROXY_PREFIX:-}}"
-    if smallphoneai_is_cn_retry && [ -n "$prefix" ]; then
-      case "$url" in
-        https://github.com/*|https://raw.githubusercontent.com/*)
-          printf '%s%s\n' "$prefix" "$url"
-          return 0
-          ;;
-      esac
-    fi
-    printf '%s\n' "$url"
-  }
-fi
-
 log() {
   printf '[SmallPhoneAI] %s\n' "$*"
 }
@@ -45,10 +9,24 @@ warn() {
   printf '[SmallPhoneAI] WARN: %s\n' "$*" >&2
 }
 
+ensure_tmpdir() {
+  if [ -z "${TMPDIR:-}" ]; then
+    if [ -n "${PREFIX:-}" ] && [ -d "${PREFIX:-}/tmp" ]; then
+      TMPDIR="$PREFIX/tmp"
+    else
+      TMPDIR="${HOME:-.}/.tmp"
+    fi
+    export TMPDIR
+  fi
+  mkdir -p "$TMPDIR"
+}
+
 run_logged() {
   log "+ $*"
   "$@"
 }
+
+ensure_tmpdir
 
 is_termux() {
   [ -n "${PREFIX:-}" ] && [ -d "${PREFIX:-}/bin" ] && [ -d "/data/data/com.termux/files" ]
@@ -56,77 +34,6 @@ is_termux() {
 
 is_current_ubuntu() {
   [ -f /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release
-}
-
-read_openhouse_service_manager_endpoint() {
-  local config key value
-  for config in \
-    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
-    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
-    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
-    [ -n "$config" ] && [ -f "$config" ] || continue
-    for key in listen_addr listenAddr base_url baseUrl baseURL url; do
-      value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
-      if [ -n "$value" ]; then
-        printf '%s\n' "$value"
-        return 0
-      fi
-    done
-  done
-  return 1
-}
-
-normalize_service_manager_bind() {
-  local value="${1:-}"
-  case "$value" in
-    http://*) value="${value#http://}" ;;
-    https://*) value="${value#https://}" ;;
-  esac
-  value="${value%%/*}"
-  case "$value" in
-    "") return 1 ;;
-    :*) printf '127.0.0.1%s\n' "$value"; return 0 ;;
-    0.0.0.0) printf '127.0.0.1\n'; return 0 ;;
-    0.0.0.0:*) printf '127.0.0.1:%s\n' "${value#0.0.0.0:}"; return 0 ;;
-    "::"|"[::]") printf '127.0.0.1\n'; return 0 ;;
-    "[::]:"*) printf '127.0.0.1:%s\n' "${value#"[::]:"}"; return 0 ;;
-    :::*) printf '127.0.0.1:%s\n' "${value#:::}"; return 0 ;;
-    *[!0-9]*) printf '%s\n' "$value"; return 0 ;;
-    *) printf '127.0.0.1:%s\n' "$value"; return 0 ;;
-  esac
-}
-
-configured_service_manager_bind() {
-  local endpoint
-  endpoint="$(read_openhouse_service_manager_endpoint || true)"
-  if [ -n "$endpoint" ] && normalize_service_manager_bind "$endpoint"; then
-    return
-  fi
-  if [ -n "${SERVICE_MANAGER_URL:-}" ] && normalize_service_manager_bind "$SERVICE_MANAGER_URL"; then
-    return
-  fi
-  if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
-    normalize_service_manager_bind "$SMALLPHONEAI_SERVICE_MANAGER_BIND"
-    return
-  fi
-  printf '127.0.0.1:20087\n'
-}
-
-configured_service_manager_url() {
-  local endpoint scheme bind
-  endpoint="$(read_openhouse_service_manager_endpoint || true)"
-  if [ -z "$endpoint" ]; then
-    endpoint="${SERVICE_MANAGER_URL:-}"
-  fi
-  if [ -z "$endpoint" ] && [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
-    endpoint="$SMALLPHONEAI_SERVICE_MANAGER_BIND"
-  fi
-  case "$endpoint" in
-    https://*) scheme="https" ;;
-    *) scheme="http" ;;
-  esac
-  bind="$(normalize_service_manager_bind "${endpoint:-$(configured_service_manager_bind)}")" || bind="127.0.0.1:20087"
-  printf '%s://%s\n' "$scheme" "$bind"
 }
 
 detect_smallphoneai_runtime() {
@@ -149,7 +56,7 @@ detect_smallphoneai_runtime() {
   printf 'unknown'
 }
 
-normalize_early_target() {
+normalize_bootstrap_target() {
   case "$1" in
     openhouse-system|main-system|system)
       printf 'openhouse-system'
@@ -157,17 +64,27 @@ normalize_early_target() {
     openhouse-connect)
       printf 'cc-connect'
       ;;
+    hermes-agent|hermes-webui)
+      printf 'hermes'
+      ;;
+    pi|pi-agent)
+      printf 'pi-agent'
+      ;;
+    pi-web)
+      printf 'pi-web'
+      ;;
     *)
       printf '%s' "$1"
       ;;
   esac
 }
 
-early_should_run_component() {
+bootstrap_target_requested() {
   local target="$1"
-  local rest item wanted
+  local rest item normalized
   rest="${SMALLPHONEAI_COMPONENT_TARGETS:-}"
   [ -n "$rest" ] || return 0
+
   while [ -n "$rest" ]; do
     case "$rest" in
       *,*)
@@ -179,111 +96,314 @@ early_should_run_component() {
         rest=""
         ;;
     esac
-    wanted="$(normalize_early_target "$item")"
-    [ "$wanted" = "$target" ] && return 0
+    normalized="$(normalize_bootstrap_target "$item")"
+    [ "$normalized" = "$target" ] && return 0
   done
+
   return 1
 }
 
-find_termux_service_manager() {
+append_csv() {
+  local current="$1"
+  local item="$2"
+  if [ -z "$item" ]; then
+    printf '%s\n' "$current"
+  elif [ -z "$current" ]; then
+    printf '%s\n' "$item"
+  else
+    printf '%s,%s\n' "$current" "$item"
+  fi
+}
+
+openhouse_pi_runtime() {
+  local runtime="${OPENHOUSE_PI_RUNTIME:-${SMALLPHONEAI_PI_RUNTIME:-termux}}"
+  runtime="$(printf '%s' "$runtime" | tr '[:upper:]' '[:lower:]')"
+  case "$runtime" in
+    ubuntu|proot|ubuntu-proot)
+      printf 'ubuntu'
+      ;;
+    *)
+      printf 'termux'
+      ;;
+  esac
+}
+
+default_component_targets() {
+  printf '%s\n' "service-manager,pi-agent,pi-web,cc-connect,smallphone,hermes"
+}
+
+bootstrap_targets_for_runtime() {
+  local wanted_runtime="$1"
+  local rest item normalized out pi_runtime
+  rest="${SMALLPHONEAI_COMPONENT_TARGETS:-}"
+  if [ -z "$rest" ]; then
+    rest="$(default_component_targets)"
+  fi
+
+  out=""
+  pi_runtime="$(openhouse_pi_runtime)"
+  while [ -n "$rest" ]; do
+    case "$rest" in
+      *,*)
+        item="${rest%%,*}"
+        rest="${rest#*,}"
+        ;;
+      *)
+        item="$rest"
+        rest=""
+        ;;
+    esac
+    normalized="$(normalize_bootstrap_target "$item")"
+    [ -n "$normalized" ] || continue
+    if [ "$wanted_runtime" = "termux" ]; then
+      case "$normalized" in
+        pi-agent|pi-web)
+          [ "$pi_runtime" = "termux" ] && out="$(append_csv "$out" "$normalized")"
+          ;;
+      esac
+    else
+      case "$normalized" in
+        service-manager|openhouse-system)
+          ;;
+        pi-agent|pi-web)
+          [ "$pi_runtime" = "ubuntu" ] && out="$(append_csv "$out" "$normalized")"
+          ;;
+        *)
+          out="$(append_csv "$out" "$normalized")"
+          ;;
+      esac
+    fi
+  done
+  printf '%s\n' "$out"
+}
+
+termux_service_manager_config_path() {
+  local termux_home
+  termux_home="${OPENHOUSEAI_TERMUX_HOME:-$HOME}"
+  printf '%s\n' "${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-${SERVICE_MANAGER_CONFIG_PATH:-$termux_home/.config/openhouseai/service-manager/config.json}}"
+}
+
+component_binary_current_env_executable() {
+  local payload_name="$1"
+  local binary="$2"
+
+  [ -f "$binary" ] && [ -x "$binary" ] || return 1
+
+  case "$payload_name" in
+    service-manager)
+      "$binary" --version >/dev/null 2>&1
+      ;;
+    openhouse-connect)
+      "$binary" --version >/dev/null 2>&1 || "$binary" --help >/dev/null 2>&1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+service_manager_binary_current_env_executable() {
+  component_binary_current_env_executable service-manager "$1"
+}
+
+find_termux_service_manager_binary() {
   local candidate
-  for candidate in \
-    "$(command -v service-manager 2>/dev/null || true)" \
-    "${PREFIX:-/data/data/com.termux/files/usr}/bin/service-manager" \
-    "$HOME/.local/bin/service-manager" \
-    "$HOME/smallphoneai-repos/service-manager/target/release/service-manager"; do
-    [ -n "$candidate" ] && [ -x "$candidate" ] || continue
-    if "$candidate" --version >/dev/null 2>&1; then
+  if command -v service-manager >/dev/null 2>&1; then
+    candidate="$(command -v service-manager)"
+    if service_manager_binary_current_env_executable "$candidate"; then
       printf '%s\n' "$candidate"
       return 0
     fi
+    warn "发现 service-manager 但当前 Termux 环境不可执行，将忽略并继续查找 payload/local binary：$candidate"
+  fi
+  for candidate in \
+    "${PREFIX:-/data/data/com.termux/files/usr}/bin/service-manager" \
+    "$HOME/smallphoneai-repos/service-manager/service-manager" \
+    "$HOME/smallphoneai-repos/service-manager/target/release/service-manager"; do
+    if service_manager_binary_current_env_executable "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    elif [ -e "$candidate" ]; then
+      warn "发现 service-manager 但当前环境不可执行，将等待 payload/local 刷新：$candidate"
+    fi
   done
   return 1
 }
 
-prepare_termux_service_manager_repo() {
-  local repo="$HOME/smallphoneai-repos/service-manager"
-  local payload_root="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}"
-  local archive="$payload_root/service-manager.tar"
-  local work_dir payload_dir
-
-  [ -f "$repo/scripts/install.sh" ] && return 0
-  [ -f "$archive" ] || return 1
-  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-sm-payload.XXXXXX")" || return 1
-  if ! tar -xf "$archive" -C "$work_dir"; then
-    rm -rf "$work_dir" >/dev/null 2>&1 || true
-    return 1
-  fi
-  if [ -f "$work_dir/scripts/install.sh" ]; then
-    payload_dir="$work_dir"
-  else
-    payload_dir="$(find "$work_dir" -mindepth 2 -maxdepth 3 -path '*/scripts/install.sh' -type f -print | sed 's#/scripts/install\.sh$##' | head -n 1)"
-  fi
-  if [ -z "$payload_dir" ] || [ ! -d "$payload_dir" ]; then
-    rm -rf "$work_dir" >/dev/null 2>&1 || true
-    return 1
-  fi
-  mkdir -p "$repo"
-  cp -a "$payload_dir/." "$repo/"
-  rm -rf "$work_dir" >/dev/null 2>&1 || true
-}
-
 termux_service_manager_ready() {
-  local service_manager_url
-  service_manager_url="$(configured_service_manager_url)"
+  local url="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}"
   command -v curl >/dev/null 2>&1 || return 1
-  curl -fsS --max-time 2 "$service_manager_url/api/v1/health" >/dev/null 2>&1
+  curl -fsS --max-time 2 "$url/api/v1/health" >/dev/null 2>&1
 }
 
-ensure_termux_native_service_manager() {
-  local repo="$HOME/smallphoneai-repos/service-manager"
-  local bind config mode sm_bin log_file token
+start_termux_service_manager_for_registration() {
+  local bind url cfg sm_bin
+  bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
+  url="${SERVICE_MANAGER_URL:-http://$bind}"
+  cfg="$(termux_service_manager_config_path)"
 
-  if ! sm_bin="$(find_termux_service_manager || true)"; then
-    prepare_termux_service_manager_repo || {
-      warn "无法从 APK payload 准备 service-manager 安装目录。"
-      return 1
-    }
-    [ -f "$repo/scripts/install.sh" ] || return 1
-
-    bind="$(configured_service_manager_bind)"
-    config="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}"
-    mode="${SMALLPHONEAI_TERMUX_SERVICE_MANAGER_INSTALL_MODE:-release}"
-    log "正在安装 Termux native service-manager 控制面：mode=$mode"
-    (
-      cd "$repo"
-      BIND="$bind" CONFIG_PATH="$config" SERVICE_MANAGER_INSTALL_MODE="$mode" INSTALL_SERVICE=0 ./scripts/install.sh
-    ) || return 1
-
-    sm_bin="$(find_termux_service_manager || true)"
+  if termux_service_manager_ready; then
+    return 0
   fi
-  [ -n "$sm_bin" ] || return 1
 
-  bind="$(configured_service_manager_bind)"
-  config="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}"
-  log_file="${SMALLPHONEAI_TERMUX_LOG_DIR:-$HOME/.smallphoneai/logs}/service-manager.log"
-  mkdir -p "$(dirname "$config")" "$(dirname "$log_file")"
-  if ! termux_service_manager_ready; then
-    log "正在启动 Termux native service-manager 控制面：$bind"
-    if command -v setsid >/dev/null 2>&1; then
-      (trap '' HUP; setsid -f "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null) || true
-    else
-      (trap '' HUP; nohup "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null &)
-    fi
-    for _ in $(seq 1 30); do
-      termux_service_manager_ready && break
+  if command -v sv >/dev/null 2>&1; then
+    sv up service-manager >/dev/null 2>&1 || true
+    for _ in $(seq 1 10); do
+      termux_service_manager_ready && return 0
       sleep 1
     done
   fi
-  termux_service_manager_ready || return 1
 
-  token="$("$sm_bin" token show --config "$config" 2>/dev/null | tr -d '\r\n' || true)"
+  sm_bin="$(find_termux_service_manager_binary || true)"
+  [ -n "$sm_bin" ] || return 1
+
+  mkdir -p "$HOME/.smallphoneai/logs" "$(dirname "$cfg")"
+  log "正在 Termux native 启动 service-manager 以注册组件：$url"
+  nohup "$sm_bin" serve --config "$cfg" --bind "$bind" > "$HOME/.smallphoneai/logs/service-manager.log" 2>&1 < /dev/null &
+  for _ in $(seq 1 20); do
+    termux_service_manager_ready && return 0
+    sleep 1
+  done
+  return 1
+}
+
+resolve_termux_service_manager_token() {
+  local token sm_bin cfg
+  token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
   if [ -n "$token" ]; then
-    export SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-$token}"
-    export SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-$token}"
+    printf '%s\n' "$token"
+    return 0
+  fi
+  sm_bin="$(find_termux_service_manager_binary || true)"
+  cfg="$(termux_service_manager_config_path)"
+  if [ -n "$sm_bin" ]; then
+    "$sm_bin" token show --config "$cfg" 2>/dev/null | tr -d '\r\n' || true
   fi
 }
 
+if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; then
+  termux_pi_targets="$(bootstrap_targets_for_runtime termux)"
+  ubuntu_targets="$(bootstrap_targets_for_runtime ubuntu)"
+  native_token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+  native_config="$(termux_service_manager_config_path)"
+
+  log "正在 Termux native 部署 openhouse-system 主系统 CLI。"
+  SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
+    SMALLPHONEAI_COMPONENT_TARGETS=openhouse-system \
+    SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
+    SERVICE_MANAGER_CONFIG_PATH="$native_config" \
+    bash -s < "$0"
+
+  if bootstrap_target_requested "service-manager"; then
+    log "正在 Termux native 安装 service-manager 控制面。"
+    SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
+      SMALLPHONEAI_COMPONENT_TARGETS=service-manager \
+      SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
+      SERVICE_MANAGER_CONFIG_PATH="$native_config" \
+      bash -s < "$0"
+    start_termux_service_manager_for_registration || warn "Termux native service-manager 暂未就绪；业务组件会在启动阶段再次刷新注册。"
+    native_token="$(resolve_termux_service_manager_token || true)"
+  elif [ -n "$ubuntu_targets" ] || [ -n "$termux_pi_targets" ]; then
+    start_termux_service_manager_for_registration || warn "Termux native service-manager 暂未就绪；业务组件可能只能完成安装/检查，注册会在启动阶段重试。"
+    native_token="$(resolve_termux_service_manager_token || true)"
+  fi
+
+  if [ -n "$termux_pi_targets" ]; then
+    log "正在 Termux native 安装、检查并注册 pi 常驻组件：$termux_pi_targets"
+    SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
+      SMALLPHONEAI_COMPONENT_TARGETS="$termux_pi_targets" \
+      SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
+      SERVICE_MANAGER_CONFIG_PATH="$native_config" \
+      SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}" \
+      SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-$native_token}" \
+      SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-${SERVICE_MANAGER_TOKEN:-$native_token}}" \
+      bash -s < "$0"
+  fi
+
+  if [ -z "$ubuntu_targets" ]; then
+    log "本次组件目标不需要进入 Ubuntu。"
+    exit 0
+  fi
+
+  if command -v proot-distro >/dev/null 2>&1 && proot-distro login ubuntu -- true >/dev/null 2>&1; then
+    ubuntu_runtime_home="${SMALLPHONEAI_UBUNTU_HOME:-${OPENHOUSEAI_UBUNTU_HOME:-/root}}"
+    ubuntu_repo_root="${SMALLPHONEAI_UBUNTU_COMPONENT_REPO_ROOT:-${OPENHOUSEAI_UBUNTU_COMPONENT_REPO_ROOT:-$ubuntu_runtime_home/smallphoneai-repos}}"
+    log "正在 Ubuntu 内安装、检查并注册业务组件：$ubuntu_targets"
+    SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
+      proot-distro login ubuntu -- env \
+        HOME="$ubuntu_runtime_home" \
+        SMALLPHONEAI_UBUNTU_HOME="$ubuntu_runtime_home" \
+        OPENHOUSEAI_UBUNTU_HOME="$ubuntu_runtime_home" \
+        SMALLPHONEAI_COMPONENT_REPO_ROOT="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$ubuntu_repo_root}" \
+        SMALLPHONEAI_OFFLINE_PAYLOAD_DIR="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}" \
+        SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT="${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}" \
+        SMALLPHONEAI_COMPONENT_SOURCE_MODE="${SMALLPHONEAI_COMPONENT_SOURCE_MODE:-bundle}" \
+        SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE="${SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE:-0}" \
+        SMALLPHONEAI_COMPONENTS_AUTO_CLONE="${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}" \
+        SMALLPHONEAI_COMPONENTS_STRICT="${SMALLPHONEAI_COMPONENTS_STRICT:-1}" \
+        SMALLPHONEAI_COMPONENT_TARGETS="$ubuntu_targets" \
+        OPENHOUSE_PI_RUNTIME="${OPENHOUSE_PI_RUNTIME:-${SMALLPHONEAI_PI_RUNTIME:-termux}}" \
+        SMALLPHONEAI_PI_RUNTIME="${SMALLPHONEAI_PI_RUNTIME:-${OPENHOUSE_PI_RUNTIME:-termux}}" \
+        SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
+        SMALLPHONEAI_SERVICE_MANAGER_DIR="" \
+        SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
+        SMALLPHONEAI_REQUIRE_EXTERNAL_SERVICE_MANAGER=1 \
+        SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
+        SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
+        SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}" \
+        SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-$native_token}" \
+        SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-${SERVICE_MANAGER_TOKEN:-$native_token}}" \
+        bash -s < "$0"
+    exit $?
+  fi
+  warn "Ubuntu 尚不可用，将在当前 Termux 环境尝试运行组件入口。"
+fi
+
+export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
+
+service_manager_shim_dir=""
+cleanup_service_manager_shim() {
+  if [ -n "$service_manager_shim_dir" ]; then
+    rm -rf "$service_manager_shim_dir" >/dev/null 2>&1 || true
+  fi
+}
+
+ensure_service_manager_token_shim() {
+  local token shim
+  if command -v service-manager >/dev/null 2>&1; then
+    return 0
+  fi
+  token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+  [ -n "$token" ] || return 1
+  service_manager_shim_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-sm-shim.XXXXXX")"
+  shim="$service_manager_shim_dir/service-manager"
+  cat > "$shim" <<'SH'
+#!/usr/bin/env sh
+set -eu
+if [ "${1:-}" = "token" ] && [ "${2:-}" = "show" ]; then
+  printf '%s\n' "${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+  exit 0
+fi
+printf '%s\n' "service-manager shim only supports: token show" >&2
+exit 2
+SH
+  chmod +x "$shim"
+  export PATH="$service_manager_shim_dir:$PATH"
+  trap cleanup_service_manager_shim EXIT INT HUP TERM
+}
+
+if is_current_ubuntu && [ "${SMALLPHONEAI_REQUIRE_EXTERNAL_SERVICE_MANAGER:-1}" = "1" ]; then
+  ensure_service_manager_token_shim || true
+fi
+
+repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
+payload_root="${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}}"
+component_source_mode="${SMALLPHONEAI_COMPONENT_SOURCE_MODE:-bundle}"
+allow_git_update="${SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE:-${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}}"
+strict="${SMALLPHONEAI_COMPONENTS_STRICT:-1}"
+component_targets="${SMALLPHONEAI_COMPONENT_TARGETS:-}"
+force_payload_refresh="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}"
+failures=0
 bootstrap_root="${SMALLPHONEAI_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 openhouse_home="${OPENHOUSEAI_HOME:-$HOME/.config/openhouseai}"
 openhouse_subjects_dir="${OPENHOUSEAI_SUBJECTS_DIR:-$openhouse_home/subjects.d}"
@@ -353,7 +473,7 @@ install_default_subjects() {
   fi
 
   install_default_subject_file "pi-agent.json" <<'JSON'
-{"id":"pi-agent","title":"Pi Agent","kind":"runtime-http","summary":"OpenHouse main AI workbench and human-facing web entry.","serviceRefs":[{"id":"pi-web","runtime":"ubuntu","manager":"service-manager"}],"entries":[{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"ubuntu","path":"/root/smallphoneai-repos/smallphone-active","purpose":"business application repo"}],"ai":{"description":"Pi Agent is the primary OpenHouse AI workbench. Its service state is controlled by service-manager through the pi-web service id.","whenUnavailable":"First inspect service-manager status and logs for pi-web. If pi-web is running, run openhouse-system check pi-agent."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:30141/","timeoutSeconds":4},{"type":"pathExists","runtime":"ubuntu","path":"/root/smallphoneai-repos/smallphone-active","timeoutSeconds":4}]}}
+{"id":"pi-agent","title":"Pi Agent","kind":"runtime-http","summary":"OpenHouse main AI workbench and human-facing web entry.","serviceRefs":[{"id":"pi-agent","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-agent","workdir":"$HOME/smallphoneai-repos/pi-agent","command":"openhouse-pi-agent-sentinel","entryCommand":"openhouse-pi-agent-sentinel"},{"id":"pi-web","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-web","workdir":"$HOME/smallphoneai-repos/pi-web","command":"openhouse-pi-web-start","entryCommand":"openhouse-pi-web-start"}],"entries":[{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-agent","purpose":"Termux native pi-agent payload and npm package install source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-web","purpose":"Termux native pi-web payload install source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Termux native Pi Agent data, extensions, and runtime state"},{"runtime":"ubuntu","user":"root","home":"/root","path":"$HOME/smallphoneai-repos/smallphone-active","workingDirectory":"$HOME/smallphoneai-repos/smallphone-active","workdir":"$HOME/smallphoneai-repos/smallphone-active","purpose":"Ubuntu AI workbench and compatibility/fallback repo; root is only the first-install default user, not the meaning of runtime=ubuntu"}],"ai":{"description":"Pi Agent is the primary OpenHouse AI workbench. Its service state is controlled by service-manager through the pi-web service id.","whenUnavailable":"First inspect service-manager status and logs for pi-agent/pi-web. If the services are running, run openhouse-system check pi-agent."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:30141/","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-agent","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-web","timeoutSeconds":4}]}}
 JSON
   install_default_subject_file "file-inbox.json" <<'JSON'
 {"id":"file-inbox","title":"File Inbox","kind":"file","summary":"Shared staging area for files opened with or shared to OpenHouse.","serviceRefs":[],"entries":[{"type":"file","label":"Android inbox","path":"/storage/emulated/0/OpenHouse/Inbox"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","purpose":"user-visible Android storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse/Inbox","purpose":"Termux-native inbox projection"},{"runtime":"ubuntu","path":"/root/OpenHouse/Inbox","purpose":"Ubuntu/proot inbox projection"}],"ai":{"description":"Files from Android share/open-with flows should be staged here before AI processing.","whenUnavailable":"Check storage permission and projected inbox directories."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","timeoutSeconds":3}]}}
@@ -491,76 +611,6 @@ install_openhouse_system() {
   install_ubuntu_openhouse_system_shim || warn "Ubuntu openhouse-system shim 部署未完成；可稍后从 Termux 重新运行：bash bootstrap.sh components"
 }
 
-if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; then
-  if command -v proot-distro >/dev/null 2>&1 && proot-distro login ubuntu -- true >/dev/null 2>&1; then
-    install_openhouse_system || warn "OpenHouse 主系统 CLI/主体名片部署未完成。"
-    if early_should_run_component "service-manager"; then
-      ensure_termux_native_service_manager || {
-        warn "Termux native service-manager 未安装成功；不会回退到 Ubuntu/proot 控制面。"
-        exit 1
-      }
-    fi
-    log "正在 Ubuntu 内安装、检查并注册 SmallPhone 运行组件。"
-    SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
-      proot-distro login ubuntu -- env \
-        SMALLPHONEAI_COMPONENT_REPO_ROOT="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-/root/smallphoneai-repos}" \
-        SMALLPHONEAI_OFFLINE_PAYLOAD_DIR="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}" \
-        SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT="${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}" \
-        SMALLPHONEAI_COMPONENT_SOURCE_MODE="${SMALLPHONEAI_COMPONENT_SOURCE_MODE:-bundle}" \
-        SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE="${SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE:-0}" \
-        SMALLPHONEAI_COMPONENTS_AUTO_CLONE="${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}" \
-        SMALLPHONEAI_COMPONENTS_STRICT="${SMALLPHONEAI_COMPONENTS_STRICT:-1}" \
-        SMALLPHONEAI_COMPONENT_TARGETS="${SMALLPHONEAI_COMPONENT_TARGETS:-}" \
-        SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
-        OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
-        SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
-        NPM_REGISTRY="${NPM_REGISTRY:-}" \
-        NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-${NPM_REGISTRY:-}}" \
-        SMALLPHONEAI_NODE_DIST_BASE="${SMALLPHONEAI_NODE_DIST_BASE:-}" \
-        SMALLPHONEAI_NPM_FETCH_RETRIES="${SMALLPHONEAI_NPM_FETCH_RETRIES:-}" \
-        SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT:-}" \
-        SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT="${SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT:-}" \
-        SMALLPHONEAI_NPM_FETCH_TIMEOUT="${SMALLPHONEAI_NPM_FETCH_TIMEOUT:-}" \
-        SMALLPHONEAI_GITHUB_PROXY_PREFIX="${SMALLPHONEAI_GITHUB_PROXY_PREFIX:-}" \
-        OPENHOUSE_GITHUB_PROXY_PREFIX="${OPENHOUSE_GITHUB_PROXY_PREFIX:-}" \
-        OPENHOUSEAI_TERMUX_HOME="${OPENHOUSEAI_TERMUX_HOME:-$HOME}" \
-        OPENHOUSEAI_TERMUX_PREFIX="${OPENHOUSEAI_TERMUX_PREFIX:-${PREFIX:-/data/data/com.termux/files/usr}}" \
-        SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-$HOME}" \
-        SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
-        SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" \
-        SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
-        SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER=1 \
-        SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
-        SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
-        SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR="${SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR:-}" \
-        SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" \
-        SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-}" \
-        SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}" \
-        bash -s < "$0"
-    exit $?
-  fi
-  warn "Ubuntu 尚不可用，将在当前 Termux 环境尝试运行组件入口。"
-fi
-
-export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
-
-repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
-payload_root="${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}}"
-component_source_mode="${SMALLPHONEAI_COMPONENT_SOURCE_MODE:-bundle}"
-allow_git_update="${SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE:-${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}}"
-strict="${SMALLPHONEAI_COMPONENTS_STRICT:-1}"
-component_targets="${SMALLPHONEAI_COMPONENT_TARGETS:-}"
-force_payload_refresh="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}"
-failures=0
-
-if command -v smallphoneai_log_retry_profile >/dev/null 2>&1; then
-  smallphoneai_log_retry_profile '[SmallPhoneAI]'
-else
-  export OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}"
-  export SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-$OPENHOUSE_RETRY_MODE}"
-  log "网络重试模式：$(smallphoneai_retry_mode)。"
-fi
-
 normalize_target() {
   case "$1" in
     openhouse-system|main-system|system)
@@ -568,6 +618,9 @@ normalize_target() {
       ;;
     openhouse-connect)
       printf 'cc-connect'
+      ;;
+    hermes-agent|hermes-webui)
+      printf 'hermes'
       ;;
     *)
       printf '%s' "$1"
@@ -619,7 +672,7 @@ validate_component_targets() {
     [ -n "$item" ] || continue
     target="$(normalize_target "$item")"
     case "$target" in
-      openhouse-system|service-manager|cc-connect|smallphone|pi-agent|pi-web|github-config-helper)
+      openhouse-system|service-manager|pi-agent|pi-web|cc-connect|smallphone|hermes)
         ;;
       *)
         warn "未知组件目标：$item"
@@ -685,10 +738,11 @@ payload_dir_contains_executable() {
 
   case "$payload_name" in
     service-manager)
-      [ -x "$source/service-manager" ] || [ -x "$source/target/release/service-manager" ]
+      component_binary_current_env_executable "$payload_name" "$source/service-manager" \
+        || component_binary_current_env_executable "$payload_name" "$source/target/release/service-manager"
       ;;
     openhouse-connect)
-      [ -x "$source/cc-connect" ]
+      component_binary_current_env_executable "$payload_name" "$source/cc-connect"
       ;;
     *)
       return 1
@@ -743,12 +797,6 @@ payload_dir_needs_refresh() {
   local payload_name="$2"
 
   case "$payload_name" in
-    pi-agent)
-      [ -f "$source/scripts/register-service.sh" ] || return 0
-      grep -Fq '"command": ["sh", "-lc", "openhouse-pi-agent-sentinel"]' "$source/scripts/register-service.sh" \
-        && grep -Fq '/api/v1/registry/apply' "$source/scripts/register-service.sh" \
-        || return 0
-      ;;
     openhouse-connect)
       [ -f "$source/scripts/register-service.sh" ] \
         && grep -Fq 'CC_CONNECT_BRIDGE_PORT' "$source/scripts/register-service.sh" \
@@ -760,44 +808,158 @@ payload_dir_needs_refresh() {
         || return 0
       ;;
     smallphone)
-      [ -f "$source/scripts/install.sh" ] \
-        && [ -f "$source/scripts/register-service.sh" ] \
-        && grep -Fq 'SMALLPHONE_SKIP_DEP_INSTALL' "$source/scripts/install.sh" \
-        && grep -Fq 'persist_service_spec' "$source/scripts/register-service.sh" \
-        && grep -Fq 'read_openhouse_sm_token' "$source/scripts/register-service.sh" \
-        && grep -Fq 'duplicate_service_ids' "$source/scripts/register-service.sh" \
-        && grep -Fq '/api/v1/registry/apply' "$source/scripts/register-service.sh" \
-        && ! grep -Fq 'Offline/local dependency installation is disabled' "$source/scripts/install.sh" \
+      [ -f "$source/scripts/install.sh" ] && grep -Fq 'Dependency installation is disabled' "$source/scripts/install.sh" \
         || return 0
       ;;
+    hermes)
+      [ -f "$source/openhouse/register-service.sh" ] \
+        && grep -Fq '/api/v1/registry/apply' "$source/openhouse/register-service.sh" \
+        && [ -f "$source/openhouse/component-manifest.json" ] \
+        && [ -f "$source/openhouse/openhouse.ai.md" ] \
+        && [ -f "$source/openhouse/capabilities.json" ] \
+        || return 0
+      ;;
+    pi-agent)
+      [ -f "$source/scripts/register-service.sh" ] || return 0
+      if [ "$(openhouse_pi_runtime)" = "termux" ] && is_termux; then
+        [ -f "$source/scripts/install.sh" ] \
+          && grep -Fq 'patch_termux_node_entrypoints()' "$source/scripts/install.sh" \
+          || return 0
+        [ -f "$source/bin/openhouse-pi-agent-sentinel" ] \
+          && sed -n '1p' "$source/bin/openhouse-pi-agent-sentinel" | grep -Fq '/data/data/com.termux/files/usr/bin/env sh' \
+          || return 0
+      fi
+      ;;
     pi-web)
-      [ -f "$source/runtime/pi-web/server.js" ] || return 0
-      [ -f "$source/bin/openhouse-pi-web-start" ] || return 0
-      [ -f "$source/scripts/install.sh" ] || return 0
-      [ -f "$source/scripts/check.sh" ] || return 0
-
-      if [ -d "$source/packages" ]; then
-        for artifact in "$source"/packages/agegr-pi-web*; do
-          [ -e "$artifact" ] && return 0
-        done
+      [ -f "$source/scripts/register-service.sh" ] || return 0
+      if [ "$(openhouse_pi_runtime)" = "termux" ] && is_termux; then
+        [ -f "$source/bin/openhouse-pi-web-start" ] \
+          && sed -n '1p' "$source/bin/openhouse-pi-web-start" | grep -Fq '/data/data/com.termux/files/usr/bin/env sh' \
+          || return 0
       fi
-
-      if grep -Eq 'npm[[:space:]]+install|npm[[:space:]]+root[[:space:]]+-g|agegr-pi-web|\.tgz' \
-        "$source/scripts/install.sh" "$source/scripts/check.sh" 2>/dev/null; then
-        return 0
-      fi
-
-      grep -Fq 'OPENHOUSE_PI_WEB_RUNTIME_DIR' "$source/bin/openhouse-pi-web-start" \
-        && grep -Fq 'exec node server.js' "$source/bin/openhouse-pi-web-start" \
-        || return 0
-
-      grep -Fq '"command": ["sh", "-lc", "openhouse-pi-web-start"]' "$source/scripts/register-service.sh" \
-        && grep -Fq '/api/v1/registry/apply' "$source/scripts/register-service.sh" \
-        || return 0
       ;;
   esac
 
   return 1
+}
+
+sed_escape_replacement() {
+  printf '%s' "$1" | sed 's/[\/&]/\\&/g'
+}
+
+patch_termux_script_shebang() {
+  local file="$1"
+  local interpreter="$2"
+  local termux_prefix="$3"
+
+  [ -f "$file" ] || return 0
+  case "$(sed -n '1p' "$file" 2>/dev/null || true)" in
+    '#!'*)
+      sed -i "1s|^#!.*|#!$termux_prefix/bin/env $interpreter|" "$file" || true
+      ;;
+  esac
+}
+
+patch_termux_pi_agent_install_script() {
+  local file="$1"
+  local tmp
+
+  [ -f "$file" ] || return 0
+  if ! grep -Fq 'patch_termux_node_entrypoints()' "$file"; then
+    tmp="$file.tmp.$$"
+    awk '
+      /^main\(\) \{/ && inserted == 0 {
+        print ""
+        print "patch_termux_node_entrypoints() {"
+        print "  termux_env=\"${PREFIX:-/data/data/com.termux/files/usr}/bin/env\""
+        print "  [ -x \"$termux_env\" ] || return 0"
+        print "  for entry in \"$GLOBAL_PREFIX/bin/pi\" \"$GLOBAL_PREFIX/bin/pi-ai\"; do"
+        print "    [ -e \"$entry\" ] || continue"
+        print "    target=\"$(readlink -f \"$entry\" 2>/dev/null || true)\""
+        print "    [ -n \"$target\" ] || target=\"$entry\""
+        print "    [ -f \"$target\" ] || continue"
+        print "    sed -n \"1p\" \"$target\" | grep -Eq \"^#!/usr/bin/env node|^#!.* node\" || continue"
+        print "    sed -i \"1s|^#!.*|#!$termux_env node|\" \"$target\" || true"
+        print "  done"
+        print "}"
+        print ""
+        inserted = 1
+      }
+      { print }
+    ' "$file" > "$tmp" && mv "$tmp" "$file"
+    chmod +x "$file" || true
+  fi
+
+  if ! grep -Eq '^[[:space:]]*patch_termux_node_entrypoints[[:space:]]*$' "$file"; then
+    sed -i '/^[[:space:]]*install_pi_cli[[:space:]]*$/a\  patch_termux_node_entrypoints' "$file" || true
+  fi
+}
+
+patch_pi_payload_for_termux() {
+  local payload_name="$1"
+  local dir="$2"
+  local termux_home termux_prefix escaped_home file interpreter
+
+  [ "$(openhouse_pi_runtime)" = "termux" ] || return 0
+  is_termux || return 0
+  case "$payload_name" in
+    pi-agent|pi-web)
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  termux_home="${OPENHOUSEAI_TERMUX_HOME:-$HOME}"
+  termux_prefix="${OPENHOUSEAI_TERMUX_PREFIX:-${PREFIX:-/data/data/com.termux/files/usr}}"
+  escaped_home="$(sed_escape_replacement "$termux_home")"
+  log "$payload_name: 正在适配 APK payload 到 Termux native 路径：$termux_home"
+
+  for file in \
+    "$dir/scripts/install.sh" \
+    "$dir/scripts/check.sh" \
+    "$dir/scripts/register-service.sh" \
+    "$dir/bin/openhouse-pi-agent-sentinel" \
+    "$dir/bin/openhouse-pi-web-start"; do
+    [ -f "$file" ] || continue
+    sed -i "s#/root#$escaped_home#g" "$file"
+    sed -i "s#/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin:/system/bin:/system/xbin:${termux_prefix}/bin#${termux_prefix}/bin:/system/bin:/system/xbin#g" "$file" || true
+    sed -i "s#/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin:${termux_prefix}/bin#${termux_prefix}/bin:/system/bin:/system/xbin#g" "$file" || true
+    sed -i "s#/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin#${termux_prefix}/bin:/system/bin:/system/xbin#g" "$file" || true
+    case "$file" in
+      */scripts/*.sh)
+        interpreter="bash"
+        ;;
+      *)
+        interpreter="sh"
+        ;;
+    esac
+    patch_termux_script_shebang "$file" "$interpreter" "$termux_prefix"
+  done
+
+  if [ "$payload_name" = "pi-agent" ]; then
+    patch_termux_pi_agent_install_script "$dir/scripts/install.sh"
+  fi
+}
+
+ensure_termux_node_for_pi() {
+  local major
+  [ "$(openhouse_pi_runtime)" = "termux" ] || return 0
+  is_termux || return 0
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    warn "pi-agent/pi-web 默认运行在 Termux native，但 node/npm 不可用；请先运行：bash bootstrap.sh termux-node"
+    return 1
+  fi
+  major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf 0)"
+  case "$major" in
+    ''|*[!0-9]*)
+      major=0
+      ;;
+  esac
+  if [ "$major" -lt 24 ]; then
+    warn "pi-agent/pi-web 需要 Termux Node.js 24 LTS（major >= 24），当前为 $(node -v 2>/dev/null || printf unknown)；请先运行：bash bootstrap.sh termux-node"
+    return 1
+  fi
 }
 
 validate_payload_source() {
@@ -815,6 +977,15 @@ validate_payload_source() {
   esac
 
   if [ -d "$source" ]; then
+    if [ "$payload_name" = "hermes" ]; then
+      if [ ! -f "$source/openhouse/install.sh" ] \
+        || [ ! -f "$source/openhouse/check.sh" ] \
+        || [ ! -f "$source/openhouse/register-service.sh" ]; then
+        warn "$name: APK payload directory is missing openhouse/install.sh, openhouse/check.sh, or openhouse/register-service.sh: $source"
+        return 1
+      fi
+      return 0
+    fi
     if [ ! -f "$source/scripts/install.sh" ] || [ ! -f "$source/scripts/check.sh" ]; then
       warn "$name: APK payload directory is missing scripts/install.sh or scripts/check.sh: $source"
       return 1
@@ -822,7 +993,7 @@ validate_payload_source() {
     if required_payload_executable "$payload_name" >/dev/null; then
       required_description="$(required_payload_executable_description "$payload_name")"
       if ! payload_dir_contains_executable "$source" "$payload_name"; then
-        warn "$name: APK payload directory must contain executable $required_description: $source"
+        warn "$name: APK payload directory must contain current-environment executable $required_description: $source"
         return 1
       fi
     fi
@@ -830,12 +1001,21 @@ validate_payload_source() {
   fi
 
   if [ -f "$source" ]; then
-    if ! validate_payload_manifest_checksum "$name" "$source" "$payload_name"; then
-      return 1
-    fi
     if ! tar -"$tar_list_flags" "$source" >/dev/null 2>&1; then
       warn "$name: APK payload archive is not a readable tar/tar.gz: $source"
       return 1
+    fi
+    if [ "$payload_name" = "hermes" ]; then
+      if ! payload_archive_contains "$source" '(^|/)openhouse/install\.sh$' \
+        || ! payload_archive_contains "$source" '(^|/)openhouse/check\.sh$' \
+        || ! payload_archive_contains "$source" '(^|/)openhouse/register-service\.sh$' \
+        || ! payload_archive_contains "$source" '(^|/)openhouse/component-manifest\.json$' \
+        || ! payload_archive_contains "$source" '(^|/)openhouse/openhouse\.ai\.md$' \
+        || ! payload_archive_contains "$source" '(^|/)openhouse/capabilities\.json$'; then
+        warn "$name: APK payload archive must contain Hermes openhouse integration files: $source"
+        return 1
+      fi
+      return 0
     fi
     if ! payload_archive_contains "$source" '(^|/)scripts/install\.sh$' \
       || ! payload_archive_contains "$source" '(^|/)scripts/check\.sh$'; then
@@ -855,116 +1035,6 @@ validate_payload_source() {
 
   warn "$name: missing APK-bundled payload: $source"
   return 1
-}
-
-payload_manifest_file() {
-  local candidate
-  for candidate in "$payload_root/payload-manifest.json" "$payload_root/manifest.json"; do
-    [ -f "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
-  done
-  return 1
-}
-
-payload_manifest_entry() {
-  local payload_name="$1"
-  local archive_name="$2"
-  local manifest
-  manifest="$(payload_manifest_file || true)"
-  [ -n "$manifest" ] || return 1
-
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - "$manifest" "$payload_name" "$archive_name" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-manifest = Path(sys.argv[1])
-payload_id = sys.argv[2]
-archive = sys.argv[3]
-doc = json.loads(manifest.read_text(encoding="utf-8"))
-items = doc.get("payloads") or doc.get("components") or []
-for item in items:
-    if item.get("id") == payload_id or item.get("archive") == archive:
-        print(f"{item.get('sha256','')}\t{item.get('size','')}")
-        raise SystemExit(0)
-raise SystemExit(1)
-PY
-    return $?
-  fi
-
-  if command -v node >/dev/null 2>&1; then
-    node - "$manifest" "$payload_name" "$archive_name" <<'NODE'
-const fs = require("fs");
-const manifest = process.argv[2];
-const payloadId = process.argv[3];
-const archive = process.argv[4];
-const doc = JSON.parse(fs.readFileSync(manifest, "utf8"));
-const items = doc.payloads || doc.components || [];
-const item = items.find((entry) => entry.id === payloadId || entry.archive === archive);
-if (!item) process.exit(1);
-process.stdout.write(`${item.sha256 || ""}\t${item.size || ""}\n`);
-NODE
-    return $?
-  fi
-
-  warn "缺少 python3/node，无法读取 payload manifest。"
-  return 1
-}
-
-file_sha256() {
-  local path="$1"
-  if command -v smallphoneai_sha256_file >/dev/null 2>&1; then
-    smallphoneai_sha256_file "$path"
-    return $?
-  fi
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$path" | awk '{print $1}'
-    return 0
-  fi
-  if command -v openssl >/dev/null 2>&1; then
-    openssl dgst -sha256 "$path" | awk '{print $NF}'
-    return 0
-  fi
-  return 1
-}
-
-validate_payload_manifest_checksum() {
-  local name="$1"
-  local source="$2"
-  local payload_name="$3"
-  local archive_name entry expected_sha expected_size actual_sha actual_size
-
-  archive_name="$(basename "$source")"
-  entry="$(payload_manifest_entry "$payload_name" "$archive_name" || true)"
-  if [ -z "$entry" ]; then
-    warn "$name: payload manifest 中找不到条目，拒绝安装以避免未校验制品：$payload_name / $archive_name"
-    return 1
-  fi
-
-  expected_sha="$(printf '%s' "$entry" | awk -F '\t' '{print $1}')"
-  expected_size="$(printf '%s' "$entry" | awk -F '\t' '{print $2}')"
-  if [ -n "$expected_size" ]; then
-    actual_size="$(wc -c < "$source" | tr -d '[:space:]')"
-    if [ "$actual_size" != "$expected_size" ]; then
-      warn "$name: payload size 校验失败：$archive_name expected=$expected_size actual=$actual_size"
-      return 1
-    fi
-  fi
-
-  if [ -n "$expected_sha" ]; then
-    actual_sha="$(file_sha256 "$source")" || {
-      warn "$name: 无法计算 payload sha256：$archive_name"
-      return 1
-    }
-    if [ "$actual_sha" != "$expected_sha" ]; then
-      warn "$name: payload sha256 校验失败：$archive_name expected=$expected_sha actual=$actual_sha"
-      return 1
-    fi
-    log "$name: payload sha256 校验通过：$archive_name $actual_sha"
-  else
-    warn "$name: payload manifest 缺少 sha256：$archive_name"
-    return 1
-  fi
 }
 
 find_payload_source() {
@@ -1010,10 +1080,10 @@ extract_payload_archive() {
   work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-payload.XXXXXX")"
   tar -"$tar_extract_flags" "$source" -C "$work_dir"
 
-  if [ -f "$work_dir/scripts/install.sh" ]; then
+  if [ -f "$work_dir/scripts/install.sh" ] || [ -f "$work_dir/openhouse/install.sh" ]; then
     payload_dir="$work_dir"
   else
-    payload_dir="$(find "$work_dir" -mindepth 3 -maxdepth 3 -path '*/scripts/install.sh' -type f -print | sed 's#/scripts/install\.sh$##' | head -n 1)"
+    payload_dir="$(find "$work_dir" -mindepth 2 -maxdepth 4 \( -path '*/scripts/install.sh' -o -path '*/openhouse/install.sh' \) -type f -print | sed -e 's#/scripts/install\.sh$##' -e 's#/openhouse/install\.sh$##' | head -n 1)"
   fi
 
   if [ -z "$payload_dir" ] || [ ! -d "$payload_dir" ]; then
@@ -1043,7 +1113,7 @@ install_payload_if_needed() {
       log "$name: APK payload 刷新已开启，将从当前 APK bundle 覆盖刷新：$dir"
     elif required_payload_executable "$payload_name" >/dev/null \
       && ! payload_dir_contains_executable "$dir" "$payload_name"; then
-      log "$name: 已存在安装目录但缺少 APK bundle 必需二进制，将从 payload 刷新：$dir"
+      log "$name: 已存在安装目录但缺少或无法运行 APK bundle 必需二进制，将从 payload 刷新：$dir"
     elif payload_dir_needs_refresh "$dir" "$payload_name"; then
       log "$name: 已存在安装目录但组件脚本不是当前 APK bundle 合同，将从 payload 刷新：$dir"
     else
@@ -1052,7 +1122,7 @@ install_payload_if_needed() {
     fi
   fi
 
-  log "$name: 从 APK-bundled payload 安装到 $dir"
+  log "$name: 从 APK-bundled payload 安装到 $dir（source: $source）"
   if [ -d "$source" ]; then
     copy_payload_dir "$source" "$dir"
   else
@@ -1064,7 +1134,6 @@ prepare_component_from_git_update() {
   local name="$1"
   local dir="$2"
   local url="$3"
-  local effective_url="$url"
 
   if [ -d "$dir/.git" ] || [ -d "$dir" ]; then
     if [ "$allow_git_update" = "1" ] && [ -d "$dir/.git" ]; then
@@ -1088,18 +1157,14 @@ prepare_component_from_git_update() {
     return 1
   fi
 
-  if command -v smallphoneai_maybe_rewrite_github_url >/dev/null 2>&1; then
-    effective_url="$(smallphoneai_maybe_rewrite_github_url "$url")"
-  fi
-
   if ! command -v git >/dev/null 2>&1; then
-    warn "$name: 缺少 git，无法自动拉取 $effective_url。"
+    warn "$name: 缺少 git，无法自动拉取 $url。"
     return 1
   fi
 
   mkdir -p "$(dirname "$dir")"
-  log "$name: 可选更新路径正在拉取仓库 $effective_url -> $dir"
-  git clone --depth 1 "$effective_url" "$dir"
+  log "$name: 可选更新路径正在拉取仓库 $url -> $dir"
+  git clone --depth 1 "$url" "$dir"
 }
 
 prepare_component() {
@@ -1130,7 +1195,7 @@ local_component_binary_path() {
   case "$payload_name" in
     service-manager)
       for candidate in "$dir/service-manager" "$dir/target/release/service-manager"; do
-        if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+        if component_binary_current_env_executable "$payload_name" "$candidate"; then
           printf '%s\n' "$candidate"
           return 0
         fi
@@ -1138,11 +1203,9 @@ local_component_binary_path() {
       ;;
     openhouse-connect)
       candidate="$dir/cc-connect"
-      if [ -f "$candidate" ] && [ -x "$candidate" ]; then
-        if "$candidate" --version >/dev/null 2>&1 || "$candidate" --help >/dev/null 2>&1; then
-          printf '%s\n' "$candidate"
-          return 0
-        fi
+      if component_binary_current_env_executable "$payload_name" "$candidate"; then
+        printf '%s\n' "$candidate"
+        return 0
       fi
       ;;
     *)
@@ -1167,49 +1230,11 @@ validate_bundle_local_install_source() {
   fi
 
   if ! local_binary="$(local_component_binary_path "$payload_name" "$dir")"; then
-    warn "$name: bundle 模式要求安装目录包含可执行 $required_binary；拒绝运行 scripts/install.sh 以避免 GitHub/npm/go fallback：$dir"
+    warn "$name: bundle 模式要求安装目录包含当前环境可执行的 $required_binary；拒绝运行 scripts/install.sh 以避免 GitHub/npm/go fallback：$dir"
     return 1
   fi
 
   log "$name: bundle/local 安装将使用 payload 内可执行文件：$local_binary"
-}
-
-prepare_pi_agent_npm_global_reinstall() {
-  local global_prefix="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
-  local global_modules="$global_prefix/lib/node_modules"
-  local scoped_dir="$global_prefix/lib/node_modules/@earendil-works"
-  local pkg
-
-  export NPM_CONFIG_PREFIX="$global_prefix"
-  export PATH="$global_prefix/bin:$HOME/.local/node/bin:$HOME/.local/bin:$PATH"
-
-  mkdir -p "$global_prefix/bin" "$global_modules"
-  npm config set prefix "$global_prefix" >/dev/null 2>&1 || true
-
-  log "pi-agent: preparing idempotent npm global reinstall at $global_prefix"
-  for pkg in pi-agent-core pi-ai pi-coding-agent pi-tui; do
-    rm -rf "$scoped_dir/$pkg"
-  done
-  if [ -d "$scoped_dir" ]; then
-    find "$scoped_dir" -mindepth 1 -maxdepth 1 \
-      \( -name '.pi-agent-core-*' \
-        -o -name '.pi-ai-*' \
-        -o -name '.pi-coding-agent-*' \
-        -o -name '.pi-tui-*' \
-        -o -name '.npm-*' \
-        -o -name '.staging' \) \
-      -exec rm -rf {} + 2>/dev/null || true
-    rmdir "$scoped_dir" 2>/dev/null || true
-  fi
-  find "$global_modules" -mindepth 1 -maxdepth 1 \
-    \( -name '.npm-*' -o -name '.staging' \) \
-    -exec rm -rf {} + 2>/dev/null || true
-  rm -f \
-    "$global_prefix/bin/pi" \
-    "$global_prefix/bin/pi-agent" \
-    "$global_prefix/bin/pi-coding-agent" \
-    "$global_prefix/bin/pi-tui"
-  npm cache verify >/dev/null 2>&1 || npm cache clean --force >/dev/null 2>&1 || true
 }
 
 run_repo_script_command() {
@@ -1217,23 +1242,31 @@ run_repo_script_command() {
   local dir="$2"
   local script="$3"
   local local_binary
+  local sm_config_path
+  local sm_install_service
+  local sm_token
 
   case "$component_source_mode:$payload_name:$script" in
     bundle:service-manager:scripts/install.sh)
-      if is_termux; then
-        run_logged env \
-          SMALLPHONEAI_OFFLINE_INSTALL=1 \
-          SERVICE_MANAGER_INSTALL_MODE="${SMALLPHONEAI_TERMUX_SERVICE_MANAGER_INSTALL_MODE:-release}" \
-          CONFIG_PATH="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}" \
-          "./$script"
+      local_binary="$(local_component_binary_path "$payload_name" "$dir")"
+      sm_config_path="${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-${SERVICE_MANAGER_CONFIG_PATH:-$HOME/.config/openhouseai/service-manager/config.json}}"
+      if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_INSTALL_SERVICE:-}" ]; then
+        sm_install_service="${SMALLPHONEAI_SERVICE_MANAGER_INSTALL_SERVICE}"
+      elif is_termux; then
+        sm_install_service="1"
       else
-        local_binary="$(local_component_binary_path "$payload_name" "$dir")"
-        run_logged env \
-          SMALLPHONEAI_OFFLINE_INSTALL=1 \
-          SMALLPHONEAI_LOCAL_INSTALL=1 \
-          SERVICE_MANAGER_INSTALL_MODE=local \
-          "./$script" "$local_binary"
+        sm_install_service="0"
       fi
+      log "service-manager: 使用 local payload binary 安装：$local_binary"
+      log "service-manager: 安装目标 PATH 将由子仓库 install.sh 处理，配置文件：$sm_config_path"
+      run_logged env \
+        SMALLPHONEAI_OFFLINE_INSTALL=1 \
+        SMALLPHONEAI_LOCAL_INSTALL=1 \
+        CONFIG_PATH="$sm_config_path" \
+        BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}" \
+        INSTALL_SERVICE="$sm_install_service" \
+        SERVICE_MANAGER_INSTALL_MODE=local \
+        bash "./$script" "$local_binary"
       ;;
     bundle:openhouse-connect:scripts/install.sh)
       run_logged env \
@@ -1242,22 +1275,34 @@ run_repo_script_command() {
         CC_CONNECT_INSTALL_MODE=local \
         CC_CONNECT_LOCAL_INSTALL=1 \
         CC_CONNECT_OFFLINE_INSTALL=1 \
-        "./$script"
-      ;;
-    bundle:pi-agent:scripts/install.sh)
-      prepare_pi_agent_npm_global_reinstall
-      run_logged "./$script"
+        bash "./$script"
       ;;
     bundle:smallphone:scripts/install.sh)
-      ensure_smallphone_node_runtime
       run_logged env \
         SMALLPHONEAI_OFFLINE_INSTALL=1 \
         SMALLPHONEAI_LOCAL_INSTALL=1 \
-        NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org/}" \
-        "./$script"
+        SMALLPHONE_SKIP_DEP_INSTALL=1 \
+        bash "./$script"
+      ;;
+    bundle:hermes:openhouse/install.sh)
+      run_logged env \
+        SMALLPHONEAI_OFFLINE_INSTALL=1 \
+        SMALLPHONEAI_LOCAL_INSTALL=1 \
+        bash "./$script"
+      ;;
+    bundle:pi-agent:scripts/register-service.sh|bundle:pi-web:scripts/register-service.sh)
+      sm_token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+      if [ -z "$sm_token" ] && is_termux; then
+        sm_token="$(resolve_termux_service_manager_token || true)"
+      fi
+      run_logged env \
+        SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}" \
+        SERVICE_MANAGER_TOKEN="$sm_token" \
+        SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-$sm_token}" \
+        bash "./$script"
       ;;
     *)
-      run_logged "./$script"
+      run_logged bash "./$script"
       ;;
   esac
 }
@@ -1292,355 +1337,7 @@ run_repo_script() {
   fi
 }
 
-node_major_version() {
-  node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf 0
-}
-
-ensure_smallphone_node_runtime() {
-  local major
-  export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
-  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-    major="$(node_major_version)"
-    case "$major" in
-      ''|*[!0-9]*)
-        major=0
-        ;;
-    esac
-    if [ "$major" -ge 24 ]; then
-      log "SmallPhone Node runtime 已可用：$(node -v)"
-      return 0
-    fi
-    warn "SmallPhone 需要 Node >=24，当前为 $(node -v 2>/dev/null || printf unknown)，将安装本地 Node 24。"
-  fi
-
-  install_node24_runtime
-}
-
-node_arch() {
-  case "$(uname -m)" in
-    aarch64|arm64)
-      printf 'arm64'
-      ;;
-    x86_64|amd64)
-      printf 'x64'
-      ;;
-    armv7l|armv7*)
-      printf 'armv7l'
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-install_node24_runtime() {
-  local arch
-  local node_root="$HOME/.local/node"
-  local node_tmp="$HOME/.local/node-download"
-  local node_dist_base="${SMALLPHONEAI_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v24.x}"
-  local node_tarball
-  local shasums_file
-
-  if ! command -v curl >/dev/null 2>&1; then
-    warn "缺少 curl，无法安装 Node 24 runtime。"
-    return 1
-  fi
-  if ! arch="$(node_arch)"; then
-    warn "不支持的 Node runtime 架构：$(uname -m)"
-    return 1
-  fi
-
-  if command -v apt >/dev/null 2>&1; then
-    apt install -y ca-certificates xz-utils >/dev/null 2>&1 || true
-  fi
-
-  mkdir -p "$node_root" "$node_tmp"
-  log "正在从 Node dist 源安装 Node 24 runtime（不访问 GitHub）：$node_dist_base"
-  shasums_file="$node_tmp/SHASUMS256.txt"
-  curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors "$node_dist_base/SHASUMS256.txt" \
-    -o "$shasums_file"
-  node_tarball="$(awk -v arch="linux-$arch.tar.xz" '$2 ~ arch "$" { print $2; exit }' "$shasums_file")"
-  if [ -z "$node_tarball" ]; then
-    warn "无法解析 Node 24 linux-$arch tarball。"
-    return 1
-  fi
-
-  curl -fL --connect-timeout 20 --retry 3 --retry-delay 2 --retry-all-errors \
-    "$node_dist_base/$node_tarball" -o "$node_tmp/$node_tarball"
-  (
-    cd "$node_tmp"
-    grep -F " $node_tarball" "$shasums_file" | sha256sum -c -
-  )
-  rm -rf "$node_root"
-  mkdir -p "$node_root"
-  tar -xJf "$node_tmp/$node_tarball" -C "$node_root" --strip-components=1
-  export PATH="$node_root/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
-  mkdir -p "$HOME/.npm-global/bin"
-  npm config set prefix "$HOME/.npm-global"
-  npm config set registry "${NPM_REGISTRY:-https://registry.npmjs.org/}"
-  node -v
-  npm -v
-}
-
-find_service_manager_binary_for_registration() {
-  if command -v service-manager >/dev/null 2>&1; then
-    command -v service-manager
-    return 0
-  fi
-  if [ -x "$service_manager_dir/service-manager" ]; then
-    printf '%s\n' "$service_manager_dir/service-manager"
-    return 0
-  fi
-  if [ -x "$service_manager_dir/target/release/service-manager" ]; then
-    printf '%s\n' "$service_manager_dir/target/release/service-manager"
-    return 0
-  fi
-  return 1
-}
-
-service_manager_health_ready() {
-  command -v curl >/dev/null 2>&1 || return 1
-  curl -fsS --max-time 2 "$service_manager_url/api/v1/health" >/dev/null 2>&1
-}
-
-resolve_service_manager_token() {
-  local sm_bin="$1"
-  local token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
-  if [ -z "$token" ]; then
-    token="$(read_openhouse_service_manager_token || true)"
-  fi
-  if [ -z "$token" ] && [ -n "$sm_bin" ]; then
-    token="$("$sm_bin" token show 2>/dev/null | tr -d '\r\n' || true)"
-  fi
-  printf '%s' "$token"
-}
-
-read_openhouse_service_manager_token() {
-  local config token
-  for config in \
-    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
-    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
-    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json" \
-    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}"; do
-    [ -n "$config" ] && [ -f "$config" ] || continue
-    token="$(sed -n 's/.*"auth_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$config" | head -n 1 || true)"
-    if [ -n "$token" ]; then
-      printf '%s\n' "$token"
-      return 0
-    fi
-  done
-  return 1
-}
-
-service_manager_auth_ready() {
-  local token="$1"
-  local work_dir
-  local curl_cfg
-
-  [ -n "$token" ] || return 1
-  command -v curl >/dev/null 2>&1 || return 1
-  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-sm-auth.XXXXXX")" || return 1
-  curl_cfg="$work_dir/curl.cfg"
-  printf 'header = "Authorization: Bearer %s"\n' "$token" > "$curl_cfg"
-  curl -q -fsS --max-time 3 -K "$curl_cfg" "$service_manager_url/api/v1/services" >/dev/null 2>&1
-  status=$?
-  rm -rf "$work_dir" >/dev/null 2>&1 || true
-  return "$status"
-}
-
-json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-}
-
-service_manager_listen_addr() {
-  local value="$service_manager_url"
-  case "$value" in
-    http://*) value="${value#http://}" ;;
-    https://*) value="${value#https://}" ;;
-    "") value="$service_manager_bind" ;;
-  esac
-  value="${value%%/*}"
-  [ -n "$value" ] || value="$service_manager_bind"
-  printf '%s' "$value"
-}
-
-ensure_openhouse_system_layout() {
-  local root
-  for root in \
-    "$HOME" \
-    "${SMALLPHONEAI_TERMUX_HOME:-}" \
-    "/data/data/com.termux/files/home"; do
-    [ -n "$root" ] && [ -d "$root" ] || continue
-    mkdir -p \
-      "$root/.config/openhouseai/subjects.d" \
-      "$root/.config/openhouseai/system" \
-      "$root/.local/state/openhouseai/checks/last" || true
-  done
-}
-
-write_openhouse_service_manager_config() {
-  local target="$1"
-  local token="$2"
-  local listen_addr="$3"
-  local dir
-  local tmp
-  local token_json
-  local listen_json
-
-  case "$target" in
-    */.config/service-manager/config.json)
-      warn "拒绝写入旧 service-manager 配置路径：$target"
-      return 1
-      ;;
-  esac
-
-  dir="$(dirname "$target")"
-  if ! mkdir -p "$dir"; then
-    warn "无法创建 OpenHouse service-manager 配置目录：$dir"
-    return 1
-  fi
-
-  token_json="$(json_escape "$token")"
-  listen_json="$(json_escape "$listen_addr")"
-  tmp="$target.tmp.$$"
-  if ! cat > "$tmp" <<EOF
-{
-  "auth_token": "$token_json",
-  "listen_addr": "$listen_json"
-}
-EOF
-  then
-    warn "无法写入 OpenHouse service-manager 临时配置：$tmp"
-    rm -f "$tmp" >/dev/null 2>&1 || true
-    return 1
-  fi
-
-  chmod 600 "$tmp" >/dev/null 2>&1 || true
-  if ! mv "$tmp" "$target"; then
-    warn "无法更新 OpenHouse service-manager 配置：$target"
-    rm -f "$tmp" >/dev/null 2>&1 || true
-    return 1
-  fi
-}
-
-sync_openhouse_service_manager_config() {
-  local token="$1"
-  local listen_addr="${2:-}"
-  local target
-  local wrote=0
-  local failed=0
-
-  if [ -z "$token" ]; then
-    warn "service-manager token 为空，跳过同步到 OpenHouse 专用配置。"
-    return 1
-  fi
-  [ -n "$listen_addr" ] || listen_addr="$(service_manager_listen_addr)"
-
-  for target in \
-    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
-    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
-    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json" \
-    "$HOME/.config/openhouseai/service-manager/config.json"; do
-    [ -n "$target" ] || continue
-    case "$target" in
-      /data/data/com.termux/files/home/*)
-        [ -d "/data/data/com.termux/files/home" ] || continue
-        ;;
-    esac
-    if write_openhouse_service_manager_config "$target" "$token" "$listen_addr"; then
-      wrote=1
-    else
-      failed=1
-    fi
-  done
-
-  if [ "$wrote" = "1" ]; then
-    log "已同步 service-manager token 到 OpenHouse 专用配置：listen_addr=$listen_addr"
-  else
-    warn "未能同步 service-manager token 到任何 OpenHouse 专用配置路径。"
-  fi
-  [ "$failed" = "0" ] || return 1
-}
-
-stop_service_manager_for_registration() {
-  local self="$$"
-  ps -eo pid=,comm=,args= 2>/dev/null | while read -r pid comm args; do
-    [ -n "$pid" ] || continue
-    [ "$pid" = "$self" ] && continue
-    case "$comm $args" in
-      *service-manager*" serve "*|*service-manager*" serve")
-        kill "$pid" >/dev/null 2>&1 || true
-        ;;
-    esac
-  done
-  sleep 1
-}
-
-start_service_manager_for_registration() {
-  local sm_bin="$1"
-  mkdir -p "$HOME/.smallphoneai/logs"
-  if [ "${SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER:-0}" = "1" ]; then
-    warn "service-manager 控制面必须运行在 Termux native；拒绝在 Ubuntu/proot 内为注册临时启动。"
-    return 1
-  fi
-  log "正在启动 service-manager 以注册 SmallPhoneAI 组件：$service_manager_bind"
-  nohup "$sm_bin" serve --bind "$service_manager_bind" > "$HOME/.smallphoneai/logs/service-manager.log" 2>&1 < /dev/null &
-  for _ in $(seq 1 30); do
-    if service_manager_health_ready; then
-      log "service-manager 已启动：$service_manager_url"
-      return 0
-    fi
-    sleep 1
-  done
-  warn "service-manager 未能在注册前启动。"
-  return 1
-}
-
-ensure_service_manager_registration_context() {
-  local sm_bin
-  local token
-
-  sm_bin="$(find_service_manager_binary_for_registration || true)"
-  if [ -n "$sm_bin" ]; then
-    export PATH="$(dirname "$sm_bin"):$PATH"
-  else
-    warn "当前环境未找到 service-manager CLI；将只使用 Termux native API 与 OpenHouse token。"
-  fi
-
-  if ! service_manager_health_ready; then
-    if [ -n "$sm_bin" ]; then
-      start_service_manager_for_registration "$sm_bin" || return 1
-    else
-      warn "service-manager API 不可达，且当前环境没有本地 CLI 可启动。"
-      return 1
-    fi
-  fi
-
-  token="$(resolve_service_manager_token "$sm_bin")"
-  if ! service_manager_auth_ready "$token"; then
-    if [ -n "$sm_bin" ] && [ "${SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER:-0}" != "1" ]; then
-      warn "service-manager token 与当前运行实例不匹配，重启本地 service-manager。"
-      stop_service_manager_for_registration
-      start_service_manager_for_registration "$sm_bin" || return 1
-      token="$(resolve_service_manager_token "$sm_bin")"
-    else
-      warn "service-manager token 与 Termux native 实例不匹配；不会在 Ubuntu/proot 内重启控制面。"
-    fi
-  fi
-
-  if [ -z "$token" ] || ! service_manager_auth_ready "$token"; then
-    warn "无法获得可用的 service-manager token，后续注册可能失败。"
-    return 1
-  fi
-
-  export SERVICE_MANAGER_URL="$service_manager_url"
-  export SERVICE_MANAGER_TOKEN="$token"
-  export SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-$token}"
-  sync_openhouse_service_manager_config "$token" "$(service_manager_listen_addr)" || true
-  log "service-manager 注册上下文已就绪。"
-}
-
-component_prepare_install() {
+run_component() {
   local name="$1"
   local dir="$2"
   local url="$3"
@@ -1651,64 +1348,35 @@ component_prepare_install() {
     if [ "$required" = "1" ]; then
       failures=$((failures + 1))
     fi
-    return 1
+    return 0
   fi
+  patch_pi_payload_for_termux "$payload_name" "$dir"
 
   if ! validate_bundle_local_install_source "$name" "$payload_name" "$dir"; then
     if [ "$required" = "1" ]; then
       failures=$((failures + 1))
     fi
-    return 1
+    return 0
+  fi
+
+  if [ "$payload_name" = "hermes" ]; then
+    run_repo_script "$name" "$dir" "openhouse/install.sh" "$required" "$payload_name"
+    run_repo_script "$name" "$dir" "openhouse/check.sh" "$required" "$payload_name"
+    run_repo_script "$name" "$dir" "openhouse/register-service.sh" "0" "$payload_name"
+    return 0
   fi
 
   run_repo_script "$name" "$dir" "scripts/install.sh" "$required" "$payload_name"
-}
-
-component_check() {
-  local name="$1"
-  local dir="$2"
-  local required="$3"
-  local payload_name="$4"
-
   run_repo_script "$name" "$dir" "scripts/check.sh" "$required" "$payload_name"
-}
-
-component_register() {
-  local name="$1"
-  local dir="$2"
-  local payload_name="$3"
-
   run_repo_script "$name" "$dir" "scripts/register-service.sh" "0" "$payload_name"
 }
 
-run_component() {
-  local name="$1"
-  local dir="$2"
-  local url="$3"
-  local required="$4"
-  local payload_name="$5"
-
-  component_prepare_install "$name" "$dir" "$url" "$required" "$payload_name" || return 0
-  component_check "$name" "$dir" "$required" "$payload_name"
-  component_register "$name" "$dir" "$payload_name"
-}
-
-selected_components_need_service_manager_context() {
-  should_run_component "pi-agent" \
-    || should_run_component "pi-web" \
-    || should_run_component "cc-connect" \
-    || should_run_component "smallphone" \
-    || should_run_component "github-config-helper"
-}
-
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
-cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path openhouse-connect)}"
-smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path smallphone-active)}"
-github_config_helper_dir="${SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR:-$(default_path github-config-helper)}"
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path pi-agent)}}"
 pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path pi-web)}}"
-service_manager_bind="$(configured_service_manager_bind)"
-service_manager_url="$(configured_service_manager_url)"
+cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path openhouse-connect)}"
+smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path smallphone-active)}"
+hermes_dir="${SMALLPHONEAI_HERMES_DIR:-$(default_path hermes)}"
 
 log "SmallPhoneAI 运行组件入口由各子仓库维护。"
 log "当前运行环境：$(detect_smallphoneai_runtime)"
@@ -1723,60 +1391,38 @@ fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"
 else
-  log "本次处理默认组件：先安装 pi-agent/pi-web，再准备 service-manager，随后注册基础栈、GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容服务。"
+  log "本次处理默认组件：openhouse-system、service-manager、pi-agent、pi-web、cc-connect/openhouse-connect、SmallPhone、Hermes。"
 fi
 
 install_openhouse_system || warn "OpenHouse 主系统 CLI/主体名片部署未完成。"
 
 validate_component_targets
 
-pi_agent_component_ready=0
-pi_web_component_ready=0
-
+if should_run_component "service-manager"; then
+  run_component "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"
+fi
 if should_run_component "pi-agent"; then
-  if component_prepare_install "pi-agent" "$pi_agent_dir" "${OPENHOUSE_PI_AGENT_GIT_URL:-}" "1" "pi-agent"; then
-    pi_agent_component_ready=1
+  if ensure_termux_node_for_pi; then
+    run_component "pi-agent" "$pi_agent_dir" "${OPENHOUSE_PI_AGENT_GIT_URL:-}" "1" "pi-agent"
+  else
+    failures=$((failures + 1))
   fi
 fi
 if should_run_component "pi-web"; then
-  if component_prepare_install "pi-web" "$pi_web_dir" "${OPENHOUSE_PI_WEB_GIT_URL:-}" "1" "pi-web"; then
-    pi_web_component_ready=1
-  fi
-fi
-if should_run_component "service-manager"; then
-  if [ "${SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER:-0}" = "1" ] && is_current_ubuntu; then
-    log "service-manager 控制面由 Termux native 提供；跳过 Ubuntu/proot 内安装。"
+  if ensure_termux_node_for_pi; then
+    run_component "pi-web" "$pi_web_dir" "${OPENHOUSE_PI_WEB_GIT_URL:-}" "1" "pi-web"
   else
-    if component_prepare_install "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"; then
-      component_check "service-manager" "$service_manager_dir" "1" "service-manager"
-      component_register "service-manager" "$service_manager_dir" "service-manager"
-    fi
+    failures=$((failures + 1))
   fi
-fi
-if should_run_component "service-manager" || selected_components_need_service_manager_context; then
-  ensure_openhouse_system_layout
-  ensure_service_manager_registration_context || true
-fi
-if should_run_component "pi-agent" && [ "$pi_agent_component_ready" = "1" ]; then
-  component_check "pi-agent" "$pi_agent_dir" "1" "pi-agent"
-  component_register "pi-agent" "$pi_agent_dir" "pi-agent"
-fi
-if should_run_component "pi-web" && [ "$pi_web_component_ready" = "1" ]; then
-  component_check "pi-web" "$pi_web_dir" "1" "pi-web"
-  component_register "pi-web" "$pi_web_dir" "pi-web"
-fi
-if should_run_component "github-config-helper"; then
-  run_component "GitHub config helper" "$github_config_helper_dir" "${SMALLPHONEAI_GITHUB_CONFIG_HELPER_GIT_URL:-}" "0" "github-config-helper"
 fi
 if should_run_component "cc-connect"; then
   run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "${SMALLPHONEAI_CC_CONNECT_GIT_URL:-https://github.com/jiwuyou/openhouse-connect-fresh.git}" "1" "openhouse-connect"
 fi
 if should_run_component "smallphone"; then
-  run_component "SmallPhone compatibility service" "$smallphone_dir" "${SMALLPHONEAI_SMALLPHONE_GIT_URL:-https://github.com/jiwuyou/wuxian-smallphone.git}" "0" "smallphone"
+  run_component "SmallPhone" "$smallphone_dir" "${SMALLPHONEAI_SMALLPHONE_GIT_URL:-https://github.com/jiwuyou/wuxian-smallphone.git}" "1" "smallphone"
 fi
-
-if [ -n "${SERVICE_MANAGER_TOKEN:-}" ]; then
-  sync_openhouse_service_manager_config "$SERVICE_MANAGER_TOKEN" "$(service_manager_listen_addr)" || true
+if should_run_component "hermes"; then
+  run_component "Hermes" "$hermes_dir" "${SMALLPHONEAI_HERMES_GIT_URL:-}" "1" "hermes"
 fi
 
 if [ "$failures" -ne 0 ]; then
