@@ -149,8 +149,357 @@ detect_smallphoneai_runtime() {
   printf 'unknown'
 }
 
+normalize_early_target() {
+  case "$1" in
+    openhouse-system|main-system|system)
+      printf 'openhouse-system'
+      ;;
+    openhouse-connect)
+      printf 'cc-connect'
+      ;;
+    *)
+      printf '%s' "$1"
+      ;;
+  esac
+}
+
+early_should_run_component() {
+  local target="$1"
+  local rest item wanted
+  rest="${SMALLPHONEAI_COMPONENT_TARGETS:-}"
+  [ -n "$rest" ] || return 0
+  while [ -n "$rest" ]; do
+    case "$rest" in
+      *,*)
+        item="${rest%%,*}"
+        rest="${rest#*,}"
+        ;;
+      *)
+        item="$rest"
+        rest=""
+        ;;
+    esac
+    wanted="$(normalize_early_target "$item")"
+    [ "$wanted" = "$target" ] && return 0
+  done
+  return 1
+}
+
+find_termux_service_manager() {
+  local candidate
+  for candidate in \
+    "$(command -v service-manager 2>/dev/null || true)" \
+    "${PREFIX:-/data/data/com.termux/files/usr}/bin/service-manager" \
+    "$HOME/.local/bin/service-manager" \
+    "$HOME/smallphoneai-repos/service-manager/target/release/service-manager"; do
+    [ -n "$candidate" ] && [ -x "$candidate" ] || continue
+    if "$candidate" --version >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+prepare_termux_service_manager_repo() {
+  local repo="$HOME/smallphoneai-repos/service-manager"
+  local payload_root="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}"
+  local archive="$payload_root/service-manager.tar"
+  local work_dir payload_dir
+
+  [ -f "$repo/scripts/install.sh" ] && return 0
+  [ -f "$archive" ] || return 1
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-sm-payload.XXXXXX")" || return 1
+  if ! tar -xf "$archive" -C "$work_dir"; then
+    rm -rf "$work_dir" >/dev/null 2>&1 || true
+    return 1
+  fi
+  if [ -f "$work_dir/scripts/install.sh" ]; then
+    payload_dir="$work_dir"
+  else
+    payload_dir="$(find "$work_dir" -mindepth 2 -maxdepth 3 -path '*/scripts/install.sh' -type f -print | sed 's#/scripts/install\.sh$##' | head -n 1)"
+  fi
+  if [ -z "$payload_dir" ] || [ ! -d "$payload_dir" ]; then
+    rm -rf "$work_dir" >/dev/null 2>&1 || true
+    return 1
+  fi
+  mkdir -p "$repo"
+  cp -a "$payload_dir/." "$repo/"
+  rm -rf "$work_dir" >/dev/null 2>&1 || true
+}
+
+termux_service_manager_ready() {
+  local service_manager_url
+  service_manager_url="$(configured_service_manager_url)"
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsS --max-time 2 "$service_manager_url/api/v1/health" >/dev/null 2>&1
+}
+
+ensure_termux_native_service_manager() {
+  local repo="$HOME/smallphoneai-repos/service-manager"
+  local bind config mode sm_bin log_file token
+
+  if ! sm_bin="$(find_termux_service_manager || true)"; then
+    prepare_termux_service_manager_repo || {
+      warn "无法从 APK payload 准备 service-manager 安装目录。"
+      return 1
+    }
+    [ -f "$repo/scripts/install.sh" ] || return 1
+
+    bind="$(configured_service_manager_bind)"
+    config="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}"
+    mode="${SMALLPHONEAI_TERMUX_SERVICE_MANAGER_INSTALL_MODE:-release}"
+    log "正在安装 Termux native service-manager 控制面：mode=$mode"
+    (
+      cd "$repo"
+      BIND="$bind" CONFIG_PATH="$config" SERVICE_MANAGER_INSTALL_MODE="$mode" INSTALL_SERVICE=0 ./scripts/install.sh
+    ) || return 1
+
+    sm_bin="$(find_termux_service_manager || true)"
+  fi
+  [ -n "$sm_bin" ] || return 1
+
+  bind="$(configured_service_manager_bind)"
+  config="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}"
+  log_file="${SMALLPHONEAI_TERMUX_LOG_DIR:-$HOME/.smallphoneai/logs}/service-manager.log"
+  mkdir -p "$(dirname "$config")" "$(dirname "$log_file")"
+  if ! termux_service_manager_ready; then
+    log "正在启动 Termux native service-manager 控制面：$bind"
+    if command -v setsid >/dev/null 2>&1; then
+      (trap '' HUP; setsid -f "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null) || true
+    else
+      (trap '' HUP; nohup "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null &)
+    fi
+    for _ in $(seq 1 30); do
+      termux_service_manager_ready && break
+      sleep 1
+    done
+  fi
+  termux_service_manager_ready || return 1
+
+  token="$("$sm_bin" token show --config "$config" 2>/dev/null | tr -d '\r\n' || true)"
+  if [ -n "$token" ]; then
+    export SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-$token}"
+    export SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-$token}"
+  fi
+}
+
+bootstrap_root="${SMALLPHONEAI_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+openhouse_home="${OPENHOUSEAI_HOME:-$HOME/.config/openhouseai}"
+openhouse_subjects_dir="${OPENHOUSEAI_SUBJECTS_DIR:-$openhouse_home/subjects.d}"
+openhouse_schema_dir="${OPENHOUSEAI_SCHEMA_DIR:-$openhouse_home/schemas}"
+openhouse_system_dir="${OPENHOUSEAI_SYSTEM_DIR:-$openhouse_home/system}"
+
+install_openhouse_system_cli() {
+  local source="$bootstrap_root/scripts/openhouse-system"
+  local install_dir
+  local target
+
+  if [ ! -f "$source" ]; then
+    warn "openhouse-system CLI source not found: $source"
+    return 1
+  fi
+
+  if is_termux; then
+    install_dir="${PREFIX:-/data/data/com.termux/files/usr}/bin"
+  else
+    install_dir="$HOME/.local/bin"
+  fi
+  target="$install_dir/openhouse-system"
+  mkdir -p "$install_dir"
+  cp "$source" "$target"
+  chmod 755 "$target"
+  log "已部署 openhouse-system CLI：$target"
+}
+
+install_openhouse_system_schema() {
+  local source="$bootstrap_root/schemas/subject.schema.json"
+  local target="$openhouse_schema_dir/subject.schema.json"
+  mkdir -p "$openhouse_schema_dir"
+  if [ -f "$source" ]; then
+    cp "$source" "$target"
+  else
+    cat > "$target" <<'JSON'
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OpenHouse subject card","type":"object","required":["id","title","kind","summary"],"properties":{"id":{"type":"string"},"title":{"type":"string"},"kind":{"type":"string"},"summary":{"type":"string"},"serviceRefs":{"type":"array","items":{"oneOf":[{"type":"string"},{"type":"object","required":["id"],"properties":{"id":{"type":"string"},"runtime":{"type":"string"},"manager":{"type":"string"}}}]}},"entries":{"type":"array"},"locations":{"type":"array"},"ai":{"type":"object"},"checks":{"type":"object"}}}
+JSON
+  fi
+  log "已部署 OpenHouse 主体 schema：$target"
+}
+
+install_default_subject_file() {
+  local name="$1"
+  local target="$openhouse_subjects_dir/$name"
+  if [ -f "$target" ]; then
+    return 0
+  fi
+  mkdir -p "$openhouse_subjects_dir"
+  cat > "$target"
+  log "已写入默认主体名片：$target"
+}
+
+install_default_subjects() {
+  local source_dir="$bootstrap_root/subjects.d"
+  local file
+  mkdir -p "$openhouse_subjects_dir"
+  if [ -d "$source_dir" ]; then
+    for file in "$source_dir"/*.json; do
+      [ -f "$file" ] || continue
+      if [ ! -f "$openhouse_subjects_dir/$(basename "$file")" ]; then
+        cp "$file" "$openhouse_subjects_dir/$(basename "$file")"
+        log "已部署默认主体名片：$openhouse_subjects_dir/$(basename "$file")"
+      fi
+    done
+    return 0
+  fi
+
+  install_default_subject_file "pi-agent.json" <<'JSON'
+{"id":"pi-agent","title":"Pi Agent","kind":"runtime-http","summary":"OpenHouse main AI workbench and human-facing web entry.","serviceRefs":[{"id":"pi-web","runtime":"ubuntu","manager":"service-manager"}],"entries":[{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"ubuntu","path":"/root/smallphoneai-repos/smallphone-active","purpose":"business application repo"}],"ai":{"description":"Pi Agent is the primary OpenHouse AI workbench. Its service state is controlled by service-manager through the pi-web service id.","whenUnavailable":"First inspect service-manager status and logs for pi-web. If pi-web is running, run openhouse-system check pi-agent."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:30141/","timeoutSeconds":4},{"type":"pathExists","runtime":"ubuntu","path":"/root/smallphoneai-repos/smallphone-active","timeoutSeconds":4}]}}
+JSON
+  install_default_subject_file "file-inbox.json" <<'JSON'
+{"id":"file-inbox","title":"File Inbox","kind":"file","summary":"Shared staging area for files opened with or shared to OpenHouse.","serviceRefs":[],"entries":[{"type":"file","label":"Android inbox","path":"/storage/emulated/0/OpenHouse/Inbox"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","purpose":"user-visible Android storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse/Inbox","purpose":"Termux-native inbox projection"},{"runtime":"ubuntu","path":"/root/OpenHouse/Inbox","purpose":"Ubuntu/proot inbox projection"}],"ai":{"description":"Files from Android share/open-with flows should be staged here before AI processing.","whenUnavailable":"Check storage permission and projected inbox directories."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","timeoutSeconds":3}]}}
+JSON
+  install_default_subject_file "openhouse-workspace.json" <<'JSON'
+{"id":"openhouse-workspace","title":"OpenHouse Workspace","kind":"file","summary":"Native work partition with Android, Termux, and Ubuntu visible roots.","serviceRefs":[],"entries":[{"type":"file","label":"Android workspace","path":"/storage/emulated/0/OpenHouse"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse","purpose":"shared phone storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse","purpose":"Termux-native workspace"},{"runtime":"ubuntu","path":"/root/OpenHouse","purpose":"Ubuntu/proot workspace"}],"ai":{"description":"Use this workspace when explaining where OpenHouse data lives across Android, Termux, and Ubuntu.","whenUnavailable":"Check storage permission and root directory projections."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse","timeoutSeconds":3},{"type":"pathExists","runtime":"ubuntu","path":"/root/OpenHouse","timeoutSeconds":4}]}}
+JSON
+  install_default_subject_file "service-control.json" <<'JSON'
+{"id":"service-control","title":"Service Control","kind":"runtime-http","summary":"Local service-manager control surface for service status, lifecycle actions, and logs.","serviceRefs":[],"entries":[{"type":"web","label":"service-manager","url":"http://127.0.0.1:20087/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json","purpose":"OpenHouse service-manager config and token"}],"ai":{"description":"service-manager is the standing service control layer. It answers service status, lifecycle, and logs for explicit service ids; it does not infer runtime or perform subject endpoint/file/skill checks.","whenUnavailable":"Repair the Termux native service-manager control plane before using higher-level subject checks."},"checks":{"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:20087/api/v1/health","timeoutSeconds":3}]}}
+JSON
+}
+
+write_ubuntu_openhouse_system_shim() {
+  local target="${1:-/usr/local/bin/openhouse-system}"
+  mkdir -p "$(dirname "$target")"
+  cat > "$target" <<'SH'
+#!/usr/bin/env sh
+set -eu
+
+TERMUX_HOME="${OPENHOUSEAI_TERMUX_HOME:-/data/data/com.termux/files/home}"
+TERMUX_PREFIX="${OPENHOUSEAI_TERMUX_PREFIX:-/data/data/com.termux/files/usr}"
+NATIVE_CLI="${OPENHOUSE_SYSTEM_NATIVE_CLI:-$TERMUX_PREFIX/bin/openhouse-system}"
+
+if [ ! -f "$NATIVE_CLI" ]; then
+  printf '%s\n' "openhouse-system native CLI not found: $NATIVE_CLI" >&2
+  printf '%s\n' "Run this from Termux first: bash bootstrap.sh components" >&2
+  exit 127
+fi
+
+export OPENHOUSE_SYSTEM_CALLER_RUNTIME="${OPENHOUSE_SYSTEM_CALLER_RUNTIME:-ubuntu}"
+export HOME="$TERMUX_HOME"
+export PREFIX="$TERMUX_PREFIX"
+export OPENHOUSEAI_HOME="${OPENHOUSEAI_HOME:-$TERMUX_HOME/.config/openhouseai}"
+export OPENHOUSEAI_SUBJECTS_DIR="${OPENHOUSEAI_SUBJECTS_DIR:-$OPENHOUSEAI_HOME/subjects.d}"
+export OPENHOUSEAI_SYSTEM_DIR="${OPENHOUSEAI_SYSTEM_DIR:-$OPENHOUSEAI_HOME/system}"
+export SERVICE_MANAGER_CONFIG_PATH="${SERVICE_MANAGER_CONFIG_PATH:-$OPENHOUSEAI_HOME/service-manager/config.json}"
+export SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-$SERVICE_MANAGER_CONFIG_PATH}"
+export SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-http://127.0.0.1:20087}"
+export PATH="$TERMUX_PREFIX/bin:/system/bin:/system/xbin:$PATH"
+export LD_LIBRARY_PATH="$TERMUX_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+
+if [ -x "$TERMUX_PREFIX/bin/bash" ]; then
+  exec "$TERMUX_PREFIX/bin/bash" "$NATIVE_CLI" --caller-runtime ubuntu "$@"
+fi
+
+exec /usr/bin/env bash "$NATIVE_CLI" --caller-runtime ubuntu "$@"
+SH
+  chmod 755 "$target"
+}
+
+install_ubuntu_openhouse_system_shim() {
+  local termux_home="${OPENHOUSEAI_TERMUX_HOME:-/data/data/com.termux/files/home}"
+  local termux_prefix="${OPENHOUSEAI_TERMUX_PREFIX:-${PREFIX:-/data/data/com.termux/files/usr}}"
+
+  if is_current_ubuntu; then
+    write_ubuntu_openhouse_system_shim "/usr/local/bin/openhouse-system"
+    log "已部署 Ubuntu openhouse-system shim：/usr/local/bin/openhouse-system"
+    return 0
+  fi
+
+  if is_termux && command -v proot-distro >/dev/null 2>&1 && proot-distro login ubuntu -- true >/dev/null 2>&1; then
+    log "正在 Ubuntu 内部署 openhouse-system shim。"
+    proot-distro login ubuntu -- env \
+      OPENHOUSEAI_TERMUX_HOME="$termux_home" \
+      OPENHOUSEAI_TERMUX_PREFIX="$termux_prefix" \
+      bash -s <<'SH'
+set -euo pipefail
+mkdir -p /usr/local/bin
+cat > /usr/local/bin/openhouse-system <<'EOS'
+#!/usr/bin/env sh
+set -eu
+
+TERMUX_HOME="${OPENHOUSEAI_TERMUX_HOME:-/data/data/com.termux/files/home}"
+TERMUX_PREFIX="${OPENHOUSEAI_TERMUX_PREFIX:-/data/data/com.termux/files/usr}"
+NATIVE_CLI="${OPENHOUSE_SYSTEM_NATIVE_CLI:-$TERMUX_PREFIX/bin/openhouse-system}"
+
+if [ ! -f "$NATIVE_CLI" ]; then
+  printf '%s\n' "openhouse-system native CLI not found: $NATIVE_CLI" >&2
+  printf '%s\n' "Run this from Termux first: bash bootstrap.sh components" >&2
+  exit 127
+fi
+
+export OPENHOUSE_SYSTEM_CALLER_RUNTIME="${OPENHOUSE_SYSTEM_CALLER_RUNTIME:-ubuntu}"
+export HOME="$TERMUX_HOME"
+export PREFIX="$TERMUX_PREFIX"
+export OPENHOUSEAI_HOME="${OPENHOUSEAI_HOME:-$TERMUX_HOME/.config/openhouseai}"
+export OPENHOUSEAI_SUBJECTS_DIR="${OPENHOUSEAI_SUBJECTS_DIR:-$OPENHOUSEAI_HOME/subjects.d}"
+export OPENHOUSEAI_SYSTEM_DIR="${OPENHOUSEAI_SYSTEM_DIR:-$OPENHOUSEAI_HOME/system}"
+export SERVICE_MANAGER_CONFIG_PATH="${SERVICE_MANAGER_CONFIG_PATH:-$OPENHOUSEAI_HOME/service-manager/config.json}"
+export SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-$SERVICE_MANAGER_CONFIG_PATH}"
+export SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-http://127.0.0.1:20087}"
+export PATH="$TERMUX_PREFIX/bin:/system/bin:/system/xbin:$PATH"
+export LD_LIBRARY_PATH="$TERMUX_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+
+if [ -x "$TERMUX_PREFIX/bin/bash" ]; then
+  exec "$TERMUX_PREFIX/bin/bash" "$NATIVE_CLI" --caller-runtime ubuntu "$@"
+fi
+
+exec /usr/bin/env bash "$NATIVE_CLI" --caller-runtime ubuntu "$@"
+EOS
+chmod 755 /usr/local/bin/openhouse-system
+SH
+    return 0
+  fi
+
+  return 0
+}
+
+render_openhouse_system_index() {
+  mkdir -p "$openhouse_system_dir"
+  if ! command -v openhouse-system >/dev/null 2>&1; then
+    warn "openhouse-system 不在 PATH，跳过系统目录渲染。"
+    return 1
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    warn "jq 不可用，跳过系统目录渲染。请安装：pkg install jq"
+    return 1
+  fi
+  OPENHOUSEAI_HOME="$openhouse_home" \
+    OPENHOUSEAI_SUBJECTS_DIR="$openhouse_subjects_dir" \
+    OPENHOUSEAI_SYSTEM_DIR="$openhouse_system_dir" \
+    openhouse-system render
+}
+
+install_openhouse_system() {
+  if is_current_ubuntu; then
+    install_ubuntu_openhouse_system_shim
+    return 0
+  fi
+
+  install_openhouse_system_cli || return 1
+  install_openhouse_system_schema
+  install_default_subjects
+  render_openhouse_system_index || warn "OpenHouse 主系统目录暂未渲染成功；可稍后执行：openhouse-system render"
+  install_ubuntu_openhouse_system_shim || warn "Ubuntu openhouse-system shim 部署未完成；可稍后从 Termux 重新运行：bash bootstrap.sh components"
+}
+
 if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; then
   if command -v proot-distro >/dev/null 2>&1 && proot-distro login ubuntu -- true >/dev/null 2>&1; then
+    install_openhouse_system || warn "OpenHouse 主系统 CLI/主体名片部署未完成。"
+    if early_should_run_component "service-manager"; then
+      ensure_termux_native_service_manager || {
+        warn "Termux native service-manager 未安装成功；不会回退到 Ubuntu/proot 控制面。"
+        exit 1
+      }
+    fi
     log "正在 Ubuntu 内安装、检查并注册 SmallPhone 运行组件。"
     SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
       proot-distro login ubuntu -- env \
@@ -174,10 +523,13 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
         SMALLPHONEAI_NPM_FETCH_TIMEOUT="${SMALLPHONEAI_NPM_FETCH_TIMEOUT:-}" \
         SMALLPHONEAI_GITHUB_PROXY_PREFIX="${SMALLPHONEAI_GITHUB_PROXY_PREFIX:-}" \
         OPENHOUSE_GITHUB_PROXY_PREFIX="${OPENHOUSE_GITHUB_PROXY_PREFIX:-}" \
+        OPENHOUSEAI_TERMUX_HOME="${OPENHOUSEAI_TERMUX_HOME:-$HOME}" \
+        OPENHOUSEAI_TERMUX_PREFIX="${OPENHOUSEAI_TERMUX_PREFIX:-${PREFIX:-/data/data/com.termux/files/usr}}" \
         SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-$HOME}" \
         SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
+        SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER=1 \
         SMALLPHONEAI_CC_CONNECT_DIR="${SMALLPHONEAI_CC_CONNECT_DIR:-}" \
         SMALLPHONEAI_SMALLPHONE_DIR="${SMALLPHONEAI_SMALLPHONE_DIR:-}" \
         SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR="${SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR:-}" \
@@ -211,6 +563,9 @@ fi
 
 normalize_target() {
   case "$1" in
+    openhouse-system|main-system|system)
+      printf 'openhouse-system'
+      ;;
     openhouse-connect)
       printf 'cc-connect'
       ;;
@@ -264,7 +619,7 @@ validate_component_targets() {
     [ -n "$item" ] || continue
     target="$(normalize_target "$item")"
     case "$target" in
-      service-manager|cc-connect|smallphone|pi-agent|pi-web|github-config-helper)
+      openhouse-system|service-manager|cc-connect|smallphone|pi-agent|pi-web|github-config-helper)
         ;;
       *)
         warn "未知组件目标：$item"
@@ -865,12 +1220,20 @@ run_repo_script_command() {
 
   case "$component_source_mode:$payload_name:$script" in
     bundle:service-manager:scripts/install.sh)
-      local_binary="$(local_component_binary_path "$payload_name" "$dir")"
-      run_logged env \
-        SMALLPHONEAI_OFFLINE_INSTALL=1 \
-        SMALLPHONEAI_LOCAL_INSTALL=1 \
-        SERVICE_MANAGER_INSTALL_MODE=local \
-        "./$script" "$local_binary"
+      if is_termux; then
+        run_logged env \
+          SMALLPHONEAI_OFFLINE_INSTALL=1 \
+          SERVICE_MANAGER_INSTALL_MODE="${SMALLPHONEAI_TERMUX_SERVICE_MANAGER_INSTALL_MODE:-release}" \
+          CONFIG_PATH="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}" \
+          "./$script"
+      else
+        local_binary="$(local_component_binary_path "$payload_name" "$dir")"
+        run_logged env \
+          SMALLPHONEAI_OFFLINE_INSTALL=1 \
+          SMALLPHONEAI_LOCAL_INSTALL=1 \
+          SERVICE_MANAGER_INSTALL_MODE=local \
+          "./$script" "$local_binary"
+      fi
       ;;
     bundle:openhouse-connect:scripts/install.sh)
       run_logged env \
@@ -1044,9 +1407,29 @@ resolve_service_manager_token() {
   local sm_bin="$1"
   local token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
   if [ -z "$token" ]; then
+    token="$(read_openhouse_service_manager_token || true)"
+  fi
+  if [ -z "$token" ] && [ -n "$sm_bin" ]; then
     token="$("$sm_bin" token show 2>/dev/null | tr -d '\r\n' || true)"
   fi
   printf '%s' "$token"
+}
+
+read_openhouse_service_manager_token() {
+  local config token
+  for config in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    token="$(sed -n 's/.*"auth_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$config" | head -n 1 || true)"
+    if [ -n "$token" ]; then
+      printf '%s\n' "$token"
+      return 0
+    fi
+  done
+  return 1
 }
 
 service_manager_auth_ready() {
@@ -1079,6 +1462,20 @@ service_manager_listen_addr() {
   value="${value%%/*}"
   [ -n "$value" ] || value="$service_manager_bind"
   printf '%s' "$value"
+}
+
+ensure_openhouse_system_layout() {
+  local root
+  for root in \
+    "$HOME" \
+    "${SMALLPHONEAI_TERMUX_HOME:-}" \
+    "/data/data/com.termux/files/home"; do
+    [ -n "$root" ] && [ -d "$root" ] || continue
+    mkdir -p \
+      "$root/.config/openhouseai/subjects.d" \
+      "$root/.config/openhouseai/system" \
+      "$root/.local/state/openhouseai/checks/last" || true
+  done
 }
 
 write_openhouse_service_manager_config() {
@@ -1182,6 +1579,10 @@ stop_service_manager_for_registration() {
 start_service_manager_for_registration() {
   local sm_bin="$1"
   mkdir -p "$HOME/.smallphoneai/logs"
+  if [ "${SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER:-0}" = "1" ]; then
+    warn "service-manager 控制面必须运行在 Termux native；拒绝在 Ubuntu/proot 内为注册临时启动。"
+    return 1
+  fi
   log "正在启动 service-manager 以注册 SmallPhoneAI 组件：$service_manager_bind"
   nohup "$sm_bin" serve --bind "$service_manager_bind" > "$HOME/.smallphoneai/logs/service-manager.log" 2>&1 < /dev/null &
   for _ in $(seq 1 30); do
@@ -1200,22 +1601,31 @@ ensure_service_manager_registration_context() {
   local token
 
   sm_bin="$(find_service_manager_binary_for_registration || true)"
-  if [ -z "$sm_bin" ]; then
-    warn "未找到 service-manager，可执行文件缺失，跳过注册上下文准备。"
-    return 1
+  if [ -n "$sm_bin" ]; then
+    export PATH="$(dirname "$sm_bin"):$PATH"
+  else
+    warn "当前环境未找到 service-manager CLI；将只使用 Termux native API 与 OpenHouse token。"
   fi
-  export PATH="$(dirname "$sm_bin"):$PATH"
 
   if ! service_manager_health_ready; then
-    start_service_manager_for_registration "$sm_bin" || return 1
+    if [ -n "$sm_bin" ]; then
+      start_service_manager_for_registration "$sm_bin" || return 1
+    else
+      warn "service-manager API 不可达，且当前环境没有本地 CLI 可启动。"
+      return 1
+    fi
   fi
 
   token="$(resolve_service_manager_token "$sm_bin")"
   if ! service_manager_auth_ready "$token"; then
-    warn "service-manager token 与当前运行实例不匹配，重启本地 service-manager。"
-    stop_service_manager_for_registration
-    start_service_manager_for_registration "$sm_bin" || return 1
-    token="$(resolve_service_manager_token "$sm_bin")"
+    if [ -n "$sm_bin" ] && [ "${SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER:-0}" != "1" ]; then
+      warn "service-manager token 与当前运行实例不匹配，重启本地 service-manager。"
+      stop_service_manager_for_registration
+      start_service_manager_for_registration "$sm_bin" || return 1
+      token="$(resolve_service_manager_token "$sm_bin")"
+    else
+      warn "service-manager token 与 Termux native 实例不匹配；不会在 Ubuntu/proot 内重启控制面。"
+    fi
   fi
 
   if [ -z "$token" ] || ! service_manager_auth_ready "$token"; then
@@ -1316,6 +1726,8 @@ else
   log "本次处理默认组件：先安装 pi-agent/pi-web，再准备 service-manager，随后注册基础栈、GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容服务。"
 fi
 
+install_openhouse_system || warn "OpenHouse 主系统 CLI/主体名片部署未完成。"
+
 validate_component_targets
 
 pi_agent_component_ready=0
@@ -1332,12 +1744,17 @@ if should_run_component "pi-web"; then
   fi
 fi
 if should_run_component "service-manager"; then
-  if component_prepare_install "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"; then
-    component_check "service-manager" "$service_manager_dir" "1" "service-manager"
-    component_register "service-manager" "$service_manager_dir" "service-manager"
+  if [ "${SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER:-0}" = "1" ] && is_current_ubuntu; then
+    log "service-manager 控制面由 Termux native 提供；跳过 Ubuntu/proot 内安装。"
+  else
+    if component_prepare_install "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"; then
+      component_check "service-manager" "$service_manager_dir" "1" "service-manager"
+      component_register "service-manager" "$service_manager_dir" "service-manager"
+    fi
   fi
 fi
 if should_run_component "service-manager" || selected_components_need_service_manager_context; then
+  ensure_openhouse_system_layout
   ensure_service_manager_registration_context || true
 fi
 if should_run_component "pi-agent" && [ "$pi_agent_component_ready" = "1" ]; then

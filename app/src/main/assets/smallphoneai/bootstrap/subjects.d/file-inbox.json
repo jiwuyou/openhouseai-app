@@ -1,0 +1,45 @@
+{
+  "id": "file-inbox",
+  "title": "File Inbox",
+  "kind": "file",
+  "summary": "Shared staging area for files opened with or shared to OpenHouse.",
+  "serviceRefs": [],
+  "entries": [
+    {
+      "type": "file",
+      "label": "Android inbox",
+      "path": "/storage/emulated/0/OpenHouse/Inbox"
+    }
+  ],
+  "locations": [
+    {
+      "runtime": "android",
+      "path": "/storage/emulated/0/OpenHouse/Inbox",
+      "purpose": "user-visible Android storage"
+    },
+    {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/home/OpenHouse/Inbox",
+      "purpose": "Termux-native inbox projection"
+    },
+    {
+      "runtime": "ubuntu",
+      "path": "/root/OpenHouse/Inbox",
+      "purpose": "Ubuntu/proot inbox projection"
+    }
+  ],
+  "ai": {
+    "description": "Files from Android share/open-with flows should be staged here before AI processing. Tell users the Android, Termux, and Ubuntu paths when describing an uploaded file.",
+    "whenUnavailable": "Check whether the Android storage permission and projected inbox directories exist."
+  },
+  "checks": {
+    "afterServiceOk": [
+      {
+        "type": "pathExists",
+        "runtime": "android",
+        "path": "/storage/emulated/0/OpenHouse/Inbox",
+        "timeoutSeconds": 3
+      }
+    ]
+  }
+}

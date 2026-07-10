@@ -1,0 +1,34 @@
+{
+  "id": "service-control",
+  "title": "Service Control",
+  "kind": "runtime-http",
+  "summary": "Local service-manager control surface for service status, lifecycle actions, and logs.",
+  "serviceRefs": [],
+  "entries": [
+    {
+      "type": "web",
+      "label": "service-manager",
+      "url": "http://127.0.0.1:20087/"
+    }
+  ],
+  "locations": [
+    {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json",
+      "purpose": "OpenHouse service-manager config and token"
+    }
+  ],
+  "ai": {
+    "description": "service-manager is the standing service control layer. It answers service status, lifecycle, and logs for explicit service ids; it does not infer runtime or perform subject endpoint/file/skill checks.",
+    "whenUnavailable": "Repair the Termux native service-manager control plane before using higher-level subject checks."
+  },
+  "checks": {
+    "afterServiceOk": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:20087/api/v1/health",
+        "timeoutSeconds": 3
+      }
+    ]
+  }
+}

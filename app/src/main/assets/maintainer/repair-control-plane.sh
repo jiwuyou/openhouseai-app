@@ -1,14 +1,26 @@
 set -euo pipefail
 
-log "正在轻量修复控制中枢：只恢复 service-manager 与 OpenHouse 专用 token。"
-require_ubuntu
+log "正在轻量修复控制中枢：优先恢复 Termux native service-manager 与 OpenHouse 专用 token。"
+
+if ! command -v is_termux >/dev/null 2>&1; then
+  is_termux() {
+    [ -n "${PREFIX:-}" ] && [ -d "${PREFIX:-}/bin" ] && [ -d "/data/data/com.termux/files" ]
+  }
+fi
+
+if ! command -v is_current_ubuntu >/dev/null 2>&1; then
+  is_current_ubuntu() {
+    [ -r /etc/os-release ] && grep -qi 'ubuntu' /etc/os-release
+  }
+fi
 
 read_openhouse_service_manager_endpoint() {
   local config key value
   for config in \
     "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
     "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
-    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json"; do
     [ -n "$config" ] && [ -f "$config" ] || continue
     for key in listen_addr listenAddr base_url baseUrl baseURL url; do
       value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
@@ -74,153 +86,178 @@ configured_service_manager_url() {
   printf '%s://%s\n' "$scheme" "$bind"
 }
 
-start_ubuntu_service_manager_from_termux() {
-  local bind
-  local sm_url
-  bind="$(configured_service_manager_bind)"
-  sm_url="$(configured_service_manager_url)"
-  local launcher_dir="$HOME/.smallphoneai/service-manager"
-  local launcher="$launcher_dir/service-manager-proot-launcher.sh"
-
-  command -v proot-distro >/dev/null 2>&1 || return 1
-  mkdir -p "$launcher_dir"
-
-  if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 2 "$sm_url/api/v1/health" >/dev/null 2>&1; then
-    log "service-manager 已在 Termux 侧可访问：$sm_url"
-    export SMALLPHONEAI_TERMUX_SERVICE_MANAGER_LAUNCHED=1
-    return 0
-  fi
-
-cat > "$launcher" <<'SMALLPHONEAI_SERVICE_MANAGER_LAUNCHER'
-#!/data/data/com.termux/files/usr/bin/bash
-set -euo pipefail
-
-read_openhouse_service_manager_endpoint() {
-  local config key value
+read_config_token() {
+  local config token
   for config in \
     "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
-    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
-    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    "$HOME/.config/openhouseai/service-manager/config.json" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json"; do
     [ -n "$config" ] && [ -f "$config" ] || continue
-    for key in listen_addr listenAddr base_url baseUrl baseURL url; do
-      value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
-      if [ -n "$value" ]; then
-        printf '%s\n' "$value"
-        return 0
-      fi
-    done
+    token="$(sed -n 's/.*"auth_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$config" | head -n 1 || true)"
+    if [ -n "$token" ]; then
+      printf '%s\n' "$token"
+      return 0
+    fi
   done
   return 1
 }
 
-normalize_service_manager_bind() {
-  local value="${1:-}"
-  case "$value" in
-    http://*) value="${value#http://}" ;;
-    https://*) value="${value#https://}" ;;
-  esac
-  value="${value%%/*}"
-  case "$value" in
-    "") return 1 ;;
-    :*) printf '127.0.0.1%s\n' "$value"; return 0 ;;
-    0.0.0.0) printf '127.0.0.1\n'; return 0 ;;
-    0.0.0.0:*) printf '127.0.0.1:%s\n' "${value#0.0.0.0:}"; return 0 ;;
-    "::"|"[::]") printf '127.0.0.1\n'; return 0 ;;
-    "[::]:"*) printf '127.0.0.1:%s\n' "${value#"[::]:"}"; return 0 ;;
-    :::*) printf '127.0.0.1:%s\n' "${value#:::}"; return 0 ;;
-    *[!0-9]*) printf '%s\n' "$value"; return 0 ;;
-    *) printf '127.0.0.1:%s\n' "$value"; return 0 ;;
-  esac
+termux_service_manager_config() {
+  printf '%s\n' "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}"
 }
 
-configured_service_manager_bind() {
-  local endpoint
-  endpoint="$(read_openhouse_service_manager_endpoint || true)"
-  if [ -n "$endpoint" ] && normalize_service_manager_bind "$endpoint"; then
-    return
-  fi
-  if [ -n "${SERVICE_MANAGER_URL:-}" ] && normalize_service_manager_bind "$SERVICE_MANAGER_URL"; then
-    return
-  fi
-  if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" ]; then
-    normalize_service_manager_bind "$SMALLPHONEAI_SERVICE_MANAGER_BIND"
-    return
-  fi
-  printf '127.0.0.1:20087\n'
+termux_service_manager_log() {
+  printf '%s\n' "${SMALLPHONEAI_TERMUX_LOG_DIR:-$HOME/.smallphoneai/logs}/service-manager.log"
 }
 
-bind="$(configured_service_manager_bind)"
-export SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind"
-exec proot-distro login ubuntu -- env \
-  SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" \
-  SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind" \
-  SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
-  SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-${HOME:-/data/data/com.termux/files/home}}" \
-  bash -lc '
-set -euo pipefail
-
-bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}"
-[ -n "$bind" ] || bind="127.0.0.1:20087"
-repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
-log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
-service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$repo_root/service-manager}"
-export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$HOME/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-mkdir -p "$log_dir"
-
-find_service_manager() {
-  if command -v service-manager >/dev/null 2>&1; then
-    command -v service-manager
-    return 0
-  fi
+find_termux_service_manager() {
+  local candidate
   for candidate in \
+    "$(command -v service-manager 2>/dev/null || true)" \
+    "${PREFIX:-/data/data/com.termux/files/usr}/bin/service-manager" \
     "$HOME/.local/bin/service-manager" \
-    "$service_manager_dir/service-manager" \
-    "$service_manager_dir/target/release/service-manager" \
-    "$service_manager_dir/target/debug/service-manager" \
-    "$repo_root/service-manager/service-manager" \
-    "$repo_root/service-manager/target/release/service-manager" \
-    "$repo_root/service-manager/target/debug/service-manager"; do
-    if [ -x "$candidate" ]; then
-      printf "%s\n" "$candidate"
+    "$HOME/smallphoneai-repos/service-manager/target/release/service-manager"; do
+    [ -n "$candidate" ] && [ -x "$candidate" ] || continue
+    if "$candidate" --version >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
       return 0
     fi
   done
   return 1
 }
 
-service_manager_bin="$(find_service_manager)"
-exec "$service_manager_bin" serve --bind "$bind"
-'
-SMALLPHONEAI_SERVICE_MANAGER_LAUNCHER
+prepare_termux_service_manager_repo() {
+  local repo="$HOME/smallphoneai-repos/service-manager"
+  local payload_root="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}"
+  local archive="$payload_root/service-manager.tar"
+  local work_dir payload_dir
 
-  chmod 700 "$launcher" >/dev/null 2>&1 || true
-  log "正在从 Termux 侧拉起长期运行的 service-manager proot 会话：$bind"
-  if command -v setsid >/dev/null 2>&1; then
-    (trap '' HUP; SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind" SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-${HOME:-/data/data/com.termux/files/home}}" setsid -f "$launcher" > "$launcher_dir/proot-launcher.log" 2>&1 < /dev/null) || true
+  [ -f "$repo/scripts/install.sh" ] && return 0
+  [ -f "$archive" ] || return 1
+
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-sm-payload.XXXXXX")" || return 1
+  if ! tar -xf "$archive" -C "$work_dir"; then
+    rm -rf "$work_dir" >/dev/null 2>&1 || true
+    return 1
+  fi
+  if [ -f "$work_dir/scripts/install.sh" ]; then
+    payload_dir="$work_dir"
   else
-    (trap '' HUP; SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind" SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-${HOME:-/data/data/com.termux/files/home}}" nohup "$launcher" > "$launcher_dir/proot-launcher.log" 2>&1 < /dev/null &)
+    payload_dir="$(find "$work_dir" -mindepth 2 -maxdepth 3 -path '*/scripts/install.sh' -type f -print | sed 's#/scripts/install\.sh$##' | head -n 1)"
+  fi
+  if [ -z "$payload_dir" ] || [ ! -d "$payload_dir" ]; then
+    rm -rf "$work_dir" >/dev/null 2>&1 || true
+    return 1
+  fi
+  mkdir -p "$repo"
+  cp -a "$payload_dir/." "$repo/"
+  rm -rf "$work_dir" >/dev/null 2>&1 || true
+}
+
+install_termux_service_manager() {
+  local repo="$HOME/smallphoneai-repos/service-manager"
+  local bind config mode
+
+  find_termux_service_manager >/dev/null 2>&1 && return 0
+  prepare_termux_service_manager_repo || return 1
+  [ -f "$repo/scripts/install.sh" ] || return 1
+
+  bind="$(configured_service_manager_bind)"
+  config="$(termux_service_manager_config)"
+  mode="${SMALLPHONEAI_TERMUX_SERVICE_MANAGER_INSTALL_MODE:-release}"
+  log "正在安装 Termux native service-manager：mode=$mode"
+  (
+    cd "$repo"
+    BIND="$bind" CONFIG_PATH="$config" SERVICE_MANAGER_INSTALL_MODE="$mode" INSTALL_SERVICE=0 ./scripts/install.sh
+  ) || return 1
+
+  find_termux_service_manager >/dev/null 2>&1
+}
+
+service_manager_ready() {
+  local sm_url
+  sm_url="$(configured_service_manager_url)"
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsS --max-time 2 "$sm_url/api/v1/health" >/dev/null 2>&1
+}
+
+service_manager_auth_ready() {
+  local token="$1"
+  local sm_url work_dir curl_cfg status
+  [ -n "$token" ] || return 1
+  command -v curl >/dev/null 2>&1 || return 1
+  sm_url="$(configured_service_manager_url)"
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-sm-auth.XXXXXX")" || return 1
+  curl_cfg="$work_dir/curl.cfg"
+  printf 'header = "Authorization: Bearer %s"\n' "$token" > "$curl_cfg"
+  curl -q -fsS --max-time 3 -K "$curl_cfg" "$sm_url/api/v1/services" >/dev/null 2>&1
+  status=$?
+  rm -rf "$work_dir" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+repair_termux_native_control_plane() {
+  local bind sm_url sm_bin config log_file token
+
+  is_termux || {
+    log "当前不是 Termux；拒绝在 Ubuntu/proot 内拉起长期 service-manager。"
+    return 2
+  }
+
+  bind="$(configured_service_manager_bind)"
+  sm_url="$(configured_service_manager_url)"
+  config="$(termux_service_manager_config)"
+  log_file="$(termux_service_manager_log)"
+
+  if ! sm_bin="$(find_termux_service_manager || true)"; then
+    install_termux_service_manager || true
+    sm_bin="$(find_termux_service_manager || true)"
+  fi
+  if [ -z "$sm_bin" ]; then
+    log "未找到可执行的 Termux native service-manager。请先安装 bionic/Termux 版本，当前不会回退到 Ubuntu/proot 长跑控制面。"
+    return 2
   fi
 
-  for _ in $(seq 1 20); do
-    if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 2 "$sm_url/api/v1/health" >/dev/null 2>&1; then
-      log "service-manager 已由 Termux 侧长期会话启动：$sm_url"
-      export SMALLPHONEAI_TERMUX_SERVICE_MANAGER_LAUNCHED=1
-      return 0
+  mkdir -p "$(dirname "$config")" "$(dirname "$log_file")"
+  if service_manager_ready; then
+    log "Termux native service-manager 已可访问：$sm_url"
+  else
+    log "正在启动 Termux native service-manager：$bind"
+    if command -v setsid >/dev/null 2>&1; then
+      (trap '' HUP; setsid -f "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null) || true
+    else
+      (trap '' HUP; nohup "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null &)
     fi
-    sleep 1
-  done
-
-  log "Termux 侧 service-manager 长期会话启动后仍不可访问：$sm_url"
-  if [ -f "$launcher_dir/proot-launcher.log" ]; then
-    tail -n 80 "$launcher_dir/proot-launcher.log" | while IFS= read -r line; do log "$line"; done
+    for _ in $(seq 1 30); do
+      service_manager_ready && break
+      sleep 1
+    done
   fi
-  export SMALLPHONEAI_TERMUX_SERVICE_MANAGER_LAUNCHED=1
-  return 1
+
+  if ! service_manager_ready; then
+    log "Termux native service-manager health 检查失败：$sm_url/api/v1/health"
+    [ -f "$log_file" ] && tail -n 80 "$log_file" | while IFS= read -r line; do log "$line"; done
+    return 1
+  fi
+
+  token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+  [ -n "$token" ] || token="$(read_config_token || true)"
+  [ -n "$token" ] || token="$("$sm_bin" token show --config "$config" 2>/dev/null | tr -d '\r\n' || true)"
+  if ! service_manager_auth_ready "$token"; then
+    log "Termux native service-manager 已启动，但 token 未通过 /api/v1/services 验证。"
+    return 1
+  fi
+
+  log "控制中枢轻量修复完成：Termux native service-manager=$sm_url"
 }
 
 if ! is_current_ubuntu; then
-  start_ubuntu_service_manager_from_termux || true
+  repair_termux_native_control_plane
+  exit $?
 fi
+
+export SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER=1
 
 run_ubuntu_logged bash <<'SMALLPHONEAI_REPAIR_CONTROL_PLANE'
 set -euo pipefail
@@ -521,8 +558,8 @@ stop_service_manager_processes() {
 
 start_service_manager() {
   mkdir -p "$log_dir"
-  if [ "${SMALLPHONEAI_TERMUX_SERVICE_MANAGER_LAUNCHED:-}" = "1" ]; then
-    warn "Termux 侧长期 service-manager 会话未通过 health 检查；拒绝在 proot 子会话内短暂启动，避免脚本假成功。"
+  if [ "${SMALLPHONEAI_REQUIRE_TERMUX_SERVICE_MANAGER:-0}" = "1" ] || [ "${SMALLPHONEAI_TERMUX_SERVICE_MANAGER_LAUNCHED:-}" = "1" ]; then
+    warn "控制中枢必须由 Termux native service-manager 提供；拒绝在 Ubuntu/proot 子会话内启动。"
     return 1
   fi
 

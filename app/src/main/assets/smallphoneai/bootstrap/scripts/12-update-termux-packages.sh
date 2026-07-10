@@ -291,8 +291,8 @@ install_termux_base_packages() {
       continue
     fi
 
-    log "正在执行 apt install -y proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates（源：$repo）"
-    if run_termux_apt_install proot-distro curl libcurl libngtcp2 libnghttp2 openssl ca-certificates; then
+    log "正在执行 apt install -y proot-distro curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates（源：$repo）"
+    if run_termux_apt_install proot-distro curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates; then
       return 0
     fi
 
@@ -327,11 +327,11 @@ fi
 if ! curl --version >/dev/null 2>&1; then
   log "curl 仍不可用，尝试完整升级 Termux 依赖。"
   repair_termux_package_state
-  run_termux_apt_install curl libcurl libngtcp2 libnghttp2 openssl ca-certificates || true
+  run_termux_apt_install curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates || true
 fi
 
 if ! curl --version >/dev/null 2>&1; then
-  log "curl 修复失败，请手动执行：apt update && apt install -y curl libcurl libngtcp2 libnghttp2 openssl ca-certificates"
+  log "curl 修复失败，请手动执行：apt update && apt install -y curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates"
   exit 1
 fi
 

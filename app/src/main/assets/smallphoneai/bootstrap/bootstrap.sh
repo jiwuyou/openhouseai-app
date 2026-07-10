@@ -377,7 +377,9 @@ required_stage_scripts() {
       printf '%s\n' 45-install-claude-code-ui.sh
       ;;
     components|runtime-components)
-      printf '%s\n' 50-install-runtime-components.sh
+      printf '%s\n' \
+        50-install-runtime-components.sh \
+        openhouse-system
       ;;
     registry-sync|sync-registry)
       printf '%s\n' 48-sync-openhouse-registry.sh
@@ -385,6 +387,7 @@ required_stage_scripts() {
     sync-core-stack|post-apk-update|apk-update)
       printf '%s\n' \
         50-install-runtime-components.sh \
+        openhouse-system \
         48-sync-openhouse-registry.sh \
         60-start-smallphone.sh \
         65-smallphone-status.sh
@@ -400,6 +403,7 @@ required_stage_scripts() {
     repair)
       printf '%s\n' \
         50-install-runtime-components.sh \
+        openhouse-system \
         48-sync-openhouse-registry.sh \
         60-start-smallphone.sh \
         65-smallphone-status.sh
@@ -415,6 +419,7 @@ required_stage_scripts() {
         38-install-node.sh \
         35-sync-docs.sh \
         50-install-runtime-components.sh \
+        openhouse-system \
         48-sync-openhouse-registry.sh \
         60-start-smallphone.sh \
         65-smallphone-status.sh

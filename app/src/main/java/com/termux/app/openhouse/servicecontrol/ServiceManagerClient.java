@@ -451,11 +451,6 @@ public final class ServiceManagerClient {
         List<ServiceManagerConfigCandidate> candidates = new ArrayList<>();
         Collections.addAll(candidates, openHouseConfigCandidates());
         candidates.add(new ServiceManagerConfigCandidate(
-            new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH,
-                "var/lib/proot-distro/installed-rootfs/ubuntu/root/.config/service-manager/config.json"),
-            false
-        ));
-        candidates.add(new ServiceManagerConfigCandidate(
             new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".config/service-manager/config.json"),
             false
         ));
@@ -821,9 +816,12 @@ public final class ServiceManagerClient {
         if (e instanceof MissingTokenException) {
             message = e.getMessage();
         } else if (e instanceof SocketTimeoutException) {
-            message = fallbackMessage + "：service-manager 请求超时。";
+            message = fallbackMessage + "：控制中枢请求超时。"
+                + "\n请确认 service-manager 以 Termux native 方式运行；Ubuntu/proot 只应作为被管理环境。"
+                + "\n若端口已连接但无响应，请在运行控制中执行“修复控制中枢”。";
         } else if (e instanceof IOException) {
-            message = fallbackMessage + "：service-manager 不可用或网络请求失败。"
+            message = fallbackMessage + "：控制中枢不可用或网络请求失败。"
+                + "\n请确认 Termux native service-manager 已安装并监听 " + DEFAULT_BASE_URL + "。"
                 + compactExceptionMessage(e);
         } else if (e instanceof JSONException) {
             message = fallbackMessage + "：service-manager 响应解析失败。"

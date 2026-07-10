@@ -62,7 +62,7 @@ public final class OpenHouseRuntimeSupervisor {
     public MaintenanceReport recoverControlPlaneNow() {
         clearRuntimeStackStoppedForSession(context);
         StringBuilder message = new StringBuilder();
-        appendLine(message, "正在通过受控维护入口修复 service-manager；此路径不依赖 service-manager HTTP API 已在线。");
+        appendLine(message, "正在通过受控维护入口修复 Termux native service-manager；此路径不依赖 service-manager HTTP API 已在线。");
 
         OpenHouseMaintainerRunner.Result repair = runControlPlaneRepair();
         boolean repairSuccess = repair.isSuccess();
@@ -73,7 +73,7 @@ public final class OpenHouseRuntimeSupervisor {
         ServiceManagerResult health = controlClient.healthCheck();
         if (!health.success) {
             int failureCount = recordControlPlaneFailure();
-            appendLine(message, "修复后 service-manager 仍不可达：" + safeText(health.message));
+            appendLine(message, "修复后 Termux native service-manager 仍不可达：" + safeText(health.message));
             appendLine(message, "连续失败次数：" + failureCount);
             return MaintenanceReport.failure(
                 message.toString(),
@@ -88,7 +88,7 @@ public final class OpenHouseRuntimeSupervisor {
         resetControlPlaneFailures();
         MaintenanceReport services = startDefaultServices(true, true);
         if (!services.success) {
-            appendLine(message, "service-manager 已恢复；部分默认核心服务仍需要单独检查。");
+            appendLine(message, "Termux native service-manager 已恢复；部分默认核心服务仍需要单独检查。");
         }
         appendLine(message, services.message);
         return new MaintenanceReport(
@@ -154,7 +154,7 @@ public final class OpenHouseRuntimeSupervisor {
         if (!health.success) {
             int failureCount = recordControlPlaneFailure();
             StringBuilder message = new StringBuilder();
-            appendLine(message, "service-manager 暂不可达：" + safeText(health.message));
+            appendLine(message, "Termux native service-manager 暂不可达：" + safeText(health.message));
             appendLine(message, "连续失败次数：" + failureCount);
             boolean repairAttempted = false;
             boolean repairSuccess = false;
@@ -194,7 +194,7 @@ public final class OpenHouseRuntimeSupervisor {
             }
         }
         if (!shouldCheckServices) {
-            return MaintenanceReport.success("service-manager 可达；默认长期服务检查已节流。", true, false, false);
+            return MaintenanceReport.success("Termux native service-manager 可达；默认长期服务检查已节流。", true, false, false);
         }
         return startDefaultServices(userInitiated, false).withControlPlane(true, false, false);
     }

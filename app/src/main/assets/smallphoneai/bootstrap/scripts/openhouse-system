@@ -1,0 +1,604 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEFAULT_BIND="127.0.0.1:20087"
+OPENHOUSE_SYSTEM_CALLER_RUNTIME="${OPENHOUSE_SYSTEM_CALLER_RUNTIME:-}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  openhouse-system [--caller-runtime <runtime>] validate
+  openhouse-system [--caller-runtime <runtime>] render
+  openhouse-system [--caller-runtime <runtime>] describe <subject-id>
+  openhouse-system [--caller-runtime <runtime>] check <subject-id>
+
+Environment:
+  OPENHOUSEAI_HOME             Default: $HOME/.config/openhouseai
+  OPENHOUSEAI_SUBJECTS_DIR     Default: $OPENHOUSEAI_HOME/subjects.d
+  OPENHOUSEAI_SYSTEM_DIR       Default: $OPENHOUSEAI_HOME/system
+  SERVICE_MANAGER_URL          Default: http://127.0.0.1:20087
+  SERVICE_MANAGER_TOKEN        Optional bearer token override
+  SERVICE_MANAGER_CONFIG_PATH  Default: $OPENHOUSEAI_HOME/service-manager/config.json
+  OPENHOUSE_SYSTEM_CALLER_RUNTIME  Default: auto-detected runtime
+EOF
+}
+
+die() {
+  printf 'openhouse-system: %s\n' "$*" >&2
+  exit 1
+}
+
+warn() {
+  printf 'openhouse-system: WARN: %s\n' "$*" >&2
+}
+
+require_jq() {
+  command -v jq >/dev/null 2>&1 || die "jq is required. Install it with: pkg install jq"
+}
+
+detect_runtime() {
+  if [ -r /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release; then
+    printf 'ubuntu\n'
+    return 0
+  fi
+  if [ -n "${PREFIX:-}" ] && [ -d "${PREFIX:-}/bin" ] && [ -d "/data/data/com.termux/files" ]; then
+    printf 'termux\n'
+    return 0
+  fi
+  if [ -d /system ] && [ -d /storage ]; then
+    printf 'android\n'
+    return 0
+  fi
+  printf 'unknown\n'
+}
+
+openhouse_home() {
+  printf '%s\n' "${OPENHOUSEAI_HOME:-$HOME/.config/openhouseai}"
+}
+
+subjects_dir() {
+  printf '%s\n' "${OPENHOUSEAI_SUBJECTS_DIR:-$(openhouse_home)/subjects.d}"
+}
+
+system_dir() {
+  printf '%s\n' "${OPENHOUSEAI_SYSTEM_DIR:-$(openhouse_home)/system}"
+}
+
+service_manager_url() {
+  printf '%s\n' "${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-$DEFAULT_BIND}}"
+}
+
+service_manager_config_path() {
+  printf '%s\n' "${SERVICE_MANAGER_CONFIG_PATH:-${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-$(openhouse_home)/service-manager/config.json}}"
+}
+
+subject_files() {
+  local dir
+  dir="$(subjects_dir)"
+  [ -d "$dir" ] || return 0
+  find "$dir" -maxdepth 1 -type f -name '*.json' | sort
+}
+
+find_subject_file() {
+  local id="$1"
+  local file
+  for file in $(subject_files); do
+    if jq -e --arg id "$id" '.id == $id' "$file" >/dev/null 2>&1; then
+      printf '%s\n' "$file"
+      return 0
+    fi
+  done
+  return 1
+}
+
+validate_subject_file() {
+  local file="$1"
+  jq -e '
+    type == "object"
+    and (.id | type == "string" and length > 0)
+    and (.title | type == "string" and length > 0)
+    and (.kind | type == "string" and length > 0)
+    and (.summary | type == "string" and length > 0)
+    and ((.serviceRefs // []) | type == "array" and all(.[]; ((type == "string" and length > 0) or (type == "object" and (.id | type == "string" and length > 0)))))
+    and ((.entries // []) | type == "array")
+    and ((.locations // []) | type == "array")
+    and ((.ai // {}) | type == "object")
+    and ((.checks // {}) | type == "object")
+  ' "$file" >/dev/null || {
+    warn "invalid subject shape: $file"
+    return 1
+  }
+
+  jq -e '[.. | objects | select(has("command"))] | length == 0' "$file" >/dev/null || {
+    warn "subject must not contain service command definitions; use serviceRefs only: $file"
+    return 1
+  }
+}
+
+cmd_validate() {
+  require_jq
+  local file
+  local tmp
+  local count=0
+  local failures=0
+  tmp="$(mktemp "${TMPDIR:-/tmp}/openhouse-system-ids.XXXXXX")"
+  trap "rm -f '$tmp'" EXIT INT HUP TERM
+
+  for file in $(subject_files); do
+    count=$((count + 1))
+    if validate_subject_file "$file"; then
+      jq -r '.id' "$file" >> "$tmp"
+    else
+      failures=$((failures + 1))
+    fi
+  done
+
+  if [ "$count" -eq 0 ]; then
+    warn "no subject files found in $(subjects_dir)"
+  fi
+
+  if [ -s "$tmp" ]; then
+    if [ "$(sort "$tmp" | uniq -d | wc -l | tr -d ' ')" != "0" ]; then
+      warn "duplicate subject ids:"
+      sort "$tmp" | uniq -d >&2
+      failures=$((failures + 1))
+    fi
+  fi
+
+  if [ "$failures" -ne 0 ]; then
+    return 1
+  fi
+  rm -f "$tmp"
+  trap - EXIT INT HUP TERM
+  printf 'ok: %s subject(s) validated\n' "$count"
+}
+
+cmd_render() {
+  require_jq
+  cmd_validate >/dev/null
+
+  local out_dir
+  local json_path
+  local md_path
+  local generated_at
+  out_dir="$(system_dir)"
+  json_path="$out_dir/index.json"
+  md_path="$out_dir/index.md"
+  generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  mkdir -p "$out_dir"
+
+  if [ -n "$(subject_files)" ]; then
+    jq -s --arg generatedAt "$generated_at" '
+      {
+        schemaVersion: 1,
+        generatedAt: $generatedAt,
+        subjects: sort_by(.id)
+      }
+    ' $(subject_files) > "$json_path"
+  else
+    jq -n --arg generatedAt "$generated_at" '
+      {schemaVersion: 1, generatedAt: $generatedAt, subjects: []}
+    ' > "$json_path"
+  fi
+
+  {
+    printf '# OpenHouse System Index\n\n'
+    printf 'Generated at: %s\n\n' "$generated_at"
+    jq -r '
+      .subjects[]
+      | "## \(.title) (`\(.id)`)\n"
+        + "- Kind: \(.kind)\n"
+        + "- Summary: \(.summary)\n"
+        + "- Service refs: \(((.serviceRefs // []) | if length == 0 then "none" else map(if type == "string" then . else (.id + "@" + (.runtime // "unknown") + "/" + (.manager // "service-manager")) end) | join(", ") end))\n"
+        + (if ((.entries // []) | length) > 0 then
+            "- Entries:\n" + ((.entries // []) | map("  - \((.type // "entry")): \((.url // .label // .path // ""))") | join("\n")) + "\n"
+          else "" end)
+        + (if ((.locations // []) | length) > 0 then
+            "- Locations:\n" + ((.locations // []) | map("  - \((.runtime // "unknown")): \((.path // .url // ""))") | join("\n")) + "\n"
+          else "" end)
+        + (if (.ai.description? // "") != "" then "- AI description: \(.ai.description)\n" else "" end)
+        + (if (.ai.whenUnavailable? // "") != "" then "- When unavailable: \(.ai.whenUnavailable)\n" else "" end)
+    ' "$json_path"
+  } > "$md_path"
+
+  printf 'rendered: %s\n' "$json_path"
+  printf 'rendered: %s\n' "$md_path"
+}
+
+cmd_describe() {
+  require_jq
+  local id="${1:-}"
+  local file
+  [ -n "$id" ] || die "describe requires a subject id"
+  file="$(find_subject_file "$id" || true)"
+  [ -n "$file" ] || die "subject not found: $id"
+  validate_subject_file "$file" >/dev/null
+  jq '.' "$file"
+}
+
+resolve_service_manager_token() {
+  local token
+  local sm_bin
+  local cfg
+  token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+  if [ -n "$token" ]; then
+    printf '%s\n' "$token"
+    return 0
+  fi
+
+  cfg="$(service_manager_config_path)"
+  if command -v service-manager >/dev/null 2>&1; then
+    service-manager token show --config "$cfg" 2>/dev/null | tr -d '\r\n' || true
+    return 0
+  fi
+
+  for sm_bin in \
+    "${PREFIX:-/data/data/com.termux/files/usr}/bin/service-manager" \
+    "$HOME/smallphoneai-repos/service-manager/service-manager" \
+    "$HOME/smallphoneai-repos/service-manager/target/release/service-manager"; do
+    if [ -x "$sm_bin" ]; then
+      "$sm_bin" token show --config "$cfg" 2>/dev/null | tr -d '\r\n' || true
+      return 0
+    fi
+  done
+}
+
+sm_get() {
+  local path="$1"
+  local max_time="${2:-4}"
+  local token
+  local url
+  token="$(resolve_service_manager_token || true)"
+  [ -n "$token" ] || return 12
+  url="$(service_manager_url)"
+  curl -fsS --max-time "$max_time" -H "Authorization: Bearer $token" "$url$path"
+}
+
+append_json_line() {
+  local file="$1"
+  shift
+  jq -c "$@" >> "$file"
+}
+
+service_check_phase() {
+  local subject="$1"
+  local tmp="$2"
+  local svc
+  local svc_id
+  local svc_runtime
+  local svc_manager
+  local status_json
+  local logs_json
+  local state
+  local error
+  local has_issue=0
+  local timeout_seconds
+  timeout_seconds="$(jq -r '.checks.serviceTimeoutSeconds // 4' "$subject")"
+
+  while IFS= read -r svc; do
+    [ -n "$svc" ] || continue
+    svc_id="$(printf '%s\n' "$svc" | jq -r 'if type == "string" then . else .id end')"
+    svc_runtime="$(printf '%s\n' "$svc" | jq -r 'if type == "string" then "unknown" else (.runtime // "unknown") end')"
+    svc_manager="$(printf '%s\n' "$svc" | jq -r 'if type == "string" then "service-manager" else (.manager // "service-manager") end')"
+    status_json="$(sm_get "/api/v1/services/$svc_id/status" "$timeout_seconds" 2>/dev/null || true)"
+    if [ -z "$status_json" ]; then
+      has_issue=1
+      logs_json="$(sm_get "/api/v1/services/$svc_id/logs?limit=20" "$timeout_seconds" 2>/dev/null || printf '[]')"
+      append_json_line "$tmp" -n \
+        --arg id "$svc_id" \
+        --arg runtime "$svc_runtime" \
+        --arg manager "$svc_manager" \
+        --arg state "error" \
+        --arg message "service-manager status query failed" \
+        --argjson logs "${logs_json:-[]}" \
+        '{id:$id,runtime:$runtime,manager:$manager,state:$state,message:$message,logs:$logs}'
+      continue
+    fi
+
+    state="$(printf '%s\n' "$status_json" | jq -r '.state // "unknown"')"
+    error=""
+    if [ "$state" != "running" ]; then
+      has_issue=1
+      error="service state is $state"
+    fi
+    logs_json="$(sm_get "/api/v1/services/$svc_id/logs?limit=20" "$timeout_seconds" 2>/dev/null || printf '[]')"
+    append_json_line "$tmp" -n \
+      --arg id "$svc_id" \
+      --arg runtime "$svc_runtime" \
+      --arg manager "$svc_manager" \
+      --arg state "$state" \
+      --arg message "$error" \
+      --argjson status "$status_json" \
+      --argjson logs "${logs_json:-[]}" \
+      '{id:$id,runtime:$runtime,manager:$manager,state:$state,message:$message,status:$status,logs:$logs}'
+  done < <(jq -c '.serviceRefs[]?' "$subject")
+
+  return "$has_issue"
+}
+
+check_http() {
+  local check_json="$1"
+  local url
+  local timeout_seconds
+  local curl_code
+  url="$(printf '%s\n' "$check_json" | jq -r '.url // empty')"
+  timeout_seconds="$(printf '%s\n' "$check_json" | jq -r '.timeoutSeconds // 4')"
+  if [ -z "$url" ]; then
+    jq -n --arg type "http" --arg state "error" --arg message "url is required" \
+      '{type:$type,state:$state,message:$message}'
+    return 0
+  fi
+  curl -fsS --max-time "$timeout_seconds" -o /dev/null "$url" >/dev/null 2>&1
+  curl_code=$?
+  if [ "$curl_code" -eq 0 ]; then
+    jq -n --arg type "http" --arg url "$url" --arg target "$url" --arg state "ok" \
+      '{type:$type,url:$url,target:$target,state:$state}'
+  elif [ "$curl_code" -eq 28 ]; then
+    jq -n --arg type "http" --arg url "$url" --arg target "$url" --arg state "timeout" \
+      --arg message "http probe timed out" \
+      '{type:$type,url:$url,target:$target,state:$state,message:$message}'
+  else
+    jq -n --arg type "http" --arg url "$url" --arg target "$url" --arg state "failed" \
+      --arg message "curl failed with code '"$curl_code"'" \
+      '{type:$type,url:$url,target:$target,state:$state,message:$message}'
+  fi
+}
+
+run_with_timeout() {
+  local seconds="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout -k 1s "${seconds}s" "$@"
+  else
+    "$@"
+  fi
+}
+
+path_test_flag_for_type() {
+  case "$1" in
+    fileExists)
+      printf -- '-f'
+      ;;
+    directoryExists)
+      printf -- '-d'
+      ;;
+    *)
+      printf -- '-e'
+      ;;
+  esac
+}
+
+check_path_like() {
+  local check_json="$1"
+  local check_type="$2"
+  local runtime
+  local path
+  local timeout_seconds
+  local flag
+  local status=0
+  runtime="$(printf '%s\n' "$check_json" | jq -r '.runtime // "local"')"
+  path="$(printf '%s\n' "$check_json" | jq -r '.path // empty')"
+  timeout_seconds="$(printf '%s\n' "$check_json" | jq -r '.timeoutSeconds // 3')"
+  flag="$(path_test_flag_for_type "$check_type")"
+
+  if [ -z "$path" ]; then
+    jq -n --arg type "$check_type" --arg state "error" --arg message "path is required" \
+      '{type:$type,state:$state,message:$message}'
+    return 0
+  fi
+
+  case "$runtime" in
+    ubuntu)
+      if [ -f /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release; then
+        run_with_timeout "$timeout_seconds" test "$flag" "$path" || status=$?
+      elif command -v proot-distro >/dev/null 2>&1; then
+        run_with_timeout "$timeout_seconds" proot-distro login ubuntu -- test "$flag" "$path" || status=$?
+      else
+        jq -n --arg type "$check_type" --arg runtime "$runtime" --arg target "$path" \
+          --arg state "skipped" --arg message "proot-distro is not available" \
+          '{type:$type,runtime:$runtime,path:$target,target:$target,state:$state,message:$message}'
+        return 0
+      fi
+      ;;
+    local|termux|android)
+      run_with_timeout "$timeout_seconds" test "$flag" "$path" || status=$?
+      ;;
+    *)
+      jq -n --arg type "$check_type" --arg runtime "$runtime" --arg target "$path" \
+        --arg state "skipped" --arg message "runtime is not supported by openhouse-system check" \
+        '{type:$type,runtime:$runtime,path:$target,target:$target,state:$state,message:$message}'
+      return 0
+      ;;
+  esac
+
+  if [ "$status" -eq 0 ]; then
+    jq -n --arg type "$check_type" --arg runtime "$runtime" --arg target "$path" --arg state "ok" \
+      '{type:$type,runtime:$runtime,path:$target,target:$target,state:$state}'
+  elif [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+    jq -n --arg type "$check_type" --arg runtime "$runtime" --arg target "$path" \
+      --arg state "timeout" --arg message "path check timed out" \
+      '{type:$type,runtime:$runtime,path:$target,target:$target,state:$state,message:$message}'
+  else
+    jq -n --arg type "$check_type" --arg runtime "$runtime" --arg target "$path" \
+      --arg state "failed" --arg message "path does not satisfy $flag" \
+      '{type:$type,runtime:$runtime,path:$target,target:$target,state:$state,message:$message}'
+  fi
+}
+
+check_skill() {
+  local check_json="$1"
+  local id
+  local path
+  id="$(printf '%s\n' "$check_json" | jq -r '.id // empty')"
+  path="$(printf '%s\n' "$check_json" | jq -r '.path // empty')"
+  if [ -n "$path" ]; then
+    check_path_like "$(printf '%s\n' "$check_json" | jq --arg type "fileExists" '.type=$type')" "fileExists"
+    return 0
+  fi
+  if [ -n "$id" ]; then
+    for path in "$HOME/.codex/skills/$id/SKILL.md" "$HOME/.codex/skills/.system/$id/SKILL.md"; do
+      if [ -f "$path" ]; then
+        jq -n --arg type "skill" --arg target "$id" --arg path "$path" --arg state "ok" \
+          '{type:$type,target:$target,path:$path,state:$state}'
+        return 0
+      fi
+    done
+    jq -n --arg type "skill" --arg target "$id" --arg state "failed" \
+      --arg message "skill was not found in the local Codex skills directories" \
+      '{type:$type,target:$target,state:$state,message:$message}'
+    return 0
+  fi
+  jq -n --arg type "skill" --arg state "error" --arg message "id or path is required" \
+    '{type:$type,state:$state,message:$message}'
+}
+
+run_non_service_checks() {
+  local subject="$1"
+  local tmp="$2"
+  local check
+  local check_type
+  while IFS= read -r check; do
+    [ -n "$check" ] || continue
+    check_type="$(printf '%s\n' "$check" | jq -r '.type // empty')"
+    case "$check_type" in
+      http)
+        check_http "$check" | jq -c '.' >> "$tmp"
+        ;;
+      pathExists|fileExists|directoryExists)
+        check_path_like "$check" "$check_type" | jq -c '.' >> "$tmp"
+        ;;
+      skill|skillRegistered)
+        check_skill "$check" | jq -c '.' >> "$tmp"
+        ;;
+      *)
+        jq -n --arg type "${check_type:-unknown}" --arg state "skipped" \
+          --arg message "unsupported check type" \
+          '{type:$type,state:$state,message:$message}' | jq -c '.' >> "$tmp"
+        ;;
+    esac
+  done < <(jq -c '.checks.afterServiceOk[]?' "$subject")
+}
+
+cmd_check() {
+  require_jq
+  local id="${1:-}"
+  local file
+  local service_tmp
+  local check_tmp
+  local service_state
+  local checks_state
+  local subject_json
+  [ -n "$id" ] || die "check requires a subject id"
+  file="$(find_subject_file "$id" || true)"
+  [ -n "$file" ] || die "subject not found: $id"
+  validate_subject_file "$file" >/dev/null
+
+  subject_json="$(cat "$file")"
+  service_tmp="$(mktemp "${TMPDIR:-/tmp}/openhouse-system-services.XXXXXX")"
+  check_tmp="$(mktemp "${TMPDIR:-/tmp}/openhouse-system-checks.XXXXXX")"
+  trap "rm -f '$service_tmp' '$check_tmp'" EXIT INT HUP TERM
+
+  if service_check_phase "$file" "$service_tmp"; then
+    service_state="ok"
+  else
+    service_state="service_issue"
+  fi
+
+  if [ "$service_state" != "ok" ]; then
+  jq -n \
+    --arg id "$id" \
+    --arg callerRuntime "$OPENHOUSE_SYSTEM_CALLER_RUNTIME" \
+    --arg state "service_issue" \
+      --arg summary "service-manager reported a service problem; non-service checks were not run" \
+      --arg describeCmd "openhouse-system describe $id" \
+      --arg checkCmd "openhouse-system check $id" \
+      --argjson subject "$subject_json" \
+      --argjson services "$(jq -s '.' "$service_tmp")" \
+      '{
+        id:$id,
+        callerRuntime:$callerRuntime,
+        state:$state,
+        summary:$summary,
+        subject:{id:$subject.id,title:$subject.title,kind:$subject.kind},
+        services:$services,
+        nonServiceChecks: [],
+        next: {describe:$describeCmd, check:$checkCmd}
+      }'
+    return 2
+  fi
+
+  run_non_service_checks "$file" "$check_tmp"
+  if [ ! -s "$check_tmp" ]; then
+    checks_state="ok"
+  elif jq -s -e 'all(.[]; .state == "ok" or .state == "skipped")' "$check_tmp" >/dev/null; then
+    checks_state="ok"
+  else
+    checks_state="degraded"
+  fi
+
+  jq -n \
+    --arg id "$id" \
+    --arg callerRuntime "$OPENHOUSE_SYSTEM_CALLER_RUNTIME" \
+    --arg state "$checks_state" \
+    --arg summary "service-manager checks passed; main-system checks completed" \
+    --argjson subject "$subject_json" \
+    --argjson services "$(jq -s '.' "$service_tmp")" \
+    --argjson checks "$(jq -s '.' "$check_tmp")" \
+    '{
+      id:$id,
+      callerRuntime:$callerRuntime,
+      state:$state,
+      summary:$summary,
+      subject:{id:$subject.id,title:$subject.title,kind:$subject.kind},
+      services:$services,
+      nonServiceChecks:$checks
+    }'
+}
+
+main() {
+  while [ "$#" -gt 0 ]; do
+    case "${1:-}" in
+      --caller-runtime)
+        [ "${2:-}" ] || die "--caller-runtime requires a value"
+        OPENHOUSE_SYSTEM_CALLER_RUNTIME="$2"
+        shift 2
+        ;;
+      --caller-runtime=*)
+        OPENHOUSE_SYSTEM_CALLER_RUNTIME="${1#*=}"
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+  if [ -z "$OPENHOUSE_SYSTEM_CALLER_RUNTIME" ]; then
+    OPENHOUSE_SYSTEM_CALLER_RUNTIME="$(detect_runtime)"
+  fi
+
+  local cmd="${1:-}"
+  shift || true
+  case "$cmd" in
+    validate)
+      cmd_validate "$@"
+      ;;
+    render)
+      cmd_render "$@"
+      ;;
+    describe)
+      cmd_describe "$@"
+      ;;
+    check)
+      cmd_check "$@"
+      ;;
+    ""|-h|--help|help)
+      usage
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

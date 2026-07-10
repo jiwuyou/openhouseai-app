@@ -22,6 +22,7 @@ import java.util.List;
 public final class DesktopAppLauncher {
 
     private static final int STATUS_LOG_LIMIT = 12;
+    private static final String MAIN_SYSTEM_CLI = "openhouse-system";
 
     private final Context appContext;
     private final ServiceManagerControlClient controlClient;
@@ -134,7 +135,8 @@ public final class DesktopAppLauncher {
                 .app(app)
                 .state(state)
                 .headline(state == DesktopAppStatus.State.READY ? "可打开" : "没有运行状态")
-                .detail(app.hasEntry() ? "这个应用没有注册 service-manager 服务。" : "这个应用没有可打开入口或服务。")
+                .detail((app.hasEntry() ? "这个应用没有注册 service-manager 服务。" : "这个应用没有可打开入口或服务。")
+                    + "\n" + mainSystemCheckHint(app, "service-manager 没有关联服务可以排查。", Collections.emptyList()))
                 .serviceManagerReachable(false)
                 .services(Collections.emptyList())
                 .build();
@@ -197,23 +199,24 @@ public final class DesktopAppLauncher {
         } else if (anyStarting) {
             state = DesktopAppStatus.State.STARTING;
             headline = "正在启动";
+        } else if (anyStopped) {
+            state = DesktopAppStatus.State.STOPPED;
+            headline = "部分服务未运行";
         } else if (anyRunning) {
             state = DesktopAppStatus.State.RUNNING;
             headline = "运行中";
-        } else if (anyStopped) {
-            state = DesktopAppStatus.State.STOPPED;
-            headline = "未运行";
         } else {
             state = DesktopAppStatus.State.UNKNOWN;
             headline = "状态未知";
         }
 
+        String detail = buildStatusDetail(app, services) + formatIgnoredServices(missingServiceIds);
         return DesktopAppStatus.builder()
             .app(app)
             .serviceIds(serviceIds)
             .state(state)
             .headline(headline)
-            .detail(buildStatusDetail(services) + formatIgnoredServices(missingServiceIds))
+            .detail(detail)
             .serviceManagerReachable(true)
             .services(services)
             .build();
@@ -238,6 +241,7 @@ public final class DesktopAppLauncher {
         List<DesktopAppAction> actions = new ArrayList<>();
         boolean hasEntry = app != null && app.hasEntry();
         boolean hasServices = status != null && !status.serviceIds.isEmpty();
+        boolean serviceLayerClean = serviceManagerFoundNoServiceProblem(status == null ? null : status.services);
         String firstServiceId = firstServiceId(status);
 
         actions.add(DesktopAppAction.open(hasEntry, hasEntry ? "" : "没有可打开入口。"));
@@ -246,7 +250,8 @@ public final class DesktopAppLauncher {
         actions.add(DesktopAppAction.restart(firstServiceId, hasServices, hasServices ? "" : "没有可重启服务。"));
         actions.add(DesktopAppAction.log(firstServiceId, hasServices, hasServices ? "" : "没有服务日志。"));
         actions.add(DesktopAppAction.serviceControl(hasServices, hasServices ? "" : "没有 service-manager 服务。"));
-        actions.add(DesktopAppAction.repair(true, ""));
+        actions.add(DesktopAppAction.repair(hasServices && !serviceLayerClean,
+            serviceLayerClean ? "service-manager 未发现服务层问题，请检查主系统。" : (hasServices ? "" : "没有可修复服务。")));
         return Collections.unmodifiableList(actions);
     }
 
@@ -385,7 +390,7 @@ public final class DesktopAppLauncher {
         return lines.isEmpty() ? Collections.emptyList() : Collections.unmodifiableList(lines);
     }
 
-    private String buildStatusDetail(List<DesktopAppServiceStatus> services) {
+    private String buildStatusDetail(DesktopAppDescriptor app, List<DesktopAppServiceStatus> services) {
         if (services == null || services.isEmpty()) {
             return "";
         }
@@ -399,7 +404,104 @@ public final class DesktopAppLauncher {
             }
             builder.append(service.displayLine());
         }
+        if (serviceManagerFoundNoServiceProblem(services)) {
+            appendLine(builder, mainSystemCheckHint(app, "服务层未发现问题。", services));
+        }
         return builder.toString();
+    }
+
+    private boolean serviceManagerFoundNoServiceProblem(List<DesktopAppServiceStatus> services) {
+        if (services == null || services.isEmpty()) {
+            return false;
+        }
+        for (DesktopAppServiceStatus service : services) {
+            if (service == null || !service.success || !service.isRunning()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String mainSystemCheckHint(
+        DesktopAppDescriptor app,
+        String prefix,
+        List<DesktopAppServiceStatus> services
+    ) {
+        String cleanPrefix = firstNonBlank(prefix, "service-manager 未发现服务层问题。");
+        return cleanPrefix
+            + "如仍有问题，请把这句话发给 AI：请检查 " + subjectId(app)
+            + " 的主系统信息，命令：" + mainSystemCommand("check", app)
+            + "。" + serviceContext(services);
+    }
+
+    private String mainSystemCommand(String command, DesktopAppDescriptor app) {
+        return MAIN_SYSTEM_CLI + " " + firstNonBlank(command, "check") + " " + shellArg(subjectId(app));
+    }
+
+    private String serviceContext(List<DesktopAppServiceStatus> services) {
+        if (services == null || services.isEmpty()) {
+            return "服务上下文：未关联 service-manager 服务。";
+        }
+        StringBuilder builder = new StringBuilder("服务上下文：");
+        int count = 0;
+        for (DesktopAppServiceStatus service : services) {
+            if (service == null || service.serviceId.isEmpty()) {
+                continue;
+            }
+            if (count > 0) {
+                builder.append("；");
+            }
+            builder.append(service.serviceId)
+                .append("(state=")
+                .append(firstNonBlank(service.state, "unknown"))
+                .append(", manager=service-manager, provider=")
+                .append(firstNonBlank(service.provider, "unknown"))
+                .append(")");
+            count++;
+        }
+        if (count == 0) {
+            return "服务上下文：未关联 service-manager 服务。";
+        }
+        return builder
+            .append("。运行时归属以 ")
+            .append(MAIN_SYSTEM_CLI)
+            .append(" describe 输出的主体声明为准。")
+            .toString();
+    }
+
+    private String subjectId(DesktopAppDescriptor app) {
+        return firstNonBlank(app == null ? "" : app.id, "subject-id");
+    }
+
+    private String shellArg(String value) {
+        String text = firstNonBlank(value, "subject-id");
+        boolean safe = true;
+        for (int i = 0; i < text.length(); i++) {
+            char current = text.charAt(i);
+            if (!((current >= 'a' && current <= 'z')
+                || (current >= 'A' && current <= 'Z')
+                || (current >= '0' && current <= '9')
+                || current == '_'
+                || current == '-'
+                || current == '.')) {
+                safe = false;
+                break;
+            }
+        }
+        if (safe) {
+            return text;
+        }
+        return "'" + text.replace("'", "'\"'\"'") + "'";
+    }
+
+    private void appendLine(StringBuilder builder, String line) {
+        if (builder == null || line == null || line.trim().isEmpty()) {
+            return;
+        }
+        if (builder.length() > 0) {
+            builder.append('\n');
+        }
+        builder.append(line.trim());
     }
 
     private String formatIgnoredServices(List<String> missingServiceIds) {

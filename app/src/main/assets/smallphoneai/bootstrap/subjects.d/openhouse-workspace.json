@@ -1,0 +1,51 @@
+{
+  "id": "openhouse-workspace",
+  "title": "OpenHouse Workspace",
+  "kind": "file",
+  "summary": "Native work partition with Android, Termux, and Ubuntu visible roots.",
+  "serviceRefs": [],
+  "entries": [
+    {
+      "type": "file",
+      "label": "Android workspace",
+      "path": "/storage/emulated/0/OpenHouse"
+    }
+  ],
+  "locations": [
+    {
+      "runtime": "android",
+      "path": "/storage/emulated/0/OpenHouse",
+      "purpose": "shared phone storage"
+    },
+    {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/home/OpenHouse",
+      "purpose": "Termux-native workspace"
+    },
+    {
+      "runtime": "ubuntu",
+      "path": "/root/OpenHouse",
+      "purpose": "Ubuntu/proot workspace"
+    }
+  ],
+  "ai": {
+    "description": "Use this workspace when explaining where OpenHouse data lives across Android, Termux, and Ubuntu.",
+    "whenUnavailable": "Check storage permission and root directory projections. This subject has no service-manager service."
+  },
+  "checks": {
+    "afterServiceOk": [
+      {
+        "type": "pathExists",
+        "runtime": "android",
+        "path": "/storage/emulated/0/OpenHouse",
+        "timeoutSeconds": 3
+      },
+      {
+        "type": "pathExists",
+        "runtime": "ubuntu",
+        "path": "/root/OpenHouse",
+        "timeoutSeconds": 4
+      }
+    ]
+  }
+}

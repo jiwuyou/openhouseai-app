@@ -44,7 +44,8 @@ read_openhouse_service_manager_endpoint() {
   for config in \
     "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
     "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
-    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json"; do
     [ -n "$config" ] && [ -f "$config" ] || continue
     for key in listen_addr listenAddr base_url baseUrl baseURL url; do
       value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
@@ -53,6 +54,23 @@ read_openhouse_service_manager_endpoint() {
         return 0
       fi
     done
+  done
+  return 1
+}
+
+read_openhouse_service_manager_token() {
+  local config token
+  for config in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    token="$(sed -n 's/.*"auth_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$config" | head -n 1 || true)"
+    if [ -n "$token" ]; then
+      printf '%s\n' "$token"
+      return 0
+    fi
   done
   return 1
 }
@@ -250,6 +268,20 @@ service_manager_listen_addr() {
   printf '%s' "$value"
 }
 
+ensure_openhouse_system_layout() {
+  local root
+  for root in \
+    "$HOME" \
+    "${SMALLPHONEAI_TERMUX_HOME:-}" \
+    "/data/data/com.termux/files/home"; do
+    [ -n "$root" ] && [ -d "$root" ] || continue
+    mkdir -p \
+      "$root/.config/openhouseai/subjects.d" \
+      "$root/.config/openhouseai/system" \
+      "$root/.local/state/openhouseai/checks/last" || true
+  done
+}
+
 write_openhouse_service_manager_config() {
   local target="$1"
   local token="$2"
@@ -349,29 +381,21 @@ if [ "$failures" -ne 0 ]; then
   warn "组件修复存在 $failures 个失败项，继续尝试启动已可用的注册项。"
 fi
 
+ensure_openhouse_system_layout
+
 service_manager_bin="$(find_service_manager || true)"
 if [ -z "$service_manager_bin" ]; then
-  warn "找不到 service-manager。"
-  exit 2
+  warn "当前 Ubuntu 环境未找到 service-manager 二进制；将只连接 Termux native 控制中枢。"
+else
+  export PATH="$(dirname "$service_manager_bin"):$PATH"
 fi
 
-export PATH="$(dirname "$service_manager_bin"):$PATH"
 mkdir -p "$log_dir"
 
 if service_manager_ready; then
   log "service-manager 已可访问：$sm_url"
 else
-  log "正在启动 service-manager：$bind"
-  nohup "$service_manager_bin" serve --bind "$bind" > "$log_dir/service-manager.log" 2>&1 < /dev/null &
-  for _ in $(seq 1 30); do
-    service_manager_ready && break
-    sleep 1
-  done
-fi
-
-if ! service_manager_ready; then
-  warn "service-manager 未能启动。日志：$log_dir/service-manager.log"
-  [ -f "$log_dir/service-manager.log" ] && tail -n 80 "$log_dir/service-manager.log" >&2 || true
+  warn "Termux native service-manager 不可访问：$sm_url。请先在运行控制中执行“修复控制中枢”。"
   exit 1
 fi
 
@@ -382,6 +406,9 @@ fi
 
 sm_token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
 if [ -z "$sm_token" ]; then
+  sm_token="$(read_openhouse_service_manager_token || true)"
+fi
+if [ -z "$sm_token" ] && [ -n "$service_manager_bin" ]; then
   sm_token="$("$service_manager_bin" token show 2>/dev/null | tr -d '\r\n' || true)"
 fi
 if [ -z "$sm_token" ]; then

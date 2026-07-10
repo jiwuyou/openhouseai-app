@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openhouse.ai/schemas/subject.schema.json",
+  "title": "OpenHouse subject card",
+  "type": "object",
+  "required": ["id", "title", "kind", "summary"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "serviceRefs": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "required": ["id"],
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "runtime": {
+                "type": "string",
+                "minLength": 1
+              },
+              "manager": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        ]
+      },
+      "uniqueItems": true
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "type": {"type": "string"},
+          "label": {"type": "string"},
+          "url": {"type": "string"},
+          "path": {"type": "string"}
+        }
+      }
+    },
+    "locations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "runtime": {"type": "string"},
+          "path": {"type": "string"},
+          "url": {"type": "string"},
+          "purpose": {"type": "string"}
+        }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "description": {"type": "string"},
+        "whenUnavailable": {"type": "string"}
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "serviceTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "afterServiceOk": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "additionalProperties": true,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["http", "pathExists", "fileExists", "directoryExists", "skill", "skillRegistered"]
+              },
+              "url": {"type": "string"},
+              "runtime": {"type": "string"},
+              "path": {"type": "string"},
+              "id": {"type": "string"},
+              "timeoutSeconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 30
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "not": {
+    "required": ["command"]
+  }
+}

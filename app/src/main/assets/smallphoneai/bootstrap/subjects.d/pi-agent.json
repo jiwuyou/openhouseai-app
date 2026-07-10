@@ -1,0 +1,47 @@
+{
+  "id": "pi-agent",
+  "title": "Pi Agent",
+  "kind": "runtime-http",
+  "summary": "OpenHouse main AI workbench and human-facing web entry.",
+  "serviceRefs": [
+    {
+      "id": "pi-web",
+      "runtime": "ubuntu",
+      "manager": "service-manager"
+    }
+  ],
+  "entries": [
+    {
+      "type": "web",
+      "label": "Pi Agent Web",
+      "url": "http://127.0.0.1:30141/"
+    }
+  ],
+  "locations": [
+    {
+      "runtime": "ubuntu",
+      "path": "/root/smallphoneai-repos/smallphone-active",
+      "purpose": "business application repo"
+    }
+  ],
+  "ai": {
+    "description": "Pi Agent is the primary OpenHouse AI workbench. Its service state is controlled by service-manager through the pi-web service id.",
+    "whenUnavailable": "First inspect service-manager status and logs for pi-web. If pi-web is running, run openhouse-system check pi-agent to probe the web endpoint and declared paths."
+  },
+  "checks": {
+    "serviceTimeoutSeconds": 5,
+    "afterServiceOk": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:30141/",
+        "timeoutSeconds": 4
+      },
+      {
+        "type": "pathExists",
+        "runtime": "ubuntu",
+        "path": "/root/smallphoneai-repos/smallphone-active",
+        "timeoutSeconds": 4
+      }
+    ]
+  }
+}
