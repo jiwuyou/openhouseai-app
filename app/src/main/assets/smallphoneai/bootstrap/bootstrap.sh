@@ -377,7 +377,10 @@ required_stage_scripts() {
       printf '%s\n' 44-install-claude-code.sh
       ;;
     claude-code-ui|cloudcli)
-      printf '%s\n' 45-install-claude-code-ui.sh
+      printf '%s\n' \
+        38-install-node.sh \
+        44-install-claude-code.sh \
+        45-install-claude-code-ui.sh
       ;;
     components|runtime-components)
       printf '%s\n' \
@@ -560,6 +563,12 @@ run_full_install() {
   run_machine_stage 65-smallphone-status.sh record-full-health-check
 }
 
+run_cloudcli_install() {
+  run_stage 38-install-node.sh
+  run_stage 44-install-claude-code.sh
+  run_stage 45-install-claude-code-ui.sh
+}
+
 show_menu() {
   cat <<EOF
 SmallPhoneAI Installer
@@ -673,7 +682,7 @@ main() {
       return
       ;;
     claude-code-ui|cloudcli)
-      run_stage 45-install-claude-code-ui.sh
+      run_cloudcli_install
       return
       ;;
     components|runtime-components)
@@ -728,7 +737,7 @@ main() {
       11) run_stage 42-install-codex.sh ;;
       12) run_stage 43-install-cc-switch.sh ;;
       13) run_stage 44-install-claude-code.sh ;;
-      14) run_stage 45-install-claude-code-ui.sh ;;
+      14) run_cloudcli_install ;;
       15) run_stage 50-install-runtime-components.sh ;;
       16) run_stage 48-sync-openhouse-registry.sh ;;
       17) run_stage 60-start-smallphone.sh; run_machine_stage 65-smallphone-status.sh status ;;

@@ -330,6 +330,17 @@ read_service_manager_token_from_config() {
   local config
   local token
 
+  service_manager_config_candidates | while IFS= read -r config; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    token="$(read_service_manager_token_from_config_file "$config" || true)"
+    if [ -n "$token" ]; then
+      printf '%s' "$token"
+      return 0
+    fi
+  done
+}
+
+service_manager_config_candidates() {
   for config in \
     "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
     "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
@@ -337,29 +348,78 @@ read_service_manager_token_from_config() {
     "$termux_config_dir/service-manager/config.json" \
     "$HOME/.config/service-manager/config.json" \
     "/data/data/com.termux/files/home/.config/service-manager/config.json"; do
-    [ -n "$config" ] && [ -f "$config" ] || continue
-    token="$(sed -n 's/.*"auth_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$config" | head -n 1 || true)"
-    if [ -n "$token" ]; then
-      printf '%s' "$token"
-      return 0
-    fi
+    [ -n "$config" ] || continue
+    printf '%s\n' "$config"
   done
+}
 
-  return 1
+read_service_manager_token_from_config_file() {
+  local config="$1"
+  [ -f "$config" ] || return 1
+  sed -n 's/.*"auth_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$config" | head -n 1
+}
+
+token_auth_ready_or_unknown() {
+  local token="$1"
+  if command -v curl >/dev/null 2>&1; then
+    service_manager_auth_ready "$token"
+    return $?
+  fi
+  [ -n "$token" ]
 }
 
 resolve_service_manager_token() {
   local bin="${1:-}"
   local token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+  local config
+  local fallback_token=""
 
-  if [ -z "$token" ] && [ -n "$bin" ]; then
-    token="$("$bin" token show 2>/dev/null | tr -d '\r\n' || true)"
-  fi
-  if [ -z "$token" ]; then
-    token="$(read_service_manager_token_from_config || true)"
+  if [ -n "$token" ]; then
+    fallback_token="$token"
+    if token_auth_ready_or_unknown "$token"; then
+      printf '%s' "$token"
+      return 0
+    fi
   fi
 
-  printf '%s' "$token"
+  while IFS= read -r config; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    token="$(read_service_manager_token_from_config_file "$config" | tr -d '\r\n' || true)"
+    [ -n "$token" ] || continue
+    [ -n "$fallback_token" ] || fallback_token="$token"
+    if token_auth_ready_or_unknown "$token"; then
+      printf '%s' "$token"
+      return 0
+    fi
+  done <<EOF
+$(service_manager_config_candidates)
+EOF
+
+  if [ -n "$bin" ]; then
+    while IFS= read -r config; do
+      [ -n "$config" ] && [ -f "$config" ] || continue
+      token="$("$bin" token show --config "$config" 2>/dev/null | head -n 1 | tr -d '\r\n' || true)"
+      [ -n "$token" ] || continue
+      [ -n "$fallback_token" ] || fallback_token="$token"
+      if token_auth_ready_or_unknown "$token"; then
+        printf '%s' "$token"
+        return 0
+      fi
+    done <<EOF
+$(service_manager_config_candidates)
+EOF
+
+    token="$("$bin" token show 2>/dev/null | head -n 1 | tr -d '\r\n' || true)"
+    if [ -n "$token" ] && [ -z "$fallback_token" ]; then
+      fallback_token="$token"
+    fi
+    if token_auth_ready_or_unknown "$token"; then
+      printf '%s' "$token"
+      return 0
+    fi
+  fi
+
+  printf '%s' "$fallback_token"
 }
 
 write_curl_auth_config() {

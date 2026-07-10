@@ -218,4 +218,28 @@ for PROFILE_FILE in "$HOME/.profile" "$HOME/.bashrc"; do
   fi
 done'
 
+find_cloudcli_register_script() {
+  local dir
+  for dir in \
+    "${OPENHOUSEAI_MAINTAINER_DIR:-}" \
+    "${SMALLPHONEAI_MAINTAINER_DIR:-}" \
+    "$HOME/.smallphoneai-bootstrap/apk-assets/maintainer" \
+    "$HOME/.smallphoneai-bootstrap/maintainer"; do
+    [ -n "$dir" ] || continue
+    if [ -f "$dir/register-cloudcli-service.sh" ]; then
+      printf '%s\n' "$dir/register-cloudcli-service.sh"
+      return 0
+    fi
+  done
+  return 1
+}
+
+register_script="$(find_cloudcli_register_script || true)"
+if [ -n "$register_script" ]; then
+  log "正在把 CloudCLI 注册到 service-manager：cloudcli"
+  run_logged bash "$register_script" "23083"
+else
+  log "未找到 CloudCLI service-manager 注册脚本；CloudCLI 已安装但暂未纳入服务控制。"
+fi
+
 log "ClaudeCodeUI / CloudCLI 安装阶段已完成。"

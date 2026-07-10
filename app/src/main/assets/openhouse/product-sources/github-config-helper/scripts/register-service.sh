@@ -99,6 +99,14 @@ const appId = 'github-config-helper';
 const port = Number(portText);
 const url = `http://${host}:${port}/`;
 const healthUrl = `http://${host}:${port}/health`;
+const ubuntuHome =
+  process.env.SMALLPHONEAI_UBUNTU_HOME ||
+  process.env.OPENHOUSEAI_UBUNTU_HOME ||
+  process.env.HOME ||
+  '/root';
+const useExternalTermuxManager =
+  process.env.SMALLPHONEAI_REQUIRE_EXTERNAL_SERVICE_MANAGER === '1' ||
+  process.env.OPENHOUSE_SERVICE_MANAGER_RUNTIME === 'termux';
 
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(scriptDir, relativePath), 'utf8'));
@@ -131,6 +139,8 @@ service.id = appId;
 service.service.name = appId;
 service.service.working_dir = scriptDir;
 service.service.command = ['node', 'src/server.js'];
+service.service.provider = useExternalTermuxManager ? 'proot-distro' : (service.service.provider || 'process');
+service.service.runtime = useExternalTermuxManager ? { distro: 'ubuntu', home: ubuntuHome } : (service.service.runtime || {});
 service.service.env = {
   ...(service.service.env || {}),
   NODE_ENV: 'production',

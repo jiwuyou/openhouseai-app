@@ -8,10 +8,10 @@ are post-install capabilities that pi-agent can guide later.
 
 The intended runtime split is:
 
-- Termux native: installer, Ubuntu/proot launcher, bridge, and recovery
-  fallback.
-- Ubuntu/proot: primary runtime for `service-manager`, Pi Agent/pi-web,
-  SmallPhone, `cc-connect`, and app services.
+- Termux native: installer, `service-manager`, Pi Agent/pi-web, Ubuntu/proot
+  launcher, bridge, and recovery fallback.
+- Ubuntu/proot: AI workbench tools and explicit compatibility components such
+  as SmallPhone and optional `cc-connect` / `openhouse-connect`.
 
 ## Commands
 
@@ -32,6 +32,7 @@ Supporting stages are still available:
 bash bootstrap.sh env-check
 bash bootstrap.sh prepare
 bash bootstrap.sh termux-packages
+bash bootstrap.sh termux-node
 bash bootstrap.sh ubuntu
 bash bootstrap.sh sync-docs
 bash bootstrap.sh ubuntu-packages
@@ -47,17 +48,23 @@ bash bootstrap.sh sync-core-stack
 `install`/`full` is idempotent and runs:
 
 ```text
-env-check -> prepare -> termux-packages -> ubuntu -> ubuntu-packages ->
-entry-ubuntu -> node -> sync-docs -> components -> registry-sync ->
+env-check -> prepare -> termux-packages -> termux-node ->
+components(service-manager,pi-agent,pi-web) -> start(pi-agent,pi-web) ->
+ubuntu -> ubuntu-packages -> entry-ubuntu -> node -> sync-docs ->
+components(github-config-helper,cc-connect,smallphone) -> registry-sync ->
 start -> status
 ```
 
 Codex, Claude Code, and ClaudeCodeUI / CloudCLI remain available as explicit
 post-install commands (`codex`, `claude-code`, and `claude-code-ui`), but they
-do not block the default first-run control plane installation.
+do not block the default first-run control plane installation. The CloudCLI
+bootstrap command runs the Ubuntu Node stage, then Claude Code, then CloudCLI,
+and registers the `cloudcli` service with service-manager when the control
+plane is reachable. It has no dependency on `cc-connect`.
 
-`components` enters Ubuntu/proot by default, installs child repos from
-APK-bundled package archives, and then delegates to child repo contracts:
+`components` installs child repos from APK-bundled package archives and then
+delegates to child repo contracts. Termux-native targets stay in Termux;
+Ubuntu/proot is used only for targets that explicitly require it:
 
 - `pi-agent`
 - `pi-web`
@@ -70,9 +77,9 @@ APK-bundled package archives, and then delegates to child repo contracts:
 The default component order is:
 
 ```text
-install pi-agent/pi-web -> install and prepare service-manager ->
-check/register pi-agent/pi-web -> install/check/register openhouse-connect ->
-install/check/register SmallPhone compatibility service
+install service-manager -> install/check/register pi-agent/pi-web ->
+install/check/register openhouse-connect -> install/check/register
+SmallPhone compatibility service
 ```
 
 The required APK asset archives are:
@@ -85,9 +92,14 @@ The required APK asset archives are:
 | pi-agent | `openhouse/product-payloads/pi-agent.tar` | `$HOME/smallphoneai-repos/pi-agent` |
 | pi-web | `openhouse/product-payloads/pi-web.tar` | `$HOME/smallphoneai-repos/pi-web` |
 
-The Android host or Gradle asset-copy step must extract/copy those packages to
+In the APK source tree these packages live under
+`app/src/main/assets/openhouse/product-payloads`. The Android host or Gradle
+asset-copy step must extract/copy those packages to
 `$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads` before
-first run. `50-install-runtime-components.sh` defaults to
+first run. The `service-manager` payload is
+`openhouse/product-payloads/service-manager.tar` and must contain the child
+repo install/check contract plus a current-environment `service-manager`
+binary. `50-install-runtime-components.sh` defaults to
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle`; this prevents first-run source
 clones from GitHub. It is not an air-gapped install: apt, npm, pip, model
 providers, and ordinary network checks may still be used when a stage needs
@@ -141,8 +153,9 @@ Control-test app ports:
 | smallphone-likegirl | `http://127.0.0.1:23003/` |
 | smallphone-likegirl clone | `http://127.0.0.1:23008/` |
 
-`cc-connect` is part of readiness unless `SMALLPHONEAI_CC_CONNECT_DISABLED=1`
-or `SMALLPHONEAI_DISABLE_CC_CONNECT=1` is set.
+`cc-connect` / `openhouse-connect` is an optional diagnostic and repairable
+connection service. It is not required by the CloudCLI service and should not
+block first-run pi-agent readiness.
 
 The maintenance manifest remains at:
 

@@ -112,22 +112,72 @@ termux_service_manager_ready() {
     || curl -fsS --max-time 2 "$url/" >/dev/null 2>&1
 }
 
+termux_service_manager_config_token() {
+  local sm_bin cfg
+  sm_bin="$(find_termux_service_manager_binary || true)"
+  cfg="$(termux_service_manager_config_path)"
+  [ -n "$sm_bin" ] || return 1
+  "$sm_bin" token show --config "$cfg" 2>/dev/null | head -n 1 | tr -d '\r\n'
+}
+
+termux_service_manager_auth_ready() {
+  local token="$1"
+  local url="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}"
+  local work_dir curl_cfg status
+
+  [ -n "$token" ] || return 1
+  command -v curl >/dev/null 2>&1 || return 1
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-sm-auth.XXXXXX")" || return 1
+  curl_cfg="$work_dir/curl.cfg"
+  printf 'header = "Authorization: Bearer %s"\n' "$token" > "$curl_cfg"
+  curl -q -fsS --max-time 3 -K "$curl_cfg" "$url/api/v1/services" >/dev/null 2>&1
+  status=$?
+  rm -rf "$work_dir" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+termux_service_manager_ready_for_registration() {
+  local token
+  termux_service_manager_ready || return 1
+  token="$(termux_service_manager_config_token || true)"
+  [ -n "$token" ] || return 1
+  termux_service_manager_auth_ready "$token"
+}
+
+stop_stale_termux_service_manager() {
+  local pid
+
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f 'service-manager serve' >/dev/null 2>&1 || true
+  fi
+  if command -v pidof >/dev/null 2>&1; then
+    for pid in $(pidof service-manager 2>/dev/null || true); do
+      [ -n "$pid" ] && kill "$pid" >/dev/null 2>&1 || true
+    done
+  fi
+  sleep 1
+}
+
 ensure_termux_service_manager() {
   local bind url cfg sm_bin
   bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
   url="${SERVICE_MANAGER_URL:-http://$bind}"
   cfg="$(termux_service_manager_config_path)"
 
-  if termux_service_manager_ready; then
+  if termux_service_manager_ready_for_registration; then
     log "Termux native service-manager 已可访问：$url"
     return 0
+  fi
+  if termux_service_manager_ready; then
+    warn "Termux native service-manager 已响应 health，但当前 config token 未通过认证；正在重启旧实例。"
+    stop_stale_termux_service_manager
   fi
 
   if command -v sv >/dev/null 2>&1; then
     log "正在通过 termux-services 拉起 service-manager。"
     sv up service-manager >/dev/null 2>&1 || true
     for _ in $(seq 1 10); do
-      termux_service_manager_ready && {
+      termux_service_manager_ready_for_registration && {
         log "Termux native service-manager 已由 runit 拉起：$url"
         return 0
       }
@@ -145,7 +195,7 @@ ensure_termux_service_manager() {
   log "正在 Termux native 后台启动 service-manager：$bind"
   nohup "$sm_bin" serve --config "$cfg" --bind "$bind" > "$HOME/.smallphoneai/logs/service-manager.log" 2>&1 < /dev/null &
   for _ in $(seq 1 30); do
-    termux_service_manager_ready && {
+    termux_service_manager_ready_for_registration && {
       log "Termux native service-manager 已启动：$url"
       return 0
     }
@@ -166,7 +216,7 @@ resolve_termux_service_manager_token() {
   sm_bin="$(find_termux_service_manager_binary || true)"
   cfg="$(termux_service_manager_config_path)"
   if [ -n "$sm_bin" ]; then
-    "$sm_bin" token show --config "$cfg" 2>/dev/null | tr -d '\r\n' || true
+    "$sm_bin" token show --config "$cfg" 2>/dev/null | head -n 1 | tr -d '\r\n' || true
   fi
 }
 

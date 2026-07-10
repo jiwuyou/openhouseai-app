@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 set -euo pipefail
 
 DEFAULT_BIND="127.0.0.1:20087"
@@ -31,6 +31,29 @@ die() {
 warn() {
   printf 'openhouse-system: WARN: %s\n' "$*" >&2
 }
+
+setup_writable_tmpdir() {
+  local termux_prefix="${PREFIX:-/data/data/com.termux/files/usr}"
+  local termux_home="${HOME:-/data/data/com.termux/files/home}"
+  local dir
+
+  for dir in \
+    "${TMPDIR:-}" \
+    "$termux_prefix/tmp" \
+    "$termux_home/.tmp" \
+    "$termux_home/.cache/tmp"; do
+    [ -n "$dir" ] || continue
+    mkdir -p "$dir" 2>/dev/null || continue
+    if [ -d "$dir" ] && [ -w "$dir" ]; then
+      TMPDIR="$dir"
+      export TMPDIR
+      return 0
+    fi
+  done
+  die "no writable temp directory is available"
+}
+
+setup_writable_tmpdir
 
 require_jq() {
   command -v jq >/dev/null 2>&1 || die "jq is required. Install it with: pkg install jq"

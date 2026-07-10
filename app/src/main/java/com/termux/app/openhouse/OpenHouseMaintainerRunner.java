@@ -79,6 +79,8 @@ public final class OpenHouseMaintainerRunner {
             environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
             environment.put("SMALLPHONEAI_BOOTSTRAP", runtimeSync.bootstrapFile.getAbsolutePath());
             environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_DIR", runtimeSync.payloadDir.getAbsolutePath());
+            environment.put("OPENHOUSEAI_MAINTAINER_DIR", OpenHouseBundledRuntimeSync.getMaintainerDir().getAbsolutePath());
+            environment.put("SMALLPHONEAI_MAINTAINER_DIR", OpenHouseBundledRuntimeSync.getMaintainerDir().getAbsolutePath());
             File manifest = new File(runtimeSync.payloadDir, "manifest.json");
             if (manifest.isFile()) {
                 environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST", manifest.getAbsolutePath());

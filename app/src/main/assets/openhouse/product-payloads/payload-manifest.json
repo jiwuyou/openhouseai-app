@@ -5,8 +5,10 @@
     {
       "id": "service-manager",
       "archive": "service-manager.tar",
-      "sha256": "ce91f5570b43a06ea42a961f7a177e475bf2ee4978426cdf03e3392bf79d84c5",
-      "size": 6338560
+      "sha256": "f424e92d920d4dc16cf48a42393380f0e549d86280041b7dcf478f110bbb955e",
+      "size": 6440960,
+      "binarySha256": "d61faed08670fa0b1c8caf66886d5d67087a81a273ef76424705c9d90592404a",
+      "platform": "termux-arm64"
     },
     {
       "id": "openhouse-connect",
@@ -36,8 +38,8 @@
       "id": "github-config-helper",
       "archive": "github-config-helper.tar",
       "targetDir": "github-config-helper",
-      "sha256": "5dfd1550d04635c071387ee539065beec37fa91f11f100e5eedf5f54ae0156d4",
-      "size": 71680
+      "sha256": "406013d4306109748b224abea3ac6e3d249b09f8054c1ec6ee11f7c59f73e717",
+      "size": 81920
     },
     {
       "id": "aionui-web",

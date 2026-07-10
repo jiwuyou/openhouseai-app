@@ -64,6 +64,9 @@ normalize_bootstrap_target() {
     openhouse-connect)
       printf 'cc-connect'
       ;;
+    github|github-helper|github-config)
+      printf 'github-config-helper'
+      ;;
     hermes-agent|hermes-webui)
       printf 'hermes'
       ;;
@@ -129,7 +132,7 @@ openhouse_pi_runtime() {
 }
 
 default_component_targets() {
-  printf '%s\n' "service-manager,pi-agent,pi-web,cc-connect,smallphone,hermes"
+  printf '%s\n' "service-manager,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes"
 }
 
 bootstrap_targets_for_runtime() {
@@ -236,20 +239,75 @@ termux_service_manager_ready() {
   curl -fsS --max-time 2 "$url/api/v1/health" >/dev/null 2>&1
 }
 
+termux_service_manager_config_token() {
+  local sm_bin cfg
+  sm_bin="$(find_termux_service_manager_binary || true)"
+  cfg="$(termux_service_manager_config_path)"
+  [ -n "$sm_bin" ] || return 1
+  "$sm_bin" token show --config "$cfg" 2>/dev/null | head -n 1 | tr -d '\r\n'
+}
+
+termux_service_manager_auth_ready() {
+  local token="$1"
+  local url="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}"
+  local work_dir curl_cfg status
+
+  [ -n "$token" ] || return 1
+  command -v curl >/dev/null 2>&1 || return 1
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-sm-auth.XXXXXX")" || return 1
+  curl_cfg="$work_dir/curl.cfg"
+  printf 'header = "Authorization: Bearer %s"\n' "$token" > "$curl_cfg"
+  curl -q -fsS --max-time 3 -K "$curl_cfg" "$url/api/v1/services" >/dev/null 2>&1
+  status=$?
+  rm -rf "$work_dir" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+termux_service_manager_ready_for_registration() {
+  local token
+  termux_service_manager_ready || return 1
+  token="$(termux_service_manager_config_token || true)"
+  [ -n "$token" ] || return 1
+  termux_service_manager_auth_ready "$token"
+}
+
+stop_stale_termux_service_manager() {
+  local proc comm cmd pid sm_bin
+
+  sm_bin="$(find_termux_service_manager_binary || true)"
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/comm" ] || continue
+    comm="$(cat "$proc/comm" 2>/dev/null || true)"
+    [ "$comm" = "service-manager" ] || continue
+    cmd="$(tr '\000' ' ' < "$proc/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      "$sm_bin serve "*|*/service-manager\ serve\ *|service-manager\ serve\ *)
+        pid="${proc##*/}"
+        kill "$pid" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done
+  sleep 1
+}
+
 start_termux_service_manager_for_registration() {
   local bind url cfg sm_bin
   bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
   url="${SERVICE_MANAGER_URL:-http://$bind}"
   cfg="$(termux_service_manager_config_path)"
 
-  if termux_service_manager_ready; then
+  if termux_service_manager_ready_for_registration; then
     return 0
+  fi
+  if termux_service_manager_ready; then
+    warn "Termux native service-manager 已响应 health，但当前 config token 未通过认证；正在重启旧实例。"
+    stop_stale_termux_service_manager
   fi
 
   if command -v sv >/dev/null 2>&1; then
     sv up service-manager >/dev/null 2>&1 || true
     for _ in $(seq 1 10); do
-      termux_service_manager_ready && return 0
+      termux_service_manager_ready_for_registration && return 0
       sleep 1
     done
   fi
@@ -261,7 +319,7 @@ start_termux_service_manager_for_registration() {
   log "正在 Termux native 启动 service-manager 以注册组件：$url"
   nohup "$sm_bin" serve --config "$cfg" --bind "$bind" > "$HOME/.smallphoneai/logs/service-manager.log" 2>&1 < /dev/null &
   for _ in $(seq 1 20); do
-    termux_service_manager_ready && return 0
+    termux_service_manager_ready_for_registration && return 0
     sleep 1
   done
   return 1
@@ -277,9 +335,35 @@ resolve_termux_service_manager_token() {
   sm_bin="$(find_termux_service_manager_binary || true)"
   cfg="$(termux_service_manager_config_path)"
   if [ -n "$sm_bin" ]; then
-    "$sm_bin" token show --config "$cfg" 2>/dev/null | tr -d '\r\n' || true
+    "$sm_bin" token show --config "$cfg" 2>/dev/null | head -n 1 | tr -d '\r\n' || true
   fi
 }
+
+resolve_bootstrap_root() {
+  local script_path
+
+  if [ -n "${SMALLPHONEAI_ROOT:-}" ]; then
+    printf '%s\n' "$SMALLPHONEAI_ROOT"
+    return 0
+  fi
+
+  script_path="${BASH_SOURCE[0]:-${0:-}}"
+  case "$script_path" in
+    ""|bash|sh|-bash|-sh)
+      if [ -f "$PWD/scripts/50-install-runtime-components.sh" ]; then
+        script_path="$PWD/scripts/50-install-runtime-components.sh"
+      elif [ -f "$PWD/bootstrap/scripts/50-install-runtime-components.sh" ]; then
+        script_path="$PWD/bootstrap/scripts/50-install-runtime-components.sh"
+      else
+        script_path="$PWD/50-install-runtime-components.sh"
+      fi
+      ;;
+  esac
+
+  cd "$(dirname "$script_path")/.." && pwd
+}
+
+bootstrap_root="$(resolve_bootstrap_root)"
 
 if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; then
   termux_pi_targets="$(bootstrap_targets_for_runtime termux)"
@@ -289,6 +373,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
 
   log "正在 Termux native 部署 openhouse-system 主系统 CLI。"
   SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
+    SMALLPHONEAI_ROOT="$bootstrap_root" \
     SMALLPHONEAI_COMPONENT_TARGETS=openhouse-system \
     SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
     SERVICE_MANAGER_CONFIG_PATH="$native_config" \
@@ -297,6 +382,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
   if bootstrap_target_requested "service-manager"; then
     log "正在 Termux native 安装 service-manager 控制面。"
     SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
+      SMALLPHONEAI_ROOT="$bootstrap_root" \
       SMALLPHONEAI_COMPONENT_TARGETS=service-manager \
       SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
       SERVICE_MANAGER_CONFIG_PATH="$native_config" \
@@ -311,6 +397,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
   if [ -n "$termux_pi_targets" ]; then
     log "正在 Termux native 安装、检查并注册 pi 常驻组件：$termux_pi_targets"
     SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
+      SMALLPHONEAI_ROOT="$bootstrap_root" \
       SMALLPHONEAI_COMPONENT_TARGETS="$termux_pi_targets" \
       SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
       SERVICE_MANAGER_CONFIG_PATH="$native_config" \
@@ -332,6 +419,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
     SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
       proot-distro login ubuntu -- env \
         HOME="$ubuntu_runtime_home" \
+        SMALLPHONEAI_ROOT="$bootstrap_root" \
         SMALLPHONEAI_UBUNTU_HOME="$ubuntu_runtime_home" \
         OPENHOUSEAI_UBUNTU_HOME="$ubuntu_runtime_home" \
         SMALLPHONEAI_COMPONENT_REPO_ROOT="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$ubuntu_repo_root}" \
@@ -404,7 +492,6 @@ strict="${SMALLPHONEAI_COMPONENTS_STRICT:-1}"
 component_targets="${SMALLPHONEAI_COMPONENT_TARGETS:-}"
 force_payload_refresh="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}"
 failures=0
-bootstrap_root="${SMALLPHONEAI_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 openhouse_home="${OPENHOUSEAI_HOME:-$HOME/.config/openhouseai}"
 openhouse_subjects_dir="${OPENHOUSEAI_SUBJECTS_DIR:-$openhouse_home/subjects.d}"
 openhouse_schema_dir="${OPENHOUSEAI_SCHEMA_DIR:-$openhouse_home/schemas}"
@@ -619,6 +706,9 @@ normalize_target() {
     openhouse-connect)
       printf 'cc-connect'
       ;;
+    github|github-helper|github-config)
+      printf 'github-config-helper'
+      ;;
     hermes-agent|hermes-webui)
       printf 'hermes'
       ;;
@@ -672,7 +762,7 @@ validate_component_targets() {
     [ -n "$item" ] || continue
     target="$(normalize_target "$item")"
     case "$target" in
-      openhouse-system|service-manager|pi-agent|pi-web|cc-connect|smallphone|hermes)
+      openhouse-system|service-manager|pi-agent|pi-web|github-config-helper|cc-connect|smallphone|hermes)
         ;;
       *)
         warn "未知组件目标：$item"
@@ -1374,6 +1464,7 @@ run_component() {
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path pi-agent)}}"
 pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path pi-web)}}"
+github_config_helper_dir="${OPENHOUSE_GITHUB_CONFIG_HELPER_DIR:-${SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR:-$(default_path github-config-helper)}}"
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path openhouse-connect)}"
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path smallphone-active)}"
 hermes_dir="${SMALLPHONEAI_HERMES_DIR:-$(default_path hermes)}"
@@ -1391,7 +1482,7 @@ fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"
 else
-  log "本次处理默认组件：openhouse-system、service-manager、pi-agent、pi-web、cc-connect/openhouse-connect、SmallPhone、Hermes。"
+  log "本次处理默认组件：openhouse-system、service-manager、pi-agent、pi-web、github-config-helper、cc-connect/openhouse-connect、SmallPhone、Hermes。"
 fi
 
 install_openhouse_system || warn "OpenHouse 主系统 CLI/主体名片部署未完成。"
@@ -1414,6 +1505,9 @@ if should_run_component "pi-web"; then
   else
     failures=$((failures + 1))
   fi
+fi
+if should_run_component "github-config-helper"; then
+  run_component "github-config-helper" "$github_config_helper_dir" "${OPENHOUSE_GITHUB_CONFIG_HELPER_GIT_URL:-}" "1" "github-config-helper"
 fi
 if should_run_component "cc-connect"; then
   run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "${SMALLPHONEAI_CC_CONNECT_GIT_URL:-https://github.com/jiwuyou/openhouse-connect-fresh.git}" "1" "openhouse-connect"
