@@ -157,15 +157,24 @@ pi-web 组件入口应使用 WebView：
 
 AionUi 本地页面的 service id 是 `aionui-web`。Android 桌面/菜单入口应只打开 `http://127.0.0.1:25808/` 的 WebView，并通过 `service-manager://services/aionui-web` 暴露控制入口；它不能由 Android UI 或安装后的菜单逻辑直接长期启动。
 
-脚本型 pi 服务应使用稳定的 process provider 命令形式：
+脚本型 pi 服务应注册为 Termux native provider，并用稳定的 shell supervisor 跟踪子进程：
 
 ```json
 {
-  "command": ["sh", "-lc", "openhouse-pi-web-start"]
+  "provider": "termux-process",
+  "command": [
+    "sh",
+    "-lc",
+    "openhouse-pi-web-start & child=$!; trap 'kill -TERM $child 2>/dev/null; wait $child 2>/dev/null || true' TERM INT HUP; wait $child"
+  ],
+  "runtime": {
+    "strategy": "termux-process",
+    "runtime": "termux"
+  }
 }
 ```
 
-不要注册为 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。pi-web 启动脚本最终会进入 `node server.js`；如果 service-manager 跟踪的 PID cmdline 变化，会出现 `stale pidfile` 或 `cmdline mismatch`，Android 运行控制就不能真实控制 pi-agent 页面。
+不要注册为 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。pi-web 启动脚本最终会进入 `node server.js`；service-manager 应跟踪稳定的 shell supervisor，而不是会被 Node/Next 改写标题的业务进程。
 
 ## First Install Scope
 

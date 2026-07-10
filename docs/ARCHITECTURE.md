@@ -20,19 +20,18 @@ Termux
   - Android host bridge
   - Termux packages, shell, proot-distro
   - Ubuntu install/start/stop/repair
-  - host layer when Ubuntu or service-manager is unavailable
+  - native Node runtime for long-running pi-agent and pi-web
+  - host layer when Ubuntu is unavailable
 
 Ubuntu in Termux
   - primary Linux workspace
-  - pi as the primary agent runtime
-  - pi-web as the primary user interface
   - Codex, Claude Code, CloudCLI
   - MCP servers and developer toolchains
-  - service-manager managed services: pi-agent, pi-web, aionui-web, CloudCLI and connectors
+  - service-manager managed Ubuntu/proot services: aionui-web, CloudCLI and connectors
 
 service-manager
   - post-install control plane
-  - service lifecycle, health, logs, repair, restart
+  - service lifecycle, health, logs, repair, restart across Termux and Ubuntu/proot providers
   - machine-readable APIs for UI and AI
 
 User and AI surfaces
@@ -46,8 +45,8 @@ User and AI surfaces
 | Component | Owns | Does Not Own |
 | --- | --- | --- |
 | Android App | Product shell, first-run onboarding, permission guidance, visual status, explicit start/stop UI, APK assets, Termux bootstrap entry | Core agent loop, long-running Linux services, MCP daemon lifecycle |
-| Termux | Android sandbox bridge, package prefix, `proot-distro`, Ubuntu lifecycle, rescue commands, Android-adjacent tools | Primary AI brain, large development toolchains, long-running agent state |
-| Ubuntu in Termux | Main Linux workspace, pi, pi-web, Codex, Claude Code, CloudCLI, Node/Python/Rust tooling, MCP servers | Android permissions, APK lifecycle, Termux bootstrap repair |
+| Termux | Android sandbox bridge, package prefix, `proot-distro`, Ubuntu lifecycle, rescue commands, Android-adjacent tools, native Node runtime for `pi-agent` and `pi-web` | Large development toolchains that belong in Ubuntu |
+| Ubuntu in Termux | Main Linux workspace, Codex, Claude Code, CloudCLI, Node/Python/Rust tooling, MCP servers, AionUi and user services | Android permissions, APK lifecycle, Termux bootstrap repair, Termux-native pi/pi-web service ownership |
 | service-manager | Post-install service control plane, status APIs, logs, lifecycle actions, service definitions, health checks | First install chain, Android permission UI, direct model reasoning |
 | pi | Primary agent runtime, tool calling, extension loading, RPC/API surface, plugin execution contracts | Android shell, Termux bootstrap, service supervision |
 | pi-web | Main product interaction surface, user-facing AI workspace, tool display, local web UI | Service lifecycle ownership, Termux/Ubuntu installation |
@@ -58,22 +57,22 @@ User and AI surfaces
 
 ## Agent Core Placement
 
-The long-term OpenHouse agent core should live in Ubuntu, not in Android UI code and not in the Termux base layer.
+The long-term OpenHouse agent core must not live in Android UI code. The current default places `pi-agent` and `pi-web` in Termux native Node so they can stay available while Ubuntu is being installed or repaired; Ubuntu remains the main workbench for projects and heavier AI tools.
 
 Reasons:
 
-- Codex, Claude Code, CloudCLI, MCP servers, Node, Python, Rust, package managers, and project workspaces all fit the Ubuntu/Linux model.
+- Codex, Claude Code, CloudCLI, MCP servers, Python, Rust, package managers, and project workspaces all fit the Ubuntu/Linux model.
 - Ubuntu gives the agent a portable working environment that can later move to a server, desktop Linux, or container with fewer Android-specific assumptions.
 - Android Activity and WebView lifecycle is not a reliable place for long-running reasoning loops.
-- Termux should stay thin enough to repair Ubuntu and bridge Android even when the agent is broken.
+- Termux owns the host control layer, service-manager, and the native pi/pi-web services that must survive Ubuntu repair.
 
 The intended split is:
 
 ```text
 Android App: show, authorize, start, stop, inspect
-Termux: host, bridge, rescue, install, repair
-Ubuntu: run pi, pi-web, AI CLIs, builds, tools, and projects
-service-manager: supervise pi-agent, pi-web, aionui-web, connectors, and expose state
+Termux: host, bridge, rescue, install, repair, run pi-agent and pi-web
+Ubuntu: run AI CLIs, builds, tools, projects, AionUi, and user services
+service-manager: supervise Termux-native and Ubuntu/proot services, and expose state
 ```
 
 ## Install Chain vs Control Plane
@@ -85,7 +84,7 @@ During first install, Android App and Termux coordinate:
 1. prepare Termux paths and packages
 2. install Ubuntu rootfs through `proot-distro`
 3. install Ubuntu packages and Node runtime
-4. install Codex, Claude Code, CloudCLI, service-manager assets, pi, and the bundled pi-web runtime
+4. install Termux Node, service-manager assets, pi, and the bundled pi-web runtime
 5. sync pi extensions, service definitions, and component registry
 6. start `pi-agent`, `pi-web`, and `aionui-web` through service-manager
 
@@ -110,15 +109,15 @@ Runtime operations must use explicit targets:
 | Target | Use For | Avoid |
 | --- | --- | --- |
 | Android | Permissions, intents, APK state, app private files, UI navigation | Linux development tasks |
-| Termux | Host checks, Ubuntu install/repair, Android bridge commands, emergency shell | Main coding agent workflow |
-| Ubuntu | Development commands, pi, pi-web, Codex, Claude Code, CloudCLI, MCP | Android permission changes |
+| Termux | Host checks, Ubuntu install/repair, Android bridge commands, emergency shell, pi-agent/pi-web runtime | Large project builds that belong in Ubuntu |
+| Ubuntu | Development commands, Codex, Claude Code, CloudCLI, MCP, AionUi and user services | Android permission changes, Termux-native pi/pi-web service ownership |
 | service-manager | Long-running services, health, logs, restart, service definitions | One-off shell execution that belongs in Termux/Ubuntu |
 
 Long-running services must be owned by service-manager or by a service-manager-supervised process. Android UI code and WebView code must not directly start persistent MCP, bridge, or agent daemons.
 
 ## pi / pi-web Position
 
-pi is the default OpenHouseAI agent runtime. It owns the default tool calling model, extension loading, and agent-facing APIs in Ubuntu.
+pi is the default OpenHouseAI agent runtime. It owns the default tool calling model, extension loading, and agent-facing APIs. In the current mobile runtime it runs in Termux native Node and can call into Ubuntu for workbench tasks.
 
 pi-web is the default OpenHouseAI UI. The Android App opens it through a local WebView at `http://127.0.0.1:30141/`, while service-manager owns its process lifecycle.
 
@@ -201,11 +200,11 @@ Ubuntu hosts agent and developer workflows.
 
 ## Current vs Long-Term State
 
-Current implementation keeps the pi/pi-web/AionUi direction as the default runtime while restoring Operit as an optional Android flavor. The stable spine remains: Termux-derived Android host, Ubuntu runtime ownership, first install flow, service-manager installation, CloudCLI, and service/component registration.
+Current implementation keeps the pi/pi-web/AionUi direction as the default runtime while restoring Operit as an optional Android flavor. The stable spine remains: Termux-derived Android host, Termux-native pi/pi-web services, Ubuntu workbench ownership, first install flow, service-manager installation, CloudCLI, and service/component registration.
 
 Long-term work should extend this spine instead of replacing it:
 
-- make pi the default agent core in Ubuntu
+- make pi the default agent core in Termux native Node, with Ubuntu as its main workbench
 - make pi-web the default UI
 - make service-manager the stable service API
 - expose machine-readable state for AI agents

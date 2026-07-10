@@ -12,7 +12,8 @@ OpenHouse 同时存在三层路径。AI 执行命令前必须先判断当前层�
 | --- | --- | --- |
 | Android App / Termux 外层 | `/data/data/com.termux/files/home` | Android 侧 Termux home、bootstrap、proot-distro、救援脚本和 APK assets 解包入口。 |
 | Termux prefix | `/data/data/com.termux/files/usr` | Termux 包、proot-distro rootfs、Android 侧可执行文件。 |
-| Ubuntu in Termux | `/root` | 默认开发和运行环境；pi、pi-web、service-manager、SmallPhone、Codex、Claude Code、CloudCLI 默认在这里运行。 |
+| Termux native | `/data/data/com.termux/files/home` | service-manager、pi-agent、pi-web 和 Android-adjacent host control 默认在这里运行。 |
+| Ubuntu in Termux | `/root` | 默认开发工作区；SmallPhone、Codex、Claude Code、CloudCLI、AionUi 和用户项目默认在这里运行。 |
 | Ubuntu rootfs 真实位置 | `/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu` | Termux 内保存 Ubuntu rootfs 的物理目录；排障时可识别，不要直接改 rootfs 内部文件。 |
 
 快速判断：

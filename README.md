@@ -29,7 +29,8 @@ APK 内的 `app/src/main/assets/openhouse/docs-public/` 是该仓库 `docs/` 的
 - 桌面不显示顶部控制栏；进入 App 后显示 `左侧栏 / 桌面 / 当前 App 名 / 刷新 / 收起 / 右侧控制栏`，控制栏可收起为可拖动、吸附并持久化位置的白黑渐变悬浮球。
 - 桌面只保存入口元数据和布局，不预创建多个 WebView，也不要求多个 WebView 常驻。
 - Termux 宿主层、终端底座、Ubuntu 启停和救援控制面。
-- Ubuntu proot runtime，承载 pi、pi-web、Codex、Claude Code、CloudCLI、MCP、agent 和开发工具链。
+- Termux native runtime，承载 `pi-agent`、`pi-web`、service-manager 和 Android-adjacent host control。
+- Ubuntu proot runtime，承载 Codex、Claude Code、CloudCLI、MCP、AionUi、用户项目和开发工具链。
 - service-manager 作为安装完成后的控制平面。
 - pi 作为默认主 agent 和插件体系。
 - pi-web 作为默认主 UI，默认本地入口是 `http://127.0.0.1:30141/`。
@@ -37,7 +38,7 @@ APK 内的 `app/src/main/assets/openhouse/docs-public/` 是该仓库 `docs/` 的
 - cc-switch 作为后置 provider 配置执行器，随 APK 内置 arm64 payload，但不作为长期服务或一级入口。
 - Operit 是 Android 侧可选完整构建能力：`withOperit` flavor 包含完整 Operit feature/module 和宿主桥接，`withoutOperit` flavor 不依赖、不暴露 Operit 入口。
 
-pi 和 pi-web 的安装包随 APK 提供，但它们的 npm 依赖解析和安装可能仍需要访问 npm registry；首次安装不应被描述为完全离线流程。
+pi-agent 和 pi-web 的安装包随 APK 提供，其中 pi-web 首装使用 APK 内置完整 runtime，不需要通过 npm registry 安装 pi-web。pi-agent/npm 依赖、Node.js、Ubuntu 基础包和后置 AI 工具仍可能需要网络；首次安装不应被描述为完全离线流程。
 
 Operit 不属于默认核心运行时，不是 Ubuntu payload，也不替代 OpenHouse/Pi/AionUi。OpenCode、Reasonix、Hermes 等仍按可选外部或后置能力处理。
 

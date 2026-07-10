@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Android App | 菜单、维护中心、WebView、终端入口 | 权限、状态、显式控制。 |
 | Termux 外层 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | 底座、bootstrap、Termux 包、proot-distro、Ubuntu 启停。 |
-| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/projects` | 主要工作区、pi-agent/pi-web、AI CLI、开发工具。 |
+| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/projects` | 主要工作区、AI CLI、开发工具和用户项目。 |
 
 Ubuntu rootfs 在 Termux 文件系统中的真实位置通常是：
 
@@ -68,7 +68,8 @@ proot-distro login ubuntu -- bash -lc 'cd /root/openhouse/docs && ls'
 | 任务 | 默认终端 |
 | --- | --- |
 | 编程、构建、测试、用户项目 | Ubuntu |
-| pi-agent、pi-web、MCP、AI CLI | Ubuntu |
+| pi-agent、pi-web | Termux native |
+| MCP、AI CLI | Ubuntu |
 | Claude Code、Codex、CloudCLI | Ubuntu |
 | 安装 Ubuntu、修复 proot-distro | Termux |
 | Termux 包、Android 桥、底座修复 | Termux |

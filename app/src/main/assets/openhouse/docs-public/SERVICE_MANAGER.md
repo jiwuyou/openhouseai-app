@@ -47,8 +47,12 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 {
   "name": "pi-web",
   "description": "pi-agent 本地页面运行时",
-  "provider": "process",
-  "command": ["sh", "-lc", "openhouse-pi-web-start"],
+  "provider": "termux-process",
+  "command": [
+    "sh",
+    "-lc",
+    "openhouse-pi-web-start & child=$!; trap 'kill -TERM $child 2>/dev/null; wait $child 2>/dev/null || true' TERM INT HUP; wait $child"
+  ],
   "working_dir": "/root/.local/share/openhouseai/pi-web",
   "env": {
     "OPENHOUSE_PI_WEB_RUNTIME_DIR": "/root/.local/share/openhouseai/pi-web",
@@ -58,6 +62,11 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
     "PI_WEB_PORT": "30141",
     "PI_CODING_AGENT_DIR": "/root/.pi",
     "PATH": "/root/.local/node/bin:/root/.local/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin:/system/bin:/system/xbin:/data/data/com.termux/files/usr/bin"
+  },
+  "runtime": {
+    "strategy": "termux-process",
+    "runtime": "termux",
+    "platform": "android-arm64"
   },
   "restart": {
     "mode": "always",
@@ -79,10 +88,10 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 字段原则：
 
 - `name` 是服务 ID，只使用字母、数字、`.`、`_`、`-`。
-- `provider: "process"` 表示 service-manager 直接启动本地前台进程；需要进入 Ubuntu/proot 的服务才使用对应 provider。
+- `provider: "termux-process"` 表示 service-manager 在 Termux 原生层启动长期前台服务；需要进入 Ubuntu/proot 的服务才使用 `proot-distro` provider。
 - `command` 是结构化 argv 数组，不是 shell 字符串。
-- 被管理命令必须是前台长进程。脚本型服务推荐注册为 `["sh", "-lc", "openhouse-pi-web-start"]`，让 service-manager 跟踪稳定的 shell 进程组。
-- 不要把脚本型服务注册成 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。如果脚本内部 `exec node server.js`，process provider 的 PID/cmdline 校验会把它判成 `stale pidfile` 或 `cmdline mismatch`，导致 Android 运行控制无法真实启动、停止或重启。
+- 被管理命令必须是前台长进程。脚本型服务推荐让 `sh -lc` 作为 supervisor，显式 `wait` 子进程并在 TERM/INT/HUP 时转发停止信号。
+- 不要把脚本型服务注册成 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。如果直接跟踪会改写进程标题的 Node/Next 主进程，运行控制容易出现 stale pidfile 或 cmdline mismatch。
 - `PATH` 必须包含 wrapper 所在目录和运行时依赖目录，pi-web 默认需要 `/root/.local/bin` 和 `/root/.local/node/bin`。
 - `tags` 里用 `group:<name>` 表示服务分组，例如 `group:local-stack`。
 

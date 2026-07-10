@@ -16,12 +16,13 @@ Layer 2: Termux
   - Termux package prefix
   - proot-distro host
   - Ubuntu lifecycle and rescue commands
+  - Termux-native pi-agent and pi-web services
 
 Layer 3: Ubuntu in Termux
-  - primary Linux runtime
+  - primary Linux workbench
   - development workspace
   - Codex, Claude Code, CloudCLI
-  - pi, pi-web, MCP, and agent services
+  - MCP, AionUi, and user services
 
 Layer 4: service-manager
   - post-install control plane
@@ -141,8 +142,8 @@ Termux terminal:
 Ubuntu terminal:
 
 - is the everyday developer terminal
-- runs pi, pi-web, Codex, Claude Code, CloudCLI, projects, package managers, and MCP tools
-- is the primary place where the long-term agent core should execute
+- runs Codex, Claude Code, CloudCLI, projects, package managers, and MCP tools
+- is the primary Linux workbench that pi-agent can delegate into
 
 Custom terminal profiles can exist, but they should declare which layer they target and what environment variables, working directory, and permissions they assume.
 
@@ -154,8 +155,8 @@ Persistent processes should follow this ownership:
 Android foreground/background UI -> Android App
 Termux host helper/supervisor     -> Termux
 Ubuntu service processes          -> service-manager
-pi-agent                          -> Ubuntu service managed by service-manager
-pi-web                            -> Ubuntu service managed by service-manager
+pi-agent                          -> Termux-native service managed by service-manager
+pi-web                            -> Termux-native service managed by service-manager
 MCP servers                       -> Ubuntu service managed by service-manager
 ```
 

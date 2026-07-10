@@ -69,7 +69,7 @@ OpenHouse 同时存在 Android App、Termux 外层和 Ubuntu in Termux：
 | --- | --- | --- |
 | Android App | 桌面、菜单、教学、维护中心、WebView | 权限、入口、状态展示、显式控制。 |
 | Termux 外层 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | 底座、bootstrap、Termux 包、proot-distro、Ubuntu 修复。 |
-| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/projects` | 主要工作区、pi-agent/pi-web、开发工具、Claude/Codex/CloudCLI。 |
+| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/projects` | 主要工作区、开发工具、Claude/Codex/CloudCLI。pi-agent/pi-web 默认在 Termux native 层运行。 |
 
 普通用户首次使用不需要理解这些层级。AI 和高级排障文档必须写清楚层级，避免在 Ubuntu 内误改 Termux prefix，或在 Termux 外层误以为自己位于 `/root`。
 

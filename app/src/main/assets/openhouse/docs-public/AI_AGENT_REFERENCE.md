@@ -12,7 +12,8 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 | --- | --- | --- |
 | Android App | 入口、权限、状态、显式开关 | 观察状态，请求用户确认，进入维护/控制页面 |
 | Termux | Android 宿主、底座、救援层 | 修复 Termux/Ubuntu，调用 Android 桥，检查安装链路 |
-| Ubuntu in Termux | 核心 Linux 工作区 | pi、pi-web、开发、后置 AI 工具、MCP、项目命令 |
+| Termux native | 本机控制层和长期入口 | service-manager、pi-agent、pi-web |
+| Ubuntu in Termux | 核心 Linux 工作区 | 开发、后置 AI 工具、MCP、项目命令 |
 | service-manager | 安装完成后的控制平面 | 管理后台服务的启动、停止、状态、日志和修复 |
 | pi-agent / pi-web | 首次配置助手和背后的本地页面运行时 | 读取文档、迁移模型配置、调用插件、帮助用户理解系统 |
 
@@ -89,7 +90,7 @@ search
 
 | 层 | 典型路径 | 用途 |
 | --- | --- | --- |
-| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/openhouseai-docs/official`, `/root/projects` | 开发、pi、用户项目，以及后置安装完成后的 AI CLI、CloudCLI、Claude Code。 |
+| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/openhouseai-docs/official`, `/root/projects` | 开发、用户项目，以及后置安装完成后的 AI CLI、CloudCLI、Claude Code。pi-agent/pi-web 默认在 Termux native 层运行。 |
 | Termux 外层 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | bootstrap、Termux 包、proot-distro、Ubuntu 启停、底座修复。 |
 | Ubuntu rootfs 真实路径 | `/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu` | Ubuntu 数据在 Termux 文件系统中的位置；排障时识别，不要默认直接修改。 |
 
@@ -168,7 +169,8 @@ proot-distro login ubuntu -- bash -lc 'cd /root && cat /etc/os-release'
 
 ### 决策规则
 
-- 开发、构建、测试、用户项目、Codex、Claude Code、CloudCLI、pi、pi-web：优先 Ubuntu。
+- 开发、构建、测试、用户项目、Codex、Claude Code、CloudCLI：优先 Ubuntu。
+- pi-agent、pi-web：优先 Termux native，由 service-manager 管理。
 - service-manager 管理的长期服务：优先 service-manager。
 - proot-distro、Termux 包、Android 权限、安装日志、底座修复：优先 Termux 外层。
 - 从 Termux 调 Ubuntu：使用 `proot-distro login ubuntu -- <command>`。
@@ -180,7 +182,8 @@ proot-distro login ubuntu -- bash -lc 'cd /root && cat /etc/os-release'
 | --- | --- | --- |
 | 编程、构建、测试、运行项目 | Ubuntu | 工具链和用户项目在 Ubuntu 内 |
 | Codex CLI、Claude Code、CloudCLI | Ubuntu | AI CLI 默认安装在 Ubuntu 内 |
-| pi、pi-web、MCP server、agent server | Ubuntu | 应由 service-manager 管理为长期服务 |
+| pi、pi-web | Termux native | 应由 service-manager 管理为长期服务 |
+| MCP server、agent server | Ubuntu | 应由 service-manager 管理为长期服务 |
 | 检查 proot-distro、安装 Ubuntu | Termux | Ubuntu 不存在或不可用时仍需要修复入口 |
 | Android intent、App 私有目录、wake lock、权限桥 | Termux / Android App | 这些能力贴近 Android 沙箱 |
 | 修复 Termux prefix | Termux / Android App | 这是 Ubuntu 的下层底座 |

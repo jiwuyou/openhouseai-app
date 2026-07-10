@@ -922,6 +922,9 @@ payload_dir_needs_refresh() {
       ;;
     pi-web)
       [ -f "$source/scripts/register-service.sh" ] || return 0
+      grep -Fq '"provider": "termux-process"' "$source/scripts/register-service.sh" \
+        && grep -Fq '"strategy": "termux-process"' "$source/scripts/register-service.sh" \
+        || return 0
       if [ "$(openhouse_pi_runtime)" = "termux" ] && is_termux; then
         [ -f "$source/bin/openhouse-pi-web-start" ] \
           && sed -n '1p' "$source/bin/openhouse-pi-web-start" | grep -Fq '/data/data/com.termux/files/usr/bin/env sh' \

@@ -5,9 +5,9 @@ OpenHouseAI 运行在 Android 手机上，结构如下：
 - Android 是宿主系统。
 - Termux 提供终端环境和包管理。
 - Ubuntu 通过 `proot-distro` 安装在 Termux 内。
-- Node.js 24 LTS、pi-agent、pi-web、service-manager 和基础桥接服务安装在 Ubuntu 内。
-- Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 由 pi-agent 后置引导安装，也安装在 Ubuntu 内。
-- pi 和 pi-web 安装在 Ubuntu 内。
+- Termux native 层安装 Node.js 24 LTS、service-manager、pi-agent、pi-web 和基础桥接服务。
+- Ubuntu 通过 `proot-distro` 提供主要 Linux 工作区；Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 由 pi-agent 后置引导安装到合适的 Linux 工作区。
+- pi 和 pi-web 默认安装在 Termux native 层，作为长期服务由 service-manager 管理。
 - 安装完成后，service-manager 负责管理 openhouse-connect、`pi-agent`、`pi-web` 和核心后台服务。
 
 ## 安装范围

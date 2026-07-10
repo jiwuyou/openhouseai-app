@@ -81,7 +81,7 @@ AI agent 优先阅读：
 
 OpenHouse 有三层常见路径，不要混用：
 
-- Ubuntu 内路径：`/root`、`/root/openhouse/docs`、`/root/openhouseai-docs/official`、`/root/projects`。这是主要工作区；pi、pi-web、用户项目，以及后置安装完成后的 Claude Code、Codex、CloudCLI 默认在这里使用。
+- Ubuntu 内路径：`/root`、`/root/openhouse/docs`、`/root/openhouseai-docs/official`、`/root/projects`。这是主要工作区；用户项目，以及后置安装完成后的 Claude Code、Codex、CloudCLI 默认在这里使用。pi-agent 和 pi-web 默认在 Termux native 层作为长期服务运行。
 - Termux 文件系统真实路径：`/data/data/com.termux/files/home` 和 `/data/data/com.termux/files/usr`。这是 Android 侧 Termux shell 的 home 和 prefix，负责底座、bootstrap、proot-distro 和 Ubuntu 修复。
 - Ubuntu rootfs 在 Termux 中的真实位置：`/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu`。知道这个位置有助于排障，但普通操作不要直接改 rootfs 文件。
 

@@ -110,7 +110,7 @@ safe_error_message
 | 6 | `entry-ubuntu` | `70-configure-entry-ubuntu.sh` | Termux | 配置进入 Ubuntu 的入口和模式文件。 |
 | 7 | `node-runtime` | `38-install-node.sh` | Ubuntu | 安装固定版本 Node 运行时和 npm 基础配置。 |
 | 8 | `sync-docs` | `35-sync-docs.sh` | Ubuntu | 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。 |
-| 9 | `runtime-components` | `50-install-runtime-components.sh` | Ubuntu | 解包或刷新 service-manager、pi-agent、pi-web、openhouse-connect、smallphone 等 payload。 |
+| 9 | `runtime-components` | `50-install-runtime-components.sh` | Termux + Ubuntu | 在 Termux native 解包或刷新 service-manager、pi-agent、pi-web；按需进入 Ubuntu 刷新 openhouse-connect、smallphone 等 payload。 |
 | 10 | `registry-sync` | `48-sync-openhouse-registry.sh` | Ubuntu | 同步 OpenHouse registry、service-manager 服务定义、侧边栏入口。 |
 | 11 | `start-core-services` | `60-start-smallphone.sh` | Ubuntu | 启动 service-manager，并拉起核心长期服务。 |
 | 12 | `final-health` | `65-smallphone-status.sh status` | Ubuntu | 输出最终机器可读健康状态。 |

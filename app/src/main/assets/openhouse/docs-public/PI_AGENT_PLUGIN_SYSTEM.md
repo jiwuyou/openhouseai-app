@@ -102,15 +102,24 @@ $HOME/.config/openhouseai/components.d/pi-agent.json
 
 组件注册只描述 UI 入口、桌面展示和 service-manager 引用。命令、脚本、工作目录、环境变量和停止方式必须放在 service-manager 的服务清单中。
 
-脚本型 pi 服务应使用稳定的 process provider 命令形式：
+脚本型 pi 服务应注册为 Termux native provider，并用稳定的 shell supervisor 跟踪子进程：
 
 ```json
 {
-  "command": ["sh", "-lc", "openhouse-pi-web-start"]
+  "provider": "termux-process",
+  "command": [
+    "sh",
+    "-lc",
+    "openhouse-pi-web-start & child=$!; trap 'kill -TERM $child 2>/dev/null; wait $child 2>/dev/null || true' TERM INT HUP; wait $child"
+  ],
+  "runtime": {
+    "strategy": "termux-process",
+    "runtime": "termux"
+  }
 }
 ```
 
-不要注册为 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。pi-web 启动脚本最终会进入 `node server.js`；如果 service-manager 跟踪的 PID cmdline 变化，会出现 `stale pidfile` 或 `cmdline mismatch`，Android 运行控制就不能真实控制 pi-agent 页面。
+不要注册为 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。pi-web 启动脚本最终会进入 `node server.js`；service-manager 应跟踪稳定的 shell supervisor，而不是会被 Node/Next 改写标题的业务进程。
 
 ## 安装网络要求
 

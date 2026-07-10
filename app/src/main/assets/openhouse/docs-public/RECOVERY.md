@@ -94,7 +94,7 @@ curl -fsS --max-time 2 "${SM_URL%/}/api/v1/health"
 
 ## 恢复 service-manager 和运行栈
 
-如果 Ubuntu 可用，但 service-manager、pi-agent 或 pi-web 不可用，先尝试启动：
+如果 Termux 可用，但 service-manager、pi-agent 或 pi-web 不可用，先尝试启动：
 
 ```bash
 cd "$HOME/.smallphoneai-bootstrap"

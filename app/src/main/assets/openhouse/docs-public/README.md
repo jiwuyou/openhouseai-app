@@ -62,7 +62,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 
 | 层级 | 常见路径 | 说明 |
 | --- | --- | --- |
-| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/openhouseai-docs/official`, `/root/projects` | 主要工作区。pi、pi-web、用户项目、大多数开发命令，以及后置安装完成后的 Claude Code、Codex、CloudCLI 默认在这里运行。 |
+| Ubuntu 内 | `/root`, `/root/openhouse/docs`, `/root/openhouseai-docs/official`, `/root/projects` | 主要工作区。用户项目、大多数开发命令，以及后置安装完成后的 Claude Code、Codex、CloudCLI 默认在这里运行。pi-agent/pi-web 默认在 Termux native 层运行。 |
 | Termux 文件系统 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | Android 侧 Termux shell 的真实 home 和 prefix。用于 bootstrap、Termux 包、proot-distro、Ubuntu 启停和底座修复。 |
 | Ubuntu rootfs 真实位置 | `/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu` | Termux 文件系统中保存 Ubuntu 根文件系统的位置。排障时可知道数据在哪里，但不要直接改 rootfs 内部文件，优先通过 `proot-distro login ubuntu` 进入 Ubuntu。 |
 | Android App 入口 | OpenHouse 桌面、菜单总览 App、终端 App 中的 Termux 或 Ubuntu 终端入口 | 具体入口名称以当前 App 为准。Termux 终端是 Android 侧底座终端；Ubuntu 终端是主要开发工作区。 |

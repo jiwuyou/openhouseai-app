@@ -50,7 +50,7 @@
 
 ## 默认决策规则
 
-- 开发、项目命令、pi-agent、pi-web、Claude Code、Codex、CloudCLI 默认在 Ubuntu 内执行。
+- `pi-agent`、`pi-web` 默认在 Termux native 层作为长期服务执行；开发、项目命令、Claude Code、Codex、CloudCLI 默认在 Ubuntu 工作区执行。
 - Termux 外层只处理底座、proot-distro、Android 桥、安装引导和救援。
 - 后台长期服务必须优先通过 service-manager 管理。
 - 新增本地长期 App 前必须先按 `PATHS_AND_PORTS.md` 选择未占用端口，不要占用控制平面、桥接或 SmallPhone 平台端口。

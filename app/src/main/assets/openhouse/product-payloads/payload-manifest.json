@@ -31,8 +31,12 @@
     {
       "id": "pi-web",
       "archive": "pi-web.tar",
-      "sha256": "d72729dd1c653ac366de3f58c51025b92630b598b07f37b906b471e626d0cf35",
-      "size": 114452480
+      "sha256": "2e9fc016058e76508fea9d5f13bddf99650d4fe154b0bdd3d16f4a80154ba05b",
+      "size": 89139200,
+      "platform": "termux-android-arm64",
+      "version": "0.7.0",
+      "sourceRepo": "https://github.com/jiwuyou/pi-web.git",
+      "sourceCommit": "b4893a2adb11b54147e5e753ebbb95e04488a49e"
     },
     {
       "id": "github-config-helper",

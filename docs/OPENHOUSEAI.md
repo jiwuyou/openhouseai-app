@@ -16,8 +16,8 @@ OpenHouseAI 面向人机协作：
 当前默认核心包括：
 
 - Android App：入口、权限引导、状态展示、安装引导、原生桌面壳和可视化控制；默认入口可设为桌面、某个桌面 App 或上次退出页。
-- Termux：Android 宿主层、终端底座、Ubuntu 启停和救援控制面。
-- Ubuntu in Termux：pi、pi-web、Codex、Claude Code、CloudCLI、MCP、agent 和开发工具链的主要运行环境。
+- Termux：Android 宿主层、终端底座、Ubuntu 启停和救援控制面；`pi-agent` 和 `pi-web` 默认作为 Termux native 长期服务运行。
+- Ubuntu in Termux：Codex、Claude Code、CloudCLI、MCP、AionUi、用户项目和开发工具链的主要 Linux 工作区。
 - service-manager：安装完成后的控制平面，负责服务启动、停止、状态和日志。
 - pi：默认主 agent 和插件体系。
 - pi-web：默认主 UI 和本地 Web 工作台，默认入口是 `http://127.0.0.1:30141/`。
@@ -93,6 +93,6 @@ OpenHouseAI 的长期方向是一个人机友好的移动端 AI 平台：
 - 个人知识库
 - 人机编程平台
 
-核心 agent 和开发工具链长期应位于 Ubuntu 层。Termux 保持为 Android 宿主和救援层。当前主线中，核心 agent 是 pi，主 UI 是 pi-web，AionUi 是独立本地页面能力。Operit 作为 Android 侧可选完整 flavor 存在，不是 Ubuntu payload，也不替代 OpenHouse/Pi/AionUi 默认运行时。
+核心 agent UI 和本机 agent 入口默认位于 Termux native 层，由 service-manager 管理；Ubuntu 保持为主要 Linux 工作区和后置 AI/开发工具层。当前主线中，核心 agent 是 pi，主 UI 是 pi-web，AionUi 是独立本地页面能力。Operit 作为 Android 侧可选完整 flavor 存在，不是 Ubuntu payload，也不替代 OpenHouse/Pi/AionUi 默认运行时。
 
 Termux 侧救援助手是后置预留能力，本轮不默认安装、不常驻、不进入首次安装关键路径。
