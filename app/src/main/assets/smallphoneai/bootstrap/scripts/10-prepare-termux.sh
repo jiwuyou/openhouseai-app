@@ -61,6 +61,9 @@ TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 TERMUX_BIN_DIR="$TERMUX_PREFIX/bin"
 ENV_PROBE_COMMAND="$TERMUX_BIN_DIR/smallphoneai-env-probe"
 BROWSER_COMMAND="$TERMUX_BIN_DIR/openhouse-browser"
+OH_UBUNTU_ROOT_COMMAND="$TERMUX_BIN_DIR/oh-ubuntu-root"
+OH_UBUNTU_USER_COMMAND="$TERMUX_BIN_DIR/oh-ubuntu-user"
+OH_TERMUX_ENSURE_SSHD_COMMAND="$TERMUX_BIN_DIR/oh-termux-ensure-sshd"
 UBUNTU_BROWSER_COMMAND="$TERMUX_PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs/usr/local/bin/openhouse-browser"
 DOC_DIR="$TERMUX_HOME/openhouseai-docs"
 LEGACY_DOC_DIR="$TERMUX_HOME/smallphoneai-docs"
@@ -126,6 +129,293 @@ main "$@"
 EOF
   chmod 755 "$ENV_PROBE_COMMAND"
   log "已注入环境探测 CLI：$ENV_PROBE_COMMAND"
+}
+
+install_runtime_bridge_cli() {
+  mkdir -p "$TERMUX_BIN_DIR"
+
+  cat > "$OH_UBUNTU_ROOT_COMMAND" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v proot-distro >/dev/null 2>&1; then
+  printf '%s\n' "oh-ubuntu-root: proot-distro not found; run bootstrap.sh termux-packages first" >&2
+  exit 127
+fi
+
+if [ "${1:-}" = "--" ]; then
+  shift
+fi
+
+if [ "$#" -eq 0 ]; then
+  exec proot-distro login ubuntu
+fi
+
+exec proot-distro login ubuntu -- "$@"
+EOF
+  chmod 755 "$OH_UBUNTU_ROOT_COMMAND"
+
+  cat > "$OH_UBUNTU_USER_COMMAND" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  oh-ubuntu-user USER -- COMMAND [ARG...]
+  oh-ubuntu-user --user USER -- COMMAND [ARG...]
+USAGE
+}
+
+if ! command -v proot-distro >/dev/null 2>&1; then
+  printf '%s\n' "oh-ubuntu-user: proot-distro not found; run bootstrap.sh termux-packages first" >&2
+  exit 127
+fi
+
+user="${OPENHOUSE_UBUNTU_USER:-}"
+case "${1:-}" in
+  --user)
+    if [ -z "${2:-}" ]; then
+      usage
+      exit 2
+    fi
+    user="$2"
+    shift 2
+    ;;
+  ""|--)
+    ;;
+  *)
+    user="$1"
+    shift
+    ;;
+esac
+
+if [ "${1:-}" = "--" ]; then
+  shift
+fi
+
+if [ -z "$user" ]; then
+  usage
+  exit 2
+fi
+
+if [ "$#" -eq 0 ]; then
+  exec proot-distro login ubuntu --user "$user"
+fi
+
+exec proot-distro login ubuntu --user "$user" -- "$@"
+EOF
+  chmod 755 "$OH_UBUNTU_USER_COMMAND"
+
+  cat > "$OH_TERMUX_ENSURE_SSHD_COMMAND" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/env bash
+set -euo pipefail
+
+TERMUX_HOME_DIR="${HOME:-/data/data/com.termux/files/home}"
+TERMUX_PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
+SSH_DIR="$TERMUX_HOME_DIR/.ssh"
+BRIDGE_KEY="$SSH_DIR/openhouse_termux_bridge_ed25519"
+AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+PORT_FILE="$TERMUX_HOME_DIR/.smallphoneai/termux-ssh-port"
+USER_FILE="$TERMUX_HOME_DIR/.smallphoneai/termux-ssh-user"
+PORT="${OPENHOUSE_TERMUX_SSH_PORT:-}"
+if [ -z "$PORT" ] && [ -s "$PORT_FILE" ]; then
+  PORT="$(sed -n '1p' "$PORT_FILE" 2>/dev/null || true)"
+fi
+PORT="${PORT:-8022}"
+LISTEN_ADDRESS="${OPENHOUSE_TERMUX_SSH_LISTEN_ADDRESS:-127.0.0.1}"
+PID_FILE="$TERMUX_HOME_DIR/.smallphoneai/termux-sshd-${PORT}.pid"
+LOG_FILE="$TERMUX_HOME_DIR/.smallphoneai/logs/termux-sshd-${PORT}.log"
+
+die() {
+  printf 'oh-termux-ensure-sshd: %s\n' "$*" >&2
+  exit 1
+}
+
+json_bool() {
+  if "$@"; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
+ensure_ssh_material() {
+  mkdir -p "$SSH_DIR" "$TERMUX_HOME_DIR/.smallphoneai" "$(dirname "$LOG_FILE")"
+  chmod 700 "$SSH_DIR" "$TERMUX_HOME_DIR/.smallphoneai" "$(dirname "$LOG_FILE")" 2>/dev/null || true
+
+  command -v ssh-keygen >/dev/null 2>&1 || die "ssh-keygen not found; install Termux openssh first"
+  if [ ! -s "$BRIDGE_KEY" ]; then
+    ssh-keygen -q -t ed25519 -N '' -C 'openhouse-termux-bridge' -f "$BRIDGE_KEY"
+  fi
+  chmod 600 "$BRIDGE_KEY" 2>/dev/null || true
+  chmod 644 "$BRIDGE_KEY.pub" 2>/dev/null || true
+
+  touch "$AUTHORIZED_KEYS"
+  chmod 600 "$AUTHORIZED_KEYS" 2>/dev/null || true
+  if ! grep -Fqx "$(cat "$BRIDGE_KEY.pub")" "$AUTHORIZED_KEYS" 2>/dev/null; then
+    cat "$BRIDGE_KEY.pub" >> "$AUTHORIZED_KEYS"
+  fi
+  id -un > "$USER_FILE" 2>/dev/null || true
+  chmod 600 "$USER_FILE" 2>/dev/null || true
+}
+
+port_hex() {
+  printf '%04X' "$PORT"
+}
+
+port_is_bound() {
+  local hex
+  hex="$(port_hex)"
+  if awk -v port=":$hex" 'tolower($2) ~ tolower(port) "$" && $4 == "0A" { found=1 } END { exit found ? 0 : 1 }' /proc/net/tcp /proc/net/tcp6 2>/dev/null; then
+    return 0
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn 2>/dev/null | awk -v port=":$PORT" '$4 ~ port "$" { found=1 } END { exit found ? 0 : 1 }'
+    return $?
+  fi
+  if command -v netstat >/dev/null 2>&1; then
+    netstat -ltn 2>/dev/null | awk -v port=":$PORT" '$4 ~ port "$" { found=1 } END { exit found ? 0 : 1 }'
+    return $?
+  fi
+  pgrep -f "sshd.*-p[[:space:]]*$PORT|sshd.*${PORT}" >/dev/null 2>&1
+}
+
+ssh_auth_works() {
+  local user args
+  command -v ssh >/dev/null 2>&1 || return 1
+  [ -s "$BRIDGE_KEY" ] || return 1
+  user="$(id -un 2>/dev/null || true)"
+  args=(
+    -o BatchMode=yes
+    -o ConnectTimeout=3
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o LogLevel=ERROR
+    -i "$BRIDGE_KEY"
+    -p "$PORT"
+  )
+  if [ -n "$user" ]; then
+    args+=(-l "$user")
+  fi
+  args+=("$LISTEN_ADDRESS" true)
+  ssh "${args[@]}" >/dev/null 2>&1
+}
+
+write_selected_port() {
+  printf '%s\n' "$PORT" > "$PORT_FILE"
+  chmod 600 "$PORT_FILE" 2>/dev/null || true
+  PID_FILE="$TERMUX_HOME_DIR/.smallphoneai/termux-sshd-${PORT}.pid"
+  LOG_FILE="$TERMUX_HOME_DIR/.smallphoneai/logs/termux-sshd-${PORT}.log"
+}
+
+candidate_ports() {
+  local candidate seen candidates
+  candidates="$PORT"
+  for candidate in $(seq 8022 8039); do
+    case " $candidates " in
+      *" $candidate "*) ;;
+      *) candidates="$candidates $candidate" ;;
+    esac
+  done
+
+  seen=""
+  for candidate in $candidates; do
+    case " $seen " in
+      *" $candidate "*) continue ;;
+    esac
+    seen="$seen $candidate"
+    printf '%s\n' "$candidate"
+  done
+}
+
+start_sshd_on_current_port() {
+  "$(command -v sshd)" -p "$PORT" \
+    -o "ListenAddress=$LISTEN_ADDRESS" \
+    -o "PidFile=$PID_FILE" \
+    -o "PasswordAuthentication=no" \
+    -o "PubkeyAuthentication=yes" \
+    >>"$LOG_FILE" 2>&1 || return 1
+
+  for _ in 1 2 3 4 5; do
+    sleep 0.5
+    if ssh_auth_works; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+ensure_host_keys() {
+  if command -v ssh-keygen >/dev/null 2>&1; then
+    ssh-keygen -A >/dev/null 2>&1 || true
+  fi
+}
+
+ensure_sshd() {
+  command -v sshd >/dev/null 2>&1 || die "sshd not found; install Termux openssh first"
+  ensure_ssh_material
+  ensure_host_keys
+
+  local candidate
+  for candidate in $(candidate_ports); do
+    PORT="$candidate"
+    write_selected_port
+    if ssh_auth_works; then
+      return 0
+    fi
+    if port_is_bound; then
+      continue
+    fi
+    if start_sshd_on_current_port; then
+      return 0
+    fi
+  done
+
+  die "could not start a Termux sshd bridge with key auth on ports 8022-8039; see $TERMUX_HOME_DIR/.smallphoneai/logs"
+}
+
+status_json() {
+  printf '{"provider":"termux-sshd","host":"%s","port":%s,"keyPath":"%s","keyExists":%s,"listening":%s}\n' \
+    "$LISTEN_ADDRESS" \
+    "$PORT" \
+    "$BRIDGE_KEY" \
+    "$(json_bool test -s "$BRIDGE_KEY")" \
+    "$(json_bool ssh_auth_works)"
+}
+
+case "${1:-ensure}" in
+  ensure|start)
+    ensure_sshd
+    status_json
+    ;;
+  status|--status|--check)
+    status_json
+    ;;
+  key-path)
+    printf '%s\n' "$BRIDGE_KEY"
+    ;;
+  pubkey)
+    ensure_ssh_material
+    cat "$BRIDGE_KEY.pub"
+    ;;
+  *)
+    cat >&2 <<'USAGE'
+Usage:
+  oh-termux-ensure-sshd [ensure|start|status|--check|key-path|pubkey]
+USAGE
+    exit 2
+    ;;
+esac
+EOF
+  chmod 755 "$OH_TERMUX_ENSURE_SSHD_COMMAND"
+
+  ln -sf oh-ubuntu-root "$TERMUX_BIN_DIR/openhouse-ubuntu-root" 2>/dev/null || true
+  ln -sf oh-ubuntu-user "$TERMUX_BIN_DIR/openhouse-ubuntu-user" 2>/dev/null || true
+  ln -sf oh-termux-ensure-sshd "$TERMUX_BIN_DIR/openhouse-termux-ensure-sshd" 2>/dev/null || true
+
+  log "已注入跨层桥接 CLI：oh-ubuntu-root、oh-ubuntu-user、oh-termux-ensure-sshd"
 }
 
 install_controlled_browser_cli() {
@@ -892,6 +1182,7 @@ cat > "$DOC_DIR/MODEL_API_SETUP.md" <<'EOF'
 EOF
 
 install_env_probe_cli
+install_runtime_bridge_cli
 install_controlled_browser_cli
 
 log "文档路径：$DOC_DIR"

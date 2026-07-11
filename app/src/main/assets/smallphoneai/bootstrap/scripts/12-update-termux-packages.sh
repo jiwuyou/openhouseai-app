@@ -291,8 +291,8 @@ install_termux_base_packages() {
       continue
     fi
 
-    log "正在执行 apt install -y proot-distro curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates（源：$repo）"
-    if run_termux_apt_install proot-distro curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates; then
+    log "正在执行 apt install -y proot-distro openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates（源：$repo）"
+    if run_termux_apt_install proot-distro openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates; then
       return 0
     fi
 
@@ -301,6 +301,24 @@ install_termux_base_packages() {
     repair_termux_package_state
   done
 
+  return 1
+}
+
+ensure_termux_bridge_sshd() {
+  local ensure_command="${PREFIX:-/data/data/com.termux/files/usr}/bin/oh-termux-ensure-sshd"
+
+  if [ ! -x "$ensure_command" ]; then
+    log "跨层桥接 CLI 尚未注入，跳过 Termux sshd 准备：$ensure_command"
+    return 0
+  fi
+
+  log "正在准备 Termux native sshd 回环桥。"
+  if "$ensure_command" ensure; then
+    log "Termux native sshd 回环桥已可用。"
+    return 0
+  fi
+
+  log "Termux native sshd 回环桥准备失败；可稍后在 Termux 执行：oh-termux-ensure-sshd ensure"
   return 1
 }
 
@@ -327,12 +345,14 @@ fi
 if ! curl --version >/dev/null 2>&1; then
   log "curl 仍不可用，尝试完整升级 Termux 依赖。"
   repair_termux_package_state
-  run_termux_apt_install curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates || true
+  run_termux_apt_install openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates || true
 fi
 
 if ! curl --version >/dev/null 2>&1; then
-  log "curl 修复失败，请手动执行：apt update && apt install -y curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates"
+  log "curl 修复失败，请手动执行：apt update && apt install -y openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates"
   exit 1
 fi
+
+ensure_termux_bridge_sshd || true
 
 log "Termux 软件包阶段已完成。"

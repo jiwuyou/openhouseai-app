@@ -111,6 +111,7 @@ OpenHouse registry 和 AI 文档：
 | `23120` | 内置 / reserved | GitHub 本地配置助手 | `github-config-helper` 默认端口；这是 APK 内置功能，不是自定义 App 示例。 |
 | `30141` | 默认 | pi-web | pi-agent 背后的本地 Web runtime，由 service-manager 托管。 |
 | `4096` | 外部 / historical | OpenCode | 老文档和外部 OpenCode 默认端口；不是 OpenHouse 核心默认端口。 |
+| `8022` | 本机回环桥 / preferred | Termux native sshd | Ubuntu/proot 回 Termux native 的首选桥接端口，只应在 `127.0.0.1` 上使用，不给普通 Web App 复用；若被其它 app 容器占用，`oh-termux-ensure-sshd` 会选择 `8023-8039` 并写入真实端口文件。 |
 | `8000` | 外部默认 / optional | SillyTavern | SillyTavern 上游默认端口；OpenHouse 只在用户安装该能力时注册。 |
 | `8787` | 外部默认 / legacy example | Hermes upstream | `HERMES_SETUP.md` 里的手工安装示例端口；当前组件目标优先看 `23084` 或实际 service spec。 |
 | `9222` | 调试 / optional | Browser CDP | 浏览器调试端口；只在显式开启调试时使用，不给普通 App 占用。 |

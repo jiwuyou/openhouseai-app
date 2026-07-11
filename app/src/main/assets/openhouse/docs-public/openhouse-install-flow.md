@@ -105,16 +105,17 @@ safe_error_message
 | 1 | `termux-check` | `00-check-termux.sh` | Termux | 确认真机 Termux 环境、架构、路径、权限基础可用。 |
 | 2 | `prepare-termux` | `10-prepare-termux.sh` | Termux | 准备 bootstrap 目录、assets、环境探测命令和基础配置。 |
 | 3 | `termux-packages` | `12-update-termux-packages.sh` | Termux | 安装或修复 curl、proot-distro、tar、xz、ca-certificates 等基础包。 |
-| 4 | `ubuntu-rootfs` | `20-install-ubuntu.sh` | Termux | 安装 Ubuntu rootfs，并注入 Ubuntu 侧环境探测命令。 |
-| 5 | `ubuntu-packages` | `30-update-ubuntu-packages.sh` | Ubuntu | 更新 Ubuntu apt 索引，安装基础运行包。 |
-| 6 | `entry-ubuntu` | `70-configure-entry-ubuntu.sh` | Termux | 配置进入 Ubuntu 的入口和模式文件。 |
-| 7 | `node-runtime` | `38-install-node.sh` | Ubuntu | 安装固定版本 Node 运行时和 npm 基础配置。 |
-| 8 | `sync-docs` | `35-sync-docs.sh` | Ubuntu | 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。 |
-| 9 | `runtime-components` | `50-install-runtime-components.sh` | Termux + Ubuntu | 在 Termux native 解包或刷新 service-manager、pi-agent、pi-web；按需进入 Ubuntu 刷新 openhouse-connect、smallphone 等 payload。 |
-| 10 | `registry-sync` | `48-sync-openhouse-registry.sh` | Ubuntu | 同步 OpenHouse registry、service-manager 服务定义、侧边栏入口。 |
-| 11 | `start-core-services` | `60-start-smallphone.sh` | Ubuntu | 启动 service-manager，并拉起核心长期服务。 |
-| 12 | `final-health` | `65-smallphone-status.sh status` | Ubuntu | 输出最终机器可读健康状态。 |
-| 13 | `first-ai-setup` | pi-agent 文档和后置脚本 | Ubuntu | 引导配置 Claude 或 Codex，并实测可回复。 |
+| 4 | `runtime-components` | `50-install-runtime-components.sh` | Termux + Ubuntu | 在 Termux native 解包或刷新 service-manager、pi-agent、pi-web；按需进入 Ubuntu 刷新 openhouse-connect、smallphone 等 payload。 |
+| 5 | `start-core-services` | `60-start-smallphone.sh` | Ubuntu | 先启动 service-manager，并拉起 `pi-agent`、`pi-web` 等核心长期服务。 |
+| 6 | `ubuntu-rootfs` | `20-install-ubuntu.sh` | Termux | 安装 Ubuntu rootfs，并注入 Ubuntu 侧环境探测命令和 `openhouse-termux` 桥接 CLI。 |
+| 7 | `ubuntu-packages` | `30-update-ubuntu-packages.sh` | Ubuntu | 更新 Ubuntu apt 索引，安装基础运行包、`openssh-client` 和 `jq`。 |
+| 8 | `entry-ubuntu` | `70-configure-entry-ubuntu.sh` | Termux | 配置进入 Ubuntu 的入口和模式文件。 |
+| 9 | `node-runtime` | `38-install-node.sh` | Ubuntu | 安装固定版本 Node 运行时和 npm 基础配置。 |
+| 10 | `sync-docs` | `35-sync-docs.sh` | Ubuntu | 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。 |
+| 11 | `registry-sync` | `48-sync-openhouse-registry.sh` | Ubuntu | 同步 OpenHouse registry、service-manager 服务定义、侧边栏入口。 |
+| 12 | `start-core-services` | `60-start-smallphone.sh` | Ubuntu | 启动 service-manager，并拉起核心长期服务。 |
+| 13 | `final-health` | `65-smallphone-status.sh status` | Ubuntu | 输出最终机器可读健康状态。 |
+| 14 | `first-ai-setup` | pi-agent 文档和后置脚本 | Ubuntu | 引导配置 Claude 或 Codex，并实测可回复。 |
 
 核心长期服务目标：
 
@@ -131,9 +132,11 @@ safe_error_message
 | --- | --- | --- | --- | --- | --- | --- |
 | `termux-check` | `PREFIX`、`HOME`、`/data/data/com.termux/files` 可用；CPU 架构受支持；bootstrap 目录可写。 | 非 Termux 环境；目录不可写；关键权限缺失。 | 30s | `logs/termux-check.log` | 重新探测，不清理文件。 | 同常规重试。 |
 | `prepare-termux` | bootstrap root 存在；assets 可访问；环境探测命令可执行。 | APK assets 缺失；bootstrap 目录不可写；释放不完整。 | 60s | `logs/prepare-termux.log` | 重新释放缺失 assets，保留已有完整文件。 | 同常规重试。 |
-| `termux-packages` | `curl`、`proot-distro`、`tar`、`xz`、`ca-certificates` 可执行或可被包管理器确认已安装。 | apt update 失败；包下载失败；dpkg/apt 锁冲突；curl 不可用。 | 15min | `logs/termux-packages.log` | 使用默认 Termux 源和已有缓存重试。 | 切换到固定国内 Termux 源后重试。 |
-| `ubuntu-rootfs` | `proot-distro login ubuntu -- true` 成功；`~/bin/smallphoneai-env-probe` 在 Ubuntu 内可执行。 | rootfs 下载失败；解包失败；proot-distro 安装失败；Ubuntu 登录失败。 | 60min | `logs/ubuntu-rootfs.log` | 使用默认测速结果和缓存重试。 | 使用固定国内 Ubuntu cloud image 路径重试，并校验 rootfs。 |
-| `ubuntu-packages` | Ubuntu 内 `apt-get update` 成功；基础包可执行或 apt 确认安装。 | apt 源不可达；包冲突；磁盘空间不足。 | 30min | `logs/ubuntu-packages.log` | 使用当前 Ubuntu apt 源重试。 | 写入固定国内 Ubuntu apt 源后重试。 |
+| `termux-packages` | `curl`、`proot-distro`、`openssh`、`tar`、`xz`、`ca-certificates` 可执行或可被包管理器确认已安装；`oh-termux-ensure-sshd` 可用。 | apt update 失败；包下载失败；dpkg/apt 锁冲突；curl 不可用。 | 15min | `logs/termux-packages.log` | 使用默认 Termux 源和已有缓存重试。 | 切换到固定国内 Termux 源后重试。 |
+| `runtime-components` | payload sha256 通过；service-manager、pi-agent、pi-web、openhouse-connect、smallphone 目录或二进制完整；必要脚本可执行。 | payload 缺失；sha256 不匹配；解包失败；组件健康检查失败。 | 20min | `logs/runtime-components.log` | 使用 APK 内置 payload 重试，仅刷新 OpenHouse 管理目录。 | 使用国内 payload fallback，必须 sha256 通过。 |
+| `start-core-services` | service-manager API 可访问；核心服务 `pi-agent`、`pi-web` 至少进入 running 或 configured-waiting 状态。 | service-manager 不可达；核心服务端口不可达；启动命令失败。 | 5min | `logs/start-core-services.log` | 重启 service-manager 并按稳定 ID 拉起核心服务。 | 同常规重试。 |
+| `ubuntu-rootfs` | `proot-distro login ubuntu -- true` 成功；`~/bin/smallphoneai-env-probe` 在 Ubuntu 内可执行；`openhouse-termux` 可安装。 | rootfs 下载失败；解包失败；proot-distro 安装失败；Ubuntu 登录失败。 | 60min | `logs/ubuntu-rootfs.log` | 使用默认测速结果和缓存重试。 | 使用固定国内 Ubuntu cloud image 路径重试，并校验 rootfs。 |
+| `ubuntu-packages` | Ubuntu 内 `apt-get update` 成功；`openssh-client`、`jq` 和基础包可执行或 apt 确认安装。 | apt 源不可达；包冲突；磁盘空间不足。 | 30min | `logs/ubuntu-packages.log` | 使用当前 Ubuntu apt 源重试。 | 写入固定国内 Ubuntu apt 源后重试。 |
 | `entry-ubuntu` | Termux 入口文件存在；模式文件存在；从 Termux 能进入 Ubuntu。 | shell rc 文件不可写；proot-distro login 失败。 | 60s | `logs/entry-ubuntu.log` | 重写 OpenHouse 管理的入口片段。 | 同常规重试。 |
 | `node-runtime` | `node --version` 和 `npm --version` 在 Ubuntu 内成功；版本符合固定版本范围；npm global bin 在 PATH。 | Node 下载失败；解包失败；PATH 未生效；版本不符合。 | 30min | `logs/node-runtime.log` | 使用默认 Node payload 或默认源重试。 | 使用国内固定 Node mirror 或内置 payload 重试，并校验 sha256。 |
 | `sync-docs` | `/root/openhouse/docs` 存在；P0 文档可读；`/root/openhouse/scripts/check-ai-tools.sh` 可执行。 | 文档目录缺失；脚本未同步；权限错误。 | 120s | `logs/sync-docs.log` | 重新同步 docs/scripts，不删除用户自有文件。 | 同常规重试。 |

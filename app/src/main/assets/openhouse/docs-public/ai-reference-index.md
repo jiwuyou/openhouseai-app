@@ -14,8 +14,9 @@
 
 1. `openhouse-overview.md`
 2. `AI_AGENT_REFERENCE.md`
-3. `service-manager.md`
-4. `troubleshooting.md`
+3. `TERMUX_UBUNTU_BRIDGE.md`
+4. `service-manager.md`
+5. `troubleshooting.md`
 
 如果你要参与下一轮产品实现，还必须阅读：
 
@@ -31,7 +32,7 @@
 | 理解产品是什么 | `openhouse-overview.md`, `PRODUCT_OVERVIEW.md`, `CAPABILITIES_MAP.md` | 明确 OpenHouse 是人和 AI 共用的软件平台。 |
 | 首次安装链路 | `openhouse-install-flow.md`, `openhouse-cn-network-retry.md` | 了解阶段状态机、重试、国内路径、强制重试边界。 |
 | 新用户教学 | `first-use-tutorial.md` | 按界面、箭头、点击主体和跳过规则设计教学。 |
-| 终端和路径 | `terminal-guide.md`, `TERMINAL_PROFILES.md`, `ENVIRONMENT.md` | 判断 Android、Termux、Ubuntu 层级和跨层调用。 |
+| 终端和路径 | `terminal-guide.md`, `TERMUX_UBUNTU_BRIDGE.md`, `TERMINAL_PROFILES.md`, `ENVIRONMENT.md` | 判断 Android、Termux、Ubuntu 层级和跨层调用。 |
 | 路径和端口规范 | `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 确认稳定安装路径、service-manager endpoint、端口分段、已用/保留端口和新 App 选端口规则。 |
 | pi-agent 首次配置 | `pi-agent-first-use.md`, `OPENHOUSE_FIRST_CONFIGURATION.md` | 引导用户配置模型和后置 AI 工具。 |
 | 模型配置迁移 | `model-config-migration.md`, `MODEL_API_SETUP.md` | 按协议迁移 `base_url`、key/token、model id。 |
@@ -52,6 +53,7 @@
 
 - `pi-agent`、`pi-web` 默认在 Termux native 层作为长期服务执行；开发、项目命令、Claude Code、Codex、CloudCLI 默认在 Ubuntu 工作区执行。
 - Termux 外层只处理底座、proot-distro、Android 桥、安装引导和救援。
+- Termux 到 Ubuntu 使用 `oh-ubuntu-root` / `proot-distro`；Ubuntu 到 Termux 使用 `openhouse-termux`，不要在 Ubuntu 内直接执行 Termux prefix 二进制。
 - 后台长期服务必须优先通过 service-manager 管理。
 - 新增本地长期 App 前必须先按 `PATHS_AND_PORTS.md` 选择未占用端口，不要占用控制平面、桥接或 SmallPhone 平台端口。
 - App 前台默认保持 `service-manager`、`smallphone`、`pi-agent`、`cloudcli` 可用。

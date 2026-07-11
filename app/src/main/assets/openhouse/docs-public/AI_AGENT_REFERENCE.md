@@ -114,6 +114,7 @@ cat /etc/os-release
 ```bash
 command -v proot-distro
 proot-distro login ubuntu -- true
+oh-termux-ensure-sshd status 2>/dev/null || true
 ```
 
 通用快速判断：
@@ -142,12 +143,14 @@ test -d /root/openhouse/docs && echo openhouse-docs-visible || true
 当前在 Termux 外层，需要执行 Ubuntu 命令时，使用：
 
 ```bash
-proot-distro login ubuntu -- bash -lc 'pwd; node -v'
+oh-ubuntu-root -- bash -lc 'pwd; node -v'
 ```
 
 更多示例：
 
 ```bash
+oh-ubuntu-root -- bash -lc 'cd /root/projects && ls -la'
+oh-ubuntu-root -- bash -lc 'cd /root && cat /etc/os-release'
 proot-distro login ubuntu -- bash -lc 'cd /root/projects && ls -la'
 proot-distro login ubuntu -- bash -lc 'cd /root && cat /etc/os-release'
 ```
@@ -156,16 +159,30 @@ proot-distro login ubuntu -- bash -lc 'cd /root && cat /etc/os-release'
 
 ### Ubuntu -> Termux
 
-当前在 Ubuntu 内，需要 Termux 外层能力时，不要假设能直接调用外层 Termux shell。Ubuntu 是 proot 内层；即使能看到 `/data/data/com.termux/files/usr/bin` 或 `/data/data/com.termux/files/home`，也不代表直接执行 Termux binary 或修改 Termux prefix 是安全的。
+当前在 Ubuntu 内，需要 Termux 外层能力时，不要直接执行 `/data/data/com.termux/files/usr/bin/bash`、`pkg`、`npm` 或其它 Termux prefix 二进制。Ubuntu 是 proot 内层；即使能看到 `/data/data/com.termux/files/usr/bin` 或 `/data/data/com.termux/files/home`，也不代表直接执行 Termux binary 或修改 Termux prefix 是安全的。
 
-优先选择：
+正式路径是 `openhouse-termux` / `oh-termux`：
+
+```bash
+openhouse-termux status --json
+openhouse-termux ensure-sshd
+openhouse-termux exec -- 'id; echo "$HOME"; echo "$PREFIX"; node -p "process.platform+\"/\"+process.arch"'
+```
+
+底层是 Termux native `sshd` 只作为本机回环桥，首选端口 `8022`；如果被其它 app 容器占用，会自动选择 `8023-8039` 并写入真实端口文件。AI 应优先使用 `openhouse-termux`，不要硬编码端口。如果 `openhouse-termux ensure-sshd` 仍失败，回到 Termux native 执行：
+
+```bash
+oh-termux-ensure-sshd ensure
+```
+
+仍不可用时，再选择：
 
 1. 通过 OpenHouse 的 Termux 终端入口执行底座命令。
 2. 通过 Android App 维护入口执行启动、修复和日志收集。
-3. 使用项目已经暴露的 bridge、bootstrap 脚本或 service-manager 动作。
+3. 使用 bootstrap 脚本或 service-manager 动作。
 4. 先查 `/root/openhouse/docs`、`SERVICE_MANAGER.md`、`RECOVERY.md` 和 bootstrap 文档，确认是否有受支持的跨层命令。
 
-不要硬猜桥接命令。没有明确文档时，向用户说明需要回到 Termux 外层执行。
+更多边界见 `TERMUX_UBUNTU_BRIDGE.md`。
 
 ### 决策规则
 
@@ -174,7 +191,8 @@ proot-distro login ubuntu -- bash -lc 'cd /root && cat /etc/os-release'
 - service-manager 管理的长期服务：优先 service-manager。
 - proot-distro、Termux 包、Android 权限、安装日志、底座修复：优先 Termux 外层。
 - 从 Termux 调 Ubuntu：使用 `proot-distro login ubuntu -- <command>`。
-- 从 Ubuntu 需要 Termux 能力：先判断是否必须回外层；优先使用 bridge/App 维护入口；不要在 Ubuntu 内盲目改 Termux prefix。
+- 从 Termux 调 Ubuntu的短命令：优先 `oh-ubuntu-root -- <command>`；指定 Linux 用户时用 `oh-ubuntu-user USER -- <command>`。
+- 从 Ubuntu 需要 Termux native 能力：优先 `openhouse-termux exec -- <command>`；不要在 Ubuntu 内盲目改 Termux prefix。
 
 ## 默认终端选择
 

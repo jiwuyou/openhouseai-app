@@ -30,21 +30,20 @@ Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 是后置能力，�
 
 维护中心的一键阶段顺序是：
 
-1. 准备 Termux 路径、配置和文档。
-2. 安装 Termux 基础包。
-3. 测速并选择 Ubuntu rootfs 镜像源，然后安装 Ubuntu rootfs。
-4. 同步 OpenHouseAI 文档。
-5. 安装 Ubuntu 基础包。
-6. 设置打开 Termux 后默认进入 Ubuntu。
-7. 安装 Node.js 24 LTS。
-8. 同步 OpenHouse 文档和后置脚本入口。
-9. 解压校验 APK 内置 pi-agent / pi-web 完整 runtime。
-10. 安装并配置 service-manager。
-11. 注册并启动 `pi-agent` 和 `pi-web`。
-12. 安装 openhouse-connect 和 SmallPhone 兼容服务。
-13. 注册 openhouse-connect / SmallPhone 到 service-manager。
-14. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
-15. 启动 OpenHouse 基础运行栈。
+1. 准备 Termux 路径、配置、文档和跨层桥接 CLI。
+2. 安装 Termux 基础包，包括 `proot-distro`、`openssh`、`curl`、`jq` 和证书，并准备 Termux native `sshd` 回环桥。
+3. 安装 Termux native Node.js 24 LTS/npm。
+4. 解压校验 APK 内置 service-manager、pi-agent、pi-web runtime，并注册到 Termux native service-manager。
+5. 先启动 `pi-agent` 和 `pi-web`，让用户尽早看到首次配置入口。
+6. 测速并选择 Ubuntu rootfs 镜像源，然后安装 Ubuntu rootfs，同时注入 Ubuntu 侧环境探测和 `openhouse-termux` 桥接 CLI。
+7. 安装 Ubuntu 基础包，包括 `openssh-client`、`jq`、`git`、`gh`、`ripgrep` 等。
+8. 设置打开 Termux 后默认进入 Ubuntu。
+9. 安装 Ubuntu Node.js 24 LTS。
+10. 同步 OpenHouse 文档和后置脚本入口。
+11. 安装 openhouse-connect、SmallPhone 兼容服务和 GitHub 配置助手。
+12. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
+13. 启动 OpenHouse 基础运行栈。
+14. 记录最终健康检查。
 
 默认进入 Ubuntu 必须在后置 AI 工具安装之前完成。
 
@@ -121,6 +120,7 @@ OpenHouse 菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入�
 如果当前在 Termux 外层，需要执行 Ubuntu 内命令，使用 `proot-distro login ubuntu -- <command>`：
 
 ```bash
+oh-ubuntu-root -- bash -lc 'pwd; node -v'
 proot-distro login ubuntu -- bash -lc 'pwd; node -v'
 proot-distro login ubuntu -- bash -lc 'cd /root/projects && ls -la'
 ```
@@ -129,11 +129,25 @@ proot-distro login ubuntu -- bash -lc 'cd /root/projects && ls -la'
 
 #### Ubuntu -> Termux
 
-Ubuntu 是 proot 内层，不能直接假设可以安全调用外层 Termux shell。需要 Termux 外层能力时，优先选择：
+Ubuntu 是 proot 内层，不能直接假设可以安全调用外层 Termux shell。需要 Termux 外层能力时，优先使用正式桥接：
+
+```bash
+openhouse-termux status --json
+openhouse-termux ensure-sshd
+openhouse-termux exec -- 'id; echo "$HOME"; echo "$PREFIX"'
+```
+
+如果桥接不可用，回到 Termux native 执行：
+
+```bash
+oh-termux-ensure-sshd ensure
+```
+
+仍不可用时，选择：
 
 1. 从 OpenHouse 的 Termux 终端入口执行底座命令。
 2. 通过 Android App 维护入口执行安装、启动、修复或日志收集。
-3. 使用项目已经暴露的 bridge、脚本或 service-manager 动作。
+3. 使用脚本或 service-manager 动作。
 4. 先查 `/root/openhouse/docs`、bootstrap 文档和 `SERVICE_MANAGER.md`，确认是否已有受支持的跨层命令。
 
 常见 Termux 真实路径是：
@@ -143,7 +157,7 @@ Ubuntu 是 proot 内层，不能直接假设可以安全调用外层 Termux shel
 /data/data/com.termux/files/home
 ```
 
-但这不代表 Ubuntu 里直接执行这些 binary 或直接修改 Termux prefix 一定安全。不要在 Ubuntu 内盲目运行 `/data/data/com.termux/files/usr/bin/pkg`，也不要直接修改 `/data/data/com.termux/files/usr`。需要修 proot、apt、Android 权限、Termux 包或底座时，应回到 Termux 外层或使用受支持的维护入口。
+但这不代表 Ubuntu 里直接执行这些 binary 或直接修改 Termux prefix 一定安全。不要在 Ubuntu 内盲目运行 `/data/data/com.termux/files/usr/bin/pkg`，也不要直接修改 `/data/data/com.termux/files/usr`。需要修 proot、apt、Android 权限、Termux 包或底座时，应使用 `openhouse-termux`、回到 Termux 外层或使用受支持的维护入口。详细规则见 `TERMUX_UBUNTU_BRIDGE.md`。
 
 Ubuntu 中如果存在以下短路径，优先使用短路径：
 

@@ -40,12 +40,14 @@ command -v proot-distro 2>/dev/null || true
 当前在 Termux 外层，需要运行 Ubuntu 命令时：
 
 ```bash
-proot-distro login ubuntu -- bash -lc 'pwd; whoami'
+oh-ubuntu-root -- bash -lc 'pwd; whoami'
 ```
 
 示例：
 
 ```bash
+oh-ubuntu-root -- bash -lc 'cd /root && ls -la'
+oh-ubuntu-root -- bash -lc 'cd /root/openhouse/docs && ls'
 proot-distro login ubuntu -- bash -lc 'cd /root && ls -la'
 proot-distro login ubuntu -- bash -lc 'cd /root/openhouse/docs && ls'
 ```
@@ -54,14 +56,28 @@ proot-distro login ubuntu -- bash -lc 'cd /root/openhouse/docs && ls'
 
 ## Ubuntu 调 Termux
 
-当前在 Ubuntu 内，需要处理 Termux 外层问题时，不要盲目直接执行 Termux prefix 中的二进制。优先：
+当前在 Ubuntu 内，需要处理 Termux 外层问题时，不要盲目直接执行 Termux prefix 中的二进制。优先使用正式桥接：
+
+```bash
+openhouse-termux status --json
+openhouse-termux ensure-sshd
+openhouse-termux exec -- 'id; echo "$HOME"; echo "$PREFIX"'
+```
+
+如果桥接不可用，回到 Termux native 执行：
+
+```bash
+oh-termux-ensure-sshd ensure
+```
+
+仍不可用时，再选择：
 
 1. 使用 OpenHouse 的 Termux 终端入口。
 2. 使用 App 维护入口。
-3. 使用已有 bridge 或 bootstrap 脚本。
+3. 使用 bootstrap 脚本。
 4. 查 `SERVICE_MANAGER.md`、`RECOVERY.md` 和 `AI_AGENT_REFERENCE.md`。
 
-没有明确文档时，应告诉用户需要回到 Termux 外层执行。
+跨层规则集中说明见 `TERMUX_UBUNTU_BRIDGE.md`。
 
 ## 默认选择
 

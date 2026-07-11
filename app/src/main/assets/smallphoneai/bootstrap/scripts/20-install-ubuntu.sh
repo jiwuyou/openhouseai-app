@@ -73,6 +73,7 @@ fi
 TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
 UBUNTU_PROBE_STAGING="$TERMUX_HOME/.smallphoneai-bootstrap/smallphoneai-env-probe-ubuntu.sh"
 UBUNTU_WORKSPACE_STAGING="$TERMUX_HOME/.smallphoneai-bootstrap/ensure-openhouse-workspace-ubuntu.sh"
+UBUNTU_TERMUX_BRIDGE_STAGING="$TERMUX_HOME/.smallphoneai-bootstrap/openhouse-termux-ubuntu.sh"
 OPENHOUSE_HOME_DIR="$TERMUX_HOME/openhouse"
 TERMUX_WORKSPACE_DIR="$OPENHOUSE_HOME_DIR/workspace"
 LEGACY_WORKSPACE_DIR="$TERMUX_HOME/workspace"
@@ -222,6 +223,194 @@ EOF
   log "已注入 Ubuntu 侧环境探测 CLI：~/bin/smallphoneai-env-probe"
 }
 
+install_ubuntu_termux_bridge_cli() {
+  log "正在注入 Ubuntu -> Termux native 桥接 CLI。"
+  mkdir -p "$(dirname "$UBUNTU_TERMUX_BRIDGE_STAGING")"
+  cat > "$UBUNTU_TERMUX_BRIDGE_STAGING" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+TERMUX_HOME_DIR="${OPENHOUSE_TERMUX_HOME:-/data/data/com.termux/files/home}"
+TERMUX_PREFIX_DIR="${OPENHOUSE_TERMUX_PREFIX:-/data/data/com.termux/files/usr}"
+TERMUX_PACKAGE="${OPENHOUSE_TERMUX_PACKAGE:-com.termux}"
+TERMUX_SSH_HOST="${OPENHOUSE_TERMUX_SSH_HOST:-127.0.0.1}"
+TERMUX_SSH_PORT="${OPENHOUSE_TERMUX_SSH_PORT:-}"
+TERMUX_SSH_USER="${OPENHOUSE_TERMUX_SSH_USER:-}"
+TERMUX_SSH_PORT_FILE="$TERMUX_HOME_DIR/.smallphoneai/termux-ssh-port"
+TERMUX_SSH_USER_FILE="$TERMUX_HOME_DIR/.smallphoneai/termux-ssh-user"
+TERMUX_BRIDGE_KEY="${OPENHOUSE_TERMUX_BRIDGE_KEY:-$TERMUX_HOME_DIR/.ssh/openhouse_termux_bridge_ed25519}"
+TERMUX_ENSURE_COMMAND="${OPENHOUSE_TERMUX_ENSURE_COMMAND:-$TERMUX_PREFIX_DIR/bin/oh-termux-ensure-sshd}"
+KNOWN_HOSTS="${OPENHOUSE_TERMUX_KNOWN_HOSTS:-$HOME/.ssh/openhouse_termux_known_hosts}"
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  openhouse-termux status --json
+  openhouse-termux ensure-sshd
+  openhouse-termux exec -- COMMAND [ARG...]
+
+Short alias: oh-termux
+USAGE
+}
+
+json_quote() {
+  awk '
+    BEGIN { ORS = ""; printf "\"" }
+    {
+      if (NR > 1) printf "\\n"
+      gsub(/\\/, "\\\\")
+      gsub(/"/, "\\\"")
+      gsub(/\t/, "\\t")
+      gsub(/\r/, "\\r")
+      printf "%s", $0
+    }
+    END { printf "\"" }
+  '
+}
+
+emit_error_json() {
+  local code="$1"
+  local message="$2"
+  printf '{"ok":false,"provider":"termux-sshd","code":'
+  printf '%s' "$code" | json_quote
+  printf ',"message":'
+  printf '%s' "$message" | json_quote
+  printf '}\n'
+}
+
+load_bridge_state() {
+  if [ -z "${OPENHOUSE_TERMUX_SSH_PORT:-}" ] && [ -s "$TERMUX_SSH_PORT_FILE" ]; then
+    TERMUX_SSH_PORT="$(sed -n '1p' "$TERMUX_SSH_PORT_FILE" 2>/dev/null || true)"
+  fi
+  TERMUX_SSH_PORT="${TERMUX_SSH_PORT:-8022}"
+
+  if [ -z "${OPENHOUSE_TERMUX_SSH_USER:-}" ] && [ -s "$TERMUX_SSH_USER_FILE" ]; then
+    TERMUX_SSH_USER="$(sed -n '1p' "$TERMUX_SSH_USER_FILE" 2>/dev/null || true)"
+  fi
+}
+
+ssh_args() {
+  mkdir -p "$(dirname "$KNOWN_HOSTS")"
+  chmod 700 "$(dirname "$KNOWN_HOSTS")" 2>/dev/null || true
+  load_bridge_state
+  printf '%s\0' \
+    -p "$TERMUX_SSH_PORT" \
+    -o BatchMode=yes \
+    -o ConnectTimeout=5 \
+    -o StrictHostKeyChecking=accept-new \
+    -o UserKnownHostsFile="$KNOWN_HOSTS" \
+    -o LogLevel=ERROR
+  if [ -s "$TERMUX_BRIDGE_KEY" ]; then
+    printf '%s\0' -i "$TERMUX_BRIDGE_KEY"
+  fi
+  if [ -n "$TERMUX_SSH_USER" ]; then
+    printf '%s\0' -l "$TERMUX_SSH_USER"
+  fi
+  printf '%s\0' "$TERMUX_SSH_HOST"
+}
+
+run_ssh() {
+  local args=()
+  while IFS= read -r -d '' arg; do
+    args+=("$arg")
+  done < <(ssh_args)
+  ssh "${args[@]}" "$@"
+}
+
+ssh_ready() {
+  run_ssh true >/dev/null 2>&1
+}
+
+trigger_run_command_ensure() {
+  local am_bin action component
+  am_bin="$(command -v am 2>/dev/null || true)"
+  if [ -z "$am_bin" ] && [ -x /system/bin/am ]; then
+    am_bin=/system/bin/am
+  fi
+  [ -n "$am_bin" ] || return 127
+  [ -x "$TERMUX_ENSURE_COMMAND" ] || return 126
+
+  action="$TERMUX_PACKAGE.RUN_COMMAND"
+  component="$TERMUX_PACKAGE/.app.RunCommandService"
+  "$am_bin" startservice --user 0 \
+    -n "$component" \
+    -a "$action" \
+    --es "$TERMUX_PACKAGE.RUN_COMMAND_PATH" "$TERMUX_ENSURE_COMMAND" \
+    --esa "$TERMUX_PACKAGE.RUN_COMMAND_ARGUMENTS" "ensure" \
+    --ez "$TERMUX_PACKAGE.RUN_COMMAND_BACKGROUND" true \
+    >/dev/null
+}
+
+ensure_sshd() {
+  local attempt
+  if ssh_ready; then
+    return 0
+  fi
+
+  trigger_run_command_ensure || true
+  for attempt in 1 2 3 4 5; do
+    sleep 1
+    load_bridge_state
+    if ssh_ready; then
+      return 0
+    fi
+  done
+
+  printf '%s\n' "openhouse-termux: Termux sshd is not reachable on $TERMUX_SSH_HOST:$TERMUX_SSH_PORT." >&2
+  printf '%s\n' "Run this in Termux native: oh-termux-ensure-sshd ensure" >&2
+  return 1
+}
+
+status_json() {
+  if ! ensure_sshd >/dev/null 2>&1; then
+    emit_error_json "termux_ssh_unreachable" "Termux sshd is not reachable; run oh-termux-ensure-sshd ensure in Termux native"
+    return 1
+  fi
+
+  run_ssh 'node_runtime="$(node -p '"'"'process.platform+"/"+process.arch'"'"' 2>/dev/null || true)"; printf "{\"ok\":true,\"provider\":\"termux-sshd\",\"runtime\":\"termux\",\"user\":\"%s\",\"uid\":\"%s\",\"home\":\"%s\",\"prefix\":\"%s\",\"node\":\"%s\"}\n" "$(id -un 2>/dev/null || true)" "$(id -u 2>/dev/null || true)" "${HOME:-}" "${PREFIX:-}" "$node_runtime"'
+}
+
+case "${1:-}" in
+  status)
+    shift
+    if [ "${1:-}" = "--json" ] || [ "$#" -eq 0 ]; then
+      status_json
+    else
+      usage
+      exit 2
+    fi
+    ;;
+  ensure-sshd|ensure)
+    ensure_sshd
+    status_json
+    ;;
+  exec)
+    shift
+    if [ "${1:-}" = "--" ]; then
+      shift
+    fi
+    if [ "$#" -eq 0 ]; then
+      usage
+      exit 2
+    fi
+    ensure_sshd
+    run_ssh "$@"
+    ;;
+  ""|-h|--help|help)
+    usage
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
+EOF
+  chmod 755 "$UBUNTU_TERMUX_BRIDGE_STAGING"
+  run_logged proot-distro login ubuntu -- bash -lc 'cp "/data/data/com.termux/files/home/.smallphoneai-bootstrap/openhouse-termux-ubuntu.sh" /usr/local/bin/openhouse-termux; chmod 755 /usr/local/bin/openhouse-termux; ln -sf /usr/local/bin/openhouse-termux /usr/local/bin/oh-termux'
+  rm -f "$UBUNTU_TERMUX_BRIDGE_STAGING"
+  log "已注入 Ubuntu -> Termux native 桥接 CLI：/usr/local/bin/openhouse-termux、/usr/local/bin/oh-termux"
+}
+
 safe_symlink() {
   local target="$1"
   local link_path="$2"
@@ -361,6 +550,7 @@ else
 fi
 
 install_ubuntu_env_probe_cli
+install_ubuntu_termux_bridge_cli
 ensure_termux_workspace_layout
 ensure_ubuntu_workspace_layout
 

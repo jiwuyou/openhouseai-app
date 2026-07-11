@@ -65,9 +65,10 @@ AI agent 优先阅读：
 1. `ai-reference-index.md`
 2. `openhouse-overview.md`
 3. `AI_AGENT_REFERENCE.md`
-4. `service-manager.md`
-5. `troubleshooting.md`
-6. `PATHS_AND_PORTS.md`
+4. `TERMUX_UBUNTU_BRIDGE.md`
+5. `service-manager.md`
+6. `troubleshooting.md`
+7. `PATHS_AND_PORTS.md`
 
 如果你要实现或审查下一轮代码改动，还必须阅读：
 
@@ -98,6 +99,19 @@ openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
 ```
 
 如果 `pwd` 或 `$HOME` 是 `/root`，通常在 Ubuntu 内。如果 `$HOME` 是 `/data/data/com.termux/files/home`，通常在 Termux 外层。如果 `cat /etc/os-release` 显示 Ubuntu，则当前命令环境是 Ubuntu。
+
+跨层调用速记：
+
+```bash
+# Termux native -> Ubuntu/proot
+oh-ubuntu-root -- bash -lc 'whoami; echo "$HOME"'
+
+# Ubuntu/proot -> Termux native
+openhouse-termux status --json
+openhouse-termux exec -- 'id; echo "$HOME"; echo "$PREFIX"'
+```
+
+不要在 Ubuntu 内直接执行 Termux prefix 里的 `pkg`、`npm` 或 `bash` 作为官方路径。详细边界见 `TERMUX_UBUNTU_BRIDGE.md`。
 
 1. `openhouse-overview.md`
    - 给用户和 AI 的稳定小写概览，说明首次可用闭环和默认核心服务。
@@ -136,9 +150,10 @@ openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
 
 1. `ai-reference-index.md`
 2. `AI_AGENT_REFERENCE.md`
-3. `terminal-guide.md`
-4. `service-manager.md`
-5. `troubleshooting.md`
+3. `TERMUX_UBUNTU_BRIDGE.md`
+4. `terminal-guide.md`
+5. `service-manager.md`
+6. `troubleshooting.md`
 
 这些文档说明了默认终端选择、服务控制、故障诊断和禁止操作。
 
