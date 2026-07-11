@@ -1,79 +1,119 @@
-# OpenHouse Troubleshooting
+# 排障入口
 
-本文件用于处理最常见的理解和使用问题。
+这是给 pi-agent、Claude Code、Codex 和其他 AI 工作台使用的排障入口。遇到问题时先按本文诊断，再按同目录的专题文档深入处理：
 
-## 问题：AI 不知道自己运行在哪
+- `RECOVERY.md`
+- `SERVICE_MANAGER.md`
+- `ENVIRONMENT.md`
+- `GITHUB_NETWORK_MIRRORS.md`
+- `openhouse-install-flow.md`
+- `openhouse-runtime-repair.md`
+- `failure-boundaries.md`
+- `permissions.md`
 
-处理方式：
+排障原则：
 
-1. 让 AI 先阅读 `START_HERE.md`
-2. 再阅读 `AGENT_GUIDE.md`
-3. 再阅读 `PATHS_AND_PORTS.md`
+1. 先诊断，不直接重装。
+2. 先恢复 service-manager，再恢复上层服务。
+3. Ubuntu 坏了，用 Termux 修。
+4. Termux 坏了，用 Android App 的维护/底座修复能力。
+5. 默认保留用户项目、模型配置、API key、本地知识库和 agent 笔记。
+6. 清数据、删除 home、重装 Ubuntu、重建 prefix 都需要用户明确确认。
 
-如果当前 AI 支持 skill，也可以直接提示：
+快速检查：
 
-```text
-如果你不清楚当前环境，请先使用“系统环境说明”这个 skill，再继续回答我。
+```bash
+cd "$HOME/.smallphoneai-bootstrap"
+bash bootstrap.sh status
+bash bootstrap.sh check
+bash bootstrap.sh hooks
 ```
 
-## 问题：AI 把环境当成普通 Linux
+如果 pi-web、pi-agent 或 CloudCLI 不可访问，优先看 service-manager 状态。如果后置工具缺失，执行 `/root/openhouse/scripts/check-ai-tools.sh`，再按需安装，不要把后置工具缺失当作首装失败。
 
-现象包括：
+## 症状到文档
 
-- 随意扫描整个系统
-- 假设自己在云主机中
-- 假设文档在普通项目目录里
+| 症状 | 优先阅读 | 处理方向 |
+| --- | --- | --- |
+| 首次安装卡住 | `openhouse-install-flow.md` | 找到当前阶段、状态、日志和重试入口。 |
+| 国内网络下载失败 | `openhouse-cn-network-retry.md` | 使用固定国内路径重试，不让用户手动选源。 |
+| 等待页误判成功 | `openhouse-install-flow.md` | 检查阶段 marker 和健康检查是否一致。 |
+| service-manager 不可达 | `openhouse-runtime-repair.md`, `SERVICE_MANAGER.md` | 先恢复控制平面，再恢复上层服务。 |
+| pi-agent 不可达 | `openhouse-runtime-policy.md`, `SERVICE_MANAGER.md` | 检查服务注册、端口、健康状态。 |
+| CloudCLI 不可达 | `CLOUDCLI_CLAUDE_CODE.md` | 检查 `cloudcli` 稳定服务 ID 和端口 `23083`。 |
+| Claude Code native binary 缺失 | `CLOUDCLI_CLAUDE_CODE.md` | 重新执行安装脚本补齐 `/root/.local/bin/claude`。 |
+| Codex 配置失败 | `codex-setup.md`, `model-config-migration.md` | 区分官方登录和 API 模式，按协议配置。 |
+| 用户想暂时省资源或结束本次使用 | `openhouse-exit-all.md` | 区分“停止运行栈”和“全部退出 OpenHouse”，不要只返回页面。 |
+| 权限缺失 | `permissions.md` | 判断是否阻塞当前目标，缺失可选权限时降级。 |
+| 自动修复失败 | `failure-boundaries.md` | 判断是否需要用户确认重置或重装。 |
 
-处理方式：
+## 标准排障顺序
 
-- 重新发送 `AI_BOOTSTRAP_PROMPT.md` 中的标准提示词
-- 明确告诉 AI：这是基于 Termux 的 Ubuntu 环境
-- 要求其先总结环境，再继续回答
+1. 记录用户看到的界面、步骤、按钮和错误文案。
+2. 判断当前任务是安装、运行、教学、模型配置还是终端排障。
+3. 检查当前层级：Android App、Termux 外层或 Ubuntu 内。
+4. 读取当前阶段状态和最近日志。
+5. 检查 service-manager。
+6. 检查核心服务：`smallphone`、`pi-agent`、`cloudcli`。
+7. 检查端口健康和 UI 状态是否一致。
+8. 如果是模型问题，检查协议、base URL、model id 和脱敏后的认证摘要。
+9. 选择最小修复动作。
+10. 修复后重新执行健康检查。
 
-## 问题：AI 找不到文档
+不要从“重装”开始。重置 Termux、删除 Ubuntu 或清 App 数据都需要用户明确确认。
 
-先检查以下路径是否存在：
+## 安装失败
 
-- `/data/data/com.termux/files/home/product-docs/official`
-- `~/product-docs/official`
+安装失败时，先按 `openhouse-install-flow.md` 找当前阶段。每个阶段都应有：
 
-如果都不存在，说明官方文档可能尚未同步。
+- 状态：`pending`、`running`、`succeeded`、`failed`、`skipped`、`retrying`。
+- 成功条件。
+- 失败条件。
+- 日志位置。
+- 常规重试行为。
+- 国内网络重试行为。
+- 强制重试清理范围。
 
-建议：
+失败后不要因为残留文件直接跳过。只有健康检查完整通过，才允许进入 `succeeded` 或 `skipped`。
 
-- 通过维护器执行文档同步
-- 或检查文档是否只存在于开发目录而未发布
+## 运行失败
 
-## 问题：AI 只看到了 Ubuntu 视角，看不到 Termux 视角
+运行失败时，先恢复 service-manager。service-manager 存活后，再检查：
 
-这通常不是 AI 的能力问题，而是入口说明不足。
+- `smallphone`
+- `pi-agent`
+- `cloudcli`
+- 新增的长期服务
 
-处理方式：
+如果服务列表中出现同名随机服务 ID，应按 `openhouse-runtime-repair.md` 清理重复记录，并保留稳定服务 ID。
 
-- 明确告诉它 Termux 主目录基础路径
-- 让它以官方文档中的固定路径为准
-- 不要求它自行探索整个环境
+## 停止运行栈或全部退出后恢复
 
-## 问题：切换了新模型后，AI 又忘了环境
+停止运行栈或全部退出 OpenHouse 后，核心端口不可达是正常结果。停止运行栈会保留当前 App 界面，并暂停本次会话自动保活；用户可以点击“恢复默认核心服务”重新拉起。全部退出 OpenHouse 会关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。再次打开 App 时，若高级设置没有关闭自动保活，应重新启动 service-manager，并恢复默认长期服务。
 
-这是正常情况。
+如果再次打开后没有恢复，检查：
 
-处理方式：
+- Android 是否暂停了前台检测。
+- service-manager 是否能启动。
+- 默认长期服务是否仍在 registry 中。
+- 是否被后台权限或电池优化限制。
 
-- 重新发送标准引导提示词
-- 或重新提醒其使用“系统环境说明” skill
+## 日志安全
 
-## 问题：换了别的 agent 应用后行为不一致
+任何排障日志和诊断报告都不得输出完整：
 
-不同 agent 应用对以下能力的支持不同：
+- API key
+- token
+- authorization header
+- cookie
+- service-manager auth token
+- provider secret
 
-- 文件读取
-- 长期记忆
-- skill
-- 系统提示
+需要展示时只能使用脱敏形式：
 
-处理方式：
+```text
+sk-****abcd
+token: ****abcd
+```
 
-- 保留一份复制粘贴版提示词
-- 同时准备一份按需使用的环境 skill
-- 不依赖某一个 agent 专属能力
+不要直接打印包含 `env` 的完整 service JSON。导出诊断报告前必须脱敏。

@@ -74,8 +74,9 @@ Ubuntu 内的 home 通常是：
 /root/openhouse/docs
 /root/openhouseai-docs/official
 /root/projects
-/root/.pi
 ```
+
+pi-agent/pi-web 默认在 Termux native 层运行。默认 pi 数据和插件目录不在 Ubuntu `/root` 下，而是在 `/data/data/com.termux/files/home/.pi`。
 
 Ubuntu rootfs 在 Termux 文件系统中的常见真实位置是：
 

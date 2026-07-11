@@ -1,6 +1,6 @@
 # OpenHouse Memo Custom Web App
 
-这是 `CUSTOM_FRONTEND_AND_APPS.md` 配套的最小可运行自定义 App。
+这是 `../../CUSTOM_FRONTEND_AND_APPS.md` 配套的最小可运行自定义 App。
 
 特点：
 

@@ -118,12 +118,12 @@ AI 应优先阅读：
 - `first-use-tutorial.md`
 - `pi-agent-first-use.md`
 - `model-config-migration.md`
-- `cloudcli-claude-code-setup.md`
+- `CLOUDCLI_CLAUDE_CODE.md`
 - `codex-setup.md`
-- `service-manager.md`
+- `SERVICE_MANAGER.md`
 - `openhouse-runtime-policy.md`
 - `openhouse-exit-all.md`
-- `troubleshooting.md`
+- `TROUBLESHOOTING.md`
 
 完整产品说明仍可参考同目录的大写文档：
 

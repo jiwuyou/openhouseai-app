@@ -126,9 +126,9 @@ UI 应显示简短状态：
 AI 排障时应按顺序：
 
 1. 先读本文。
-2. 再读 `service-manager.md`。
+2. 再读 `SERVICE_MANAGER.md`。
 3. 再读 `openhouse-runtime-policy.md`。
-4. 如需分层恢复，再读 `troubleshooting.md` 或 `RECOVERY.md`。
+4. 如需分层恢复，再读 `TROUBLESHOOTING.md` 或 `RECOVERY.md`。
 
 AI 不应直接重装环境。先恢复 service-manager，再恢复上层服务。需要执行命令时，优先使用已有 bootstrap、service-manager API 或注册脚本。
 

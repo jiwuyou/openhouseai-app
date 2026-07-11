@@ -81,4 +81,3 @@ curl -fsS \
 
 log "registered $SHELL_NAME"
 log "url: $SMALLPHONE_CORE_URL/shells/$SHELL_ID/"
-

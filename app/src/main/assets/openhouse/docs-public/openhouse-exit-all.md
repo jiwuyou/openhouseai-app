@@ -61,7 +61,7 @@
 | --- | --- |
 | 用户项目 | `/root/projects`、`/root/workspace`、用户自定义目录。 |
 | OpenHouse 文档 | `/root/openhouse/docs`。 |
-| pi-agent / pi-web 数据 | `/root/.pi` 及相关本机状态。 |
+| pi-agent / pi-web 数据 | `/data/data/com.termux/files/home/.pi` 及相关本机状态。 |
 | service-manager 配置 | `$HOME/.config/openhouseai/service-manager`。 |
 | 组件注册 | `$HOME/.config/openhouseai/components.d`。 |
 | Claude / Codex / CloudCLI 配置 | 用户本机私有配置。 |

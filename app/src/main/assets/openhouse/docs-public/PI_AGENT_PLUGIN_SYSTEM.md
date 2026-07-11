@@ -36,7 +36,7 @@ pi-web
 默认运行环境变量：
 
 ```text
-PI_CODING_AGENT_DIR=/root/.pi
+PI_CODING_AGENT_DIR=/data/data/com.termux/files/home/.pi
 ```
 
 ## 插件目录
@@ -44,14 +44,14 @@ PI_CODING_AGENT_DIR=/root/.pi
 pi 默认读取这些扩展目录：
 
 ```text
-/root/.pi/extensions
-/root/.pi/agent/extensions
+/data/data/com.termux/files/home/.pi/extensions
+/data/data/com.termux/files/home/.pi/agent/extensions
 ```
 
 用途：
 
-- `/root/.pi/extensions`：pi-web 新会话当前优先发现扩展的位置。
-- `/root/.pi/agent/extensions`：pi CLI 默认全局扩展目录。
+- `/data/data/com.termux/files/home/.pi/extensions`：pi-web 新会话当前优先发现扩展的位置。
+- `/data/data/com.termux/files/home/.pi/agent/extensions`：pi CLI 默认全局扩展目录。
 
 默认搜索插件：
 
@@ -77,8 +77,8 @@ search
 AI agent 检查插件时先看：
 
 ```bash
-ls -la /root/.pi/extensions
-ls -la /root/.pi/agent/extensions
+ls -la /data/data/com.termux/files/home/.pi/extensions
+ls -la /data/data/com.termux/files/home/.pi/agent/extensions
 ```
 
 不要只因为旧会话看不到工具就判定插件安装失败。
@@ -119,7 +119,7 @@ $HOME/.config/openhouseai/components.d/pi-agent.json
 }
 ```
 
-不要注册为 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。pi-web 启动脚本最终会进入 `node server.js`；service-manager 应跟踪稳定的 shell supervisor，而不是会被 Node/Next 改写标题的业务进程。
+不要注册为 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/data/data/com.termux/files/home/.local/bin/openhouse-pi-web-start"]`。pi-web 启动脚本最终会进入 `node server.js`；service-manager 应跟踪稳定的 shell supervisor，而不是会被 Node/Next 改写标题的业务进程。
 
 ## 安装网络要求
 

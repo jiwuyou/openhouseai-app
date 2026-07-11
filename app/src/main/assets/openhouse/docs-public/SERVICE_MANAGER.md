@@ -16,9 +16,10 @@ service-manager 负责：
 当前核心服务通常包括：
 
 - `service-manager`
+- `smallphone`
 - `pi-agent`
 - `pi-web`
-- `cloudcli`
+- `cloudcli`，即 `cc/codex` 入口后端，当前目标端口是 `23083`
 - `cc-connect` / `openhouse-connect`
 
 未来可继续注册：
@@ -53,15 +54,16 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
     "-lc",
     "openhouse-pi-web-start & child=$!; trap 'kill -TERM $child 2>/dev/null; wait $child 2>/dev/null || true' TERM INT HUP; wait $child"
   ],
-  "working_dir": "/root/.local/share/openhouseai/pi-web",
+  "working_dir": "/data/data/com.termux/files/home/.local/share/openhouseai/pi-web",
   "env": {
-    "OPENHOUSE_PI_WEB_RUNTIME_DIR": "/root/.local/share/openhouseai/pi-web",
+    "HOME": "/data/data/com.termux/files/home",
+    "OPENHOUSE_PI_WEB_RUNTIME_DIR": "/data/data/com.termux/files/home/.local/share/openhouseai/pi-web",
     "HOSTNAME": "127.0.0.1",
     "PI_WEB_HOST": "127.0.0.1",
     "PORT": "30141",
     "PI_WEB_PORT": "30141",
-    "PI_CODING_AGENT_DIR": "/root/.pi",
-    "PATH": "/root/.local/node/bin:/root/.local/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin:/system/bin:/system/xbin:/data/data/com.termux/files/usr/bin"
+    "PI_CODING_AGENT_DIR": "/data/data/com.termux/files/home/.pi",
+    "PATH": "/data/data/com.termux/files/home/.npm-global/bin:/data/data/com.termux/files/home/.local/bin:/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
   },
   "runtime": {
     "strategy": "termux-process",
@@ -91,8 +93,8 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 - `provider: "termux-process"` 表示 service-manager 在 Termux 原生层启动长期前台服务；需要进入 Ubuntu/proot 的服务才使用 `proot-distro` provider。
 - `command` 是结构化 argv 数组，不是 shell 字符串。
 - 被管理命令必须是前台长进程。脚本型服务推荐让 `sh -lc` 作为 supervisor，显式 `wait` 子进程并在 TERM/INT/HUP 时转发停止信号。
-- 不要把脚本型服务注册成 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/root/.local/bin/openhouse-pi-web-start"]`。如果直接跟踪会改写进程标题的 Node/Next 主进程，运行控制容易出现 stale pidfile 或 cmdline mismatch。
-- `PATH` 必须包含 wrapper 所在目录和运行时依赖目录，pi-web 默认需要 `/root/.local/bin` 和 `/root/.local/node/bin`。
+- 不要把脚本型服务注册成 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/data/data/com.termux/files/home/.local/bin/openhouse-pi-web-start"]`。如果直接跟踪会改写进程标题的 Node/Next 主进程，运行控制容易出现 stale pidfile 或 cmdline mismatch。
+- `PATH` 必须包含 Termux npm prefix、wrapper 所在目录和 Termux prefix。pi-web 默认需要 `/data/data/com.termux/files/home/.npm-global/bin`、`/data/data/com.termux/files/home/.local/bin` 和 `/data/data/com.termux/files/usr/bin`。
 - `tags` 里用 `group:<name>` 表示服务分组，例如 `group:local-stack`。
 
 写入 `services.d` 文件后，需要让 service-manager 重新加载注册目录。service-manager 只在启动时加载 `services.d/*.json`，因此默认做法是回到 bootstrap 重新启动控制平面：

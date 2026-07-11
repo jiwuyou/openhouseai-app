@@ -1,6 +1,6 @@
 # OpenHouse Custom Phone Shell
 
-这是 `CUSTOM_FRONTEND_AND_APPS.md` 配套的自定义前端 shell 示例。
+这是 `../../CUSTOM_FRONTEND_AND_APPS.md` 配套的自定义前端 shell 示例。
 
 它不是新增后台服务，而是纯前端桌面壳：
 

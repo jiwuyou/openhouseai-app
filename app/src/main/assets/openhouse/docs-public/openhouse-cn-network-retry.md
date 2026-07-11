@@ -134,7 +134,7 @@ OPENHOUSE_NETWORK_MODE=cn
 
 目标阶段：
 
-- `ubuntu-rootfs`
+- `install_ubuntu`
 
 固定行为：
 
@@ -203,7 +203,7 @@ OPENHOUSE_NETWORK_MODE=cn
 
 目标阶段：
 
-- `node-runtime`
+- `install_node`
 - Claude/Codex/CloudCLI 后置配置阶段。
 
 固定行为：
@@ -271,8 +271,8 @@ GitHub 资源包括：
 
 目标阶段：
 
-- `runtime-components`
-- `registry-sync`
+- `runtime_components`
+- `sync_openhouse_registry`
 - 后置工具安装。
 
 固定行为：
@@ -428,7 +428,7 @@ url=https://example.com/path/file.tar.gz?<redacted>
 
 1. `openhouse-install-flow.md`
 2. `openhouse-cn-network-retry.md`
-3. `troubleshooting.md`
+3. `TROUBLESHOOTING.md`
 4. 当前阶段脱敏日志
 
 AI 应先判断：

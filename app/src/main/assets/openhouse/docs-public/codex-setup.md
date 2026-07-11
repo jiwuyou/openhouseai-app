@@ -32,7 +32,7 @@ API 模式下，用户通常需要提供：
 4. 如果缺失，由 pi-agent 调用 OpenHouse 脚本或官方安装方式。
 5. 写入配置前先脱敏展示摘要。
 6. 配置后执行一次最小可验证请求。
-7. 失败时查 `troubleshooting.md`，必要时联网检索官方 README、release note 和 issue。
+7. 失败时查 `TROUBLESHOOTING.md`，必要时联网检索官方 README、release note 和 issue。
 
 ## 与 cc-switch 的关系
 

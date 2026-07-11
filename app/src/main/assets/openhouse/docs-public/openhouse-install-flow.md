@@ -9,13 +9,13 @@
 本文只描述首次安装链路和重试行为，不描述首次教学、运行控制 UI、模型配置细节。相关文档：
 
 - `openhouse-cn-network-retry.md`：国内网络重试固定路径。
-- `service-manager.md`：安装完成后的控制平面。
+- `SERVICE_MANAGER.md`：安装完成后的控制平面。
 - `openhouse-runtime-policy.md`：前台长期运行策略。
 - `pi-agent-first-use.md`：pi-agent 首次配置助手。
 - `model-config-migration.md`：模型配置迁移。
-- `cloudcli-claude-code-setup.md`：Claude Code 与 CloudCLI。
+- `CLOUDCLI_CLAUDE_CODE.md`：Claude Code 与 CloudCLI。
 - `codex-setup.md`：Codex。
-- `troubleshooting.md`：排障。
+- `TROUBLESHOOTING.md`：排障。
 
 ## 安装原则
 
@@ -102,20 +102,18 @@ safe_error_message
 
 | 顺序 | 阶段 ID | 当前脚本 | 运行环境 | 阶段目标 |
 | --- | --- | --- | --- | --- |
-| 1 | `termux-check` | `00-check-termux.sh` | Termux | 确认真机 Termux 环境、架构、路径、权限基础可用。 |
-| 2 | `prepare-termux` | `10-prepare-termux.sh` | Termux | 准备 bootstrap 目录、assets、环境探测命令和基础配置。 |
-| 3 | `termux-packages` | `12-update-termux-packages.sh` | Termux | 安装或修复 curl、proot-distro、tar、xz、ca-certificates 等基础包。 |
-| 4 | `runtime-components` | `50-install-runtime-components.sh` | Termux + Ubuntu | 在 Termux native 解包或刷新 service-manager、pi-agent、pi-web；按需进入 Ubuntu 刷新 openhouse-connect、smallphone 等 payload。 |
-| 5 | `start-core-services` | `60-start-smallphone.sh` | Ubuntu | 先启动 service-manager，并拉起 `pi-agent`、`pi-web` 等核心长期服务。 |
-| 6 | `ubuntu-rootfs` | `20-install-ubuntu.sh` | Termux | 安装 Ubuntu rootfs，并注入 Ubuntu 侧环境探测命令和 `openhouse-termux` 桥接 CLI。 |
-| 7 | `ubuntu-packages` | `30-update-ubuntu-packages.sh` | Ubuntu | 更新 Ubuntu apt 索引，安装基础运行包、`openssh-client` 和 `jq`。 |
-| 8 | `entry-ubuntu` | `70-configure-entry-ubuntu.sh` | Termux | 配置进入 Ubuntu 的入口和模式文件。 |
-| 9 | `node-runtime` | `38-install-node.sh` | Ubuntu | 安装固定版本 Node 运行时和 npm 基础配置。 |
-| 10 | `sync-docs` | `35-sync-docs.sh` | Ubuntu | 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。 |
-| 11 | `registry-sync` | `48-sync-openhouse-registry.sh` | Ubuntu | 同步 OpenHouse registry、service-manager 服务定义、侧边栏入口。 |
-| 12 | `start-core-services` | `60-start-smallphone.sh` | Ubuntu | 启动 service-manager，并拉起核心长期服务。 |
-| 13 | `final-health` | `65-smallphone-status.sh status` | Ubuntu | 输出最终机器可读健康状态。 |
-| 14 | `first-ai-setup` | pi-agent 文档和后置脚本 | Ubuntu | 引导配置 Claude 或 Codex，并实测可回复。 |
+| 1 | `prepare` | `prepare-product.sh` | Termux | 确认真机 Termux 环境、架构、路径、权限基础可用，并准备 bootstrap 目录、assets、环境探测命令和基础配置。 |
+| 2 | `termux_packages` | `update-termux-packages.sh` | Termux | 安装或修复 curl、proot-distro、openssh、tar、xz、ca-certificates 等基础包。 |
+| 3 | `install_termux_node` | `install-termux-node.sh` | Termux | 安装或检查 Termux native Node.js 24 LTS/npm，供 pi-agent 和 pi-web 常驻服务使用。 |
+| 4 | `runtime_components` | `install-runtime-components.sh` | Termux | 先确保 Termux native service-manager 可用，再按稳定 ID 安装、检查并注册 pi-agent 和 pi-web。 |
+| 5 | `start_smallphone` | `start-smallphone.sh` | Termux | 通过 Termux native service-manager 启动 pi-agent 和 pi-web，让主入口先可用。 |
+| 6 | `install_ubuntu` | `install-ubuntu.sh` | Termux | 安装 Ubuntu rootfs，并注入 Ubuntu 侧环境探测命令和 `openhouse-termux` 桥接 CLI。 |
+| 7 | `ubuntu_packages` | `update-ubuntu-packages.sh` | Ubuntu | 更新 Ubuntu apt 索引，安装基础运行包、`openssh-client`、`git`、`gh`、`ripgrep` 和 `jq`。 |
+| 8 | `entry_ubuntu` | `configure-entry-ubuntu.sh` | Termux | 配置进入 Ubuntu 的入口和模式文件。 |
+| 9 | `install_node` | `install-node.sh` | Ubuntu | 安装 Ubuntu Node.js 24 LTS 和 npm 基础配置，供 AionUI、工作台和 AI CLI 工具使用。 |
+| 10 | `sync_official_docs` | `sync-official-docs.sh` | Ubuntu | 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。 |
+| 11 | `install_aionui` | `install-aionui.sh` | Ubuntu | 从 APK 内置离线包安装 AionUi 工作台，并检查本机入口。 |
+| 12 | `sync_openhouse_registry` | `sync-openhouse-registry.sh` | Termux + Ubuntu | 同步 OpenHouse registry、service-manager 服务定义和侧边栏入口，避免同名随机服务。 |
 
 核心长期服务目标：
 
@@ -126,26 +124,24 @@ safe_error_message
 
 `cloudcli` 是前台默认可用服务，但 Claude Code/Codex 的账号、模型和 token 由首次配置阶段完成。CloudCLI 服务可以先启动到“等待配置”状态，不应因用户尚未提供模型 key 阻塞基础安装。
 
+状态机完成后还有一个后置引导任务：`first_ai_setup`。它不在 Android App 的机器驱动阶段数组中，由 pi-agent 根据本文档、`MODEL_API_SETUP.md`、`CLOUDCLI_CLAUDE_CODE.md` 和 `codex-setup.md` 引导用户配置 Claude 或 Codex，并实测至少一个工具能收到真实回复。
+
 ## 每阶段验收条件
 
 | 阶段 ID | 成功条件 | 失败条件 | 超时建议 | 日志位置 | 常规重试 | 国内网络重试 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `termux-check` | `PREFIX`、`HOME`、`/data/data/com.termux/files` 可用；CPU 架构受支持；bootstrap 目录可写。 | 非 Termux 环境；目录不可写；关键权限缺失。 | 30s | `logs/termux-check.log` | 重新探测，不清理文件。 | 同常规重试。 |
-| `prepare-termux` | bootstrap root 存在；assets 可访问；环境探测命令可执行。 | APK assets 缺失；bootstrap 目录不可写；释放不完整。 | 60s | `logs/prepare-termux.log` | 重新释放缺失 assets，保留已有完整文件。 | 同常规重试。 |
-| `termux-packages` | `curl`、`proot-distro`、`openssh`、`tar`、`xz`、`ca-certificates` 可执行或可被包管理器确认已安装；`oh-termux-ensure-sshd` 可用。 | apt update 失败；包下载失败；dpkg/apt 锁冲突；curl 不可用。 | 15min | `logs/termux-packages.log` | 使用默认 Termux 源和已有缓存重试。 | 切换到固定国内 Termux 源后重试。 |
-| `runtime-components` | payload sha256 通过；service-manager、pi-agent、pi-web、openhouse-connect、smallphone 目录或二进制完整；必要脚本可执行。 | payload 缺失；sha256 不匹配；解包失败；组件健康检查失败。 | 20min | `logs/runtime-components.log` | 使用 APK 内置 payload 重试，仅刷新 OpenHouse 管理目录。 | 使用国内 payload fallback，必须 sha256 通过。 |
-| `start-core-services` | service-manager API 可访问；核心服务 `pi-agent`、`pi-web` 至少进入 running 或 configured-waiting 状态。 | service-manager 不可达；核心服务端口不可达；启动命令失败。 | 5min | `logs/start-core-services.log` | 重启 service-manager 并按稳定 ID 拉起核心服务。 | 同常规重试。 |
-| `ubuntu-rootfs` | `proot-distro login ubuntu -- true` 成功；`~/bin/smallphoneai-env-probe` 在 Ubuntu 内可执行；`openhouse-termux` 可安装。 | rootfs 下载失败；解包失败；proot-distro 安装失败；Ubuntu 登录失败。 | 60min | `logs/ubuntu-rootfs.log` | 使用默认测速结果和缓存重试。 | 使用固定国内 Ubuntu cloud image 路径重试，并校验 rootfs。 |
-| `ubuntu-packages` | Ubuntu 内 `apt-get update` 成功；`openssh-client`、`jq` 和基础包可执行或 apt 确认安装。 | apt 源不可达；包冲突；磁盘空间不足。 | 30min | `logs/ubuntu-packages.log` | 使用当前 Ubuntu apt 源重试。 | 写入固定国内 Ubuntu apt 源后重试。 |
-| `entry-ubuntu` | Termux 入口文件存在；模式文件存在；从 Termux 能进入 Ubuntu。 | shell rc 文件不可写；proot-distro login 失败。 | 60s | `logs/entry-ubuntu.log` | 重写 OpenHouse 管理的入口片段。 | 同常规重试。 |
-| `node-runtime` | `node --version` 和 `npm --version` 在 Ubuntu 内成功；版本符合固定版本范围；npm global bin 在 PATH。 | Node 下载失败；解包失败；PATH 未生效；版本不符合。 | 30min | `logs/node-runtime.log` | 使用默认 Node payload 或默认源重试。 | 使用国内固定 Node mirror 或内置 payload 重试，并校验 sha256。 |
-| `sync-docs` | `/root/openhouse/docs` 存在；P0 文档可读；`/root/openhouse/scripts/check-ai-tools.sh` 可执行。 | 文档目录缺失；脚本未同步；权限错误。 | 120s | `logs/sync-docs.log` | 重新同步 docs/scripts，不删除用户自有文件。 | 同常规重试。 |
-| `runtime-components` | payload sha256 通过；service-manager、pi-agent、pi-web、openhouse-connect、smallphone 目录或二进制完整；必要脚本可执行。 | payload 缺失；sha256 不匹配；解包失败；组件健康检查失败。 | 20min | `logs/runtime-components.log` | 使用 APK 内置 payload 重试，仅刷新 OpenHouse 管理目录。 | 使用国内 payload fallback，必须 sha256 通过。 |
-| `registry-sync` | service-manager 服务定义使用稳定 ID；侧边栏入口定义存在；无同名随机重复服务。 | registry 写入失败；服务定义缺字段；重复服务未清理。 | 120s | `logs/registry-sync.log` | 重新应用 registry，不删除用户数据。 | 同常规重试。 |
-| `start-core-services` | service-manager API 可访问；核心服务 `smallphone`、`pi-agent`、`cloudcli` 至少进入 running 或 configured-waiting 状态。 | service-manager 不可达；核心服务端口不可达；启动命令失败。 | 5min | `logs/start-core-services.log` | 重启 service-manager 并按稳定 ID 拉起核心服务。 | 同常规重试。 |
-| `final-health` | 最后一个 stdout JSON 包含核心服务状态；UI、service-manager、端口健康一致。 | 最终 JSON 缺失；状态不一致；关键端口不可达。 | 60s | `logs/final-health.log` | 重新跑健康检查，必要时触发 `repair`。 | 同常规重试。 |
-| `first-ai-setup` | Claude 或 Codex 至少一个真实发送消息并收到回复；结果写入安全摘要。 | 模型配置缺失；API 鉴权失败；工具命令缺失；CloudCLI 不可达。 | 用户驱动 | `logs/first-ai-setup.log` | pi-agent 按文档和脚本修复。 | pi-agent 使用国内搜索、镜像和固定脚本辅助修复。 |
-
+| `prepare` | `PREFIX`、`HOME`、`/data/data/com.termux/files` 可用；CPU 架构受支持；bootstrap 目录可写；assets 可访问；环境探测命令可执行。 | 非 Termux 环境；目录不可写；关键权限缺失；APK assets 缺失；释放不完整。 | 60s | `logs/prepare.log` | 重新释放缺失 assets，保留已有完整文件。 | 同常规重试。 |
+| `termux_packages` | `curl`、`proot-distro`、`openssh`、`tar`、`xz`、`ca-certificates` 可执行或可被包管理器确认已安装；`oh-termux-ensure-sshd` 可用。 | apt update 失败；包下载失败；dpkg/apt 锁冲突；curl 不可用。 | 15min | `logs/termux-packages.log` | 使用默认 Termux 源和已有缓存重试。 | 切换到固定国内 Termux 源后重试。 |
+| `install_termux_node` | Termux native `node --version` 和 `npm --version` 成功；Node major >= 24；npm prefix 和 PATH 写入 Termux profile。 | Termux pkg/apt 失败；Node 不可用；版本不符合；PATH 未生效。 | 30min | `logs/install-termux-node.log` | 使用 Termux 默认源和已有缓存重试。 | 切换到固定国内 Termux 源后重试。 |
+| `runtime_components` | service-manager、pi-agent、pi-web payload sha256 通过；Termux native 服务清单使用稳定 ID；必要脚本可执行。 | payload 缺失；sha256 不匹配；解包失败；组件健康检查失败；注册出同名随机服务。 | 20min | `logs/runtime-components.log` | 使用 APK 内置 payload 重试，仅刷新 OpenHouse 管理目录。 | 使用国内 payload fallback，必须 sha256 通过。 |
+| `start_smallphone` | service-manager API 可访问；`pi-agent`、`pi-web` 至少进入 running 或 configured-waiting 状态。 | service-manager 不可达；核心服务端口不可达；启动命令失败。 | 5min | `logs/start-smallphone.log` | 重启 service-manager 并按稳定 ID 拉起核心服务。 | 同常规重试。 |
+| `install_ubuntu` | `proot-distro login ubuntu -- true` 成功；`~/bin/smallphoneai-env-probe` 在 Ubuntu 内可执行；`openhouse-termux` 可安装。 | rootfs 下载失败；解包失败；proot-distro 安装失败；Ubuntu 登录失败。 | 60min | `logs/install-ubuntu.log` | 使用默认测速结果和缓存重试。 | 使用固定国内 Ubuntu cloud image 路径重试，并校验 rootfs。 |
+| `ubuntu_packages` | Ubuntu 内 `apt-get update` 成功；`openssh-client`、`git`、`gh`、`ripgrep`、`jq` 和基础包可执行或 apt 确认安装。 | apt 源不可达；包冲突；磁盘空间不足。 | 30min | `logs/ubuntu-packages.log` | 使用当前 Ubuntu apt 源重试。 | 写入固定国内 Ubuntu apt 源后重试。 |
+| `entry_ubuntu` | Termux 入口文件存在；模式文件存在；从 Termux 能进入 Ubuntu。 | shell rc 文件不可写；proot-distro login 失败。 | 60s | `logs/entry-ubuntu.log` | 重写 OpenHouse 管理的入口片段。 | 同常规重试。 |
+| `install_node` | Ubuntu 内 `node --version` 和 `npm --version` 成功；版本符合固定版本范围；npm global bin 在 PATH。 | Node 下载失败；解包失败；PATH 未生效；版本不符合。 | 30min | `logs/install-node.log` | 使用默认 Node payload 或默认源重试。 | 使用国内固定 Node mirror 或内置 payload 重试，并校验 sha256。 |
+| `sync_official_docs` | `/root/openhouse/docs` 存在；P0 文档可读；`/root/openhouse/scripts/check-ai-tools.sh` 可执行。 | 文档目录缺失；脚本未同步；权限错误。 | 120s | `logs/sync-official-docs.log` | 重新同步 docs/scripts，不删除用户自有文件。 | 同常规重试。 |
+| `install_aionui` | AionUi 离线包完整；本机入口可打开；不污染 Termux native pi-agent/pi-web。 | 离线包缺失；解包失败；入口不可达；配置混用 service-manager token。 | 20min | `logs/install-aionui.log` | 重新解包并检查入口，不删除用户项目。 | 同常规重试。 |
+| `sync_openhouse_registry` | service-manager 服务定义使用稳定 ID；侧边栏入口定义存在；无同名随机重复服务。 | registry 写入失败；服务定义缺字段；重复服务未清理。 | 120s | `logs/sync-openhouse-registry.log` | 重新应用 registry，不删除用户数据。 | 同常规重试。 |
 ## 跳过规则
 
 阶段只有同时满足以下条件才允许 `skipped`：

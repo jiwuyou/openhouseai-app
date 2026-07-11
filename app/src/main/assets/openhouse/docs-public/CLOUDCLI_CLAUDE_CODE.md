@@ -5,6 +5,7 @@
 安装后的稳定路径：
 
 ```text
+/root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md
 /root/openhouseai-docs/official/CLOUDCLI_CLAUDE_CODE.md
 ~/openhouseai-docs/official/CLOUDCLI_CLAUDE_CODE.md
 ```
@@ -54,6 +55,7 @@ model id:
 
 - Android 菜单里的一级入口是 `cc/codex`。
 - `cc/codex` 是 CloudCLI / Claude Code / Codex 的统一入口。
+- CloudCLI 的 OpenHouse 默认 Web 端口当前目标是 `23083`，实际端口以 service-manager 服务定义和 Android `cc/codex` 入口为准。
 - CloudCLI 默认本地账号密码是 `admin / 123456`。
 - 这组账号密码仅限本机首次使用；后续可以修改密码，尤其不要暴露到非本机网络。
 
@@ -116,7 +118,7 @@ service-manager status cc-connect 2>/dev/null || true
 确认 CloudCLI 页面可访问：
 
 ```bash
-curl -fsS --max-time 5 http://127.0.0.1:30022/ >/dev/null || true
+curl -fsS --max-time 5 http://127.0.0.1:23083/ >/dev/null || true
 ```
 
 实际端口以 service-manager 服务定义和 Android `cc/codex` 入口为准。
@@ -165,6 +167,14 @@ cc-switch --version
 5. 在 CloudCLI 中发起一次 Claude Code 任务。
 6. 确认任务能收到回复，并能在允许范围内执行简单检查命令。
 
+验收时必须确认：
+
+- `/root/.local/bin/claude --version` 可执行。
+- `cloudcli` 命令可执行。
+- service-manager 中 `cloudcli` 是稳定服务 ID。
+- health URL 指向 `http://127.0.0.1:23083`，旧端口或重复随机服务不会被 Android UI 控制到。
+- CloudCLI 页面中的 Claude Code 能使用目标模型完成一次真实请求。
+
 测通后，pi-agent 应提醒用户：
 
 ```text
@@ -190,7 +200,7 @@ Claude Code Anthropic compatible endpoint model id
 
 ## 相关文档
 
-- `/root/openhouseai-docs/official/MODEL_API_SETUP.md`
-- `/root/openhouseai-docs/official/SERVICE_MANAGER.md`
-- `/root/openhouseai-docs/official/RECOVERY.md`
-- `/root/openhouseai-docs/official/AI_AGENT_REFERENCE.md`
+- `/root/openhouse/docs/MODEL_API_SETUP.md`
+- `/root/openhouse/docs/SERVICE_MANAGER.md`
+- `/root/openhouse/docs/RECOVERY.md`
+- `/root/openhouse/docs/AI_AGENT_REFERENCE.md`

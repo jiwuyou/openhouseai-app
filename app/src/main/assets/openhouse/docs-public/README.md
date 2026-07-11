@@ -10,6 +10,26 @@ https://github.com/jiwuyou/openhouse-docs
 
 APK 内的 `openhouse/docs-public` 是这个公开仓库的快照。只更新文档时，用户可以直接更新公开仓库并同步到本机运行期路径，不需要等待新 APK。
 
+## 文档事实源和本地落点
+
+长期维护时，`openhouse-docs` 是公开文档的单一事实源。正式内容先改这个仓库的 `docs/`，APK 内置的 `openhouse/docs-public` 只是打包时同步出来的快照，不作为长期手工编辑入口。
+
+在已安装设备上，文档的物理落点优先放在 Termux native home：
+
+```text
+/data/data/com.termux/files/home/openhouseai-docs/official
+```
+
+同步脚本会把 Ubuntu 内的稳定入口做成软链接：
+
+```text
+/root/openhouse/docs
+/root/openhouseai-docs/official
+~/openhouseai-docs/official
+```
+
+因此 AI 和用户平时应优先读取 `/root/openhouse/docs`。排查底层路径或从 Termux 外层维护时，再看 `/data/data/com.termux/files/home/openhouseai-docs/official`。AI 自己产生的笔记不要写进官方文档目录，使用 `openhouseai-docs/agent-notes`。
+
 安装完成后，官方文档目录统一为：
 
 ```text
@@ -32,16 +52,15 @@ APK 内的 `openhouse/docs-public` 是这个公开仓库的快照。只更新文
 - `/root/openhouse/docs/first-use-tutorial.md`
 - `/root/openhouse/docs/pi-agent-first-use.md`
 - `/root/openhouse/docs/model-config-migration.md`
-- `/root/openhouse/docs/cloudcli-claude-code-setup.md`
+- `/root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md`
 - `/root/openhouse/docs/codex-setup.md`
 - `/root/openhouse/docs/GITHUB_CONFIG_HELPER.md`
-- `/root/openhouse/docs/github-config-helper.md`
-- `/root/openhouse/docs/service-manager.md`
+- `/root/openhouse/docs/SERVICE_MANAGER.md`
 - `/root/openhouse/docs/CUSTOM_FRONTEND_AND_APPS.md`
 - `/root/openhouse/docs/OPENHOUSE_DESKTOP.md`
 - `/root/openhouse/docs/openhouse-runtime-policy.md`
 - `/root/openhouse/docs/openhouse-exit-all.md`
-- `/root/openhouse/docs/troubleshooting.md`
+- `/root/openhouse/docs/TROUBLESHOOTING.md`
 
 ## 不等 APK 更新文档
 
@@ -92,21 +111,19 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `MODEL_API_SETUP.md`：Codex、Claude Code 和 CloudCLI 的登录/API 配置。
 - `model-config-migration.md`：pi-web 模型配置迁移到 Claude Code、Codex、CloudCLI 的规则。
 - `pi-agent-first-use.md`：pi-agent 作为首次配置助手的目标、提示词和验收。
-- `cloudcli-claude-code-setup.md`：CloudCLI / Claude Code 后置配置、端口、权限模式和实测标准。
+- `CLOUDCLI_CLAUDE_CODE.md`：CloudCLI / Claude Code 后置配置、端口、权限模式和实测标准；也是 pi-agent 配置并测通 CloudCLI 中 Claude Code 的主文档。
 - `codex-setup.md`：Codex 后置配置和实测标准。
 - `GITHUB_CONFIG_HELPER.md`：GitHub 本地配置助手，说明如何复用 GitHub CLI 官方 OAuth 流程完成 `gh` 登录、`git` credential helper 配置，以及让 Codex / Claude Code 后续直接调用 `git` 和 `gh`。
-- `github-config-helper.md`：GitHub 本地配置助手的小写稳定入口。
 - `cc-switch.md`：cc-switch 作为 provider 配置执行器的定位和边界。
 - `OPENHOUSE_FIRST_CONFIGURATION.md`：pi-web 模型可用后，由 pi-agent 完成首次 OpenHouse 配置的流程。
 - `OPENHOUSE_HEALTH_SIGNOFF.md`：全面健康检查的一阶段/二阶段引导 AI 签名规则和二阶段复制提示词依据。
 - `AI_TOOL_POSTINSTALL.md`：Codex、Claude Code、CloudCLI、Hermes 的后置安装脚本入口和检查规则。
-- `CLOUDCLI_CLAUDE_CODE.md`：让 pi-agent 配置并测通 CloudCLI 中的 Claude Code。
 - `HERMES_SETUP.md`：Hermes 可选高级安装和 service-manager 注册说明。
 - `PI_AGENT_PLUGIN_SYSTEM.md`：pi、pi-web、插件目录和默认搜索插件。
 - `GITHUB_NETWORK_MIRRORS.md`：GitHub、镜像、代理、备用源和网络检索策略。
 - `OPTIONAL_EXTERNAL_TOOLS.md`：外部工具和可选构建能力的边界参考。
 
-架构设计文档位于仓库级 `docs/` 目录，主要入口是 `docs/ARCHITECTURE.md`、`docs/RUNTIME_LAYERING.md` 和 `docs/PI_AGENT_PLUGIN_SYSTEM.md`。
+App 工程架构设计文档位于 `openhouseai-app/docs/`，主要入口是 `ARCHITECTURE.md`、`RUNTIME_LAYERING.md` 和 `PI_AGENT_PLUGIN_SYSTEM.md`。
 
 ### 3. AI 可以参考的操作手册
 
@@ -116,15 +133,14 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 - `terminal-guide.md`：独立终端教学，说明 Termux、Ubuntu、路径和跨层调用。
 - `PATHS_AND_PORTS.md`：AI 创建或排障本地服务前必须参考的路径和端口规范。
 - `TERMINAL_PROFILES.md`：Termux 终端、Ubuntu 终端和自定义终端的分工。
-- `service-manager.md`：service-manager 的稳定小写入口，强调安装完成后的运行控制平面。
+- `SERVICE_MANAGER.md`：service-manager 的操作手册，强调安装完成后的运行控制平面。
 - `openhouse-runtime-policy.md`：App 前台自动保活和默认长期服务策略。
 - `openhouse-exit-all.md`：停止运行栈和全部退出 OpenHouse 的停止范围、界面行为、保留范围和恢复行为。
 - `openhouse-runtime-repair.md`：修复运行控制、注册表、端口健康和重复服务的规则。
 - `GITHUB_CONFIG_HELPER.md`：给 AI 和维护者的 GitHub 授权配置手册，强调不需要 OAuth App、不接触 token、只执行白名单 `gh` 命令，并说明 scopes、权限边界、同 `$HOME` 限制和 APK 内置方式。
-- `troubleshooting.md`：排障入口，覆盖安装、运行、模型配置、安全日志和失败边界。
+- `TROUBLESHOOTING.md`：排障入口，覆盖安装、运行、模型配置、安全日志和失败边界。
 - `permissions.md`：后台、通知、存储、Shizuku、无障碍等权限和降级行为。
 - `failure-boundaries.md`：自动修复、需用户确认、建议重置或重装的边界。
-- `SERVICE_MANAGER.md`：安装完成后的服务控制平面说明。
 - `CUSTOM_FRONTEND_AND_APPS.md`：给 AI 和开发者的自定义前端/App 实作手册，说明如何把真实代码注册到桌面和 service-manager。
 - `BROWSER_AND_WEBVIEW.md`：内置浏览器、本地页面、WebView 页壳、窗口保留策略、受控浏览器命令和调试建议。
 - `ANDROID_CONTROL_SHIZUKU.md`：Shizuku 可选授权后的 Android 侧增强能力和边界。
@@ -138,7 +154,7 @@ OpenHouse 同时有 Android App、Termux 外层和 Ubuntu in Termux。看到路�
 
 Codex、Claude Code、CloudCLI 和 Hermes 不再是首次安装必经项。它们是后置 AI 工作能力，由 pi-agent 结合 `/root/openhouse/docs` 和 `/root/openhouse/scripts` 引导安装、配置、检查和修复。
 
-`pi-agent` 是首次配置助手、文档索引员和配置迁移执行者，不是唯一主工作台。用户侧一级入口是 `pi-agent`，与 `SmallPhone`、`cc/codex` 同级；pi-web 是 `pi-agent` 背后的本地页面运行时。service-manager 负责管理 `pi-agent` 和 `pi-web`。默认 pi 插件目录是 `/root/.pi/extensions` 和 `/root/.pi/agent/extensions`，默认搜索插件是 `multi-platform-search.ts`。
+`pi-agent` 是首次配置助手、文档索引员和配置迁移执行者，不是唯一主工作台。用户侧一级入口是 `pi-agent`，与 `SmallPhone`、`cc/codex` 同级；pi-web 是 `pi-agent` 背后的本地页面运行时。service-manager 负责管理 `pi-agent` 和 `pi-web`。默认 pi 插件目录是 `/data/data/com.termux/files/home/.pi/extensions` 和 `/data/data/com.termux/files/home/.pi/agent/extensions`，默认搜索插件是 `multi-platform-search.ts`。
 
 OpenHouse 的主工作台由用户决定。用户可以选择 Claude Code、Codex、Hermes Web，也可以让 AI 搜索、安装、注册和改造其它开源项目，把它变成自己的长期工作台。
 

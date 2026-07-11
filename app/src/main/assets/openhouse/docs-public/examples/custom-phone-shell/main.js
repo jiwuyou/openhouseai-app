@@ -150,4 +150,3 @@ async function loadRegistry() {
 
 reloadButtonEl.addEventListener("click", loadRegistry);
 loadRegistry();
-

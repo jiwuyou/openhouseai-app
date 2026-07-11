@@ -67,9 +67,9 @@ OpenHouse 的路径必须按层理解。`/root` 是 Ubuntu 内的 root home，�
 | `/root/openhouseai-docs/official` | 兼容旧路径的官方文档目录。 |
 | `/root/openhouseai-docs/agent-notes` | AI 或维护任务可写的笔记目录。 |
 | `/root/projects` | 常见项目目录。 |
-| `/root/.pi` | pi 默认运行目录。 |
-| `/root/.pi/extensions` | pi-web 新会话优先发现扩展的位置。 |
-| `/root/.pi/agent/extensions` | pi CLI 默认全局扩展目录。 |
+| `/data/data/com.termux/files/home/.pi` | pi 默认运行目录。 |
+| `/data/data/com.termux/files/home/.pi/extensions` | pi-web 新会话优先发现扩展的位置。 |
+| `/data/data/com.termux/files/home/.pi/agent/extensions` | pi CLI 默认全局扩展目录。 |
 | `/root/workspace` | 可选工作区，具体是否存在以当前环境为准。 |
 
 在 Ubuntu 中，`~` 通常就是 `/root`。面向用户和 AI 的推荐文档路径是 `/root/openhouse/docs`，兼容旧路径是 `/root/openhouseai-docs/official`。pi-web 默认提示词和 pi-agent 文档引用应优先使用 `/root/openhouse/docs/<file>`，旧环境可回退到 `/root/openhouseai-docs/official/<file>`。
@@ -85,8 +85,12 @@ OpenHouse 的路径必须按层理解。`/root` 是 Ubuntu 内的 root home，�
 | `/data/data/com.termux/files/home/.smallphoneai-bootstrap` | bootstrap 脚本和状态目录，具体是否存在以当前安装为准。 |
 | `/data/data/com.termux/files/home/.maintainer-logs` | 常见维护/安装日志目录，具体日志名以当前版本为准。 |
 | `/data/data/com.termux/files/home/.openhouseai` | 启动入口和 OpenHouse 侧配置可能使用的目录。 |
+| `/data/data/com.termux/files/home/openhouseai-docs/official` | 官方文档的运行期物理目录。Ubuntu 内的 `/root/openhouse/docs` 和兼容文档路径应指向这里。 |
+| `/data/data/com.termux/files/home/openhouseai-docs/agent-notes` | AI 或维护任务可写的运行期笔记目录，不属于官方文档事实源。 |
 
 Termux 外层用于修底座、修 Ubuntu、查安装日志、调用 Android 贴身能力。不要把用户项目构建、Codex、Claude Code 或长期服务默认放在 Termux 外层执行。
+
+公开文档的长期事实源是 `https://github.com/jiwuyou/openhouse-docs` 的 `docs/`。APK 内的 `openhouse/docs-public` 是打包快照；设备运行期默认把快照或公开仓库内容同步到 Termux native 的 `openhouseai-docs/official`，再通过软链接暴露给 Ubuntu 内的 `/root/openhouse/docs`、`/root/openhouseai-docs/official` 和旧路径。
 
 ### Ubuntu rootfs 在 Termux 中的位置
 

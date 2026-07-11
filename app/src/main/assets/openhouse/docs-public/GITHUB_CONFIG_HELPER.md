@@ -6,7 +6,6 @@
 
 ```text
 /root/openhouse/docs/GITHUB_CONFIG_HELPER.md
-/root/openhouse/docs/github-config-helper.md
 ```
 
 ## 用户怎么用

@@ -35,9 +35,9 @@
 | `openhouse-overview.md` | `PRODUCT_OVERVIEW.md`, `CAPABILITIES_MAP.md` |
 | `pi-agent-first-use.md` | `OPENHOUSE_FIRST_CONFIGURATION.md`, `START_HERE.md` |
 | `model-config-migration.md` | `MODEL_API_SETUP.md`, `OPENHOUSE_FIRST_CONFIGURATION.md` |
-| `cloudcli-claude-code-setup.md` | `CLOUDCLI_CLAUDE_CODE.md` |
-| `service-manager.md` | `SERVICE_MANAGER.md` |
-| `troubleshooting.md` | `RECOVERY.md`, `AI_AGENT_REFERENCE.md` |
+| CloudCLI / Claude Code 配置 | `CLOUDCLI_CLAUDE_CODE.md` |
+| 服务控制 | `SERVICE_MANAGER.md` |
+| 排障入口 | `TROUBLESHOOTING.md`, `RECOVERY.md`, `AI_AGENT_REFERENCE.md` |
 
 如果 `/root/openhouse/docs` 不存在，使用兼容目录：
 

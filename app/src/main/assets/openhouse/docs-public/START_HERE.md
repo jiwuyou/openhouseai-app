@@ -45,9 +45,9 @@ scripts/sync-runtime-docs.sh
    - 进入 pi-agent 后，按它的提示配置模型、Claude 或 Codex。
 4. `model-config-migration.md`
    - 准备 `base_url`、`key/token`、`model id` 和协议类型。
-5. `cloudcli-claude-code-setup.md` 或 `codex-setup.md`
+5. `CLOUDCLI_CLAUDE_CODE.md` 或 `codex-setup.md`
    - 根据你要先使用 Claude 还是 Codex，完成后置配置和实测。
-6. `github-config-helper.md`
+6. `GITHUB_CONFIG_HELPER.md`
    - 需要让 Codex / Claude Code 管理 GitHub 仓库、PR、Actions、issue 或组织资源时，先完成本机 `gh` 授权和 `git` credential helper 配置。
 7. `OPENHOUSE_DESKTOP.md`
    - 了解默认入口、桌面横向分页、编辑模式、拖动、改名、改图标和 App 页控制栏。
@@ -66,8 +66,8 @@ AI agent 优先阅读：
 2. `openhouse-overview.md`
 3. `AI_AGENT_REFERENCE.md`
 4. `TERMUX_UBUNTU_BRIDGE.md`
-5. `service-manager.md`
-6. `troubleshooting.md`
+5. `SERVICE_MANAGER.md`
+6. `TROUBLESHOOTING.md`
 7. `PATHS_AND_PORTS.md`
 
 如果你要实现或审查下一轮代码改动，还必须阅读：
@@ -152,8 +152,8 @@ openhouse-termux exec -- 'id; echo "$HOME"; echo "$PREFIX"'
 2. `AI_AGENT_REFERENCE.md`
 3. `TERMUX_UBUNTU_BRIDGE.md`
 4. `terminal-guide.md`
-5. `service-manager.md`
-6. `troubleshooting.md`
+5. `SERVICE_MANAGER.md`
+6. `TROUBLESHOOTING.md`
 
 这些文档说明了默认终端选择、服务控制、故障诊断和禁止操作。
 

@@ -15,8 +15,8 @@
 1. `openhouse-overview.md`
 2. `AI_AGENT_REFERENCE.md`
 3. `TERMUX_UBUNTU_BRIDGE.md`
-4. `service-manager.md`
-5. `troubleshooting.md`
+4. `SERVICE_MANAGER.md`
+5. `TROUBLESHOOTING.md`
 
 如果你要参与下一轮产品实现，还必须阅读：
 
@@ -36,15 +36,15 @@
 | 路径和端口规范 | `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 确认稳定安装路径、service-manager endpoint、端口分段、已用/保留端口和新 App 选端口规则。 |
 | pi-agent 首次配置 | `pi-agent-first-use.md`, `OPENHOUSE_FIRST_CONFIGURATION.md` | 引导用户配置模型和后置 AI 工具。 |
 | 模型配置迁移 | `model-config-migration.md`, `MODEL_API_SETUP.md` | 按协议迁移 `base_url`、key/token、model id。 |
-| Claude Code / CloudCLI | `cloudcli-claude-code-setup.md`, `CLOUDCLI_CLAUDE_CODE.md` | 安装、配置并测通 CloudCLI 中的 Claude Code。 |
+| Claude Code / CloudCLI | `CLOUDCLI_CLAUDE_CODE.md` | 安装、配置并测通 CloudCLI 中的 Claude Code。 |
 | Codex | `codex-setup.md`, `MODEL_API_SETUP.md` | 配置并实测 Codex。 |
-| GitHub 本地授权和 gh 配置 | `GITHUB_CONFIG_HELPER.md`, `github-config-helper.md`, `GITHUB_NETWORK_MIRRORS.md` | 复用 GitHub CLI 官方 OAuth 流程，不注册 OAuth App，配置 `gh auth login` 和 `gh auth setup-git`，让同一 Ubuntu 用户和同一 `$HOME` 下的 Codex / Claude Code 直接调用 `git` 和 `gh`。 |
-| service-manager | `service-manager.md`, `SERVICE_MANAGER.md` | 注册、启动、停止、修复长期服务。 |
-| 自定义前端或 App | `CUSTOM_FRONTEND_AND_APPS.md`, `custom-frontend-and-apps.md`, `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 生成真实代码，先按规范选择路径和端口，再注册 component manifest 和 service-manager 服务，并按 AI 更新流程维护。 |
+| GitHub 本地授权和 gh 配置 | `GITHUB_CONFIG_HELPER.md`, `GITHUB_NETWORK_MIRRORS.md` | 复用 GitHub CLI 官方 OAuth 流程，不注册 OAuth App，配置 `gh auth login` 和 `gh auth setup-git`，让同一 Ubuntu 用户和同一 `$HOME` 下的 Codex / Claude Code 直接调用 `git` 和 `gh`。 |
+| service-manager | `SERVICE_MANAGER.md` | 注册、启动、停止、修复长期服务。 |
+| 自定义前端或 App | `CUSTOM_FRONTEND_AND_APPS.md`, `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 生成真实代码，先按规范选择路径和端口，再注册 component manifest 和 service-manager 服务，并按 AI 更新流程维护。 |
 | 前台保活 | `openhouse-runtime-policy.md` | 理解 Android 和 service-manager 的分工。 |
 | 停止运行栈 / 全部退出 | `openhouse-exit-all.md` | 明确停止范围、界面行为、保留范围和恢复行为。 |
-| 故障排查 | `troubleshooting.md`, `RECOVERY.md` | 按症状选择最小修复步骤。 |
-| 浏览器、WebView 和页面自动化 | `BROWSER_AND_WEBVIEW.md`, `browser-and-webview.md` | 区分普通 WebView 和受控浏览器，确认页壳动作、App 名显示规则、WebView 保留策略，并使用 `openhouse-browser` 读取页面、点击、填写、截图或执行短流程。 |
+| 故障排查 | `TROUBLESHOOTING.md`, `RECOVERY.md` | 按症状选择最小修复步骤。 |
+| 浏览器、WebView 和页面自动化 | `BROWSER_AND_WEBVIEW.md` | 区分普通 WebView 和受控浏览器，确认页壳动作、App 名显示规则、WebView 保留策略，并使用 `openhouse-browser` 读取页面、点击、填写、截图或执行短流程。 |
 | cc-switch | `cc-switch.md` | 作为模型配置执行器使用，不把它当服务。 |
 | 权限和降级 | `permissions.md` | 区分必需权限、可选权限和缺失时降级。 |
 | 失败边界 | `failure-boundaries.md` | 判断何时自动修复，何时提示重置或重装。 |
@@ -78,9 +78,9 @@
 /root/openhouse/docs/openhouse-overview.md
 /root/openhouse/docs/pi-agent-first-use.md
 /root/openhouse/docs/model-config-migration.md
-/root/openhouse/docs/cloudcli-claude-code-setup.md
-/root/openhouse/docs/service-manager.md
-/root/openhouse/docs/troubleshooting.md
+/root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md
+/root/openhouse/docs/SERVICE_MANAGER.md
+/root/openhouse/docs/TROUBLESHOOTING.md
 
 阅读后记住这些文档有什么用，什么时候去阅读这些文档，这些文档在哪里。再和我聊天。
 ```
