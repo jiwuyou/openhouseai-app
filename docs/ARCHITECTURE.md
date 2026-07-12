@@ -119,7 +119,9 @@ Long-running services must be owned by service-manager or by a service-manager-s
 
 pi is the default OpenHouseAI agent runtime. It owns the default tool calling model, extension loading, and agent-facing APIs. In the current mobile runtime it runs in Termux native Node and can call into Ubuntu for workbench tasks.
 
-pi-web is the default OpenHouseAI UI. The Android App opens it through a local WebView at `http://127.0.0.1:30141/`, while service-manager owns its process lifecycle.
+pi-web is the default OpenHouseAI UI. The Android App opens it through a local WebView at `http://127.0.0.1:30141/`, while service-manager owns its long-running process lifecycle. It also installs a Termux global `pi-web` command, so a user or AI can run `pi-web --port 30142` directly without service-manager for debugging or temporary sessions.
+
+wuyou is a bundled Termux-first Rust/Axum web coding agent. It installs as the Termux global `wuyou` command and is not registered as a service by default.
 
 Default service IDs:
 

@@ -17,6 +17,8 @@ OpenHouseAI 是人和 AI 共用的软件平台。用户通过界面使用能力�
 | service-manager | 安装完成后的控制平面 | 管理后台服务的启动、停止、状态、日志和修复 |
 | pi-agent / pi-web | 首次配置助手和背后的本地页面运行时 | 读取文档、迁移模型配置、调用插件、帮助用户理解系统 |
 
+正式控制面：service-manager daemon 在 Termux native 层运行。`pi-agent` 和 `pi-web` 默认也在 Termux native 层作为长期服务托管；Ubuntu/proot 主要是开发、AI CLI 和后置工作台层。需要管理 Ubuntu 内长期服务时，仍应由 Termux native service-manager 通过 `proot-distro` provider 管理。
+
 ## 强制规则
 
 1. 开发、AI CLI、项目构建、Node/Python/Rust 工具链默认使用 Ubuntu 终端。
@@ -101,6 +103,14 @@ OpenHouse 桌面、菜单总览 App 或终端 App 中可进入 Termux 或 Ubuntu
 ```bash
 openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
 ```
+
+首次安装或 APK 更新后，优先查看 runtime 版本摘要：
+
+```bash
+cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
+```
+
+这个摘要用于确认 APK 版本、bootstrap tree hash、service-manager、registryApi、pi-agent、pi-web 和 aionui-web 是否属于同一批 payload。
 
 在 Ubuntu 内优先运行：
 
@@ -220,6 +230,7 @@ oh-termux-ensure-sshd ensure
 ```bash
 tail -n 160 "$HOME/.maintainer-logs/manifest_full.log" 2>/dev/null || true
 ls -la "$HOME/.maintainer-logs" 2>/dev/null || true
+cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
 ```
 
 4. 读取机器可读运行状态：

@@ -19,6 +19,8 @@
 | Termux home | `/data/data/com.termux/files/home` |
 | Termux prefix | `/data/data/com.termux/files/usr` |
 | Bootstrap | `$HOME/.smallphoneai-bootstrap/bootstrap.sh` |
+| APK runtime sync marker | `$HOME/.smallphoneai-bootstrap/.apk-sync-marker` |
+| APK payload | `$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads` |
 | 安装日志 | `$HOME/.maintainer-logs` |
 | 运行日志 | `$HOME/.smallphoneai/logs` |
 | OpenHouse 文档 | `$HOME/openhouseai-docs/official` |
@@ -66,9 +68,12 @@
 ```bash
 openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
 cd "$HOME/.smallphoneai-bootstrap" && bash bootstrap.sh status
+cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
 ls -la "$HOME/.maintainer-logs" "$HOME/.smallphoneai/logs" 2>/dev/null || true
 tail -n 160 "$HOME/.maintainer-logs/manifest_full.log" 2>/dev/null || true
 ```
+
+如果首次安装失败，先看 runtime report。它能快速回答：APK 是否是预期版本、payload tree 是否更新、`service-manager` / `pi-agent` / `pi-web` / `aionui-web` 是否来自同一批 manifest，以及 registry API 版本是否已声明。
 
 判断 Ubuntu 是否可用：
 
@@ -116,6 +121,16 @@ bash bootstrap.sh status
 ```
 
 期望最终 JSON 中 `ready` 为 `true`。如果只有某个服务失败，不要重装系统，先查看该服务日志。
+
+pi-web 首装问题的优先排查点：
+
+```bash
+ls -l "$HOME/.config/openhouseai/service-manager/services.d/pi-web.json" 2>/dev/null || true
+service-manager status pi-web 2>/dev/null || true
+tail -n 160 "$HOME/.smallphoneai/logs/service-manager.log" 2>/dev/null || true
+```
+
+如果 `pi-web.json` 是 0 字节，说明注册脚本或 payload 有问题，不要通过反复重装 Ubuntu 解决；应更新 APK/payload 或执行运行控制修复入口。
 
 ## 恢复 Ubuntu
 

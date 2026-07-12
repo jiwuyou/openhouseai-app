@@ -68,6 +68,7 @@ Ubuntu/proot is used only for targets that explicitly require it:
 
 - `pi-agent`
 - `pi-web`
+- `wuyou`
 - `service-manager`
 - `cc-connect` / `openhouse-connect`
 - `SmallPhone`
@@ -91,6 +92,7 @@ The required APK asset archives are:
 | SmallPhone | `openhouse/product-payloads/smallphone.tar` | `$HOME/smallphoneai-repos/smallphone-active` |
 | pi-agent | `openhouse/product-payloads/pi-agent.tar` | `$HOME/smallphoneai-repos/pi-agent` |
 | pi-web | `openhouse/product-payloads/pi-web.tar` | `$HOME/smallphoneai-repos/pi-web` |
+| wuyou | `openhouse/product-payloads/wuyou.tar` | `$HOME/smallphoneai-repos/wuyou`; installs `$PREFIX/bin/wuyou` |
 
 In the APK source tree these packages live under
 `app/src/main/assets/openhouse/product-payloads`. The Android host or Gradle
@@ -103,9 +105,10 @@ binary. `50-install-runtime-components.sh` defaults to
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle`; this prevents first-run source
 clones from GitHub. It is not an air-gapped install: apt, npm, pip, model
 providers, and ordinary network checks may still be used when a stage needs
-operating-system or package dependencies. Pi Agent and pi-web use APK-bundled
-payloads first; pi-web is shipped as a complete runtime and should not run
-`npm install` during first-run setup.
+operating-system or package dependencies. Pi Agent, pi-web, and wuyou use
+APK-bundled payloads first; pi-web is shipped as a complete runtime and should
+not run `npm install` during first-run setup. The `pi-web` and `wuyou` commands
+are installed as Termux global commands and can be run without service-manager.
 
 GitHub source updates are a separate path through
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=git-update` and

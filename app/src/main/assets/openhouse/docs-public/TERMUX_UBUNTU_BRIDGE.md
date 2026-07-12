@@ -8,6 +8,8 @@
 - `RUN_COMMAND` / Termux native `sshd` 解决身份正确。
 - service-manager 解决长期服务生命周期。
 
+控制面基线：service-manager 长期驻留在 Termux native 层。Termux native 服务使用 `termux-process` provider；Ubuntu/proot 内服务使用 `proot-distro` provider 或受控 wrapper。不要把 service-manager daemon 放进 Ubuntu/proot 长期运行。
+
 ## 运行层基线
 
 真机验证确认，Termux native 和 Ubuntu/proot 是同一台 Android 设备上的两个运行层：
@@ -40,6 +42,20 @@ oh-ubuntu-user alice -- bash -lc 'whoami; echo "$HOME"'
 ```
 
 长期 Ubuntu 服务应由 Termux native service-manager 的 `proot-distro` provider 管理，而不是由 Android UI 或临时 shell 直接后台启动。
+
+注册 Ubuntu 长期服务时，ServiceSpec 必须说明运行层，例如：
+
+```json
+{
+  "provider": "proot-distro",
+  "runtime": {
+    "distro": "ubuntu",
+    "user": "root"
+  }
+}
+```
+
+如果服务后来安装到非 root Linux 用户，把 `runtime.user` 改成对应用户名；service-manager 仍保持在 Termux native 层负责控制。
 
 ## Ubuntu -> Termux
 
@@ -74,6 +90,14 @@ oh-termux-ensure-sshd ensure
 4. `30-update-ubuntu-packages.sh` 安装 `openssh-client` 和 `jq`。
 
 当前首装把 `oh-termux-ensure-sshd` 作为底座修复入口；如果后续把 `termux-sshd` 注册为 service-manager 服务，服务命令也应调用这个幂等入口，而不是复制一份新的 sshd 启动逻辑。
+
+首次安装和维护脚本会同步 APK 内置 payload 到：
+
+```text
+/data/data/com.termux/files/home/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads
+```
+
+版本与兼容性摘要来自该目录的 `manifest.json`，并会在维护动作日志头打印。AI 排障时优先看摘要里的 APK 版本、bootstrap tree hash、service-manager、registryApi、pi-agent、pi-web 和 aionui-web 条目。
 
 真实端口和 Termux 用户名写在：
 
@@ -117,4 +141,12 @@ oh-ubuntu-root -- bash -lc 'cat /etc/os-release'
 
 ```bash
 oh-termux-ensure-sshd ensure
+```
+
+版本/桥接排障时优先收集：
+
+```bash
+tail -n 80 "$HOME/.maintainer-logs/manifest_full.log" 2>/dev/null || true
+tail -n 80 "$HOME/.smallphoneai/logs/service-manager.log" 2>/dev/null || true
+cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
 ```

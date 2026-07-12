@@ -2,6 +2,8 @@
 
 service-manager 是安装完成后的运行期控制平面。AI agent 管理后台服务时，默认通过 service-manager，而不是直接后台启动进程。
 
+OpenHouseAI 的正式部署基线是：service-manager daemon 运行在 Termux native 层，使用 OpenHouse 专用配置和 token。Ubuntu/proot 里的长期服务由 Termux native service-manager 通过 provider 管理，不在 Ubuntu 内另起一个常驻 service-manager。
+
 ## 角色
 
 service-manager 负责：
@@ -91,6 +93,7 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 
 - `name` 是服务 ID，只使用字母、数字、`.`、`_`、`-`。
 - `provider: "termux-process"` 表示 service-manager 在 Termux 原生层启动长期前台服务；需要进入 Ubuntu/proot 的服务才使用 `proot-distro` provider。
+- `provider: "proot-distro"` 表示 service-manager 仍在 Termux native 层运行，但启动命令进入 Ubuntu/proot。服务如果属于非 root Linux 用户，应在 `runtime.user` 中声明该用户。
 - `command` 是结构化 argv 数组，不是 shell 字符串。
 - 被管理命令必须是前台长进程。脚本型服务推荐让 `sh -lc` 作为 supervisor，显式 `wait` 子进程并在 TERM/INT/HUP 时转发停止信号。
 - 不要把脚本型服务注册成 `["openhouse-pi-web-start"]` 或 `["/bin/sh", "/data/data/com.termux/files/home/.local/bin/openhouse-pi-web-start"]`。如果直接跟踪会改写进程标题的 Node/Next 主进程，运行控制容易出现 stale pidfile 或 cmdline mismatch。
@@ -277,6 +280,18 @@ case "$SM_ADDR" in
 esac
 curl -fsS --max-time 2 "${SM_URL%/}/api/v1/health"
 ```
+
+## 版本和协议定位
+
+首次安装和维护动作会同步 APK 内置 runtime，并在 sync marker 中写入版本摘要：
+
+```bash
+cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
+```
+
+摘要至少应包含 APK `versionName/versionCode`、Termux package variant、bootstrap asset tree sha256、`service-manager`、registryApi、`pi-agent`、`pi-web` 和 `aionui-web`。如果 registryApi 仍显示 `unknown`，说明当前 payload manifest 没有声明协议版本，安装脚本必须保留兼容兜底。
+
+构建 APK 前会执行 `scripts/validate-openhouse-payloads.sh`。这个校验会拒绝 sha/size 不一致的 payload，也会拒绝可能把 `pi-web.json` 截断成 0 字节的注册脚本。
 
 查看服务列表：
 

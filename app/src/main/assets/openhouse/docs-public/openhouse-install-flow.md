@@ -315,6 +315,29 @@ Authorization: Bearer ****abcd
 
 任何 payload sha256 不匹配都必须失败，不允许继续。
 
+APK 构建前必须执行 `scripts/validate-openhouse-payloads.sh`。该校验负责：
+
+- 校验 `manifest.json` 与 `payload-manifest.json` 对同一组件的 archive、sha256、size、version 和 platform 是否一致。
+- 校验 APK 内置 payload 文件的实际 sha256 和 size。
+- 解包检查 `pi-web.tar` 的 `scripts/register-service.sh`，拒绝未转义 `$!/$child` 的 unquoted heredoc。
+- 拒绝 pi-web 注册脚本直接覆盖 `$SPEC_PATH` 或 `$COMPONENT_PATH`，避免失败时留下 0 字节 service spec。
+- 检查 `service-manager.tar` 中存在非空 service-manager 二进制。
+
+首次安装日志或 runtime sync marker 必须打印版本摘要：
+
+```text
+APK: versionName/versionCode/packageVariant
+bootstrap: assetCount/treeSha256
+service-manager: version or archive sha
+registryApi: version
+pi-agent: version or archive sha
+pi-web: version or source commit
+aionui-web: version
+compatibility: ok or warning summary
+```
+
+如果 `registryApi` 显示 `unknown`，安装链路不能假设 `/api/v1/registry/apply` 一定兼容，必须保留写入 canonical registry 和 service register API 的兜底路径。
+
 ## 最终 E2E 验收
 
 一次完整真机验收必须证明：
