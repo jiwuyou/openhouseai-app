@@ -215,7 +215,7 @@ install_termux_service_manager() {
   log "正在安装 Termux native service-manager：mode=$mode"
   (
     cd "$repo"
-    BIND="$bind" CONFIG_PATH="$config" SERVICE_MANAGER_INSTALL_MODE="$mode" INSTALL_SERVICE=0 ./scripts/install.sh
+    BIND="$bind" CONFIG_PATH="$config" SERVICE_MANAGER_INSTALL_MODE="$mode" INSTALL_SERVICE=0 bash ./scripts/install.sh
   ) || return 1
 
   find_termux_service_manager >/dev/null 2>&1
