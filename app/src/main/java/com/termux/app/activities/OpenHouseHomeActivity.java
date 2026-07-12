@@ -1019,7 +1019,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 renderAiPage();
                 break;
             case PAGE_AI_RESCUE:
-                setHeader("AI救援", "独立于 service-manager 的 pi-web 救援入口");
+                setHeader("AI救援", "Termux native 中独立运行的原始 pi-web");
                 renderAiRescuePage();
                 break;
             case PAGE_SMALLPHONE:
@@ -1574,7 +1574,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
         aiRescueStatusView = new TextView(this);
         aiRescueStatusView.setText("AI救援地址：" + getAiRescueUrl()
-            + "\n这个入口绕过 service-manager，只用于 service-manager 或正式 pi-web 不可用时临时启动 pi-web。");
+            + "\n这个入口不依赖 service-manager 或 Ubuntu，直接在 Termux native 中临时运行原始 pi-web。");
         aiRescueStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
         aiRescueStatusView.setTextSize(13);
         aiRescueStatusView.setLineSpacing(dp(2), 1.0f);
@@ -1661,7 +1661,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
         TextView body = new TextView(this);
         body.setText("没有连接到 " + getAiRescueUrl()
-            + "。点击“启动救援”会绕过 service-manager，直接在 Ubuntu 中启动一个临时 pi-web。");
+            + "。点击“启动救援”会直接在 Termux native 中启动原始 pi-web，不依赖 service-manager 或 Ubuntu。");
         body.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
         body.setTextSize(14);
         body.setGravity(Gravity.CENTER);

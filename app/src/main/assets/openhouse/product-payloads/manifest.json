@@ -59,12 +59,14 @@
       "id": "pi-web",
       "archive": "pi-web.tar",
       "targetDir": "pi-web",
-      "sha256": "8da9067ba1735a6b7f5dec7c6af6310d992793536d65832ba1827496261530c7",
-      "size": 89149440,
+      "sha256": "09640fd48600c45578c4ce2176cda400ddc02d5f94bc9f77671e240887b1e8f0",
+      "size": 89159680,
       "platform": "termux-android-arm64",
+      "buildPlatform": "android-arm64",
       "version": "0.7.0",
       "sourceRepo": "https://github.com/jiwuyou/pi-web.git",
-      "sourceCommit": "b4893a2adb11b54147e5e753ebbb95e04488a49e",
+      "sourceCommit": "483ae51fa348b4899e241118c353a2a0daff6155",
+      "sourceTreeSha256": "4cba34d163e576683c8b3da4086b75e0473f7a4ad266abfa78dd204871f22af6",
       "requires": {
         "serviceManager": ">=0.2.1",
         "registryApiVersion": 2
