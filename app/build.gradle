@@ -241,8 +241,15 @@ task validateBundledBootstraps() {
     }
 }
 
+task validateOpenHousePayloads(type: Exec) {
+    group = "verification"
+    description = "Validate APK-bundled OpenHouse payload manifests and service registration safety."
+    workingDir rootProject.projectDir
+    commandLine "bash", "${rootProject.projectDir}/scripts/validate-openhouse-payloads.sh"
+}
+
 afterEvaluate {
     android.applicationVariants.all { variant ->
-        variant.preBuildProvider.get().dependsOn(validateBundledBootstraps)
+        variant.preBuildProvider.get().dependsOn(validateBundledBootstraps, validateOpenHousePayloads)
     }
 }

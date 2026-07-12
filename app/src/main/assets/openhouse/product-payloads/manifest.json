@@ -1,16 +1,30 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-10",
+  "generatedAt": "2026-07-12",
   "description": "OpenHouseAI runtime packages bundled inside the APK. pi-web first install uses the bundled complete runtime package and does not run npm install for pi-web; Node.js, Codex, Claude Code, CloudCLI and other stages may still require network access.",
+  "registryApiVersion": 2,
+  "compatibility": {
+    "registryApiVersion": 2,
+    "serviceManager": ">=0.2.1",
+    "requiresRegistryApply": true,
+    "requiresStableServiceIds": true
+  },
   "components": [
     {
       "id": "service-manager",
       "archive": "service-manager.tar",
       "targetDir": "service-manager",
-      "sha256": "f424e92d920d4dc16cf48a42393380f0e549d86280041b7dcf478f110bbb955e",
-      "size": 6440960,
-      "binarySha256": "d61faed08670fa0b1c8caf66886d5d67087a81a273ef76424705c9d90592404a",
-      "platform": "termux-arm64"
+      "sha256": "83d98b9175b82e38c2b103b34dec3da5fe498737ff7cc103554885d2c41b0355",
+      "size": 7321600,
+      "binarySha256": "92ace596d9b976e425a58dc14219daf7480b9ef528a12d570548071fe5f11da9",
+      "platform": "termux-arm64",
+      "version": "0.2.1",
+      "registryApiVersion": 2,
+      "provides": {
+        "registryApiVersion": 2,
+        "registryApply": true,
+        "stableServiceIds": true
+      }
     },
     {
       "id": "openhouse-connect",
@@ -33,19 +47,42 @@
       "id": "pi-agent",
       "archive": "pi-agent.tar",
       "targetDir": "pi-agent",
-      "sha256": "93a327b247f35a4a2d1ec0932dd0147e8894f535f4f85fd7bb0534b2d81dbd81",
-      "size": 6123520
+      "sha256": "30185a7f855e51658213f843383183c5f35cf711f8beb15644bf85b369bf5da9",
+      "size": 6133760,
+      "version": "openhouse.20260711",
+      "requires": {
+        "serviceManager": ">=0.2.1",
+        "registryApiVersion": 2
+      }
     },
     {
       "id": "pi-web",
       "archive": "pi-web.tar",
       "targetDir": "pi-web",
-      "sha256": "2e9fc016058e76508fea9d5f13bddf99650d4fe154b0bdd3d16f4a80154ba05b",
-      "size": 89139200,
+      "sha256": "8da9067ba1735a6b7f5dec7c6af6310d992793536d65832ba1827496261530c7",
+      "size": 89149440,
       "platform": "termux-android-arm64",
       "version": "0.7.0",
       "sourceRepo": "https://github.com/jiwuyou/pi-web.git",
-      "sourceCommit": "b4893a2adb11b54147e5e753ebbb95e04488a49e"
+      "sourceCommit": "b4893a2adb11b54147e5e753ebbb95e04488a49e",
+      "requires": {
+        "serviceManager": ">=0.2.1",
+        "registryApiVersion": 2
+      }
+    },
+    {
+      "id": "wuyou",
+      "archive": "wuyou.tar",
+      "targetDir": "wuyou",
+      "sha256": "73c50cd4f45b9c8cb02563a4ac3bc2a3e185e3da12b56dfe26e46f577c7f32c8",
+      "size": 9451520,
+      "platform": "termux-android-arm64",
+      "version": "0.1.0",
+      "sourceRepo": "https://github.com/earendil-works/wuyou.git",
+      "sourceCommit": "4ce78e6",
+      "binarySha256": "3b7dc65f7684f0b7d48237883e8fddc1cabde816cee5c5ae97b3df242dbead3e",
+      "binarySize": 9441992,
+      "service": false
     },
     {
       "id": "github-config-helper",
@@ -56,12 +93,16 @@
     },
     {
       "id": "aionui-web",
-      "archive": "aionui-web-2.1.25-linux-arm64.tgz",
+      "archive": "aionui-web-2.1.32-linux-arm64.tgz",
       "targetDir": "aionui-web",
-      "sha256": "e9cf83bf0776c8d89765933a56dd7d98329926afae0748ece49b68de7fc447ad",
-      "size": 357095493,
+      "sha256": "f0e368d6cf8ba9c404343143d8b22193012a85c0e62f969b6820e077d137023a",
+      "size": 419979294,
       "platform": "linux-arm64",
-      "version": "2.1.25"
+      "version": "2.1.32",
+      "requires": {
+        "serviceManager": ">=0.2.1",
+        "registryApiVersion": 2
+      }
     },
     {
       "id": "cc-switch",
