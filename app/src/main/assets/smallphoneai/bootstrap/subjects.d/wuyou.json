@@ -1,0 +1,40 @@
+{
+  "id": "wuyou",
+  "title": "wuyou",
+  "kind": "runtime-http",
+  "summary": "Termux-first local web coding agent installed from the APK payload as a global command.",
+  "serviceRefs": [],
+  "entries": [
+    {
+      "type": "command",
+      "label": "wuyou",
+      "command": "wuyou"
+    }
+  ],
+  "locations": [
+    {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/usr/bin/wuyou",
+      "purpose": "Global standalone wuyou launcher installed from APK payload"
+    },
+    {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/home/smallphoneai-repos/wuyou",
+      "purpose": "APK payload unpack directory and install/check scripts"
+    }
+  ],
+  "ai": {
+    "description": "wuyou can be started directly from Termux with `wuyou`; it does not require service-manager and is not registered as a long-running service by default.",
+    "whenUnavailable": "Run `bash ~/.smallphoneai-bootstrap/bootstrap.sh components` or `SMALLPHONEAI_COMPONENT_TARGETS=wuyou bash ~/.smallphoneai-bootstrap/bootstrap.sh components`, then check `command -v wuyou && wuyou --help`."
+  },
+  "checks": {
+    "afterServiceOk": [
+      {
+        "type": "command",
+        "runtime": "termux",
+        "command": "wuyou --help",
+        "timeoutSeconds": 4
+      }
+    ]
+  }
+}

@@ -194,8 +194,8 @@ public final class OpenHouseExitAllController {
     private String buildStopScript() {
         StringBuilder script = new StringBuilder();
         script.append("set +e\n");
-        script.append("export HOME=\"${HOME:-/data/data/com.termux/files/home}\"\n");
         script.append("export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"\n");
+        script.append("if [ -d \"/data/data/com.termux/files/home\" ]; then export HOME=\"/data/data/com.termux/files/home\"; else export HOME=\"${HOME:-/data/data/com.termux/files/home}\"; fi\n");
         script.append("export PATH=\"$PREFIX/bin:/system/bin:${PATH:-}\"\n");
         script.append("log(){ printf '%s\\n' \"$1\"; }\n");
         script.append("kill_openhouse_matches(){\n");

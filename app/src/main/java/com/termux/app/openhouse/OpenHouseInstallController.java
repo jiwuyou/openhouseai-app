@@ -59,7 +59,6 @@ public final class OpenHouseInstallController {
         Stage.CONFIGURE_ENTRY_UBUNTU
     };
     private static final Stage[] AI_FEATURES_STAGE_SEQUENCE = new Stage[] {
-        Stage.RUNTIME_COMPONENTS,
         Stage.START_SMALLPHONE,
         Stage.INSTALL_NODE,
         Stage.SYNC_OFFICIAL_DOCS,
@@ -237,7 +236,7 @@ public final class OpenHouseInstallController {
             if (markCompletedIfAlreadyDeployed(resolvedTaskScope)) {
                 return false;
             }
-            if (resolvedTaskScope == OpenHouseInstallState.TaskScope.AI_FEATURES
+            if (requiresPreparedRuntime(resolvedTaskScope)
                 && !statusRepository.isRuntimeEnvironmentPrepared()) {
                 updateState(buildState(
                     OpenHouseInstallState.Status.FAILED,
@@ -278,7 +277,7 @@ public final class OpenHouseInstallController {
                 File logDir = ensureLogDir();
                 File tempScript = new File(logDir, "run-" + MANIFEST_FULL_SLUG + ".sh");
                 OpenHouseBundledRuntimeSync.Result runtimeSync = prepareBundledRuntimeAssets();
-                writeScript(tempScript, buildInstallScript(resolvedTaskScope));
+                writeScript(tempScript, buildInstallScript(resolvedTaskScope, runtimeSync));
                 resetManifestLogForNewRun(resolvedTaskScope);
                 long startedAtMs = System.currentTimeMillis();
                 writeRunningMarker(startedAtMs, resolvedTaskScope);
@@ -1039,6 +1038,10 @@ public final class OpenHouseInstallController {
         return taskScope == null ? OpenHouseInstallState.TaskScope.FULL : taskScope;
     }
 
+    private static boolean requiresPreparedRuntime(OpenHouseInstallState.TaskScope taskScope) {
+        return taskScope == OpenHouseInstallState.TaskScope.AI_FEATURES;
+    }
+
     private Stage[] getStageSequence(OpenHouseInstallState.TaskScope taskScope) {
         OpenHouseInstallState.TaskScope resolvedTaskScope = normalizeTaskScope(taskScope);
         if (resolvedTaskScope == OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
@@ -1383,7 +1386,8 @@ public final class OpenHouseInstallController {
         environment.remove("NO_PROXY");
     }
 
-    private String buildInstallScript(OpenHouseInstallState.TaskScope taskScope) throws IOException {
+    private String buildInstallScript(OpenHouseInstallState.TaskScope taskScope,
+                                      OpenHouseBundledRuntimeSync.Result runtimeSync) throws IOException {
         OpenHouseInstallState.TaskScope resolvedTaskScope = normalizeTaskScope(taskScope);
         String taskLabel = taskLogLabel(resolvedTaskScope);
         StringBuilder bundledBody = new StringBuilder();
@@ -1410,7 +1414,8 @@ public final class OpenHouseInstallController {
             scriptBody.append('\n');
         }
         scriptBody.append("log ").append(shellQuote("SmallPhoneAI " + taskLabel + "已完成。")).append('\n');
-        return buildWrapperScript(taskLabel, MANIFEST_FULL_SLUG, scriptBody.toString());
+        String runtimeReport = runtimeSync == null ? "" : runtimeSync.runtimeReport;
+        return buildWrapperScript(taskLabel, MANIFEST_FULL_SLUG, runtimeReport, scriptBody.toString());
     }
 
     private String buildAssetScriptBody(Stage stage) throws IOException {
@@ -1431,12 +1436,12 @@ public final class OpenHouseInstallController {
         }
     }
 
-    private String buildWrapperScript(String stageLabel, String stageSlug, String scriptBody) {
+    private String buildWrapperScript(String stageLabel, String stageSlug, String runtimeReport, String scriptBody) {
         StringBuilder builder = new StringBuilder();
         builder.append("#!/data/data/com.termux/files/usr/bin/bash\n");
         builder.append("set -euo pipefail\n");
-        builder.append("export HOME=\"${HOME:-/data/data/com.termux/files/home}\"\n");
         builder.append("export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"\n");
+        builder.append("if [ -d \"/data/data/com.termux/files/home\" ]; then export HOME=\"/data/data/com.termux/files/home\"; else export HOME=\"${HOME:-/data/data/com.termux/files/home}\"; fi\n");
         builder.append("export PATH=\"$HOME/.npm-global/bin:$PREFIX/bin:/system/bin:${PATH:-}\"\n");
         builder.append("export LD_LIBRARY_PATH=\"$PREFIX/lib:${LD_LIBRARY_PATH:-}\"\n");
         builder.append("export TMPDIR=\"${TMPDIR:-$PREFIX/tmp}\"\n");
@@ -1475,11 +1480,26 @@ public final class OpenHouseInstallController {
         builder.append("__maint_finish(){ local exit_code=$?; printf '__TERMUX_MAINT_DONE__:%s:%s\\n' \"$STAGE_SLUG\" \"$exit_code\" | tee -a \"$LOG_FILE\"; }\n");
         builder.append("trap __maint_finish EXIT\n");
         builder.append("log \"==> $STAGE_NAME\"\n");
+        appendRuntimeReport(builder, runtimeReport);
         builder.append(scriptBody);
         if (!scriptBody.endsWith("\n")) {
             builder.append('\n');
         }
         return builder.toString();
+    }
+
+    private void appendRuntimeReport(StringBuilder builder, String runtimeReport) {
+        if (runtimeReport == null || runtimeReport.trim().isEmpty()) {
+            return;
+        }
+
+        String[] lines = runtimeReport.split("\\r?\\n");
+        for (String line : lines) {
+            if (line == null || line.isEmpty()) {
+                continue;
+            }
+            builder.append("log ").append(shellQuote(line)).append('\n');
+        }
     }
 
     private String loadAsset(String assetPath) throws IOException {

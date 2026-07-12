@@ -22,12 +22,39 @@ is_current_ubuntu() {
   [ -f /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release
 }
 
-read_openhouse_service_manager_endpoint() {
-  local config key value
+service_manager_config_candidates() {
+  local config
   for config in \
     "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
-    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
-    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}"; do
+    "${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-}" \
+    "${SERVICE_MANAGER_CONFIG_PATH:-}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "${OPENHOUSEAI_TERMUX_HOME:+$OPENHOUSEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}"; do
+    [ -n "$config" ] || continue
+    printf '%s\n' "$config"
+  done
+}
+
+configured_service_manager_config_path() {
+  local config fallback=""
+  while IFS= read -r config; do
+    [ -n "$fallback" ] || fallback="$config"
+    if [ -f "$config" ]; then
+      printf '%s\n' "$config"
+      return 0
+    fi
+  done <<EOF
+$(service_manager_config_candidates)
+EOF
+  [ -n "$fallback" ] || return 1
+  printf '%s\n' "$fallback"
+}
+
+read_openhouse_service_manager_endpoint() {
+  local config key value
+  while IFS= read -r config; do
     [ -n "$config" ] && [ -f "$config" ] || continue
     for key in listen_addr listenAddr base_url baseUrl baseURL url; do
       value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
@@ -36,7 +63,9 @@ read_openhouse_service_manager_endpoint() {
         return 0
       fi
     done
-  done
+  done <<EOF
+$(service_manager_config_candidates)
+EOF
   return 1
 }
 
@@ -255,14 +284,19 @@ find_service_manager_binary() {
 }
 
 resolve_service_manager_token() {
-  local token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
-  local sm_bin
+  local token=""
+  local sm_bin config
+  config="$(configured_service_manager_config_path || true)"
+  if [ -n "$config" ] && [ -f "$config" ]; then
+    token="$(sed -n 's/.*"auth_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$config" | head -n 1 || true)"
+  fi
   if [ -z "$token" ]; then
     sm_bin="$(find_service_manager_binary || true)"
-    if [ -n "$sm_bin" ]; then
-      token="$("$sm_bin" token show 2>/dev/null | tr -d '\r\n' || true)"
+    if [ -n "$sm_bin" ] && [ -n "$config" ]; then
+      token="$("$sm_bin" token show --config "$config" 2>/dev/null | head -n 1 | tr -d '\r\n' || true)"
     fi
   fi
+  [ -n "$token" ] || token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
   printf '%s\n' "$token"
 }
 
@@ -431,21 +465,28 @@ fallback_sync_registry() {
 
 if is_termux && [ "${SMALLPHONEAI_SYNC_REGISTRY_IN_UBUNTU:-1}" = "1" ]; then
   if command -v proot-distro >/dev/null 2>&1 && proot-distro login ubuntu -- true >/dev/null 2>&1; then
+    canonical_service_manager_config="$(configured_service_manager_config_path || true)"
+    if [ -z "$canonical_service_manager_config" ] || [ ! -f "$canonical_service_manager_config" ]; then
+      warn "找不到 Termux canonical service-manager config，无法安全地把 registry sync 分发到 Ubuntu。"
+      exit 1
+    fi
     log "正在 Ubuntu 内同步 OpenHouseAI registry 到 Termux canonical。"
     SMALLPHONEAI_SYNC_REGISTRY_IN_UBUNTU=0 \
       proot-distro login ubuntu -- env \
+        -u SERVICE_MANAGER_TOKEN \
+        -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
         OPENHOUSEAI_CONFIG_DIR="${OPENHOUSEAI_CONFIG_DIR:-}" \
         OPENHOUSEAI_TERMUX_HOME="${OPENHOUSEAI_TERMUX_HOME:-/data/data/com.termux/files/home}" \
         OPENHOUSEAI_TERMUX_CONFIG_DIR="${OPENHOUSEAI_TERMUX_CONFIG_DIR:-}" \
         SMALLPHONEAI_COMPONENT_REPO_ROOT="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-/root/smallphoneai-repos}" \
         SMALLPHONEAI_SERVICE_MANAGER_DIR="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" \
         SMALLPHONEAI_SERVICE_MANAGER_BIND="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-}" \
-        SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+        SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="$canonical_service_manager_config" \
+        SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$canonical_service_manager_config" \
+        SERVICE_MANAGER_CONFIG_PATH="$canonical_service_manager_config" \
         SMALLPHONEAI_TERMUX_HOME="${SMALLPHONEAI_TERMUX_HOME:-${OPENHOUSEAI_TERMUX_HOME:-/data/data/com.termux/files/home}}" \
         SMALLPHONEAI_REGISTRY_SYNC_USE_API="${SMALLPHONEAI_REGISTRY_SYNC_USE_API:-1}" \
         SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-}" \
-        SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-}" \
-        SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}" \
         bash -s < "$0"
     exit $?
   fi

@@ -21,8 +21,8 @@
       "home": "/data/data/com.termux/files/home",
       "workingDirectory": "$HOME/smallphoneai-repos/pi-web",
       "workdir": "$HOME/smallphoneai-repos/pi-web",
-      "command": "openhouse-pi-web-start",
-      "entryCommand": "openhouse-pi-web-start"
+      "command": "pi-web --port 30141",
+      "entryCommand": "pi-web --port 30141"
     }
   ],
   "entries": [
@@ -59,7 +59,7 @@
     }
   ],
   "ai": {
-    "description": "Pi Agent is the primary OpenHouse AI workbench. Its service state is controlled by service-manager through the pi-web service id.",
+    "description": "Pi Agent is the primary OpenHouse AI workbench. pi-web also provides the standalone Termux global command `pi-web --port 30141`; service-manager controls the default long-running pi-web service.",
     "whenUnavailable": "First inspect service-manager status and logs for pi-agent/pi-web. If the services are running, run openhouse-system check pi-agent to probe the web endpoint and declared paths."
   },
   "checks": {

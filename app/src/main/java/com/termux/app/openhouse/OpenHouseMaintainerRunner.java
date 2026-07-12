@@ -56,7 +56,7 @@ public final class OpenHouseMaintainerRunner {
 
             String assetBody = loadAsset("maintainer/" + action.assetName)
                 .replace("__PORT__", Integer.toString(port));
-            String wrapper = buildWrapperScript(action.label, action.slug, assetBody);
+            String wrapper = buildWrapperScript(action.label, action.slug, runtimeSync.runtimeReport, assetBody);
             tempScript = new File(logDir, "run-" + action.slug + ".sh");
             try (FileOutputStream outputStream = new FileOutputStream(tempScript, false)) {
                 outputStream.write(wrapper.getBytes(StandardCharsets.UTF_8));
@@ -161,12 +161,12 @@ public final class OpenHouseMaintainerRunner {
         return ServiceManagerRedactor.redact(redacted);
     }
 
-    private String buildWrapperScript(String stageLabel, String stageSlug, String scriptBody) {
+    private String buildWrapperScript(String stageLabel, String stageSlug, String runtimeReport, String scriptBody) {
         StringBuilder builder = new StringBuilder();
         builder.append("#!/data/data/com.termux/files/usr/bin/bash\n");
         builder.append("set -euo pipefail\n");
-        builder.append("export HOME=\"${HOME:-/data/data/com.termux/files/home}\"\n");
         builder.append("export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"\n");
+        builder.append("if [ -d \"/data/data/com.termux/files/home\" ]; then export HOME=\"/data/data/com.termux/files/home\"; else export HOME=\"${HOME:-/data/data/com.termux/files/home}\"; fi\n");
         builder.append("export PATH=\"$PREFIX/bin:/system/bin:${PATH:-}\"\n");
         builder.append("export LD_LIBRARY_PATH=\"$PREFIX/lib:${LD_LIBRARY_PATH:-}\"\n");
         builder.append("export TMPDIR=\"${TMPDIR:-$PREFIX/tmp}\"\n");
@@ -191,12 +191,27 @@ public final class OpenHouseMaintainerRunner {
         builder.append("__maint_finish(){ local exit_code=$?; printf '__TERMUX_MAINT_DONE__:%s:%s\\n' \"$STAGE_SLUG\" \"$exit_code\" | tee -a \"$LOG_FILE\"; }\n");
         builder.append("trap __maint_finish EXIT\n");
         builder.append("log \"==> $STAGE_NAME\"\n");
+        appendRuntimeReport(builder, runtimeReport);
         builder.append("run_environment_probe\n");
         builder.append(scriptBody);
         if (!scriptBody.endsWith("\n")) {
             builder.append('\n');
         }
         return builder.toString();
+    }
+
+    private void appendRuntimeReport(StringBuilder builder, String runtimeReport) {
+        if (runtimeReport == null || runtimeReport.trim().isEmpty()) {
+            return;
+        }
+
+        String[] lines = runtimeReport.split("\\r?\\n");
+        for (String line : lines) {
+            if (line == null || line.isEmpty()) {
+                continue;
+            }
+            builder.append("log ").append(shellQuote(line)).append('\n');
+        }
     }
 
     private String shellQuote(String value) {

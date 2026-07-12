@@ -45,7 +45,7 @@
   "runtimePayloads": {
     "firstRunSource": "apk_bundled_packages",
     "networkRole": "required_for_termux_node_and_ubuntu_ai_workbench_packages",
-    "description": "APK 内置运行组件包；pi-agent 和 pi-web 默认解包到 Termux native 并使用 Termux Node/npm 运行，Ubuntu 仅作为 AI 工作台和显式 fallback。",
+    "description": "APK 内置运行组件包；pi-agent、pi-web 和 wuyou 默认解包到 Termux native。pi-web/wuyou 提供不依赖 service-manager 的全局命令入口，Ubuntu 仅作为 AI 工作台和显式 fallback。",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
     "installRoot": "$HOME/smallphoneai-repos",
@@ -82,6 +82,14 @@
         "targetDir": "$HOME/smallphoneai-repos/pi-web"
       },
       {
+        "id": "wuyou",
+        "title": "wuyou",
+        "apkAssetPath": "openhouse/product-payloads/wuyou.tar",
+        "targetDir": "$HOME/smallphoneai-repos/wuyou",
+        "service": false,
+        "globalCommand": "wuyou"
+      },
+      {
         "id": "github-config-helper",
         "title": "GitHub 本地配置助手",
         "apkAssetPath": "openhouse/product-payloads/github-config-helper.tar",
@@ -110,7 +118,7 @@
     },
     {
       "title": "建立 OpenHouse 控制平面",
-      "description": "Termux Node 后先确保 service-manager，再逐个安装/注册 pi-agent 和 pi-web；Ubuntu 准备完成后继续注册 GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容服务。",
+      "description": "Termux Node 后先确保 service-manager，再逐个安装/注册 pi-agent 和 pi-web，并安装 wuyou 全局命令；Ubuntu 准备完成后继续注册 GitHub 配置助手、openhouse-connect 和 SmallPhone 兼容服务。",
       "stages": ["runtime_components", "sync_openhouse_registry"]
     },
     {
@@ -173,7 +181,7 @@
           "id": "sync_core_stack",
           "type": "button",
           "label": "同步核心运行栈",
-          "description": "APK 更新后同步内置 service-manager、GitHub 配置助手、openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 pi-web 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
+          "description": "APK 更新后同步内置 service-manager、GitHub 配置助手、openhouse-connect、SmallPhone 兼容组件、Pi Agent、pi-web 和 wuyou 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
           "action": {
             "type": "bootstrap",
             "args": ["sync-core-stack"],

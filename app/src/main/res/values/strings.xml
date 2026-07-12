@@ -2,7 +2,7 @@
 
 <!DOCTYPE resources [
     <!ENTITY TERMUX_PACKAGE_NAME "com.termux">
-    <!ENTITY TERMUX_APP_NAME "SmallPhoneAI">
+    <!ENTITY TERMUX_APP_NAME "openhouseai3">
     <!ENTITY TERMUX_API_APP_NAME "SmallPhoneAI:API">
     <!ENTITY TERMUX_BOOT_APP_NAME "SmallPhoneAI:Boot">
     <!ENTITY TERMUX_FLOAT_APP_NAME "SmallPhoneAI:Float">

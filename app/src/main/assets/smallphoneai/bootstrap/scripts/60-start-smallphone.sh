@@ -26,7 +26,86 @@ run_logged() {
   "$@"
 }
 
+run_with_service_manager_auth() {
+  local token="$1"
+  local compatibility_token="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-$token}"
+  shift
+  (
+    export SERVICE_MANAGER_TOKEN="$token"
+    export SMALLPHONE_SERVICE_MANAGER_TOKEN="$compatibility_token"
+    "$@"
+  )
+}
+
+load_service_manager_token_file() {
+  local token_file="${SMALLPHONEAI_SERVICE_MANAGER_TOKEN_FILE:-}"
+  local token
+
+  [ -n "$token_file" ] || return 0
+  unset SMALLPHONEAI_SERVICE_MANAGER_TOKEN_FILE
+  if [ ! -r "$token_file" ]; then
+    warn "service-manager token 文件不可读。"
+    return 1
+  fi
+  if ! token="$(cat -- "$token_file")"; then
+    rm -f -- "$token_file" >/dev/null 2>&1 || true
+    rmdir -- "$(dirname -- "$token_file")" >/dev/null 2>&1 || true
+    warn "service-manager token 文件读取失败。"
+    return 1
+  fi
+  rm -f -- "$token_file" >/dev/null 2>&1 || true
+  rmdir -- "$(dirname -- "$token_file")" >/dev/null 2>&1 || true
+  [ -n "$token" ] || {
+    warn "service-manager token 文件为空。"
+    return 1
+  }
+  if [ -z "${SERVICE_MANAGER_TOKEN:-}" ]; then
+    export SERVICE_MANAGER_TOKEN="$token"
+  fi
+  if [ -z "${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}" ]; then
+    export SMALLPHONE_SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-$token}"
+  fi
+}
+
+create_ubuntu_service_manager_token_file() {
+  local token="$1"
+  [ -n "$token" ] || return 1
+  printf '%s\n' "$token" \
+    | env -u SERVICE_MANAGER_TOKEN -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
+      proot-distro login ubuntu -- sh -c '
+        set -eu
+        umask 077
+        auth_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-sm-token.XXXXXX")"
+        auth_file="$auth_dir/token"
+        published=0
+        cleanup_auth_file() {
+          if [ "$published" != "1" ]; then
+            rm -rf -- "$auth_dir" >/dev/null 2>&1 || true
+          fi
+        }
+        trap cleanup_auth_file EXIT
+        trap "exit 1" INT HUP TERM
+        cat > "$auth_file"
+        chmod 600 "$auth_file"
+        published=1
+        printf "%s\n" "$auth_file"
+      '
+}
+
+cleanup_ubuntu_service_manager_token_file() {
+  local token_file="${1:-}"
+  [ -n "$token_file" ] || return 0
+  env -u SERVICE_MANAGER_TOKEN -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
+    proot-distro login ubuntu -- sh -c '
+      rm -f -- "$1" >/dev/null 2>&1 || true
+      rmdir -- "$(dirname -- "$1")" >/dev/null 2>&1 || true
+    ' sh "$token_file" >/dev/null 2>&1 || true
+}
+
 ensure_tmpdir
+if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_TOKEN_FILE:-}" ]; then
+  load_service_manager_token_file || exit 1
+fi
 
 probe_tcp() {
   local host="${1:-}"
@@ -89,15 +168,19 @@ termux_service_manager_config_path() {
 find_termux_service_manager_binary() {
   local candidate
   if command -v service-manager >/dev/null 2>&1; then
-    command -v service-manager
-    return 0
+    candidate="$(command -v service-manager)"
+    if [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.2.1" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
   fi
   for candidate in \
     "${PREFIX:-/data/data/com.termux/files/usr}/bin/service-manager" \
     "$HOME/smallphoneai-repos/service-manager/service-manager" \
     "$HOME/smallphoneai-repos/service-manager/target/release/service-manager" \
     "$HOME/smallphoneai-repos/service-manager/target/debug/service-manager"; do
-    if [ -x "$candidate" ]; then
+    if [ -x "$candidate" ] \
+      && [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.2.1" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -120,42 +203,86 @@ termux_service_manager_config_token() {
   "$sm_bin" token show --config "$cfg" 2>/dev/null | head -n 1 | tr -d '\r\n'
 }
 
-termux_service_manager_auth_ready() {
+termux_service_manager_auth_ready() (
   local token="$1"
   local url="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}"
-  local work_dir curl_cfg status
+  local work_dir curl_cfg
 
   [ -n "$token" ] || return 1
   command -v curl >/dev/null 2>&1 || return 1
+  umask 077
   work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-sm-auth.XXXXXX")" || return 1
+  trap 'rm -rf "$work_dir" >/dev/null 2>&1 || true' EXIT
+  trap 'exit 1' INT HUP TERM
   curl_cfg="$work_dir/curl.cfg"
   printf 'header = "Authorization: Bearer %s"\n' "$token" > "$curl_cfg"
+  chmod 600 "$curl_cfg"
   curl -q -fsS --max-time 3 -K "$curl_cfg" "$url/api/v1/services" >/dev/null 2>&1
-  status=$?
-  rm -rf "$work_dir" >/dev/null 2>&1 || true
-  return "$status"
-}
+)
 
 termux_service_manager_ready_for_registration() {
   local token
+  termux_service_manager_instance_matches_expected || return 1
   termux_service_manager_ready || return 1
   token="$(termux_service_manager_config_token || true)"
   [ -n "$token" ] || return 1
   termux_service_manager_auth_ready "$token"
 }
 
-stop_stale_termux_service_manager() {
-  local pid
+termux_service_manager_serve_pids() {
+  local proc comm args
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
+    comm="$(cat "$proc/comm" 2>/dev/null || true)"
+    [ "$comm" = "service-manager" ] || continue
+    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
+    printf '%s\n' "$args" | grep -Fqx -- "serve" || continue
+    printf '%s\n' "${proc##*/}"
+  done
+}
 
-  if command -v pkill >/dev/null 2>&1; then
-    pkill -f 'service-manager serve' >/dev/null 2>&1 || true
+termux_service_manager_instance_matches_expected() {
+  local cfg bind sm_bin expected_exe pid args actual_exe total=0 matched=0
+  cfg="$(termux_service_manager_config_path)"
+  bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
+  sm_bin="$(find_termux_service_manager_binary || true)"
+  [ -n "$sm_bin" ] || return 1
+  expected_exe="$(readlink -f "$sm_bin" 2>/dev/null || true)"
+  [ -n "$expected_exe" ] || return 1
+  for pid in $(termux_service_manager_serve_pids); do
+    total=$((total + 1))
+    args="$(tr '\000' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    actual_exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+    if [ "$actual_exe" = "$expected_exe" ] \
+      && printf '%s\n' "$args" | grep -Fqx -- "--config" \
+      && printf '%s\n' "$args" | grep -Fqx -- "$cfg" \
+      && printf '%s\n' "$args" | grep -Fqx -- "--bind" \
+      && printf '%s\n' "$args" | grep -Fqx -- "$bind"; then
+      matched=$((matched + 1))
+    fi
+  done
+  [ "$total" -eq 1 ] && [ "$matched" -eq 1 ]
+}
+
+stop_stale_termux_service_manager() {
+  local pid pids
+
+  if command -v sv >/dev/null 2>&1; then
+    sv down service-manager >/dev/null 2>&1 || true
   fi
-  if command -v pidof >/dev/null 2>&1; then
-    for pid in $(pidof service-manager 2>/dev/null || true); do
-      [ -n "$pid" ] && kill "$pid" >/dev/null 2>&1 || true
-    done
-  fi
+  pids="$(termux_service_manager_serve_pids)"
+  for pid in $pids; do
+    kill "$pid" >/dev/null 2>&1 || true
+  done
+  for _ in $(seq 1 10); do
+    [ -z "$(termux_service_manager_serve_pids)" ] && return 0
+    sleep 1
+  done
+  for pid in $(termux_service_manager_serve_pids); do
+    kill -9 "$pid" >/dev/null 2>&1 || true
+  done
   sleep 1
+  [ -z "$(termux_service_manager_serve_pids)" ]
 }
 
 ensure_termux_service_manager() {
@@ -168,13 +295,20 @@ ensure_termux_service_manager() {
     log "Termux native service-manager 已可访问：$url"
     return 0
   fi
-  if termux_service_manager_ready; then
-    warn "Termux native service-manager 已响应 health，但当前 config token 未通过认证；正在重启旧实例。"
-    stop_stale_termux_service_manager
+  if [ -n "$(termux_service_manager_serve_pids)" ] || termux_service_manager_ready; then
+    warn "检测到非预期或认证不匹配的 service-manager；将按 OpenHouse 专用 config 重启。"
+    stop_stale_termux_service_manager || return 1
   fi
 
-  if command -v sv >/dev/null 2>&1; then
+  sm_bin="$(find_termux_service_manager_binary || true)"
+  if [ -z "$sm_bin" ]; then
+    warn "找不到 Termux native service-manager。请先运行：bash bootstrap.sh components"
+    return 1
+  fi
+
+  if command -v sv >/dev/null 2>&1 && [ -d "${PREFIX:-/data/data/com.termux/files/usr}/var/service" ]; then
     log "正在通过 termux-services 拉起 service-manager。"
+    "$sm_bin" install-service --config "$cfg" --bind "$bind" >/dev/null 2>&1 || true
     sv up service-manager >/dev/null 2>&1 || true
     for _ in $(seq 1 10); do
       termux_service_manager_ready_for_registration && {
@@ -183,12 +317,8 @@ ensure_termux_service_manager() {
       }
       sleep 1
     done
-  fi
-
-  sm_bin="$(find_termux_service_manager_binary || true)"
-  if [ -z "$sm_bin" ]; then
-    warn "找不到 Termux native service-manager。请先运行：bash bootstrap.sh components"
-    return 1
+    sv down service-manager >/dev/null 2>&1 || true
+    stop_stale_termux_service_manager || return 1
   fi
 
   mkdir -p "$HOME/.smallphoneai/logs" "$(dirname "$cfg")"
@@ -230,7 +360,6 @@ if is_termux && should_start_in_ubuntu; then
       warn "无法获取 Termux native service-manager token。"
       exit 1
     fi
-
     runtime_dir="${SMALLPHONEAI_TERMUX_RUNTIME_DIR:-$HOME/.smallphoneai/runtime}"
     runtime_log_dir="${SMALLPHONEAI_TERMUX_LOG_DIR:-$HOME/.smallphoneai/logs}"
     runtime_pid_file="$runtime_dir/ubuntu-runtime.pid"
@@ -248,10 +377,17 @@ if is_termux && should_start_in_ubuntu; then
 
     log "正在后台启动 Ubuntu runtime supervisor。日志：$runtime_log"
     (
-      SMALLPHONEAI_START_IN_UBUNTU=0 \
-      SMALLPHONEAI_UBUNTU_RUNTIME_KEEPALIVE=1 \
-      proot-distro login ubuntu -- env \
+      ubuntu_token_file=""
+      trap 'cleanup_ubuntu_service_manager_token_file "$ubuntu_token_file"' EXIT
+      trap 'exit 1' INT HUP TERM
+      ubuntu_token_file="$(create_ubuntu_service_manager_token_file "$termux_sm_token")" || {
+        warn "无法为 Ubuntu 创建 service-manager 临时认证文件。"
+        exit 1
+      }
+      env -u SERVICE_MANAGER_TOKEN -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
+        proot-distro login ubuntu -- env \
         HOME="$ubuntu_runtime_home" \
+        SMALLPHONEAI_START_IN_UBUNTU=0 \
         SMALLPHONEAI_UBUNTU_HOME="$ubuntu_runtime_home" \
         OPENHOUSEAI_UBUNTU_HOME="$ubuntu_runtime_home" \
         SMALLPHONEAI_COMPONENT_REPO_ROOT="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$ubuntu_repo_root}" \
@@ -279,8 +415,7 @@ if is_termux && should_start_in_ubuntu; then
         SMALLPHONEAI_REQUIRE_EXTERNAL_SERVICE_MANAGER=1 \
         SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$(termux_service_manager_config_path)" \
         SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}" \
-        SERVICE_MANAGER_TOKEN="${SERVICE_MANAGER_TOKEN:-$termux_sm_token}" \
-        SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-${SERVICE_MANAGER_TOKEN:-$termux_sm_token}}" \
+        SMALLPHONEAI_SERVICE_MANAGER_TOKEN_FILE="$ubuntu_token_file" \
         bash -s < "$0"
     ) >"$runtime_log" 2>&1 < /dev/null &
     runtime_pid=$!
@@ -435,22 +570,24 @@ export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$HOME/.npm-global/bin:$PATH"
 export SERVICE_MANAGER_URL="$sm_url"
 
 find_service_manager() {
+  local candidate
   if command -v service-manager >/dev/null 2>&1; then
-    command -v service-manager
-    return 0
+    candidate="$(command -v service-manager)"
+    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.2.1" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
   fi
-  if [ -x "$service_manager_dir/service-manager" ]; then
-    printf '%s\n' "$service_manager_dir/service-manager"
-    return 0
-  fi
-  if [ -x "$service_manager_dir/target/release/service-manager" ]; then
-    printf '%s\n' "$service_manager_dir/target/release/service-manager"
-    return 0
-  fi
-  if [ -x "$service_manager_dir/target/debug/service-manager" ]; then
-    printf '%s\n' "$service_manager_dir/target/debug/service-manager"
-    return 0
-  fi
+  for candidate in \
+    "$service_manager_dir/service-manager" \
+    "$service_manager_dir/target/release/service-manager" \
+    "$service_manager_dir/target/debug/service-manager"; do
+    [ -x "$candidate" ] || continue
+    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.2.1" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
   return 1
 }
 
@@ -479,6 +616,10 @@ SH
 }
 
 is_service_manager_ready() {
+  if is_termux; then
+    termux_service_manager_ready_for_registration
+    return $?
+  fi
   command -v curl >/dev/null 2>&1 || return 1
   curl -fsS --max-time 2 "$sm_url/api/v1/health" >/dev/null 2>&1 \
     || curl -fsS --max-time 2 "$sm_url/" >/dev/null 2>&1
@@ -634,7 +775,12 @@ else
     exit 1
   fi
   log "正在启动 service-manager：$bind"
-  service_manager_config_path="${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-${SERVICE_MANAGER_CONFIG_PATH:-}}"
+  if is_termux; then
+    stop_stale_termux_service_manager || exit 1
+    service_manager_config_path="$(termux_service_manager_config_path)"
+  else
+    service_manager_config_path="${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-${SERVICE_MANAGER_CONFIG_PATH:-}}"
+  fi
   if [ -n "$service_manager_config_path" ]; then
     nohup "$service_manager_bin" serve --config "$service_manager_config_path" --bind "$bind" > "$log_dir/service-manager.log" 2>&1 < /dev/null &
   else
@@ -688,10 +834,8 @@ run_register_if_present() {
   if [ -f "$path" ]; then
     chmod +x "$path"
     log "$name: 刷新 service-manager 注册。"
-    (cd "$dir" && run_logged env \
+    (cd "$dir" && run_with_service_manager_auth "$sm_token" run_logged env \
       SERVICE_MANAGER_URL="$sm_url" \
-      SERVICE_MANAGER_TOKEN="$sm_token" \
-      SMALLPHONE_SERVICE_MANAGER_TOKEN="${SMALLPHONE_SERVICE_MANAGER_TOKEN:-$sm_token}" \
       bash "./scripts/register-service.sh") || warn "$name: register-service.sh 执行失败，继续尝试启动已注册服务。"
   else
     warn "$name: 缺少注册入口，跳过：$path"
@@ -724,6 +868,7 @@ trap cleanup EXIT INT HUP TERM
 
 curl_cfg="$work_dir/curl.cfg"
 printf 'header = "Authorization: Bearer %s"\n' "$sm_token" > "$curl_cfg"
+chmod 600 "$curl_cfg"
 
 start_service_if_present() {
   local service_id="$1"

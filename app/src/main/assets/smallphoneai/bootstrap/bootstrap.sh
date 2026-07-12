@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -d "/data/data/com.termux/files/home" ] \
+  && { [ ! -r /etc/os-release ] || ! grep -qi '^ID=ubuntu' /etc/os-release; }; then
+  export HOME="/data/data/com.termux/files/home"
+  export PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+fi
+
 SMALLPHONEAI_DIR="${SMALLPHONEAI_DIR:-$HOME/.smallphoneai-bootstrap}"
 SMALLPHONEAI_RAW_BASE="${SMALLPHONEAI_RAW_BASE:-https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -548,7 +554,7 @@ run_full_install() {
   run_stage 10-prepare-termux.sh
   run_stage 12-update-termux-packages.sh
   run_stage 13-install-termux-node.sh
-  SMALLPHONEAI_COMPONENT_TARGETS=service-manager,pi-agent,pi-web run_stage 50-install-runtime-components.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=service-manager,pi-agent,pi-web,wuyou run_stage 50-install-runtime-components.sh
   SMALLPHONEAI_START_TARGETS=pi-agent,pi-web \
     SMALLPHONEAI_START_READY_TIMEOUT="${SMALLPHONEAI_EARLY_PI_START_READY_TIMEOUT:-45}" \
     run_stage 60-start-smallphone.sh

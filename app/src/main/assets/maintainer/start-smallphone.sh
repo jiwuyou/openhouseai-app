@@ -18,10 +18,235 @@ find_smallphoneai_bootstrap() {
   return 1
 }
 
+find_termux_canonical_service_manager_config() {
+  local candidate
+  for candidate in \
+    "${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-}" \
+    "${HOME:+$HOME/.config/openhouseai/service-manager/config.json}" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/config.json}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json"; do
+    [ -n "$candidate" ] && [ -f "$candidate" ] || continue
+    case "$candidate" in
+      */.config/service-manager/config.json) continue ;;
+    esac
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+read_termux_service_manager_config_value() {
+  local config="$1"
+  shift
+  local key value
+  for key in "$@"; do
+    value="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$config" | head -n 1 || true)"
+    if [ -n "$value" ]; then
+      printf '%s\n' "$value"
+      return 0
+    fi
+  done
+  return 1
+}
+
+normalize_termux_service_manager_bind() {
+  local value="${1:-}"
+  case "$value" in
+    http://*) value="${value#http://}" ;;
+    https://*) value="${value#https://}" ;;
+  esac
+  value="${value%%/*}"
+  case "$value" in
+    "") return 1 ;;
+    :*) value="127.0.0.1$value" ;;
+    0.0.0.0) value="127.0.0.1:20087" ;;
+    0.0.0.0:*) value="127.0.0.1:${value#0.0.0.0:}" ;;
+    "::"|"[::]") value="127.0.0.1:20087" ;;
+    "[::]:"*) value="127.0.0.1:${value#"[::]:"}" ;;
+    :::*) value="127.0.0.1:${value#:::}" ;;
+    *:*) ;;
+    *[!0-9]*) value="$value:20087" ;;
+    *) value="127.0.0.1:$value" ;;
+  esac
+  printf '%s\n' "$value"
+}
+
+termux_service_manager_bind_from_config() {
+  local config="$1" endpoint
+  endpoint="$(read_termux_service_manager_config_value "$config" \
+    listen_addr listenAddr bind bind_addr bindAddr base_url baseUrl baseURL url || true)"
+  normalize_termux_service_manager_bind "${endpoint:-127.0.0.1:20087}"
+}
+
+termux_service_manager_url_from_config() {
+  local config="$1" endpoint scheme bind
+  endpoint="$(read_termux_service_manager_config_value "$config" \
+    listen_addr listenAddr bind bind_addr bindAddr base_url baseUrl baseURL url || true)"
+  case "$endpoint" in
+    https://*) scheme=https ;;
+    *) scheme=http ;;
+  esac
+  bind="$(normalize_termux_service_manager_bind "${endpoint:-127.0.0.1:20087}")" || return 1
+  printf '%s://%s\n' "$scheme" "$bind"
+}
+
+find_installed_termux_service_manager() {
+  local candidate
+  for candidate in \
+    "$(command -v service-manager 2>/dev/null || true)" \
+    "${PREFIX:-/data/data/com.termux/files/usr}/bin/service-manager" \
+    "${HOME:+$HOME/.local/bin/service-manager}"; do
+    [ -n "$candidate" ] && [ -x "$candidate" ] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+termux_service_manager_health_ready() {
+  local url="$1"
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -q -fsS --max-time 2 "$url/api/v1/health" >/dev/null 2>&1
+}
+
+termux_service_manager_auth_ready() (
+  local config="$1" url="$2" token work_dir curl_cfg escaped_token
+  token="$(read_termux_service_manager_config_value "$config" auth_token authToken || true)"
+  [ -n "$token" ] || return 1
+  command -v curl >/dev/null 2>&1 || return 1
+
+  mkdir -p "${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+  work_dir="$(mktemp -d "${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/openhouse-sm-auth.XXXXXX")"
+  trap 'rm -rf "$work_dir" >/dev/null 2>&1 || true' EXIT INT HUP TERM
+  chmod 700 "$work_dir" >/dev/null 2>&1 || true
+  curl_cfg="$work_dir/curl.cfg"
+  escaped_token="$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  umask 077
+  printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" > "$curl_cfg"
+  curl -q -fsS --max-time 3 -K "$curl_cfg" "$url/api/v1/services" >/dev/null 2>&1
+)
+
+termux_service_manager_serve_pids() {
+  local proc comm args
+  if command -v pgrep >/dev/null 2>&1; then
+    pgrep -f '(^|/)service-manager[[:space:]]+serve([[:space:]]|$)' 2>/dev/null || true
+    return 0
+  fi
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
+    comm="$(cat "$proc/comm" 2>/dev/null || true)"
+    [ "$comm" = "service-manager" ] || continue
+    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
+    printf '%s\n' "$args" | grep -Fqx -- serve || continue
+    printf '%s\n' "${proc##*/}"
+  done
+}
+
+termux_service_manager_port_open() {
+  local bind="$1" host port
+  host="${bind%:*}"
+  port="${bind##*:}"
+  [ -n "$host" ] && [ -n "$port" ] && [ "$host" != "$port" ] || return 1
+  bash -c 'exec 3<>"/dev/tcp/$1/$2"' bash "$host" "$port" >/dev/null 2>&1
+}
+
+wait_for_termux_service_manager() {
+  local url="$1" attempts="${2:-30}"
+  local index=1
+  while [ "$index" -le "$attempts" ]; do
+    termux_service_manager_health_ready "$url" && return 0
+    sleep 1
+    index=$((index + 1))
+  done
+  return 1
+}
+
+ensure_termux_native_service_manager() {
+  local config bind url token binary log_dir log_file existing_pids started_pid=""
+
+  config="$(find_termux_canonical_service_manager_config || true)"
+  if [ -z "$config" ]; then
+    log "未找到 OpenHouse canonical service-manager 配置；拒绝使用 ~/.config/service-manager/config.json。"
+    return 1
+  fi
+  token="$(read_termux_service_manager_config_value "$config" auth_token authToken || true)"
+  if [ -z "$token" ]; then
+    log "OpenHouse canonical service-manager 配置缺少 auth_token：$config"
+    return 1
+  fi
+  bind="$(termux_service_manager_bind_from_config "$config")" || {
+    log "OpenHouse canonical service-manager bind 无效：$config"
+    return 1
+  }
+  url="$(termux_service_manager_url_from_config "$config")" || return 1
+
+  export SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="$config"
+  export SERVICE_MANAGER_URL="$url"
+  export SMALLPHONEAI_SERVICE_MANAGER_BIND="$bind"
+
+  if termux_service_manager_health_ready "$url"; then
+    if ! termux_service_manager_auth_ready "$config" "$url"; then
+      log "service-manager API 可达，但与 OpenHouse canonical config 的认证不匹配；拒绝启动第二实例。"
+      return 1
+    fi
+    log "Termux native service-manager 已可访问并通过 canonical config 认证：$url"
+    return 0
+  fi
+
+  existing_pids="$(termux_service_manager_serve_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//' || true)"
+  if [ -n "$existing_pids" ]; then
+    log "检测到已有 service-manager serve 进程，等待 canonical API 就绪：pids=$existing_pids"
+    if wait_for_termux_service_manager "$url" 10 \
+      && termux_service_manager_auth_ready "$config" "$url"; then
+      return 0
+    fi
+    log "已有 service-manager 进程未能提供 canonical API；拒绝另起第二实例。"
+    return 1
+  fi
+
+  if termux_service_manager_port_open "$bind"; then
+    log "service-manager canonical 端口已被非预期进程占用：$bind"
+    return 1
+  fi
+
+  binary="$(find_installed_termux_service_manager || true)"
+  if [ -z "$binary" ]; then
+    log "未找到已安装的 Termux native service-manager 二进制。"
+    return 1
+  fi
+
+  log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
+  log_file="$log_dir/service-manager.log"
+  mkdir -p "$log_dir"
+  log "正在使用 OpenHouse canonical config 启动 Termux native service-manager：bind=$bind"
+  nohup env \
+    -u SERVICE_MANAGER_TOKEN \
+    -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
+    "$binary" serve --config "$config" --bind "$bind" </dev/null >> "$log_file" 2>&1 &
+  started_pid=$!
+
+  if ! wait_for_termux_service_manager "$url" "${SMALLPHONEAI_SERVICE_MANAGER_READY_ATTEMPTS:-30}"; then
+    kill "$started_pid" >/dev/null 2>&1 || true
+    log "Termux native service-manager 在有限等待时间内未就绪；日志：$log_file"
+    return 1
+  fi
+  if ! termux_service_manager_auth_ready "$config" "$url"; then
+    kill "$started_pid" >/dev/null 2>&1 || true
+    log "新启动的 service-manager 与 canonical config 认证不匹配，已停止该实例。"
+    return 1
+  fi
+
+  log "Termux native service-manager 已启动并通过 canonical config 认证：$url"
+}
+
+ensure_termux_native_service_manager || exit 1
+
 bootstrap="$(find_smallphoneai_bootstrap || true)"
 if [ -n "$bootstrap" ]; then
   log "正在执行 SmallPhoneAI runtime hook：$bootstrap start"
   run_logged env \
+    -u SERVICE_MANAGER_TOKEN \
+    -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
     OPENHOUSE_PI_RUNTIME="${OPENHOUSE_PI_RUNTIME:-termux}" \
     SMALLPHONEAI_PI_RUNTIME="${SMALLPHONEAI_PI_RUNTIME:-termux}" \
     OPENHOUSE_PI_NODE_RUNTIME="${OPENHOUSE_PI_NODE_RUNTIME:-termux}" \
@@ -34,7 +259,13 @@ log "未找到 SmallPhoneAI bootstrap.sh，使用 APK 内置启动钩子启动�
 export SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-pi-agent,pi-web}"
 require_ubuntu
 
-run_ubuntu_logged bash <<'SMALLPHONEAI_START'
+run_ubuntu_logged env \
+  -u SERVICE_MANAGER_TOKEN \
+  -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
+  SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG="$SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG" \
+  SERVICE_MANAGER_URL="$SERVICE_MANAGER_URL" \
+  SMALLPHONEAI_SERVICE_MANAGER_BIND="$SMALLPHONEAI_SERVICE_MANAGER_BIND" \
+  bash <<'SMALLPHONEAI_START'
 set -euo pipefail
 
 log() {

@@ -1,8 +1,8 @@
 payload_dir="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}"
-payload="$payload_dir/aionui-web-2.1.25-linux-arm64.tgz"
-expected_sha256="e9cf83bf0776c8d89765933a56dd7d98329926afae0748ece49b68de7fc447ad"
-expected_size="357095493"
-default_install_dir="/root/.local/share/openhouseai/aionui-web-versions/2.1.25"
+payload="$payload_dir/aionui-web-2.1.32-linux-arm64.tgz"
+expected_sha256="f0e368d6cf8ba9c404343143d8b22193012a85c0e62f969b6820e077d137023a"
+expected_size="419979294"
+default_install_dir="/root/.local/share/openhouseai/aionui-web-versions/2.1.32"
 
 if [ ! -f "$payload" ]; then
   log "未找到 APK 内置 AionUi 离线包：$payload"
@@ -28,10 +28,11 @@ set -euo pipefail
 payload="${AIONUI_PAYLOAD_PATH:?missing AIONUI_PAYLOAD_PATH}"
 expected_sha256="${AIONUI_EXPECTED_SHA256:?missing AIONUI_EXPECTED_SHA256}"
 expected_size="${AIONUI_EXPECTED_SIZE:?missing AIONUI_EXPECTED_SIZE}"
-default_install_dir="/root/.local/share/openhouseai/aionui-web-versions/2.1.25"
+default_install_dir="/root/.local/share/openhouseai/aionui-web-versions/2.1.32"
 install_dir="${AIONUI_INSTALL_DIR:-$default_install_dir}"
 install_dir_explicit="${AIONUI_INSTALL_DIR_EXPLICIT:-0}"
 port="${AIONUI_PORT:-25808}"
+port_template='{{port:web}}'
 data_dir="${AIONUI_DATA_DIR:-/root/.aionui-web}"
 log_dir="${AIONUI_LOG_DIR:-/root/.aionui-web/logs}"
 config_dir="${OPENHOUSEAI_CONFIG_DIR:-/root/.config/openhouseai}"
@@ -39,7 +40,8 @@ pid_file="$config_dir/aionui.pid"
 url_file="$config_dir/aionui-url"
 status_file="$config_dir/aionui-status.json"
 env_file="$config_dir/aionui.env"
-health_url="http://127.0.0.1:$port/"
+preferred_endpoint_url="http://127.0.0.1:$port/"
+health_url="http://127.0.0.1:$port/health"
 auth_status_url="http://127.0.0.1:$port/api/auth/status"
 install_marker="$install_dir/.openhouse-aionui-payload.sha256"
 managed_marker="$install_dir/.openhouse-aionui-managed"
@@ -47,8 +49,9 @@ webview_compat_marker="$install_dir/.openhouse-aionui-webview-compat"
 webview_compat_version="array-copy-methods-v1"
 work_dir="/root/.cache/openhouseai/aionui-install"
 stable_install_link="/root/.local/share/openhouseai/aionui-web"
-version="2.1.25"
+version="2.1.32"
 service_id="aionui-web"
+legacy_service_id="aionui"
 wrapper_path="/usr/local/bin/openhouse-aionui-web-start"
 service_specs_dir="$config_dir/service-manager/services.d"
 components_dir="$config_dir/components.d"
@@ -58,6 +61,8 @@ termux_config_dir="/data/data/com.termux/files/home/.config/openhouseai"
 termux_service_spec_file="$termux_config_dir/service-manager/services.d/$service_id.json"
 termux_component_file="$termux_config_dir/components.d/$service_id.json"
 service_ref="service-manager://services/$service_id"
+service_manager_post_http_code="000"
+service_manager_post_curl_status=0
 
 log() {
   printf '[AionUi] %s\n' "$*"
@@ -70,6 +75,29 @@ warn() {
 fail() {
   printf '[AionUi] ERROR: %s\n' "$*" >&2
   exit 1
+}
+
+openhouse_tmp_parent() {
+  local dir="${TMPDIR:-}"
+  while [ -n "$dir" ] && [ "$dir" != "/" ] && [ "${dir%/}" != "$dir" ]; do
+    dir="${dir%/}"
+  done
+  if [ -z "$dir" ] || [ "$dir" = "/""tmp" ]; then
+    if [ -n "${PREFIX:-}" ]; then
+      dir="$PREFIX/tmp"
+    else
+      dir="${HOME:-.}/.tmp"
+    fi
+  fi
+  mkdir -p "$dir" || fail "无法创建临时目录：$dir"
+  printf '%s\n' "$dir"
+}
+
+openhouse_mktemp_dir() {
+  local template="$1"
+  local parent
+  parent="$(openhouse_tmp_parent)"
+  mktemp -d "$parent/$template"
 }
 
 case "$port" in
@@ -429,6 +457,14 @@ write_curl_auth_config() {
   printf 'header = "Authorization: Bearer %s"\n' "$token" > "$target"
 }
 
+summarize_response_file() {
+  local file="$1"
+  [ -s "$file" ] || return 0
+  tr '\r\n' '  ' < "$file" \
+    | sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//' \
+    | cut -c 1-320
+}
+
 service_manager_auth_ready() {
   local token="$1"
   local tmp_dir
@@ -437,7 +473,7 @@ service_manager_auth_ready() {
 
   [ -n "$token" ] || return 1
   command -v curl >/dev/null 2>&1 || return 1
-  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-aionui-auth.XXXXXX")" || return 1
+  tmp_dir="$(openhouse_mktemp_dir "openhouse-aionui-auth.XXXXXX")" || return 1
   curl_cfg="$tmp_dir/curl.cfg"
   write_curl_auth_config "$curl_cfg" "$token"
   curl -q -fsS --max-time 5 -K "$curl_cfg" "$sm_url/api/v1/services" >/dev/null 2>&1
@@ -452,24 +488,138 @@ service_manager_post() {
   local body_file="${3:-}"
   local tmp_dir
   local curl_cfg
-  local status
+  local response_file
+  local http_code
+  local curl_status=0
+  local summary
 
+  service_manager_post_http_code="000"
+  service_manager_post_curl_status=0
   command -v curl >/dev/null 2>&1 || fail "缺少 curl，无法调用 service-manager API"
-  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-aionui-api.XXXXXX")" || fail "无法创建 service-manager API 临时目录"
+  tmp_dir="$(openhouse_mktemp_dir "openhouse-aionui-api.XXXXXX")" || fail "无法创建 service-manager API 临时目录"
   curl_cfg="$tmp_dir/curl.cfg"
+  response_file="$tmp_dir/response.txt"
   write_curl_auth_config "$curl_cfg" "$token"
   if [ -n "$body_file" ]; then
-    curl -q -fsS --max-time 20 -X POST -K "$curl_cfg" \
+    http_code="$(curl -q -sS --max-time 20 -o "$response_file" -w '%{http_code}' -X POST -K "$curl_cfg" \
       -H 'Content-Type: application/json' \
       --data-binary "@$body_file" \
-      "$sm_url$path" >/dev/null
-    status=$?
+      "$sm_url$path" 2>"$tmp_dir/curl.err")" || curl_status=$?
   else
-    curl -q -fsS --max-time 20 -X POST -K "$curl_cfg" "$sm_url$path" >/dev/null
-    status=$?
+    http_code="$(curl -q -sS --max-time 20 -o "$response_file" -w '%{http_code}' -X POST -K "$curl_cfg" "$sm_url$path" 2>"$tmp_dir/curl.err")" || curl_status=$?
   fi
+  case "$http_code" in
+    ""|*[!0-9]*) http_code="000" ;;
+  esac
+  service_manager_post_http_code="$http_code"
+  service_manager_post_curl_status="$curl_status"
+  summary="$(summarize_response_file "$response_file" || true)"
+  if [ "$curl_status" -eq 0 ] && [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+    log "service-manager POST $path -> HTTP $http_code${summary:+; $summary}"
+    rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+    return 0
+  fi
+  if [ -z "$summary" ] && [ -s "$tmp_dir/curl.err" ]; then
+    summary="$(summarize_response_file "$tmp_dir/curl.err" || true)"
+  fi
+  warn "service-manager POST $path -> HTTP ${http_code:-000}, curl=$curl_status${summary:+; $summary}"
   rm -rf "$tmp_dir" >/dev/null 2>&1 || true
-  return "$status"
+  return 1
+}
+
+service_manager_start_request() {
+  local token="$1"
+  local path="/api/v1/services/$service_id/start"
+
+  if service_manager_post "$token" "$path"; then
+    return 0
+  fi
+
+  case "$service_manager_post_http_code" in
+    4??|5??)
+      warn "service-manager 明确拒绝 AionUi 启动请求：HTTP $service_manager_post_http_code。"
+      return 1
+      ;;
+  esac
+
+  case "$service_manager_post_curl_status" in
+    18|28|52|55|56)
+      warn "AionUi 启动请求的传输结果不确定：HTTP $service_manager_post_http_code, curl=$service_manager_post_curl_status；继续通过 service state、endpoint 与健康检查确认最终结果。"
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+service_manager_put() {
+  local token="$1"
+  local path="$2"
+  local body_file="$3"
+  local tmp_dir
+  local curl_cfg
+  local response_file
+  local http_code
+  local curl_status=0
+  local summary
+
+  command -v curl >/dev/null 2>&1 || fail "缺少 curl，无法调用 service-manager API"
+  tmp_dir="$(openhouse_mktemp_dir "openhouse-aionui-api.XXXXXX")" || fail "无法创建 service-manager API 临时目录"
+  curl_cfg="$tmp_dir/curl.cfg"
+  response_file="$tmp_dir/response.txt"
+  write_curl_auth_config "$curl_cfg" "$token"
+  http_code="$(curl -q -sS --max-time 20 -o "$response_file" -w '%{http_code}' -X PUT -K "$curl_cfg" \
+    -H 'Content-Type: application/json' \
+    --data-binary "@$body_file" \
+    "$sm_url$path" 2>"$tmp_dir/curl.err")" || curl_status=$?
+  case "$http_code" in
+    ""|*[!0-9]*) http_code="000" ;;
+  esac
+  summary="$(summarize_response_file "$response_file" || true)"
+  if [ "$curl_status" -eq 0 ] && [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+    log "service-manager PUT $path -> HTTP $http_code${summary:+; $summary}"
+    rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+    return 0
+  fi
+  if [ -z "$summary" ] && [ -s "$tmp_dir/curl.err" ]; then
+    summary="$(summarize_response_file "$tmp_dir/curl.err" || true)"
+  fi
+  warn "service-manager PUT $path -> HTTP ${http_code:-000}, curl=$curl_status${summary:+; $summary}"
+  rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+  return 1
+}
+
+service_manager_delete() {
+  local token="$1"
+  local path="$2"
+  local tmp_dir
+  local curl_cfg
+  local response_file
+  local http_code
+  local curl_status=0
+  local summary
+
+  command -v curl >/dev/null 2>&1 || fail "缺少 curl，无法调用 service-manager API"
+  tmp_dir="$(openhouse_mktemp_dir "openhouse-aionui-api.XXXXXX")" || fail "无法创建 service-manager API 临时目录"
+  curl_cfg="$tmp_dir/curl.cfg"
+  response_file="$tmp_dir/response.txt"
+  write_curl_auth_config "$curl_cfg" "$token"
+  http_code="$(curl -q -sS --max-time 20 -o "$response_file" -w '%{http_code}' -X DELETE -K "$curl_cfg" "$sm_url$path" 2>"$tmp_dir/curl.err")" || curl_status=$?
+  case "$http_code" in
+    ""|*[!0-9]*) http_code="000" ;;
+  esac
+  summary="$(summarize_response_file "$response_file" || true)"
+  if [ "$curl_status" -eq 0 ] && [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+    log "service-manager DELETE $path -> HTTP $http_code${summary:+; $summary}"
+    rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+    return 0
+  fi
+  if [ -z "$summary" ] && [ -s "$tmp_dir/curl.err" ]; then
+    summary="$(summarize_response_file "$tmp_dir/curl.err" || true)"
+  fi
+  warn "service-manager DELETE $path -> HTTP ${http_code:-000}, curl=$curl_status${summary:+; $summary}"
+  rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+  return 1
 }
 
 service_manager_get() {
@@ -477,16 +627,32 @@ service_manager_get() {
   local path="$2"
   local tmp_dir
   local curl_cfg
-  local status
+  local response_file
+  local http_code
+  local curl_status=0
+  local summary
 
   command -v curl >/dev/null 2>&1 || fail "缺少 curl，无法调用 service-manager API"
-  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-aionui-api.XXXXXX")" || fail "无法创建 service-manager API 临时目录"
+  tmp_dir="$(openhouse_mktemp_dir "openhouse-aionui-api.XXXXXX")" || fail "无法创建 service-manager API 临时目录"
   curl_cfg="$tmp_dir/curl.cfg"
+  response_file="$tmp_dir/response.txt"
   write_curl_auth_config "$curl_cfg" "$token"
-  curl -q -fsS --max-time 10 -K "$curl_cfg" "$sm_url$path"
-  status=$?
+  http_code="$(curl -q -sS --max-time 10 -o "$response_file" -w '%{http_code}' -K "$curl_cfg" "$sm_url$path" 2>"$tmp_dir/curl.err")" || curl_status=$?
+  case "$http_code" in
+    ""|*[!0-9]*) http_code="000" ;;
+  esac
+  if [ "$curl_status" -eq 0 ] && [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+    cat "$response_file"
+    rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+    return 0
+  fi
+  summary="$(summarize_response_file "$response_file" || true)"
+  if [ -z "$summary" ] && [ -s "$tmp_dir/curl.err" ]; then
+    summary="$(summarize_response_file "$tmp_dir/curl.err" || true)"
+  fi
+  warn "service-manager GET $path -> HTTP ${http_code:-000}, curl=$curl_status${summary:+; $summary}"
   rm -rf "$tmp_dir" >/dev/null 2>&1 || true
-  return "$status"
+  return 1
 }
 
 service_manager_service_running() {
@@ -496,6 +662,260 @@ service_manager_service_running() {
   body="$(service_manager_get "$token" "/api/v1/services/$service_id/status" 2>/dev/null || true)"
   [ -n "$body" ] || return 1
   printf '%s' "$body" | grep -Eq '"state"[[:space:]]*:[[:space:]]*"running"'
+}
+
+service_manager_endpoint_record() {
+  local token="$1"
+  local body
+  local tmp_dir
+  local endpoint_file
+
+  body="$(service_manager_get "$token" "/api/v1/services/$service_id/endpoints/web" 2>/dev/null || true)"
+  [ -n "$body" ] || return 1
+
+  tmp_dir="$(openhouse_mktemp_dir "openhouse-aionui-endpoint.XXXXXX")" || return 1
+  endpoint_file="$tmp_dir/endpoint.json"
+  printf '%s' "$body" > "$endpoint_file"
+  if ! python3 - "$endpoint_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    endpoint = json.load(f)
+url = str(endpoint.get("url") or "")
+port = endpoint.get("port")
+status = str(endpoint.get("status") or "")
+if status != "healthy" or not url or not isinstance(port, int):
+    raise SystemExit(1)
+print(f"{url}\t{port}")
+PY
+  then
+    rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+    return 1
+  fi
+  rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+}
+
+aionui_endpoint_healthy() {
+  local endpoint_url="$1"
+  local endpoint_health_url="${endpoint_url%/}/health"
+
+  fetch_url "$endpoint_health_url" >/dev/null 2>&1
+}
+
+service_manager_service_resolves() {
+  local token="$1"
+  service_manager_get "$token" "/api/v1/services/$service_id" >/dev/null 2>&1
+}
+
+service_manager_aionui_records() {
+  local token="$1"
+  local body
+  local tmp_dir
+  local services_file
+
+  body="$(service_manager_get "$token" "/api/v1/services" 2>/dev/null || true)"
+  [ -n "$body" ] || return 1
+
+  tmp_dir="$(openhouse_mktemp_dir "openhouse-aionui-services.XXXXXX")" || return 1
+  services_file="$tmp_dir/services.json"
+  printf '%s' "$body" > "$services_file"
+
+  if command -v python3 >/dev/null 2>&1; then
+    if ! python3 - "$service_id" "$legacy_service_id" "$services_file" <<'PY'
+import json
+import sys
+
+service_id = sys.argv[1]
+legacy_service_id = sys.argv[2]
+path = sys.argv[3]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+if not isinstance(data, list):
+    data = []
+known_ids = {service_id, legacy_service_id}
+for svc in data:
+    if not isinstance(svc, dict):
+        continue
+    sid = str(svc.get("id") or "")
+    spec = svc.get("spec") if isinstance(svc.get("spec"), dict) else {}
+    name = str(spec.get("name") or "")
+    provider = str(spec.get("provider") or "")
+    tags = spec.get("tags") if isinstance(spec.get("tags"), list) else []
+    if sid in known_ids or name in known_ids or any(
+        f"openhouse-component:{candidate}" in tags for candidate in known_ids
+    ):
+        print(f"{sid}\t{name}\t{provider}")
+PY
+    then
+      rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+      return 1
+    fi
+  else
+    warn "缺少 python3，无法枚举并清理旧 aionui-web service 记录。"
+    rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+    return 1
+  fi
+  rm -rf "$tmp_dir" >/dev/null 2>&1 || true
+}
+
+cleanup_aionui_service_records() {
+  local token="$1"
+  local records
+  local sid
+  local name
+  local provider
+  local cleaned=0
+
+  records="$(service_manager_aionui_records "$token")" || return 1
+  [ -n "$records" ] || return 0
+
+  while IFS="$(printf '\t')" read -r sid name provider; do
+    [ -n "$sid" ] || continue
+    if [ "$sid" = "$service_id" ] && [ "$provider" = "proot-distro" ]; then
+      continue
+    fi
+
+    if [ "$sid" = "$service_id" ]; then
+      warn "发现旧 provider 的稳定 $service_id 记录（provider=$provider），删除后由 registry/apply 以 proot-distro 重建。"
+    else
+      warn "发现历史 AionUi service 记录（id=$sid provider=$provider），停止并删除，统一迁移到 $service_id。"
+    fi
+    service_manager_post "$token" "/api/v1/services/$sid/stop" >/dev/null 2>&1 || true
+    service_manager_delete "$token" "/api/v1/services/$sid" || return 1
+    cleaned=$((cleaned + 1))
+  done <<EOF
+$records
+EOF
+
+  if [ "$cleaned" -gt 0 ]; then
+    log "已清理 $cleaned 个旧 $service_id service 记录。"
+  fi
+}
+
+is_legacy_aionui_registry_file() {
+  local file="$1"
+  local kind="$2"
+
+  [ -f "$file" ] || return 1
+  python3 - "$file" "$kind" "$legacy_service_id" <<'PY'
+import json
+import sys
+
+path, kind, legacy_id = sys.argv[1:]
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        document = json.load(f)
+except (OSError, ValueError):
+    raise SystemExit(1)
+if not isinstance(document, dict):
+    raise SystemExit(1)
+if kind == "component":
+    raise SystemExit(0 if str(document.get("id") or "") == legacy_id else 1)
+service = document.get("service") if isinstance(document.get("service"), dict) else document
+service_id = str(document.get("id") or service.get("name") or "")
+name = str(service.get("name") or "")
+tags = service.get("tags") if isinstance(service.get("tags"), list) else []
+managed = (
+    service_id == legacy_id
+    and (
+        name == legacy_id
+        or f"openhouse-component:{legacy_id}" in tags
+        or "openhouseai" in tags
+    )
+)
+raise SystemExit(0 if managed else 1)
+PY
+}
+
+quarantine_legacy_aionui_registry_file() {
+  local file="$1"
+  local kind="$2"
+  local backup_root="$3"
+  local label="$4"
+  local target
+
+  is_legacy_aionui_registry_file "$file" "$kind" || return 0
+  mkdir -p "$backup_root" || fail "无法创建 AionUi registry 迁移备份目录：$backup_root"
+  target="$backup_root/$label.json"
+  if [ -e "$target" ]; then
+    target="$backup_root/$label.$(date +%s).$$.json"
+  fi
+  mv "$file" "$target" || fail "无法隔离历史 AionUi registry 文件：$file"
+  log "已隔离历史 AionUi registry 文件：$file -> $target"
+}
+
+cleanup_legacy_aionui_registry_files() {
+  local ubuntu_backup="$config_dir/registry-migrations/$service_id"
+  local termux_backup="$termux_config_dir/registry-migrations/$service_id"
+
+  quarantine_legacy_aionui_registry_file \
+    "$service_specs_dir/$legacy_service_id.json" service "$ubuntu_backup" ubuntu-service
+  quarantine_legacy_aionui_registry_file \
+    "$components_dir/$legacy_service_id.json" component "$ubuntu_backup" ubuntu-component
+  quarantine_legacy_aionui_registry_file \
+    "$termux_config_dir/service-manager/services.d/$legacy_service_id.json" service "$termux_backup" termux-service
+  quarantine_legacy_aionui_registry_file \
+    "$termux_config_dir/components.d/$legacy_service_id.json" component "$termux_backup" termux-component
+}
+
+wait_for_service_manager_after_reload() {
+  local attempt
+
+  for attempt in $(seq 1 40); do
+    if service_manager_ready; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+reload_service_manager_file_registry() {
+  local token="$1"
+  local script=""
+
+  warn "service-manager registry/apply 不可用；已写入文件 registry，将请求 Termux native 控制面修复加载。"
+  for candidate in \
+    "/data/data/com.termux/files/home/.smallphoneai-bootstrap/apk-assets/maintainer/repair-control-plane-termux-native.sh" \
+    "/data/data/com.termux/files/home/.smallphoneai-bootstrap/maintainer/repair-control-plane-termux-native.sh"; do
+    if [ -f "$candidate" ]; then
+      script="$candidate"
+      break
+    fi
+  done
+
+  if [ -n "$script" ] && command -v openhouse-termux >/dev/null 2>&1; then
+    log "通过 Ubuntu->Termux 桥修复控制中枢以加载文件 registry：$script"
+    openhouse-termux exec -- bash "$script" || return 1
+    wait_for_service_manager_after_reload
+    return $?
+  fi
+
+  if [ -n "$script" ] && command -v oh-termux >/dev/null 2>&1; then
+    log "通过 Ubuntu->Termux 桥修复控制中枢以加载文件 registry：$script"
+    oh-termux exec -- bash "$script" || return 1
+    wait_for_service_manager_after_reload
+    return $?
+  fi
+
+  warn "无法从 Ubuntu 调用 Termux 控制面修复。请在 Termux/App 侧执行：bash ${script:-/data/data/com.termux/files/home/.smallphoneai-bootstrap/apk-assets/maintainer/repair-control-plane-termux-native.sh}"
+  return 1
+}
+
+ensure_stable_service_record_for_legacy_registry() {
+  local token="$1"
+
+  if service_manager_service_resolves "$token"; then
+    service_manager_put "$token" "/api/v1/services/$service_id" "$service_spec_file" \
+      || return 1
+    return 0
+  fi
+
+  reload_service_manager_file_registry "$token" || return 1
+  token="$(resolve_service_manager_token "$service_manager_bin")"
+  service_manager_auth_ready "$token" || return 1
+  service_manager_service_resolves "$token"
 }
 
 dir_has_content() {
@@ -592,7 +1012,7 @@ write_service_spec() {
   install_json="$(json_escape "$install_dir")"
   data_json="$(json_escape "$data_dir")"
   log_json="$(json_escape "$log_dir")"
-  health_json="$(json_escape "$health_url")"
+  health_json="$(json_escape "http://127.0.0.1:$port_template/health")"
   core_dir_json="$(json_escape "$install_dir/bundled-aioncore/linux-arm64")"
   core_bin_json="$(json_escape "$install_dir/bundled-aioncore/linux-arm64/aioncore")"
   wrapper_json="$(json_escape "$wrapper_path")"
@@ -601,12 +1021,12 @@ write_service_spec() {
 {
   "name": "$service_id",
   "description": "AionUi local AI workspace",
-  "provider": "process",
-  "command": ["sh", "-lc", "openhouse-aionui-web-start"],
+  "provider": "proot-distro",
+  "command": ["$wrapper_json"],
   "working_dir": "$install_json",
   "env": {
     "OPENHOUSE_AIONUI_INSTALL_DIR": "$install_json",
-    "AIONUI_PORT": "$port",
+    "AIONUI_PORT": "$port_template",
     "AIONUI_DATA_DIR": "$data_json",
     "AIONUI_LOG_DIR": "$log_json",
     "AIONUI_OPEN_BROWSER": "0",
@@ -614,7 +1034,12 @@ write_service_spec() {
     "AIONCORE_BIN": "$core_bin_json",
     "OPENHOUSE_AIONUI_WRAPPER": "$wrapper_json"
   },
-  "runtime": {},
+  "runtime": {
+    "strategy": "proot-distro",
+    "distro": "ubuntu",
+    "user": "root",
+    "home": "/root"
+  },
   "restart": {
     "mode": "on-failure",
     "max_retries": 3
@@ -625,6 +1050,21 @@ write_service_spec() {
       "url": "$health_json",
       "interval": "5s",
       "timeout": "3s"
+    }
+  ],
+  "ports": [
+    {
+      "name": "web",
+      "host": "127.0.0.1",
+      "preferred": $port,
+      "dynamic": true,
+      "pool": "local-web",
+      "protocol": "tcp",
+      "envVar": "AIONUI_PORT",
+      "endpoint": {
+        "scheme": "http",
+        "path": "/"
+      }
     }
   ],
   "enabled": true,
@@ -639,10 +1079,11 @@ EOF
 }
 
 write_component_manifest() {
+  local entry_url="${1:-$preferred_endpoint_url}"
   local health_json
   local service_ref_json
 
-  health_json="$(json_escape "$health_url")"
+  health_json="$(json_escape "$entry_url")"
   service_ref_json="$(json_escape "$service_ref")"
 
   write_file_from_stdin "$component_file" 0644 <<EOF
@@ -735,25 +1176,38 @@ apply_and_start_service_manager_service() {
   local token="$1"
   local api_dir
   local apply_payload
+  local apply_ok=0
 
-  api_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-aionui-apply.XXXXXX")" || fail "无法创建 registry apply 临时目录"
+  api_dir="$(openhouse_mktemp_dir "openhouse-aionui-apply.XXXXXX")" || fail "无法创建 registry apply 临时目录"
   apply_payload="$api_dir/registry-apply.json"
   write_registry_apply_payload "$apply_payload"
 
+  cleanup_aionui_service_records "$token" \
+    || fail "无法清理旧 $service_id service 记录；拒绝继续以避免制造重复服务。"
+
   log "正在通过 service-manager 应用 AionUi registry。"
-  service_manager_post "$token" "/api/v1/registry/apply" "$apply_payload" \
-    || {
-      rm -rf "$api_dir" >/dev/null 2>&1 || true
-      fail "service-manager registry apply 失败：$sm_url/api/v1/registry/apply"
-    }
+  if service_manager_post "$token" "/api/v1/registry/apply" "$apply_payload"; then
+    apply_ok=1
+  else
+    warn "service-manager registry apply 不兼容或失败，已保留 registry 文件并进入稳定 id 兜底：$sm_url/api/v1/registry/apply"
+  fi
   rm -rf "$api_dir" >/dev/null 2>&1 || true
+
+  if [ "$apply_ok" = "0" ]; then
+    sync_termux_registry_files
+    ensure_stable_service_record_for_legacy_registry "$token" \
+      || fail "service-manager 旧注册兜底失败：无法通过稳定 id 加载 $service_id；请从 Termux/App 修复控制中枢后重试。"
+    token="$(resolve_service_manager_token "$service_manager_bin")"
+    service_manager_auth_ready "$token" \
+      || fail "service-manager token 在控制中枢修复后不可用。"
+  fi
 
   log "正在注册 service-manager 服务：$service_id"
   service_manager_post "$token" "/api/v1/services/$service_id/register" \
     || fail "service-manager 服务注册失败：$service_id"
 
-  log "正在由 service-manager 启动 AionUi：$health_url"
-  service_manager_post "$token" "/api/v1/services/$service_id/start" \
+  log "正在由 service-manager 启动 AionUi：$service_ref"
+  service_manager_start_request "$token" \
     || fail "service-manager 服务启动失败：$service_id"
 }
 
@@ -761,11 +1215,23 @@ wait_for_aionui_service() {
   local token="$1"
   local stable=0
   local attempt
+  local endpoint_record
+  local endpoint_url
+  local endpoint_port
 
   for attempt in $(seq 1 60); do
-    if service_manager_service_running "$token" && is_aionui_service; then
+    endpoint_record="$(service_manager_endpoint_record "$token" || true)"
+    IFS="$(printf '\t')" read -r endpoint_url endpoint_port <<EOF
+$endpoint_record
+EOF
+    if service_manager_service_running "$token" \
+      && [ -n "$endpoint_record" ] \
+      && [ -n "$endpoint_url" ] \
+      && [ -n "$endpoint_port" ] \
+      && aionui_endpoint_healthy "$endpoint_url"; then
       stable=$((stable + 1))
       if [ "$stable" -ge 2 ]; then
+        printf '%s\n' "$endpoint_record"
         return 0
       fi
     else
@@ -780,19 +1246,21 @@ wait_for_aionui_service() {
 write_status() {
   local reachable="$1"
   local pid="${2:-}"
+  local resolved_url="${3:-$preferred_endpoint_url}"
+  local resolved_port="${4:-$port}"
   mkdir -p "$config_dir"
-  printf '%s\n' "$health_url" > "$url_file"
+  printf '%s\n' "$resolved_url" > "$url_file"
   {
-    printf 'AIONUI_URL=%s\n' "$health_url"
-    printf 'AIONUI_PORT=%s\n' "$port"
+    printf 'AIONUI_URL=%s\n' "$resolved_url"
+    printf 'AIONUI_PORT=%s\n' "$resolved_port"
     printf 'AIONUI_INSTALL_DIR=%s\n' "$install_dir"
     printf 'AIONUI_DATA_DIR=%s\n' "$data_dir"
     printf 'AIONUI_LOG_DIR=%s\n' "$log_dir"
   } > "$env_file"
   printf '{"installed":true,"reachable":%s,"url":"%s","port":%s,"pid":"%s","installDir":"%s","version":"%s"}\n' \
     "$reachable" \
-    "$(json_escape "$health_url")" \
-    "$port" \
+    "$(json_escape "$resolved_url")" \
+    "$resolved_port" \
     "$(json_escape "$pid")" \
     "$(json_escape "$install_dir")" \
     "$(json_escape "$version")" > "$status_file"
@@ -913,6 +1381,7 @@ fi
 apply_webview_compat_patch
 
 mkdir -p "$config_dir" "$data_dir" "$log_dir"
+cleanup_legacy_aionui_registry_files
 ensure_command_link_safe
 refresh_stable_install_link
 write_aionui_wrapper
@@ -925,10 +1394,9 @@ aionui_preexisting=0
 if port_accepts_connection; then
   if is_aionui_service; then
     aionui_preexisting=1
-    log "AionUi 本机入口已可访问，将刷新 service-manager 注册：$health_url"
+    log "首选端口已有 AionUi，将确认它由 service-manager 托管：$preferred_endpoint_url"
   else
-    write_status false ""
-    fail "端口 $port 已被其他服务占用，且未识别为 AionUi；请更换 AIONUI_PORT 或停止占用服务后重试。"
+    log "首选端口 $port 已被其他服务占用；将由 service-manager 从动态端口池分配可用端口。"
   fi
 fi
 
@@ -961,11 +1429,22 @@ fi
 
 apply_and_start_service_manager_service "$sm_token"
 
-if ! wait_for_aionui_service "$sm_token"; then
+endpoint_record="$(wait_for_aionui_service "$sm_token")" || {
   write_status false ""
-  fail "AionUi 未在 service-manager 托管状态下就绪：$health_url"
-fi
+  fail "AionUi 未在 service-manager 托管状态下发布健康 endpoint。"
+}
+IFS="$(printf '\t')" read -r resolved_url resolved_port <<EOF
+$endpoint_record
+EOF
+[ -n "$resolved_url" ] || fail "service-manager 返回了空的 AionUi endpoint URL。"
+case "$resolved_port" in
+  ""|*[!0-9]*) fail "service-manager 返回了无效的 AionUi endpoint 端口：$resolved_port" ;;
+esac
 
-write_status true ""
-log "AionUi 已由 service-manager 托管并就绪：$health_url"
+write_component_manifest "$resolved_url"
+service_manager_put "$sm_token" "/api/v1/registry/components/$service_id" "$component_file" \
+  || warn "无法通过 registry API 刷新 AionUi 实际 endpoint；将保留已同步的组件文件。"
+sync_termux_registry_files
+write_status true "" "$resolved_url" "$resolved_port"
+log "AionUi 已由 service-manager 托管并就绪：$resolved_url"
 AIONUI_INSTALL

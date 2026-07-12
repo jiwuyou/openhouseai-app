@@ -19,14 +19,25 @@ public class ServiceManagerServiceResolverTest {
     }
 
     @Test
-    public void resolvesLegacyAionUiWebIdToAionUiService() throws Exception {
+    public void resolvesCanonicalAionUiWebService() throws Exception {
+        ServiceManagerServiceResolver.Resolution resolution = ServiceManagerServiceResolver.resolve(
+            "aionui-web",
+            Arrays.asList("aionui-web"),
+            Arrays.asList(service("aionui-web", "aionui-web", "openhouse-component:aionui-web")));
+
+        Assert.assertEquals(Arrays.asList("aionui-web"), resolution.serviceIds);
+        Assert.assertTrue(resolution.missingServiceIds.isEmpty());
+    }
+
+    @Test
+    public void doesNotRedirectCanonicalAionUiWebIdToLegacyAionUiService() throws Exception {
         ServiceManagerServiceResolver.Resolution resolution = ServiceManagerServiceResolver.resolve(
             "aionui-web",
             Arrays.asList("aionui-web"),
             Arrays.asList(service("aionui", "aionui", "openhouse-component:aionui")));
 
-        Assert.assertEquals(Arrays.asList("aionui"), resolution.serviceIds);
-        Assert.assertTrue(resolution.missingServiceIds.isEmpty());
+        Assert.assertTrue(resolution.serviceIds.isEmpty());
+        Assert.assertEquals(Arrays.asList("aionui-web"), resolution.missingServiceIds);
     }
 
     @Test

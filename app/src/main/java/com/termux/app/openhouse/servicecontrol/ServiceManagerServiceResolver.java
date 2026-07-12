@@ -100,7 +100,6 @@ public final class ServiceManagerServiceResolver {
         LinkedHashMap<String, ServiceManagerService> servicesById,
         LinkedHashMap<String, String> aliases
     ) {
-        addAliasToTargetIfPresent(aliases, servicesById, "aionui-web", "aionui");
         if ("pi-agent".equals(aliasKey(componentId))) {
             addAliasToTargetIfPresent(aliases, servicesById, "pi-agent", "pi-web");
         }

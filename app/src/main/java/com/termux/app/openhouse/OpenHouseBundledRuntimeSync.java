@@ -5,11 +5,13 @@ import android.content.pm.PackageInfo;
 import android.content.res.AssetManager;
 import android.os.Build;
 
+import com.termux.BuildConfig;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -25,6 +27,9 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public final class OpenHouseBundledRuntimeSync {
 
@@ -104,9 +109,10 @@ public final class OpenHouseBundledRuntimeSync {
         Collections.sort(entries, Comparator.comparing(entry -> entry.assetPath));
         String treeHash = buildTreeHash(entries);
         File markerFile = new File(bootstrapDir, SYNC_MARKER_NAME);
-        writeMarker(appContext, markerFile, entries, treeHash);
+        String runtimeReport = buildRuntimeReport(appContext, payloadManifest, payloadDir, entries, treeHash);
+        writeMarker(appContext, markerFile, entries, treeHash, runtimeReport);
 
-        Result result = new Result(bootstrapFile, payloadDir, markerFile, entries.size(), treeHash);
+        Result result = new Result(bootstrapFile, payloadDir, markerFile, entries.size(), treeHash, runtimeReport);
         Logger.logInfo(LOG_TAG, "Synced APK runtime assets: " + result.toLogString());
         return result;
     }
@@ -310,7 +316,11 @@ public final class OpenHouseBundledRuntimeSync {
         return toHex(digest.digest());
     }
 
-    private static void writeMarker(Context context, File markerFile, List<Entry> entries, String treeHash) throws IOException {
+    private static void writeMarker(Context context,
+                                    File markerFile,
+                                    List<Entry> entries,
+                                    String treeHash,
+                                    String runtimeReport) throws IOException {
         File parent = markerFile.getParentFile();
         if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
             throw new IOException("Failed to create runtime sync marker directory: " + parent.getAbsolutePath());
@@ -328,6 +338,12 @@ public final class OpenHouseBundledRuntimeSync {
         builder.append("maintainer_asset_dir=").append(MAINTAINER_ASSET_DIR).append('\n');
         builder.append("asset_count=").append(entries.size()).append('\n');
         builder.append("asset_tree_sha256=").append(treeHash).append('\n');
+        builder.append("runtime_report_begin\n");
+        builder.append(runtimeReport == null ? "" : runtimeReport);
+        if (runtimeReport != null && !runtimeReport.endsWith("\n")) {
+            builder.append('\n');
+        }
+        builder.append("runtime_report_end\n");
         for (Entry entry : entries) {
             builder.append("asset=")
                 .append(entry.assetPath)
@@ -343,6 +359,252 @@ public final class OpenHouseBundledRuntimeSync {
         try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(markerFile, false))) {
             outputStream.write(builder.toString().getBytes(StandardCharsets.UTF_8));
         }
+    }
+
+    private static String buildRuntimeReport(Context context,
+                                             File manifestFile,
+                                             File payloadDir,
+                                             List<Entry> entries,
+                                             String treeHash) {
+        List<String> lines = new ArrayList<>();
+        lines.add("OpenHouse runtime manifest:");
+        lines.add("APK: package=" + context.getPackageName()
+            + " versionName=" + valueOrUnknown(getPackageVersionName(context))
+            + " versionCode=" + getPackageVersionCode(context)
+            + " packageVariant=" + valueOrUnknown(BuildConfig.TERMUX_PACKAGE_VARIANT));
+        lines.add("bootstrap: assetCount=" + entries.size()
+            + " treeSha256=" + shortSha(treeHash));
+        lines.add("payloadManifest: path=" + manifestFile.getAbsolutePath());
+
+        JSONObject manifest = readJsonObject(manifestFile, lines);
+        if (manifest == null) {
+            lines.add("compatibility: failed; payload manifest is unreadable");
+            return joinLines(lines);
+        }
+
+        lines.add("payloadManifest: schema=" + manifest.optInt("schema", 0)
+            + " generatedAt=" + valueOrUnknown(manifest.optString("generatedAt", "")));
+
+        JSONObject serviceManager = findManifestComponent(manifest, "service-manager");
+        JSONObject piAgent = findManifestComponent(manifest, "pi-agent");
+        JSONObject piWeb = findManifestComponent(manifest, "pi-web");
+        JSONObject aionui = findManifestComponent(manifest, "aionui-web");
+        String registryApiVersion = registryApiVersion(manifest, serviceManager);
+
+        lines.add(componentReport("service-manager", serviceManager, payloadDir, entries));
+        lines.add("registryApi: version=" + valueOrUnknown(registryApiVersion));
+        lines.add(componentReport("pi-agent", piAgent, payloadDir, entries));
+        lines.add(componentReport("pi-web", piWeb, payloadDir, entries));
+        lines.add(componentReport("aionui-web", aionui, payloadDir, entries));
+        lines.add("compatibility: " + compatibilityReport(registryApiVersion, serviceManager, piAgent, piWeb, aionui, payloadDir, entries));
+        return joinLines(lines);
+    }
+
+    private static JSONObject readJsonObject(File file, List<String> lines) {
+        try {
+            return new JSONObject(readUtf8File(file));
+        } catch (Exception e) {
+            lines.add("payloadManifest: error=" + valueOrUnknown(e.getMessage()));
+            return null;
+        }
+    }
+
+    private static String readUtf8File(File file) throws IOException {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file))) {
+            byte[] buffer = new byte[8192];
+            int readBytes;
+            while ((readBytes = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, readBytes);
+            }
+        }
+        return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    private static JSONObject findManifestComponent(JSONObject manifest, String id) {
+        JSONArray components = manifest.optJSONArray("components");
+        if (components == null) {
+            components = manifest.optJSONArray("payloads");
+        }
+        if (components == null) {
+            return null;
+        }
+        for (int i = 0; i < components.length(); i++) {
+            JSONObject component = components.optJSONObject(i);
+            if (component != null && id.equals(component.optString("id", ""))) {
+                return component;
+            }
+        }
+        return null;
+    }
+
+    private static String componentReport(String id, JSONObject component, File payloadDir, List<Entry> entries) {
+        if (component == null) {
+            return id + ": missing";
+        }
+        String archive = component.optString("archive", "");
+        String expectedSha256 = component.optString("sha256", "");
+        long expectedSize = component.optLong("size", -1L);
+        Entry entry = findEntryForArchive(entries, archive);
+        String status;
+        if (archive.isEmpty()) {
+            status = "missing-archive-field";
+        } else if (entry == null) {
+            File fallback = new File(payloadDir, archive);
+            status = fallback.isFile() ? "present-unverified" : "missing-archive-file";
+        } else if (entry.size == expectedSize && entry.sha256.equalsIgnoreCase(expectedSha256)) {
+            status = "ok";
+        } else {
+            status = "manifest-mismatch";
+        }
+        return id
+            + ": version=" + componentVersion(component)
+            + " archive=" + valueOrUnknown(archive)
+            + " size=" + expectedSize
+            + " sha256=" + shortSha(expectedSha256)
+            + " status=" + status;
+    }
+
+    private static Entry findEntryForArchive(List<Entry> entries, String archive) {
+        if (archive == null || archive.isEmpty()) {
+            return null;
+        }
+        String suffix = "/" + archive;
+        for (Entry entry : entries) {
+            if (entry.assetPath.equals(PAYLOAD_ASSET_DIR + suffix) || entry.assetPath.endsWith(suffix)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private static String componentVersion(JSONObject component) {
+        if (component == null) {
+            return "unknown";
+        }
+        String version = component.optString("version", "");
+        if (!version.isEmpty()) {
+            return version;
+        }
+        String sourceCommit = component.optString("sourceCommit", "");
+        if (!sourceCommit.isEmpty()) {
+            return "commit:" + shortSha(sourceCommit);
+        }
+        String binarySha256 = component.optString("binarySha256", "");
+        if (!binarySha256.isEmpty()) {
+            return "binary-sha256:" + shortSha(binarySha256);
+        }
+        String sha256 = component.optString("sha256", "");
+        if (!sha256.isEmpty()) {
+            return "archive-sha256:" + shortSha(sha256);
+        }
+        return "unknown";
+    }
+
+    private static String registryApiVersion(JSONObject manifest, JSONObject serviceManager) {
+        String value = firstNonEmpty(
+            manifest.optString("registryApiVersion", ""),
+            manifest.optString("registryApi", ""),
+            nestedString(manifest, "compatibility", "registryApiVersion"),
+            nestedString(manifest, "compatibility", "registryApi"),
+            serviceManager == null ? "" : serviceManager.optString("registryApiVersion", ""),
+            serviceManager == null ? "" : serviceManager.optString("registryApi", "")
+        );
+        return value;
+    }
+
+    private static String compatibilityReport(String registryApiVersion,
+                                              JSONObject serviceManager,
+                                              JSONObject piAgent,
+                                              JSONObject piWeb,
+                                              JSONObject aionui,
+                                              File payloadDir,
+                                              List<Entry> entries) {
+        List<String> problems = new ArrayList<>();
+        addComponentProblem(problems, "service-manager", serviceManager, payloadDir, entries);
+        addComponentProblem(problems, "pi-agent", piAgent, payloadDir, entries);
+        addComponentProblem(problems, "pi-web", piWeb, payloadDir, entries);
+        addComponentProblem(problems, "aionui-web", aionui, payloadDir, entries);
+        if (registryApiVersion == null || registryApiVersion.isEmpty()) {
+            problems.add("registryApiVersion=unknown");
+        }
+        if (problems.isEmpty()) {
+            return "ok";
+        }
+        return "warning; " + joinComma(problems);
+    }
+
+    private static void addComponentProblem(List<String> problems,
+                                            String id,
+                                            JSONObject component,
+                                            File payloadDir,
+                                            List<Entry> entries) {
+        if (component == null) {
+            problems.add(id + "=missing");
+            return;
+        }
+        String archive = component.optString("archive", "");
+        if (archive.isEmpty()) {
+            problems.add(id + ".archive=missing");
+            return;
+        }
+        Entry entry = findEntryForArchive(entries, archive);
+        if (entry == null && !new File(payloadDir, archive).isFile()) {
+            problems.add(id + ".archiveFile=missing");
+            return;
+        }
+        long expectedSize = component.optLong("size", -1L);
+        String expectedSha256 = component.optString("sha256", "");
+        if (entry != null && (entry.size != expectedSize || !entry.sha256.equalsIgnoreCase(expectedSha256))) {
+            problems.add(id + ".manifestDigest=mismatch");
+        }
+    }
+
+    private static String nestedString(JSONObject object, String nestedKey, String valueKey) {
+        JSONObject nested = object.optJSONObject(nestedKey);
+        return nested == null ? "" : nested.optString(valueKey, "");
+    }
+
+    private static String firstNonEmpty(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isEmpty()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private static String valueOrUnknown(String value) {
+        return value == null || value.isEmpty() ? "unknown" : value;
+    }
+
+    private static String shortSha(String value) {
+        if (value == null || value.isEmpty()) {
+            return "unknown";
+        }
+        return value.length() <= 12 ? value : value.substring(0, 12);
+    }
+
+    private static String joinComma(List<String> values) {
+        StringBuilder builder = new StringBuilder();
+        for (String value : values) {
+            if (builder.length() > 0) {
+                builder.append(", ");
+            }
+            builder.append(value);
+        }
+        return builder.toString();
+    }
+
+    private static String joinLines(List<String> lines) {
+        StringBuilder builder = new StringBuilder();
+        for (String line : lines) {
+            builder.append(line == null ? "" : line).append('\n');
+        }
+        return builder.toString();
     }
 
     private static long getPackageVersionCode(Context context) {
@@ -406,13 +668,15 @@ public final class OpenHouseBundledRuntimeSync {
         public final File markerFile;
         public final int assetCount;
         public final String treeHash;
+        public final String runtimeReport;
 
-        Result(File bootstrapFile, File payloadDir, File markerFile, int assetCount, String treeHash) {
+        Result(File bootstrapFile, File payloadDir, File markerFile, int assetCount, String treeHash, String runtimeReport) {
             this.bootstrapFile = bootstrapFile;
             this.payloadDir = payloadDir;
             this.markerFile = markerFile;
             this.assetCount = assetCount;
             this.treeHash = treeHash;
+            this.runtimeReport = runtimeReport == null ? "" : runtimeReport;
         }
 
         public String toLogString() {

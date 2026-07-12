@@ -38,6 +38,10 @@ public final class OpenHouseComponentRegistry {
     private static final String DEFAULT_SMALLPHONE_URL = "http://127.0.0.1:22082/";
     private static final String DEFAULT_AIONUI_URL = "http://127.0.0.1:25808/";
     private static final String DEFAULT_HOME_TARGET = "pi-web";
+    private static final String AIONUI_COMPONENT_ID = "aionui-web";
+    private static final String LEGACY_AIONUI_COMPONENT_ID = "aionui";
+    private static final String AIONUI_SERVICE_REF = "service-manager://services/aionui-web";
+    private static final String LEGACY_AIONUI_SERVICE_REF = "service-manager://services/aionui";
 
     private OpenHouseComponentRegistry() {
     }
@@ -80,6 +84,7 @@ public final class OpenHouseComponentRegistry {
                 try {
                     OpenHouseComponent component = parseComponent(readTextFile(file));
                     if (component != null) {
+                        component = canonicalizeAionUiComponent(component);
                         OpenHouseComponent existing = byId.get(component.id);
                         if (existing != null && existing.protectedEntry) {
                             byId.put(existing.id, mergeProtectedBuiltin(existing, component));
@@ -304,6 +309,63 @@ public final class OpenHouseComponentRegistry {
             controlFields == null ? Collections.emptyList() : controlFields.serviceRefs);
     }
 
+    static OpenHouseComponent canonicalizeAionUiComponent(OpenHouseComponent component) {
+        if (component == null || !LEGACY_AIONUI_COMPONENT_ID.equals(normalizeId(component.id))) {
+            return component;
+        }
+        return createComponent(
+            AIONUI_COMPONENT_ID,
+            component.title,
+            component.subtitle,
+            component.section,
+            component.order,
+            component.iconKey,
+            component.iconLabel,
+            component.desktopOrder,
+            component.desktopPinned,
+            component.desktopHome,
+            component.desktopVisible,
+            component.entryType,
+            component.url,
+            component.nativePage,
+            component.activityClassName,
+            component.controlTitle,
+            component.visible,
+            component.favorite,
+            component.home,
+            component.protectedEntry,
+            component.source,
+            canonicalizeAionUiServiceNames(component.serviceNames),
+            canonicalizeAionUiServiceRefs(component.serviceRefs));
+    }
+
+    private static List<String> canonicalizeAionUiServiceNames(List<String> serviceNames) {
+        List<String> canonical = new ArrayList<>();
+        canonical.add(AIONUI_COMPONENT_ID);
+        if (serviceNames != null) {
+            for (String serviceName : serviceNames) {
+                canonical.add(LEGACY_AIONUI_COMPONENT_ID.equals(normalizeId(serviceName))
+                    ? AIONUI_COMPONENT_ID
+                    : serviceName);
+            }
+        }
+        return canonical;
+    }
+
+    private static List<String> canonicalizeAionUiServiceRefs(List<String> serviceRefs) {
+        List<String> canonical = new ArrayList<>();
+        canonical.add(AIONUI_SERVICE_REF);
+        if (serviceRefs != null) {
+            for (String serviceRef : serviceRefs) {
+                String normalizedRef = serviceRef == null ? "" : serviceRef.trim();
+                canonical.add(LEGACY_AIONUI_SERVICE_REF.equalsIgnoreCase(normalizedRef)
+                    ? AIONUI_SERVICE_REF
+                    : serviceRef);
+            }
+        }
+        return canonical;
+    }
+
     private static List<OpenHouseComponent> createBuiltinComponents() {
         List<OpenHouseComponent> components = new ArrayList<>();
         components.add(createComponent(
@@ -343,7 +405,7 @@ public final class OpenHouseComponentRegistry {
             Collections.singletonList("cloudcli"),
             Collections.singletonList("service-manager://services/cloudcli")));
         components.add(createComponent(
-            "aionui-web",
+            AIONUI_COMPONENT_ID,
             "AionUi",
             "本地 AI 工作台",
             "ai",
@@ -357,8 +419,8 @@ public final class OpenHouseComponentRegistry {
             false,
             true,
             "builtin",
-            Collections.singletonList("aionui-web"),
-            Collections.singletonList("service-manager://services/aionui-web")));
+            Collections.singletonList(AIONUI_COMPONENT_ID),
+            Collections.singletonList(AIONUI_SERVICE_REF)));
         components.add(createComponent(
             "messages",
             "SmallPhone",

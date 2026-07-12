@@ -18,20 +18,66 @@ find_smallphoneai_bootstrap() {
   return 1
 }
 
+if ! declare -F warn >/dev/null 2>&1; then
+  warn() {
+    printf '[SmallPhoneAI] WARN: %s\n' "$*" >&2
+  }
+fi
+
+find_maintainer_script() {
+  local name="$1"
+  local dir
+  for dir in \
+    "${OPENHOUSEAI_MAINTAINER_DIR:-}" \
+    "${SMALLPHONEAI_MAINTAINER_DIR:-}" \
+    "$HOME/.smallphoneai-bootstrap/apk-assets/maintainer" \
+    "$HOME/.smallphoneai-bootstrap/maintainer"; do
+    [ -n "$dir" ] || continue
+    if [ -f "$dir/$name" ]; then
+      printf '%s\n' "$dir/$name"
+      return 0
+    fi
+  done
+  return 1
+}
+
+run_aionui_repair_hook() {
+  local script
+  script="$(find_maintainer_script install-aionui.sh || true)"
+  if [ -z "$script" ]; then
+    warn "未找到 install-aionui.sh，跳过 AionUi service-manager 注册修复。"
+    return 0
+  fi
+  log "正在复用 AionUi 安装/注册逻辑修复 aionui-web：$script"
+  (
+    # shellcheck disable=SC1090
+    . "$script"
+  )
+}
+
 bootstrap="$(find_smallphoneai_bootstrap || true)"
 if [ -n "$bootstrap" ]; then
   log "正在执行 SmallPhoneAI runtime hook：$bootstrap repair"
+  set +e
   run_logged env \
     OPENHOUSE_PI_RUNTIME="${OPENHOUSE_PI_RUNTIME:-termux}" \
     SMALLPHONEAI_PI_RUNTIME="${SMALLPHONEAI_PI_RUNTIME:-termux}" \
     OPENHOUSE_PI_NODE_RUNTIME="${OPENHOUSE_PI_NODE_RUNTIME:-termux}" \
     bash "$bootstrap" repair
-  exit $?
+  bootstrap_status=$?
+  run_aionui_repair_hook
+  aionui_status=$?
+  set -e
+  if [ "$bootstrap_status" -ne 0 ]; then
+    exit "$bootstrap_status"
+  fi
+  exit "$aionui_status"
 fi
 
 log "未找到 SmallPhoneAI bootstrap.sh，使用 APK 内置修复钩子检查、注册并启动已安装组件。"
 require_ubuntu
 
+set +e
 run_ubuntu_logged bash <<'SMALLPHONEAI_REPAIR'
 set -euo pipefail
 
@@ -41,6 +87,32 @@ log() {
 
 warn() {
   printf '[SmallPhoneAI] WARN: %s\n' "$*" >&2
+}
+
+openhouse_tmp_parent() {
+  local dir="${TMPDIR:-}"
+  while [ -n "$dir" ] && [ "$dir" != "/" ] && [ "${dir%/}" != "$dir" ]; do
+    dir="${dir%/}"
+  done
+  if [ -z "$dir" ] || [ "$dir" = "/""tmp" ]; then
+    if [ -n "${PREFIX:-}" ]; then
+      dir="$PREFIX/tmp"
+    else
+      dir="${HOME:-.}/.tmp"
+    fi
+  fi
+  mkdir -p "$dir" || {
+    warn "无法创建临时目录：$dir"
+    return 1
+  }
+  printf '%s\n' "$dir"
+}
+
+openhouse_mktemp_dir() {
+  local template="$1"
+  local parent
+  parent="$(openhouse_tmp_parent)" || return 1
+  mktemp -d "$parent/$template"
 }
 
 read_openhouse_service_manager_endpoint() {
@@ -421,7 +493,7 @@ if [ -z "$sm_token" ]; then
 fi
 sync_openhouse_service_manager_config "$sm_token" "$(service_manager_listen_addr)" || true
 
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/smallphoneai-repair.XXXXXX")"
+work_dir="$(openhouse_mktemp_dir "smallphoneai-repair.XXXXXX")"
 cleanup() {
   rm -rf "$work_dir" >/dev/null 2>&1 || true
 }
@@ -449,3 +521,11 @@ printf 'service-manager=%s\npi-web=%s\nSmallPhone=%s\nSmallPhone Core=%s\ncc-con
   "$(cc_connect_disabled && printf disabled || { probe_url "$cc_url" && printf reachable || printf down; })"
 exit 1
 SMALLPHONEAI_REPAIR
+smallphone_status=$?
+run_aionui_repair_hook
+aionui_status=$?
+set -e
+if [ "$smallphone_status" -ne 0 ]; then
+  exit "$smallphone_status"
+fi
+exit "$aionui_status"

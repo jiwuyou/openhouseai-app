@@ -26,6 +26,32 @@ if ! command -v is_current_ubuntu >/dev/null 2>&1; then
   }
 fi
 
+openhouse_tmp_parent() {
+  local dir="${TMPDIR:-}"
+  while [ -n "$dir" ] && [ "$dir" != "/" ] && [ "${dir%/}" != "$dir" ]; do
+    dir="${dir%/}"
+  done
+  if [ -z "$dir" ] || [ "$dir" = "/""tmp" ]; then
+    if [ -n "${PREFIX:-}" ]; then
+      dir="$PREFIX/tmp"
+    else
+      dir="${HOME:-.}/.tmp"
+    fi
+  fi
+  mkdir -p "$dir" || {
+    warn "无法创建临时目录：$dir"
+    return 1
+  }
+  printf '%s\n' "$dir"
+}
+
+openhouse_mktemp_dir() {
+  local template="$1"
+  local parent
+  parent="$(openhouse_tmp_parent)" || return 1
+  mktemp -d "$parent/$template"
+}
+
 read_openhouse_service_manager_endpoint() {
   local config key value
   for config in \
@@ -123,6 +149,12 @@ termux_service_manager_log() {
   printf '%s\n' "${SMALLPHONEAI_TERMUX_LOG_DIR:-$HOME/.smallphoneai/logs}/service-manager.log"
 }
 
+service_manager_is_current() {
+  local binary="$1"
+  [ -x "$binary" ] || return 1
+  [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.2.1" ]
+}
+
 find_termux_service_manager() {
   local candidate
   for candidate in \
@@ -131,7 +163,7 @@ find_termux_service_manager() {
     "$HOME/.local/bin/service-manager" \
     "$HOME/smallphoneai-repos/service-manager/target/release/service-manager"; do
     [ -n "$candidate" ] && [ -x "$candidate" ] || continue
-    if "$candidate" --version >/dev/null 2>&1; then
+    if service_manager_is_current "$candidate"; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -145,10 +177,12 @@ prepare_termux_service_manager_repo() {
   local archive="$payload_root/service-manager.tar"
   local work_dir payload_dir
 
-  [ -f "$repo/scripts/install.sh" ] && return 0
+  if [ -f "$repo/scripts/install.sh" ] && service_manager_is_current "$repo/service-manager"; then
+    return 0
+  fi
   [ -f "$archive" ] || return 1
 
-  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-sm-payload.XXXXXX")" || return 1
+  work_dir="$(openhouse_mktemp_dir "openhouse-sm-payload.XXXXXX")" || return 1
   if ! tar -xf "$archive" -C "$work_dir"; then
     rm -rf "$work_dir" >/dev/null 2>&1 || true
     return 1
@@ -177,7 +211,7 @@ install_termux_service_manager() {
 
   bind="$(configured_service_manager_bind)"
   config="$(termux_service_manager_config)"
-  mode="${SMALLPHONEAI_TERMUX_SERVICE_MANAGER_INSTALL_MODE:-release}"
+  mode="${SMALLPHONEAI_TERMUX_SERVICE_MANAGER_INSTALL_MODE:-local}"
   log "正在安装 Termux native service-manager：mode=$mode"
   (
     cd "$repo"
@@ -194,13 +228,68 @@ service_manager_ready() {
   curl -fsS --max-time 2 "$sm_url/api/v1/health" >/dev/null 2>&1
 }
 
+termux_service_manager_serve_pids() {
+  local proc comm args
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
+    comm="$(cat "$proc/comm" 2>/dev/null || true)"
+    [ "$comm" = "service-manager" ] || continue
+    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
+    printf '%s\n' "$args" | grep -Fqx -- "serve" || continue
+    printf '%s\n' "${proc##*/}"
+  done
+}
+
+service_manager_instance_matches_openhouse() {
+  local config bind sm_bin expected_exe pid args actual_exe total=0 matched=0
+  config="$(termux_service_manager_config)"
+  bind="$(configured_service_manager_bind)"
+  sm_bin="$(find_termux_service_manager || true)"
+  [ -n "$sm_bin" ] || return 1
+  expected_exe="$(readlink -f "$sm_bin" 2>/dev/null || true)"
+  [ -n "$expected_exe" ] || return 1
+  for pid in $(termux_service_manager_serve_pids); do
+    total=$((total + 1))
+    args="$(tr '\000' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    actual_exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+    if [ "$actual_exe" = "$expected_exe" ] \
+      && printf '%s\n' "$args" | grep -Fqx -- "--config" \
+      && printf '%s\n' "$args" | grep -Fqx -- "$config" \
+      && printf '%s\n' "$args" | grep -Fqx -- "--bind" \
+      && printf '%s\n' "$args" | grep -Fqx -- "$bind"; then
+      matched=$((matched + 1))
+    fi
+  done
+  [ "$total" -eq 1 ] && [ "$matched" -eq 1 ]
+}
+
+stop_termux_service_manager_instances() {
+  local pid pids
+  if command -v sv >/dev/null 2>&1; then
+    sv down service-manager >/dev/null 2>&1 || true
+  fi
+  pids="$(termux_service_manager_serve_pids)"
+  for pid in $pids; do
+    kill "$pid" >/dev/null 2>&1 || true
+  done
+  for _ in $(seq 1 10); do
+    [ -z "$(termux_service_manager_serve_pids)" ] && return 0
+    sleep 1
+  done
+  for pid in $(termux_service_manager_serve_pids); do
+    kill -9 "$pid" >/dev/null 2>&1 || true
+  done
+  sleep 1
+  [ -z "$(termux_service_manager_serve_pids)" ]
+}
+
 service_manager_auth_ready() {
   local token="$1"
   local sm_url work_dir curl_cfg status
   [ -n "$token" ] || return 1
   command -v curl >/dev/null 2>&1 || return 1
   sm_url="$(configured_service_manager_url)"
-  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-sm-auth.XXXXXX")" || return 1
+  work_dir="$(openhouse_mktemp_dir "openhouse-sm-auth.XXXXXX")" || return 1
   curl_cfg="$work_dir/curl.cfg"
   printf 'header = "Authorization: Bearer %s"\n' "$token" > "$curl_cfg"
   curl -q -fsS --max-time 3 -K "$curl_cfg" "$sm_url/api/v1/services" >/dev/null 2>&1
@@ -465,6 +554,84 @@ except Exception as exc:
 PY
 }
 
+openhouse_short_hash() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | awk '{print substr($1, 1, 12)}'
+    return 0
+  fi
+  if command -v cksum >/dev/null 2>&1; then
+    printf '%s' "$1" | cksum | awk '{print $1}'
+    return 0
+  fi
+  printf '%s' "$1" | tr -cd 'A-Za-z0-9' | cut -c 1-12
+}
+
+unique_backup_path() {
+  local backup_dir="$1"
+  local source_dir="$2"
+  local source_file="$3"
+  local hash
+  local base
+  local stem
+  local ext
+  local candidate
+  local suffix=1
+
+  hash="$(openhouse_short_hash "$source_dir")"
+  [ -n "$hash" ] || hash="unknown"
+  base="${hash}-$(basename "$source_file")"
+  stem="$base"
+  ext=""
+  case "$base" in
+    *.*)
+      stem="${base%.*}"
+      ext=".${base##*.}"
+      ;;
+  esac
+  candidate="$backup_dir/$base"
+  while [ -e "$candidate" ]; do
+    candidate="$backup_dir/$stem.$suffix$ext"
+    suffix=$((suffix + 1))
+  done
+  printf '%s\n' "$candidate"
+}
+
+quarantine_empty_service_specs() {
+  local dir
+  local file
+  local backup_dir
+  local dest
+  local moved=0
+
+  for dir in \
+    "$HOME/.config/openhouseai/service-manager/services.d" \
+    "${SMALLPHONEAI_TERMUX_HOME:+$SMALLPHONEAI_TERMUX_HOME/.config/openhouseai/service-manager/services.d}" \
+    "/data/data/com.termux/files/home/.config/openhouseai/service-manager/services.d"; do
+    [ -n "$dir" ] && [ -d "$dir" ] || continue
+    while IFS= read -r file; do
+      [ -n "$file" ] || continue
+      backup_dir="$HOME/openhouse-backups/empty-service-specs-$(date +%Y%m%d-%H%M%S)"
+      mkdir -p "$backup_dir" || {
+        warn "无法创建 0 字节 service spec 备份目录：$backup_dir"
+        continue
+      }
+      dest="$(unique_backup_path "$backup_dir" "$dir" "$file")"
+      if mv "$file" "$dest"; then
+        moved=$((moved + 1))
+        warn "已隔离 0 字节 service spec：source_dir=$dir file=$file -> $dest"
+      else
+        warn "无法隔离 0 字节 service spec：$file"
+      fi
+    done <<EOF
+$(find "$dir" -maxdepth 1 -type f -name '*.json' -size 0 -print 2>/dev/null)
+EOF
+  done
+
+  if [ "$moved" -gt 0 ]; then
+    log "已隔离 $moved 个 0 字节 service spec；后续组件修复会重写 OpenHouse 管理的声明。"
+  fi
+}
+
 repair_termux_native_control_plane() {
   local bind sm_url sm_bin config log_file token
 
@@ -478,7 +645,10 @@ repair_termux_native_control_plane() {
   config="$(termux_service_manager_config)"
   log_file="$(termux_service_manager_log)"
 
-  if ! sm_bin="$(find_termux_service_manager || true)"; then
+  quarantine_empty_service_specs
+
+  sm_bin="$(find_termux_service_manager || true)"
+  if [ -z "$sm_bin" ]; then
     install_termux_service_manager || true
     sm_bin="$(find_termux_service_manager || true)"
   fi
@@ -488,30 +658,31 @@ repair_termux_native_control_plane() {
   fi
 
   mkdir -p "$(dirname "$config")" "$(dirname "$log_file")"
-  if service_manager_ready; then
-    log "Termux native service-manager 已可访问：$sm_url"
-  else
-    log "正在启动 Termux native service-manager：$bind"
-    if command -v setsid >/dev/null 2>&1; then
-      (trap '' HUP; setsid -f "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null) || true
-    else
-      (trap '' HUP; nohup "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null &)
-    fi
-    for _ in $(seq 1 30); do
-      service_manager_ready && break
-      sleep 1
-    done
+  if [ -n "$(termux_service_manager_serve_pids)" ] || service_manager_ready; then
+    log "正在停止旧 service-manager，并统一切换到 OpenHouse 专用 config。"
+    stop_termux_service_manager_instances || return 1
   fi
 
-  if ! service_manager_ready; then
+  log "正在启动 Termux native service-manager：$bind"
+  if command -v setsid >/dev/null 2>&1; then
+    (trap '' HUP; setsid -f "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null) || true
+  else
+    (trap '' HUP; nohup "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null &)
+  fi
+  for _ in $(seq 1 30); do
+    service_manager_ready && service_manager_instance_matches_openhouse && break
+    sleep 1
+  done
+
+  if ! service_manager_ready || ! service_manager_instance_matches_openhouse; then
     log "Termux native service-manager health 检查失败：$sm_url/api/v1/health"
     [ -f "$log_file" ] && tail -n 80 "$log_file" | while IFS= read -r line; do log "$line"; done
     return 1
   fi
 
-  token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
-  [ -n "$token" ] || token="$(read_config_token || true)"
+  token="$(read_config_token || true)"
   [ -n "$token" ] || token="$("$sm_bin" token show --config "$config" 2>/dev/null | tr -d '\r\n' || true)"
+  [ -n "$token" ] || token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
   if ! service_manager_auth_ready "$token"; then
     log "Termux native service-manager 已启动，但 token 未通过 /api/v1/services 验证。"
     return 1
