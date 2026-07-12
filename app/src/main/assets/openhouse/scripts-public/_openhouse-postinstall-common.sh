@@ -31,6 +31,36 @@ oh_retry_mode() {
   esac
 }
 
+oh_unify_optional_environment_pair() {
+  local openhouse_name="$1"
+  local smallphone_name="$2"
+  local label="$3"
+  local openhouse_value="${!openhouse_name:-}"
+  local smallphone_value="${!smallphone_name:-}"
+  local selected=""
+
+  if [ -n "$openhouse_value" ] && [ -n "$smallphone_value" ] \
+    && [ "$openhouse_value" != "$smallphone_value" ]; then
+    oh_die "$label 的 OPENHOUSEAI/SMALLPHONEAI 配置冲突，请只保留一个值或改为相同值。"
+  fi
+  selected="${openhouse_value:-$smallphone_value}"
+  printf -v "$openhouse_name" '%s' "$selected"
+  printf -v "$smallphone_name" '%s' "$selected"
+  export "$openhouse_name" "$smallphone_name"
+}
+
+oh_unify_ubuntu_mirror_environment() {
+  oh_unify_optional_environment_pair OPENHOUSEAI_UBUNTU_ROOTFS_URL SMALLPHONEAI_UBUNTU_ROOTFS_URL "Ubuntu rootfs 单源"
+  oh_unify_optional_environment_pair OPENHOUSEAI_UBUNTU_ROOTFS_URLS SMALLPHONEAI_UBUNTU_ROOTFS_URLS "Ubuntu rootfs 候选列表"
+  oh_unify_optional_environment_pair OPENHOUSEAI_UBUNTU_APT_MIRROR SMALLPHONEAI_UBUNTU_APT_MIRROR "Ubuntu apt 单源"
+  oh_unify_optional_environment_pair OPENHOUSEAI_RESOLVED_UBUNTU_ROOTFS_URL SMALLPHONEAI_RESOLVED_UBUNTU_ROOTFS_URL "已解析 Ubuntu rootfs"
+  oh_unify_optional_environment_pair OPENHOUSEAI_RESOLVED_UBUNTU_APT_MIRROR SMALLPHONEAI_RESOLVED_UBUNTU_APT_MIRROR "已解析 Ubuntu apt"
+  oh_unify_optional_environment_pair OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID "Ubuntu 镜像运行锁 ID"
+  oh_unify_optional_environment_pair OPENHOUSEAI_UBUNTU_MIRROR_LOCK_ROOT SMALLPHONEAI_UBUNTU_MIRROR_LOCK_ROOT "Ubuntu 镜像运行锁目录"
+  oh_unify_optional_environment_pair OPENHOUSEAI_UBUNTU_MIRROR_FIRST_PASS_TIMEOUT_SECONDS SMALLPHONEAI_UBUNTU_MIRROR_FIRST_PASS_TIMEOUT_SECONDS "Ubuntu 镜像第一轮超时"
+  oh_unify_optional_environment_pair OPENHOUSEAI_UBUNTU_MIRROR_TRANSIENT_RETRY_TIMEOUT_SECONDS SMALLPHONEAI_UBUNTU_MIRROR_TRANSIENT_RETRY_TIMEOUT_SECONDS "Ubuntu 镜像第二轮超时"
+}
+
 oh_apply_retry_profile() {
   local mode
   mode="$(oh_retry_mode)"
@@ -39,7 +69,6 @@ oh_apply_retry_profile() {
   if [ "$mode" = "cn" ]; then
     : "${OPENHOUSEAI_TERMUX_MAIN_REPO:=https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main}"
     : "${SMALLPHONEAI_TERMUX_MAIN_REPO:=$OPENHOUSEAI_TERMUX_MAIN_REPO}"
-    : "${SMALLPHONEAI_UBUNTU_APT_MIRROR:=https://mirrors.ustc.edu.cn/ubuntu-ports}"
     : "${SMALLPHONEAI_NODE_DIST_BASE:=https://cdn.npmmirror.com/binaries/node/latest-v24.x}"
     : "${NPM_REGISTRY:=https://registry.npmmirror.com}"
     : "${NPM_CONFIG_REGISTRY:=$NPM_REGISTRY}"
@@ -48,7 +77,7 @@ oh_apply_retry_profile() {
     : "${SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT:=180000}"
     : "${SMALLPHONEAI_NPM_FETCH_TIMEOUT:=900000}"
     export OPENHOUSEAI_TERMUX_MAIN_REPO SMALLPHONEAI_TERMUX_MAIN_REPO
-    export SMALLPHONEAI_UBUNTU_APT_MIRROR SMALLPHONEAI_NODE_DIST_BASE
+    export SMALLPHONEAI_NODE_DIST_BASE
     export NPM_REGISTRY NPM_CONFIG_REGISTRY
     export SMALLPHONEAI_NPM_FETCH_RETRIES SMALLPHONEAI_NPM_FETCH_RETRY_MINTIMEOUT
     export SMALLPHONEAI_NPM_FETCH_RETRY_MAXTIMEOUT SMALLPHONEAI_NPM_FETCH_TIMEOUT
@@ -70,6 +99,7 @@ oh_maybe_rewrite_github_url() {
 }
 
 oh_apply_retry_profile
+oh_unify_ubuntu_mirror_environment
 
 oh_is_current_ubuntu() {
   [ -r /etc/os-release ] && grep -qi '^ID=ubuntu' /etc/os-release
@@ -118,7 +148,24 @@ oh_run_bootstrap() {
     SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
     OPENHOUSEAI_TERMUX_MAIN_REPO="${OPENHOUSEAI_TERMUX_MAIN_REPO:-}" \
     SMALLPHONEAI_TERMUX_MAIN_REPO="${SMALLPHONEAI_TERMUX_MAIN_REPO:-}" \
+    OPENHOUSEAI_UBUNTU_ROOTFS_URL="${OPENHOUSEAI_UBUNTU_ROOTFS_URL:-}" \
+    SMALLPHONEAI_UBUNTU_ROOTFS_URL="${SMALLPHONEAI_UBUNTU_ROOTFS_URL:-}" \
+    OPENHOUSEAI_UBUNTU_ROOTFS_URLS="${OPENHOUSEAI_UBUNTU_ROOTFS_URLS:-}" \
+    SMALLPHONEAI_UBUNTU_ROOTFS_URLS="${SMALLPHONEAI_UBUNTU_ROOTFS_URLS:-}" \
+    OPENHOUSEAI_UBUNTU_APT_MIRROR="${OPENHOUSEAI_UBUNTU_APT_MIRROR:-}" \
     SMALLPHONEAI_UBUNTU_APT_MIRROR="${SMALLPHONEAI_UBUNTU_APT_MIRROR:-}" \
+    OPENHOUSEAI_RESOLVED_UBUNTU_ROOTFS_URL="${OPENHOUSEAI_RESOLVED_UBUNTU_ROOTFS_URL:-}" \
+    SMALLPHONEAI_RESOLVED_UBUNTU_ROOTFS_URL="${SMALLPHONEAI_RESOLVED_UBUNTU_ROOTFS_URL:-}" \
+    OPENHOUSEAI_RESOLVED_UBUNTU_APT_MIRROR="${OPENHOUSEAI_RESOLVED_UBUNTU_APT_MIRROR:-}" \
+    SMALLPHONEAI_RESOLVED_UBUNTU_APT_MIRROR="${SMALLPHONEAI_RESOLVED_UBUNTU_APT_MIRROR:-}" \
+    OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID="${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-}" \
+    SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID="${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-}" \
+    OPENHOUSEAI_UBUNTU_MIRROR_LOCK_ROOT="${OPENHOUSEAI_UBUNTU_MIRROR_LOCK_ROOT:-}" \
+    SMALLPHONEAI_UBUNTU_MIRROR_LOCK_ROOT="${SMALLPHONEAI_UBUNTU_MIRROR_LOCK_ROOT:-}" \
+    OPENHOUSEAI_UBUNTU_MIRROR_FIRST_PASS_TIMEOUT_SECONDS="${OPENHOUSEAI_UBUNTU_MIRROR_FIRST_PASS_TIMEOUT_SECONDS:-}" \
+    SMALLPHONEAI_UBUNTU_MIRROR_FIRST_PASS_TIMEOUT_SECONDS="${SMALLPHONEAI_UBUNTU_MIRROR_FIRST_PASS_TIMEOUT_SECONDS:-}" \
+    OPENHOUSEAI_UBUNTU_MIRROR_TRANSIENT_RETRY_TIMEOUT_SECONDS="${OPENHOUSEAI_UBUNTU_MIRROR_TRANSIENT_RETRY_TIMEOUT_SECONDS:-}" \
+    SMALLPHONEAI_UBUNTU_MIRROR_TRANSIENT_RETRY_TIMEOUT_SECONDS="${SMALLPHONEAI_UBUNTU_MIRROR_TRANSIENT_RETRY_TIMEOUT_SECONDS:-}" \
     SMALLPHONEAI_NODE_DIST_BASE="${SMALLPHONEAI_NODE_DIST_BASE:-}" \
     NPM_REGISTRY="${NPM_REGISTRY:-}" \
     NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-${NPM_REGISTRY:-}}" \

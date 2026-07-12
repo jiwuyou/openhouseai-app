@@ -2,6 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/_ubuntu-mirror-policy.sh" ]; then
+  # shellcheck source=_ubuntu-mirror-policy.sh
+  . "$SCRIPT_DIR/_ubuntu-mirror-policy.sh"
+fi
 if [ -f "$SCRIPT_DIR/_retry-profile.sh" ]; then
   # shellcheck source=_retry-profile.sh
   . "$SCRIPT_DIR/_retry-profile.sh"
@@ -98,6 +102,10 @@ ubuntu_retry_mode() {
 }
 
 ubuntu_rootfs_arch() {
+  if command -v smallphoneai_ubuntu_rootfs_arch >/dev/null 2>&1; then
+    smallphoneai_ubuntu_rootfs_arch "${SMALLPHONEAI_UBUNTU_ROOTFS_ARCH:-$(uname -m)}"
+    return $?
+  fi
   local machine
   machine="${SMALLPHONEAI_UBUNTU_ROOTFS_ARCH:-$(uname -m)}"
   case "$machine" in
@@ -112,39 +120,27 @@ ubuntu_rootfs_arch() {
 }
 
 ubuntu_rootfs_candidates() {
-  local arch mode
+  local arch
   arch="$(ubuntu_rootfs_arch)"
-  mode="$(ubuntu_retry_mode)"
-
-  if [ -n "${SMALLPHONEAI_UBUNTU_ROOTFS_URL:-}" ]; then
-    printf '%s\n' "$SMALLPHONEAI_UBUNTU_ROOTFS_URL"
+  if ! command -v smallphoneai_ubuntu_rootfs_effective_candidates >/dev/null 2>&1; then
+    log "缺少 canonical Ubuntu mirror policy：$SCRIPT_DIR/_ubuntu-mirror-policy.sh"
+    return 1
   fi
-  if [ "$mode" != "cn" ] && [ -n "${SMALLPHONEAI_UBUNTU_ROOTFS_URLS:-}" ]; then
-    printf '%s\n' "$SMALLPHONEAI_UBUNTU_ROOTFS_URLS"
-  fi
+  smallphoneai_ubuntu_rootfs_effective_candidates "$arch"
+}
 
-  if [ "$mode" = "cn" ]; then
-    printf '%s\n' \
-      "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz" \
-      "https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz" \
-      "https://mirrors.nju.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz"
-    if [ -n "${SMALLPHONEAI_UBUNTU_ROOTFS_URLS:-}" ]; then
-      printf '%s\n' "$SMALLPHONEAI_UBUNTU_ROOTFS_URLS"
+ubuntu_rootfs_download_candidates() {
+  local selected="$1" candidate_list="$2" candidate found=0
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    if [ "$candidate" = "$selected" ]; then
+      found=1
     fi
+    [ "$found" -eq 1 ] && printf '%s\n' "$candidate"
+  done <<< "$candidate_list"
+  if [ "$found" -eq 0 ]; then
+    printf '%s\n' "$selected"
   fi
-
-  # Always retain Ubuntu's own cloud-image host as the authoritative source.
-  printf '%s\n' \
-    "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-${arch}-root.tar.xz"
-
-  if [ "$mode" != "cn" ]; then
-    printf '%s\n' \
-      "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz" \
-      "https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz"
-  fi
-
-  printf '%s\n' \
-    "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-${arch}-root.tar.xz"
 }
 
 ubuntu_rootfs_debian_arch() {
@@ -320,7 +316,7 @@ cleanup_failed_ubuntu_install() {
 }
 
 download_and_install_ubuntu_rootfs() (
-  local cache_root tmp_dir archive partial headers listing url normalized_url expected_size min_bytes
+  local cache_root tmp_dir archive partial headers listing url normalized_url expected_size min_bytes selected_url arch candidate_list
 
   if ! command -v curl >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1 || ! command -v tar >/dev/null 2>&1; then
     log "下载 Ubuntu rootfs 需要 curl、xz 和 tar。"
@@ -345,6 +341,25 @@ download_and_install_ubuntu_rootfs() (
     log "Ubuntu rootfs 单源时间预算无效：$UBUNTU_CURL_SOURCE_TIMEOUT"
     return 1
   fi
+
+  if ! command -v smallphoneai_resolve_ubuntu_rootfs_url >/dev/null 2>&1; then
+    log "canonical Ubuntu rootfs resolver 不可用。"
+    return 1
+  fi
+  arch="$(ubuntu_rootfs_arch)"
+  candidate_list="$(smallphoneai_ubuntu_rootfs_effective_candidates "$arch")" || {
+    log "canonical Ubuntu rootfs 候选列表无效。"
+    return 1
+  }
+  selected_url="$(smallphoneai_resolve_ubuntu_rootfs_url "$arch")" || {
+    log "canonical Ubuntu rootfs mirror 解析失败。"
+    return 1
+  }
+  export OPENHOUSEAI_UBUNTU_ROOTFS_URL="$selected_url"
+  export SMALLPHONEAI_UBUNTU_ROOTFS_URL="$selected_url"
+  export OPENHOUSEAI_RESOLVED_UBUNTU_ROOTFS_URL="$selected_url"
+  export SMALLPHONEAI_RESOLVED_UBUNTU_ROOTFS_URL="$selected_url"
+  log "canonical Ubuntu rootfs 首选来源：$selected_url"
 
   while IFS= read -r url; do
     [ -n "$url" ] || continue
@@ -380,7 +395,7 @@ download_and_install_ubuntu_rootfs() (
 
     log "Ubuntu rootfs 安装失败，清理半成品后尝试下一个来源。"
     cleanup_failed_ubuntu_install
-  done < <(ubuntu_rootfs_candidates | awk 'NF && !seen[$0]++')
+  done < <(ubuntu_rootfs_download_candidates "$selected_url" "$candidate_list" | awk 'NF && !seen[$0]++')
 
   cleanup_failed_ubuntu_install
   log "所有 Ubuntu rootfs 来源均下载或安装失败。"

@@ -35,7 +35,7 @@ Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 是后置能力，�
 3. 安装 Termux native Node.js 24 LTS/npm。
 4. 解压校验 APK 内置 service-manager、pi-agent、pi-web runtime，并注册到 Termux native service-manager。
 5. 先启动 `pi-agent` 和 `pi-web`，让用户尽早看到首次配置入口。
-6. 测速并选择 Ubuntu rootfs 镜像源，然后安装 Ubuntu rootfs，同时注入 Ubuntu 侧环境探测和 `openhouse-termux` 桥接 CLI。
+6. 按 canonical 有序故障转移策略解析并锁定 Ubuntu rootfs 来源，然后安装 Ubuntu rootfs，同时注入 Ubuntu 侧环境探测和 `openhouse-termux` 桥接 CLI。
 7. 安装 Ubuntu 基础包，包括 `openssh-client`、`jq`、`git`、`gh`、`ripgrep` 等。
 8. 设置打开 Termux 后默认进入 Ubuntu。
 9. 安装 Ubuntu Node.js 24 LTS。
@@ -49,7 +49,11 @@ Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 是后置能力，�
 
 pi-web 首装使用 APK 内置完整 runtime，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Node.js、Ubuntu 基础包和其它缺失依赖阶段仍可能需要网络。Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 的网络安装放到 pi-agent 后置引导阶段。
 
-Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubuntu cloud image 镜像源，选择当前可达且较快的 rootfs URL，再执行 `proot-distro install -n ubuntu <rootfs-url>`。如需指定源，可在执行前设置 `OPENHOUSEAI_UBUNTU_ROOTFS_URL`。
+Ubuntu rootfs 安装不会使用代理。rootfs 与 Ubuntu apt 共用 canonical 镜像策略，默认按 `TUNA -> NJU -> Ubuntu official -> USTC` 有序故障转移：第一轮每源最多 16 秒，只对 DNS、连接、超时、限流和 5xx 等 transient failure 进入第二轮，每源最多 32 秒。证书错误、明确的永久 HTTP 错误，以及不支持受控 Range 的 rootfs 来源不会在本次运行中重复请求。
+
+解析结果绑定本次安装的 run ID；后续 Ubuntu 阶段复用同一 lock，不会每个阶段重新测速或在同一次运行中随机换源。如需指定源，可设置 `OPENHOUSEAI_UBUNTU_ROOTFS_URL` 或 `SMALLPHONEAI_UBUNTU_ROOTFS_URL`。两个 namespace 同时设置时值必须相同，否则安装会明确失败。
+
+Ubuntu apt 的 OpenHouse canonical 文件固定为 `/etc/apt/sources.list.d/openhouseai-ubuntu.sources`。写入前只备份并清理 Ubuntu base source 的已知文件：`sources.list`、`ubuntu.sources`、旧的 `smallphoneai-ubuntu.sources` 和旧 canonical 文件；第三方 PPA 文件会保留。
 
 ## 路径
 

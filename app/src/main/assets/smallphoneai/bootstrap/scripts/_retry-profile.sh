@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+_smallphoneai_retry_profile_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$_smallphoneai_retry_profile_dir/_ubuntu-mirror-policy.sh" ]; then
+  # shellcheck source=_ubuntu-mirror-policy.sh
+  . "$_smallphoneai_retry_profile_dir/_ubuntu-mirror-policy.sh"
+fi
+
 smallphoneai_retry_mode() {
   local raw
   raw="${OPENHOUSE_RETRY_MODE:-${SMALLPHONEAI_RETRY_MODE:-normal}}"
@@ -31,10 +37,15 @@ EOF
 }
 
 smallphoneai_cn_ubuntu_rootfs_candidates() {
+  if command -v smallphoneai_ubuntu_rootfs_candidates >/dev/null 2>&1; then
+    smallphoneai_ubuntu_rootfs_candidates arm64
+    return 0
+  fi
   cat <<'EOF'
-https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
 https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
 https://mirrors.nju.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
 EOF
 }
 
@@ -47,8 +58,6 @@ smallphoneai_apply_retry_profile() {
   if [ "$mode" = "cn" ]; then
     : "${OPENHOUSEAI_TERMUX_MAIN_REPO:=https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main}"
     : "${SMALLPHONEAI_TERMUX_MAIN_REPO:=$OPENHOUSEAI_TERMUX_MAIN_REPO}"
-    : "${SMALLPHONEAI_UBUNTU_ROOTFS_URLS:=$(smallphoneai_cn_ubuntu_rootfs_candidates)}"
-    : "${SMALLPHONEAI_UBUNTU_APT_MIRROR:=https://mirrors.ustc.edu.cn/ubuntu-ports}"
     : "${SMALLPHONEAI_NODE_DIST_BASE:=https://cdn.npmmirror.com/binaries/node/latest-v24.x}"
     : "${NPM_REGISTRY:=https://registry.npmmirror.com}"
     : "${NPM_CONFIG_REGISTRY:=$NPM_REGISTRY}"
@@ -58,8 +67,6 @@ smallphoneai_apply_retry_profile() {
     : "${SMALLPHONEAI_NPM_FETCH_TIMEOUT:=900000}"
     export OPENHOUSEAI_TERMUX_MAIN_REPO
     export SMALLPHONEAI_TERMUX_MAIN_REPO
-    export SMALLPHONEAI_UBUNTU_ROOTFS_URLS
-    export SMALLPHONEAI_UBUNTU_APT_MIRROR
     export SMALLPHONEAI_NODE_DIST_BASE
     export NPM_REGISTRY
     export NPM_CONFIG_REGISTRY
@@ -76,10 +83,9 @@ smallphoneai_log_retry_profile() {
   local prefix="${1:-[SmallPhoneAI]}"
   smallphoneai_apply_retry_profile
   if smallphoneai_is_cn_retry; then
-    printf '%s 网络重试模式：cn；使用固定国内源策略（Termux=%s, UbuntuApt=%s, Node=%s, npm=%s）。\n' \
+    printf '%s 网络重试模式：cn；使用 canonical 国内优先策略（Termux=%s, Ubuntu=TUNA->NJU->official->USTC, Node=%s, npm=%s）。\n' \
       "$prefix" \
       "${OPENHOUSEAI_TERMUX_MAIN_REPO:-}" \
-      "${SMALLPHONEAI_UBUNTU_APT_MIRROR:-}" \
       "${SMALLPHONEAI_NODE_DIST_BASE:-}" \
       "${NPM_REGISTRY:-}" >&2
   else

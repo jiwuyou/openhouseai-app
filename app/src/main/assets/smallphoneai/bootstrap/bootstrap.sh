@@ -11,9 +11,16 @@ SMALLPHONEAI_DIR="${SMALLPHONEAI_DIR:-$HOME/.smallphoneai-bootstrap}"
 SMALLPHONEAI_RAW_BASE="${SMALLPHONEAI_RAW_BASE:-https://raw.githubusercontent.com/jiwuyou/openhouseai-bootstrap/main}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+if [ -f "$SCRIPT_DIR/scripts/_ubuntu-mirror-policy.sh" ]; then
+  # shellcheck source=scripts/_ubuntu-mirror-policy.sh
+  . "$SCRIPT_DIR/scripts/_ubuntu-mirror-policy.sh"
+fi
 if [ -f "$SCRIPT_DIR/scripts/_retry-profile.sh" ]; then
   # shellcheck source=scripts/_retry-profile.sh
   . "$SCRIPT_DIR/scripts/_retry-profile.sh"
+fi
+if command -v smallphoneai_ubuntu_mirror_run_id >/dev/null 2>&1; then
+  smallphoneai_ubuntu_mirror_run_id >/dev/null
 fi
 
 log() {
@@ -450,7 +457,21 @@ ensure_local_layout() {
   local command="${1:-full}"
   local name
 
+  if [ -d "$SCRIPT_DIR/scripts" ] \
+    && [ -f "$SCRIPT_DIR/scripts/_ubuntu-mirror-policy.sh" ]; then
+    return 0
+  fi
+
   if [ -d "$SCRIPT_DIR/scripts" ]; then
+    mkdir -p "$SCRIPT_DIR/scripts"
+    ensure_termux_curl
+    log "正在补齐 canonical Ubuntu mirror policy"
+    download_file "$SMALLPHONEAI_RAW_BASE/scripts/_ubuntu-mirror-policy.sh" \
+      "$SCRIPT_DIR/scripts/_ubuntu-mirror-policy.sh"
+    chmod +x "$SCRIPT_DIR/scripts/_ubuntu-mirror-policy.sh"
+    # shellcheck source=scripts/_ubuntu-mirror-policy.sh
+    . "$SCRIPT_DIR/scripts/_ubuntu-mirror-policy.sh"
+    smallphoneai_ubuntu_mirror_run_id >/dev/null
     return 0
   fi
 
@@ -459,6 +480,14 @@ ensure_local_layout() {
   ensure_termux_curl
 
   log "正在从 $SMALLPHONEAI_RAW_BASE 下载当前动作需要的阶段脚本"
+  download_file "$SMALLPHONEAI_RAW_BASE/scripts/_ubuntu-mirror-policy.sh" \
+    "$SMALLPHONEAI_DIR/scripts/_ubuntu-mirror-policy.sh"
+  chmod +x "$SMALLPHONEAI_DIR/scripts/_ubuntu-mirror-policy.sh"
+  if ! command -v smallphoneai_resolve_ubuntu_rootfs_url >/dev/null 2>&1; then
+    # shellcheck source=scripts/_ubuntu-mirror-policy.sh
+    . "$SMALLPHONEAI_DIR/scripts/_ubuntu-mirror-policy.sh"
+  fi
+  smallphoneai_ubuntu_mirror_run_id >/dev/null
   download_file "$SMALLPHONEAI_RAW_BASE/scripts/_retry-profile.sh" "$SMALLPHONEAI_DIR/scripts/_retry-profile.sh" || true
   chmod +x "$SMALLPHONEAI_DIR/scripts/_retry-profile.sh" 2>/dev/null || true
   if ! command -v smallphoneai_apply_retry_profile >/dev/null 2>&1 && [ -f "$SMALLPHONEAI_DIR/scripts/_retry-profile.sh" ]; then
@@ -502,6 +531,8 @@ run_stage() {
   SMALLPHONEAI_ROOT="$root" \
     OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
     SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+    OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID="${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-}}" \
+    SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID="${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-}}" \
     SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
     bash "$path" "$@"
   log "完成：$name"
@@ -546,6 +577,8 @@ run_machine_stage() {
   SMALLPHONEAI_ROOT="$root" \
     OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
     SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+    OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID="${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-}}" \
+    SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID="${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-}}" \
     bash "$path" "$@"
 }
 

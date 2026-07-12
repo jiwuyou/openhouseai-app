@@ -1356,7 +1356,6 @@ public final class OpenHouseInstallController {
         if (currentRetryMode == OpenHouseInstallState.RetryMode.CN) {
             environment.put("OPENHOUSEAI_TERMUX_MAIN_REPO", "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main");
             environment.put("SMALLPHONEAI_TERMUX_MAIN_REPO", "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main");
-            environment.put("OPENHOUSEAI_UBUNTU_ROOTFS_URL", "https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz");
             environment.put("OPENHOUSEAI_NODE_DIST_BASE", "https://cdn.npmmirror.com/binaries/node/latest-v24.x");
             environment.put("SMALLPHONEAI_NODE_DIST_BASE", "https://cdn.npmmirror.com/binaries/node/latest-v24.x");
             environment.put("NPM_REGISTRY", "https://registry.npmmirror.com/");

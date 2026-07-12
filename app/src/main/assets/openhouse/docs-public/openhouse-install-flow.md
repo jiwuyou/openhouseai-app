@@ -135,8 +135,8 @@ safe_error_message
 | `install_termux_node` | Termux native `node --version` 和 `npm --version` 成功；Node major >= 24；npm prefix 和 PATH 写入 Termux profile。 | Termux pkg/apt 失败；Node 不可用；版本不符合；PATH 未生效。 | 30min | `logs/install-termux-node.log` | 使用 Termux 默认源和已有缓存重试。 | 切换到固定国内 Termux 源后重试。 |
 | `runtime_components` | service-manager、pi-agent、pi-web payload sha256 通过；Termux native 服务清单使用稳定 ID；必要脚本可执行。 | payload 缺失；sha256 不匹配；解包失败；组件健康检查失败；注册出同名随机服务。 | 20min | `logs/runtime-components.log` | 使用 APK 内置 payload 重试，仅刷新 OpenHouse 管理目录。 | 使用国内 payload fallback，必须 sha256 通过。 |
 | `start_smallphone` | service-manager API 可访问；`pi-agent`、`pi-web` 至少进入 running 或 configured-waiting 状态。 | service-manager 不可达；核心服务端口不可达；启动命令失败。 | 5min | `logs/start-smallphone.log` | 重启 service-manager 并按稳定 ID 拉起核心服务。 | 同常规重试。 |
-| `install_ubuntu` | `proot-distro login ubuntu -- true` 成功；`~/bin/smallphoneai-env-probe` 在 Ubuntu 内可执行；`openhouse-termux` 可安装。 | rootfs 下载失败；解包失败；proot-distro 安装失败；Ubuntu 登录失败。 | 60min | `logs/install-ubuntu.log` | 使用默认测速结果和缓存重试。 | 使用固定国内 Ubuntu cloud image 路径重试，并校验 rootfs。 |
-| `ubuntu_packages` | Ubuntu 内 `apt-get update` 成功；`openssh-client`、`git`、`gh`、`ripgrep`、`jq` 和基础包可执行或 apt 确认安装。 | apt 源不可达；包冲突；磁盘空间不足。 | 30min | `logs/ubuntu-packages.log` | 使用当前 Ubuntu apt 源重试。 | 写入固定国内 Ubuntu apt 源后重试。 |
+| `install_ubuntu` | `proot-distro login ubuntu -- true` 成功；`~/bin/smallphoneai-env-probe` 在 Ubuntu 内可执行；`openhouse-termux` 可安装。 | rootfs 下载失败；解包失败；proot-distro 安装失败；Ubuntu 登录失败。 | 60min | `logs/install-ubuntu.log` | 按 canonical 四源顺序解析并锁定本次运行的 rootfs 来源，复用断点缓存。 | 使用同一有序故障转移策略，只增加网络重试强度，不固定 USTC 或其它单源。 |
+| `ubuntu_packages` | Ubuntu 内 `apt-get update` 成功；Ubuntu base source 只由 `openhouseai-ubuntu.sources` 提供；`openssh-client`、`git`、`gh`、`ripgrep`、`jq` 和基础包可执行或 apt 确认安装。 | apt 源不可达；出现多个 Ubuntu base source；包冲突；磁盘空间不足。 | 30min | `logs/ubuntu-packages.log` | 复用本次运行 lock，原子写入 canonical source 后重试。 | 使用同一 lock 和有序故障转移策略，只增加 transient failure 的重试强度。 |
 | `entry_ubuntu` | Termux 入口文件存在；模式文件存在；从 Termux 能进入 Ubuntu。 | shell rc 文件不可写；proot-distro login 失败。 | 60s | `logs/entry-ubuntu.log` | 重写 OpenHouse 管理的入口片段。 | 同常规重试。 |
 | `install_node` | Ubuntu 内 `node --version` 和 `npm --version` 成功；版本符合固定版本范围；npm global bin 在 PATH。 | Node 下载失败；解包失败；PATH 未生效；版本不符合。 | 30min | `logs/install-node.log` | 使用默认 Node payload 或默认源重试。 | 使用国内固定 Node mirror 或内置 payload 重试，并校验 sha256。 |
 | `sync_official_docs` | `/root/openhouse/docs` 存在；P0 文档可读；`/root/openhouse/scripts/check-ai-tools.sh` 可执行。 | 文档目录缺失；脚本未同步；权限错误。 | 120s | `logs/sync-official-docs.log` | 重新同步 docs/scripts，不删除用户自有文件。 | 同常规重试。 |
@@ -185,7 +185,7 @@ safe_error_message
 - 从失败阶段继续，不从头安装。
 - 复用已下载且校验通过的缓存。
 - 复用已安装且健康检查通过的组件。
-- 不切换源，除非当前脚本已有自动测速逻辑。
+- 复用本次运行已锁定的 Ubuntu 镜像；没有 lock 时按 canonical 顺序执行有界探测，不按单次测速结果随机排序。
 - 不删除用户配置、模型配置、workspace、日志。
 - 对于健康检查失败的阶段，必须重新执行健康检查，不能只看 marker。
 
@@ -201,9 +201,9 @@ safe_error_message
 
 国内网络重试的语义：
 
-- 使用固定、稳定、少选择的国内路径。
-- 不让用户手动选择多个源。
-- 对 Termux apt、Ubuntu apt、Ubuntu rootfs、Node、npm、payload、GitHub 访问采用固定策略。
+- Ubuntu apt 与 rootfs 仍使用 `TUNA -> NJU -> Ubuntu official -> USTC` 的 canonical 有序故障转移，不固定 USTC；CN 只调整 transient failure 的重试参数。
+- 不让用户手动选择多个源；需要 override 时使用受支持的环境变量，并要求 OPENHOUSEAI/SMALLPHONEAI 双 namespace 一致。
+- 对 Termux apt、Ubuntu apt、Ubuntu rootfs、Node、npm、payload、GitHub 访问采用明确且可审计的策略。
 - 所有下载必须校验 sha256 或使用包管理器签名校验。
 - 失败后保留脱敏日志，供下一轮排障。
 

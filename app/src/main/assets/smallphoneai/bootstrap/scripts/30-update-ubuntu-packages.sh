@@ -2,6 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/_ubuntu-mirror-policy.sh" ]; then
+  # shellcheck source=_ubuntu-mirror-policy.sh
+  . "$SCRIPT_DIR/_ubuntu-mirror-policy.sh"
+fi
 if [ -f "$SCRIPT_DIR/_retry-profile.sh" ]; then
   # shellcheck source=_retry-profile.sh
   . "$SCRIPT_DIR/_retry-profile.sh"
@@ -60,14 +64,26 @@ run_ubuntu_logged() {
     run_logged env \
       OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
       SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+      OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID="${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-}}" \
+      SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID="${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-}}" \
       SMALLPHONEAI_UBUNTU_APT_MIRROR="${SMALLPHONEAI_UBUNTU_APT_MIRROR:-}" \
       "$@"
   else
     run_logged proot-distro login ubuntu -- env \
       OPENHOUSE_RETRY_MODE="${OPENHOUSE_RETRY_MODE:-normal}" \
       SMALLPHONEAI_RETRY_MODE="${SMALLPHONEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-normal}}" \
+      OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID="${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-}}" \
+      SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID="${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-}}" \
       SMALLPHONEAI_UBUNTU_APT_MIRROR="${SMALLPHONEAI_UBUNTU_APT_MIRROR:-}" \
       "$@"
+  fi
+}
+
+ubuntu_codename() {
+  if is_current_ubuntu; then
+    bash -lc '. /etc/os-release; printf "%s\n" "${VERSION_CODENAME:-noble}"'
+  else
+    proot-distro login ubuntu -- bash -lc '. /etc/os-release; printf "%s\n" "${VERSION_CODENAME:-noble}"'
   fi
 }
 
@@ -81,66 +97,30 @@ if ! is_current_ubuntu && { ! command -v proot-distro >/dev/null 2>&1 || ! proot
   exit 2
 fi
 
-log "正在 Ubuntu 内测速并选择 apt 镜像源。"
-run_ubuntu_logged bash -lc 'set -euo pipefail
-. /etc/os-release
-codename="${VERSION_CODENAME:-noble}"
-if [ -n "${SMALLPHONEAI_UBUNTU_APT_MIRROR:-}" ]; then
-  selected_mirror="$SMALLPHONEAI_UBUNTU_APT_MIRROR"
-  echo "使用指定 Ubuntu apt 镜像源：$selected_mirror"
-elif [ "${OPENHOUSE_RETRY_MODE:-normal}" = "cn" ]; then
-  selected_mirror="https://mirrors.ustc.edu.cn/ubuntu-ports"
-  echo "国内网络重试：使用固定 Ubuntu apt 镜像源：$selected_mirror"
-else
-  selected_mirror=""
-  best_time=""
-  candidates="
-https://mirrors.ustc.edu.cn/ubuntu-ports
-https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports
-https://mirror.nju.edu.cn/ubuntu-ports
-http://ports.ubuntu.com/ubuntu-ports
-"
-  for mirror in $candidates; do
-    probe_url="$mirror/dists/$codename/InRelease"
-    metrics="$(curl -fsSL --connect-timeout 5 --max-time 12 -o /dev/null -w "%{time_total} %{http_code}" "$probe_url" 2>/dev/null || true)"
-    probe_time="${metrics%% *}"
-    http_code="${metrics##* }"
-    if [ "$http_code" = "200" ] && [ -n "$probe_time" ]; then
-      echo "Ubuntu apt 镜像测速：$mirror ${probe_time}s"
-      if [ -z "$best_time" ] || awk "BEGIN{exit !($probe_time < $best_time)}"; then
-        best_time="$probe_time"
-        selected_mirror="$mirror"
-      fi
-    else
-      echo "Ubuntu apt 镜像不可用：$mirror"
-    fi
-  done
+if ! command -v smallphoneai_resolve_ubuntu_apt_mirror >/dev/null 2>&1; then
+  log "canonical Ubuntu apt mirror resolver 不可用：$SCRIPT_DIR/_ubuntu-mirror-policy.sh"
+  exit 1
 fi
-if [ -z "${selected_mirror:-}" ]; then
-  echo "未找到可用 Ubuntu apt 镜像源，保留系统默认源。"
-  exit 0
-fi
-echo "选择 Ubuntu apt 镜像源：$selected_mirror"
-mkdir -p /etc/apt/sources.list.d /etc/apt/smallphoneai-backup
-if [ -f /etc/apt/sources.list ]; then
-  mv /etc/apt/sources.list /etc/apt/smallphoneai-backup/sources.list.bak 2>/dev/null || true
-fi
-if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-  mv /etc/apt/sources.list.d/ubuntu.sources /etc/apt/smallphoneai-backup/ubuntu.sources.bak 2>/dev/null || true
-fi
-cat > /etc/apt/sources.list.d/smallphoneai-ubuntu.sources <<EOF
-Types: deb
-URIs: $selected_mirror
-Suites: $codename $codename-updates $codename-backports
-Components: main restricted universe multiverse
-Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-
-Types: deb
-URIs: $selected_mirror
-Suites: $codename-security
-Components: main restricted universe multiverse
-Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-EOF'
+codename="$(ubuntu_codename)"
+log "正在按 canonical 顺序解析 Ubuntu apt mirror：TUNA -> NJU -> official -> USTC。"
+selected_mirror="$(smallphoneai_resolve_ubuntu_apt_mirror "$codename")" || {
+  log "未找到可用 Ubuntu apt mirror。"
+  exit 1
+}
+export OPENHOUSEAI_UBUNTU_APT_MIRROR="$selected_mirror"
+export SMALLPHONEAI_UBUNTU_APT_MIRROR="$selected_mirror"
+export OPENHOUSEAI_RESOLVED_UBUNTU_APT_MIRROR="$selected_mirror"
+export SMALLPHONEAI_RESOLVED_UBUNTU_APT_MIRROR="$selected_mirror"
+log "选择 Ubuntu apt mirror：$selected_mirror"
+run_ubuntu_logged env \
+  SMALLPHONEAI_UBUNTU_MIRROR_POLICY_PATH="$SCRIPT_DIR/_ubuntu-mirror-policy.sh" \
+  SMALLPHONEAI_SELECTED_UBUNTU_APT_MIRROR="$selected_mirror" \
+  SMALLPHONEAI_SELECTED_UBUNTU_CODENAME="$codename" \
+  bash -lc 'set -euo pipefail
+. "$SMALLPHONEAI_UBUNTU_MIRROR_POLICY_PATH"
+smallphoneai_write_canonical_ubuntu_sources \
+  "$SMALLPHONEAI_SELECTED_UBUNTU_APT_MIRROR" \
+  "$SMALLPHONEAI_SELECTED_UBUNTU_CODENAME"'
 
 log "正在 Ubuntu 内更新 apt 索引。"
 run_ubuntu_logged bash -lc 'set -euo pipefail

@@ -71,6 +71,8 @@ docs/
 
 pi-web 首装使用 APK 内置完整 runtime 包，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Codex、Claude Code、CloudCLI、Node.js、Ubuntu 基础包和其它缺失依赖仍可能需要网络，所以整个首次安装不能被描述成完全离线流程。
 
+Ubuntu rootfs 与 apt 共用一份 canonical 镜像策略 helper。默认顺序是 `TUNA -> NJU -> Ubuntu official -> USTC`，采用 16 秒第一轮和仅针对 transient failure 的 32 秒第二轮；选中结果绑定本次安装 run ID。CN 模式只增加重试强度，不再由 Java、maintainer 或 postinstall 固定注入 USTC。Ubuntu base source 最终只写入 `/etc/apt/sources.list.d/openhouseai-ubuntu.sources`，同时保留第三方 PPA。
+
 这意味着：
 
 - OpenHouse 的默认入口策略可以设为桌面、某个桌面 App 或上次退出页；旧菜单/首页功能保留为桌面里的“菜单总览”App。

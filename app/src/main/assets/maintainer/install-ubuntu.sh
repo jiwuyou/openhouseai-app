@@ -5,6 +5,74 @@ shell_quote() {
   printf '%q' "$1"
 }
 
+ubuntu_mirror_policy_path() {
+  local candidate
+  for candidate in \
+    "${SMALLPHONEAI_UBUNTU_MIRROR_POLICY:-}" \
+    "${OPENHOUSEAI_UBUNTU_MIRROR_POLICY:-}" \
+    "${SMALLPHONEAI_BOOTSTRAP_DIR:+$SMALLPHONEAI_BOOTSTRAP_DIR/scripts/_ubuntu-mirror-policy.sh}" \
+    "${SMALLPHONEAI_BOOTSTRAP:-}" \
+    "$HOME/.smallphoneai-bootstrap/scripts/_ubuntu-mirror-policy.sh" \
+    "/data/data/com.termux/files/home/.smallphoneai-bootstrap/scripts/_ubuntu-mirror-policy.sh"; do
+    [ -n "$candidate" ] || continue
+    case "$candidate" in
+      */bootstrap.sh) candidate="${candidate%/*}/scripts/_ubuntu-mirror-policy.sh" ;;
+    esac
+    if [ -f "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+load_ubuntu_mirror_policy() {
+  local policy
+  if declare -F smallphoneai_resolve_ubuntu_rootfs_url >/dev/null 2>&1 \
+    && declare -F smallphoneai_resolve_ubuntu_apt_mirror >/dev/null 2>&1; then
+    return 0
+  fi
+  policy="$(ubuntu_mirror_policy_path || true)"
+  if [ -z "$policy" ]; then
+    log "缺少 canonical Ubuntu 镜像策略 helper：_ubuntu-mirror-policy.sh"
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  . "$policy"
+  if ! declare -F smallphoneai_resolve_ubuntu_rootfs_url >/dev/null 2>&1 \
+    || ! declare -F smallphoneai_resolve_ubuntu_apt_mirror >/dev/null 2>&1; then
+    log "canonical Ubuntu 镜像策略 helper API 不完整：$policy"
+    return 1
+  fi
+}
+
+ensure_ubuntu_mirror_run_environment() {
+  local run_id
+  if [ -n "${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-}" ] \
+    && [ -n "${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-}" ] \
+    && [ "$OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID" != "$SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID" ]; then
+    log "Ubuntu 镜像运行锁 ID 的 OPENHOUSEAI/SMALLPHONEAI 配置冲突。"
+    return 64
+  fi
+  if [ -n "${OPENHOUSEAI_UBUNTU_MIRROR_LOCK_ROOT:-}" ] \
+    && [ -n "${SMALLPHONEAI_UBUNTU_MIRROR_LOCK_ROOT:-}" ] \
+    && [ "$OPENHOUSEAI_UBUNTU_MIRROR_LOCK_ROOT" != "$SMALLPHONEAI_UBUNTU_MIRROR_LOCK_ROOT" ]; then
+    log "Ubuntu 镜像运行锁目录的 OPENHOUSEAI/SMALLPHONEAI 配置冲突。"
+    return 64
+  fi
+  run_id="${OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID:-${SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID:-${OPENHOUSE_RUN_STARTED_AT_MS:-}}}"
+  if [ -z "$run_id" ]; then
+    run_id="maintainer-${STAGE_SLUG:-install-ubuntu}-$$-$(date +%s)"
+  fi
+  export OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID="$run_id"
+  export SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID="$run_id"
+  if [ -n "${OPENHOUSEAI_UBUNTU_MIRROR_LOCK_ROOT:-}" ]; then
+    export SMALLPHONEAI_UBUNTU_MIRROR_LOCK_ROOT="$OPENHOUSEAI_UBUNTU_MIRROR_LOCK_ROOT"
+  elif [ -n "${SMALLPHONEAI_UBUNTU_MIRROR_LOCK_ROOT:-}" ]; then
+    export OPENHOUSEAI_UBUNTU_MIRROR_LOCK_ROOT="$SMALLPHONEAI_UBUNTU_MIRROR_LOCK_ROOT"
+  fi
+}
+
 ubuntu_retry_mode() {
   local raw
   raw="${OPENHOUSEAI_RETRY_MODE:-${OPENHOUSE_RETRY_MODE:-${SMALLPHONEAI_RETRY_MODE:-normal}}}"
@@ -27,42 +95,6 @@ ubuntu_rootfs_arch() {
       return 1
       ;;
   esac
-}
-
-ubuntu_rootfs_candidates() {
-  local arch mode
-  arch="$(ubuntu_rootfs_arch)"
-  mode="$(ubuntu_retry_mode)"
-
-  if [ -n "${OPENHOUSEAI_UBUNTU_ROOTFS_URL:-}" ]; then
-    printf '%s\n' "$OPENHOUSEAI_UBUNTU_ROOTFS_URL"
-  fi
-  if [ "$mode" != "cn" ] && [ -n "${OPENHOUSEAI_UBUNTU_ROOTFS_URLS:-}" ]; then
-    printf '%s\n' "$OPENHOUSEAI_UBUNTU_ROOTFS_URLS"
-  fi
-
-  if [ "$mode" = "cn" ]; then
-    printf '%s\n' \
-      "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz" \
-      "https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz" \
-      "https://mirrors.nju.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz"
-    if [ -n "${OPENHOUSEAI_UBUNTU_ROOTFS_URLS:-}" ]; then
-      printf '%s\n' "$OPENHOUSEAI_UBUNTU_ROOTFS_URLS"
-    fi
-  fi
-
-  # Always retain Ubuntu's own cloud-image host as the authoritative source.
-  printf '%s\n' \
-    "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-${arch}-root.tar.xz"
-
-  if [ "$mode" != "cn" ]; then
-    printf '%s\n' \
-      "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz" \
-      "https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz"
-  fi
-
-  printf '%s\n' \
-    "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-${arch}-root.tar.xz"
 }
 
 ubuntu_rootfs_debian_arch() {
@@ -238,7 +270,7 @@ cleanup_failed_ubuntu_install() {
 }
 
 download_and_install_ubuntu_rootfs() (
-  local cache_root tmp_dir archive partial headers listing url normalized_url expected_size min_bytes
+  local cache_root tmp_dir archive partial headers listing selected_url normalized_url expected_size min_bytes
 
   if ! command -v curl >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1 || ! command -v tar >/dev/null 2>&1; then
     log "下载 Ubuntu rootfs 需要 curl、xz 和 tar。"
@@ -264,44 +296,51 @@ download_and_install_ubuntu_rootfs() (
     return 1
   fi
 
-  while IFS= read -r url; do
-    [ -n "$url" ] || continue
-    normalized_url="$(normalize_ubuntu_rootfs_url "$url")"
-    expected_size="$(ubuntu_rootfs_expected_size "$normalized_url" || true)"
-    if [ -n "$expected_size" ] && [ "$expected_size" -lt "$min_bytes" ]; then
-      log "跳过体积异常的 Ubuntu rootfs 源：$normalized_url (${expected_size} bytes)"
-      continue
-    fi
+  load_ubuntu_mirror_policy || return 1
+  ensure_ubuntu_mirror_run_environment || return $?
+  selected_url="$(smallphoneai_resolve_ubuntu_rootfs_url "$(ubuntu_rootfs_arch)")" || {
+    log "canonical Ubuntu 镜像策略未找到可用 rootfs 来源。"
+    return 1
+  }
+  [ -n "$selected_url" ] || {
+    log "canonical Ubuntu 镜像策略返回了空 rootfs URL。"
+    return 1
+  }
+  export OPENHOUSEAI_UBUNTU_ROOTFS_URL="$selected_url"
+  export SMALLPHONEAI_UBUNTU_ROOTFS_URL="$selected_url"
 
-    rm -f "$partial" "$archive" "$headers" "$listing"
-    log "正在完整下载 Ubuntu rootfs：$normalized_url"
-    if ! download_rootfs_with_resume "$normalized_url" "$partial" "$headers"; then
-      log "Ubuntu rootfs 下载失败，尝试下一个来源。"
-      rm -f "$partial"
-      continue
-    fi
-    mv "$partial" "$archive"
+  normalized_url="$(normalize_ubuntu_rootfs_url "$selected_url")"
+  expected_size="$(ubuntu_rootfs_expected_size "$normalized_url" || true)"
+  if [ -n "$expected_size" ] && [ "$expected_size" -lt "$min_bytes" ]; then
+    log "canonical Ubuntu rootfs 来源体积异常：$normalized_url (${expected_size} bytes)"
+    return 1
+  fi
 
-    if ! validate_ubuntu_rootfs_archive "$archive" "$headers" "$listing"; then
-      log "Ubuntu rootfs 校验失败，尝试下一个来源。"
-      rm -f "$archive"
-      continue
-    fi
+  rm -f "$partial" "$archive" "$headers" "$listing"
+  log "正在从本次运行锁定的来源完整下载 Ubuntu rootfs：$normalized_url"
+  if ! download_rootfs_with_resume "$normalized_url" "$partial" "$headers"; then
+    log "本次运行锁定的 Ubuntu rootfs 来源下载失败：$normalized_url"
+    rm -f "$partial"
+    return 1
+  fi
+  mv "$partial" "$archive"
 
-    cleanup_failed_ubuntu_install
-    log "正在从已校验的本地归档安装 Ubuntu：$archive"
-    if run_logged proot-distro install -n ubuntu "$archive" \
-      && proot-distro login ubuntu -- true >/dev/null 2>&1; then
-      log "Ubuntu rootfs 安装并登录验证成功。"
-      return 0
-    fi
-
-    log "Ubuntu rootfs 安装失败，清理半成品后尝试下一个来源。"
-    cleanup_failed_ubuntu_install
-  done < <(ubuntu_rootfs_candidates | awk 'NF && !seen[$0]++')
+  if ! validate_ubuntu_rootfs_archive "$archive" "$headers" "$listing"; then
+    log "本次运行锁定的 Ubuntu rootfs 归档校验失败：$normalized_url"
+    rm -f "$archive"
+    return 1
+  fi
 
   cleanup_failed_ubuntu_install
-  log "所有 Ubuntu rootfs 来源均下载或安装失败。"
+  log "正在从已校验的本地归档安装 Ubuntu：$archive"
+  if run_logged proot-distro install -n ubuntu "$archive" \
+    && proot-distro login ubuntu -- true >/dev/null 2>&1; then
+    log "Ubuntu rootfs 安装并登录验证成功。"
+    return 0
+  fi
+
+  log "Ubuntu rootfs 安装失败，正在清理半成品。"
+  cleanup_failed_ubuntu_install
   return 1
 )
 

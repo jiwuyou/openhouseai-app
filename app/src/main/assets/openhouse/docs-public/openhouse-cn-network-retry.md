@@ -42,7 +42,7 @@
 - Ubuntu rootfs 下载过慢
 - payload 下载失败
 
-用户不需要理解镜像源。点击“国内网络重试”后，系统自动设置国内固定策略并从失败阶段继续。
+用户不需要理解镜像源。点击“国内网络重试”后，系统沿用 canonical 有序故障转移策略、增加 transient failure 的重试强度，并从失败阶段继续。
 
 ## 状态机继承
 
@@ -59,20 +59,20 @@ retrying
 
 国内网络重试只允许从 `failed` 或用户明确要求重新验证的 `succeeded` 阶段进入 `retrying`，再进入 `running`。完成后只能进入 `succeeded` 或 `failed`。不得因为文件残留从 `retrying` 直接进入 `skipped`。
 
-## 固定策略概览
+## 重试策略概览
 
 | 类型 | 国内网络重试策略 | 校验方式 |
 | --- | --- | --- |
 | Termux apt | 固定使用一个主源，失败后按固定 fallback 顺序切换。 | apt 包签名校验。 |
-| Ubuntu rootfs | 固定使用国内 Ubuntu cloud image 镜像。 | sha256 或 manifest 校验，至少记录文件大小和 URL。 |
-| Ubuntu apt | 固定写入国内 Ubuntu apt 源。 | apt 包签名校验。 |
+| Ubuntu rootfs | 与常规模式共用 canonical 四源顺序和运行级 lock；CN 只增加 transient failure 重试。 | 受控 Range、归档完整性、架构和最小体积校验，记录最终 URL。 |
+| Ubuntu apt | 与 rootfs 共用 canonical 策略；只写入 `openhouseai-ubuntu.sources`。 | InRelease 探测和 apt 包签名校验。 |
 | Node | 优先 APK 内置或 OpenHouse payload；否则使用国内 Node mirror。 | sha256 校验。 |
 | npm registry | 固定使用国内 npm registry。 | npm integrity 校验，记录 registry。 |
 | GitHub release | 固定使用 GitHub 镜像或 OpenHouse payload fallback。 | sha256 校验。 |
 | OpenHouse payload | 优先 APK 内置；需要下载时使用固定 payload 源。 | manifest sha256 校验。 |
 | cc-switch 可选二进制 | 使用内置 arm64 二进制或固定下载源。 | sha256 校验。 |
 
-## 推荐固定源
+## Canonical 源顺序
 
 下一轮实现应把源配置集中管理，避免散落在多个脚本里。建议命名为：
 
@@ -81,13 +81,19 @@ OPENHOUSE_NETWORK_MODE=default
 OPENHOUSE_NETWORK_MODE=cn
 ```
 
-国内网络模式建议固定如下：
+Ubuntu rootfs 与 apt 不因 CN/normal 改变顺序，统一为：
+
+```text
+TUNA -> NJU -> Ubuntu official -> USTC
+```
+
+第一轮每源最多 16 秒；只有 transient failure 进入第二轮，每源最多 32 秒。选中结果绑定本次安装 run ID，后续阶段不重新测速。其它资源策略如下：
 
 | 资源 | 首选 | 固定 fallback |
 | --- | --- | --- |
 | Termux apt | `https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main` | `https://mirrors.ustc.edu.cn/termux/apt/termux-main`，`https://mirrors.bfsu.edu.cn/termux/apt/termux-main`，`https://mirrors.nju.edu.cn/termux/apt/termux-main` |
-| Ubuntu rootfs | `https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz` | `https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz` |
-| Ubuntu apt | USTC Ubuntu mirror | TUNA Ubuntu mirror，BFSU Ubuntu mirror |
+| Ubuntu rootfs | TUNA | NJU，Ubuntu official，USTC |
+| Ubuntu apt | TUNA | NJU，Ubuntu official，USTC |
 | npm registry | `https://registry.npmmirror.com` | 官方 registry 只作为最后 fallback，并明确标记为非国内路径 |
 | Node dist | `https://npmmirror.com/mirrors/node` | OpenHouse 自有 payload 源 |
 | GitHub release | OpenHouse 固定镜像或自有 payload 源 | 官方 GitHub 只作为最后 fallback |
@@ -138,13 +144,12 @@ OPENHOUSE_NETWORK_MODE=cn
 
 固定行为：
 
-1. 使用国内 Ubuntu cloud image 固定 URL。
-2. 如已有未完成下载，先校验大小和 sha256。
-3. sha256 不匹配时只删除该临时 rootfs 文件。
-4. 重新下载 rootfs。
-5. 下载完成后校验 sha256。
-6. 执行 `proot-distro install -n ubuntu <rootfs>` 或等价安装。
-7. 安装后执行 `proot-distro login ubuntu -- true`。
+1. 按 canonical 四源顺序执行受控 Range 探测，不下载完整探测文件。
+2. 对 transient failure 执行第二轮有界重试；永久错误不重试。
+3. 锁定本次运行选中的 URL；如已有未完成下载，继续断点续传。
+4. 下载完成后校验归档完整性、架构、最小体积和可用的服务端长度信息。
+5. 执行 `proot-distro install -n ubuntu <rootfs>` 或等价安装。
+6. 安装后执行 `proot-distro login ubuntu -- true`。
 
 成功条件：
 
@@ -174,11 +179,11 @@ OPENHOUSE_NETWORK_MODE=cn
 
 固定行为：
 
-1. 备份 Ubuntu 内原 apt sources。
-2. 写入国内 Ubuntu apt 源。
-3. 执行 apt update。
-4. 安装基础包。
-5. 记录实际使用的源。
+1. 复用本次运行已锁定的 apt mirror；没有 lock 时按 canonical 顺序探测 `InRelease`。
+2. 备份 Ubuntu base source 的已知 managed 文件。
+3. 原子写入 `/etc/apt/sources.list.d/openhouseai-ubuntu.sources`，清理旧 `smallphoneai-ubuntu.sources`，保留第三方 PPA。
+4. 执行 apt update。
+5. 安装基础包并记录实际使用的源。
 
 成功条件：
 
