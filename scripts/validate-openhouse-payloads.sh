@@ -368,11 +368,16 @@ def validate_openhouse_web_payload(entry):
     with tarfile.open(archive_path, "r:*") as tar:
         members = {member.name.lstrip("./"): member for member in tar.getmembers()}
         for required_file in (
+            "README.md",
+            "package.json",
             "src/server.mjs",
             "src/auth.mjs",
+            "src/password-store.mjs",
             "public/index.html",
             "config/openhouse-web.service.json",
             "config/openhouse.component.json",
+            "scripts/build.mjs",
+            "scripts/check.mjs",
             "scripts/install.sh",
             "scripts/check.sh",
             "scripts/register-service.sh",
@@ -380,6 +385,49 @@ def validate_openhouse_web_payload(entry):
             member = members.get(required_file)
             if member is None or member.size <= 0:
                 fail(f"openhouse-web.tar is missing non-empty {required_file}")
+        for required_script in (
+            "scripts/install.sh",
+            "scripts/check.sh",
+            "scripts/register-service.sh",
+        ):
+            member = members.get(required_script)
+            if member is not None and member.mode & 0o111 == 0:
+                fail(f"openhouse-web.tar {required_script} must be executable")
+        package_member = members.get("package.json")
+        if package_member is not None:
+            extracted = tar.extractfile(package_member)
+            if extracted is not None:
+                package_doc = json.loads(extracted.read().decode("utf-8"))
+                if package_doc.get("version") != entry.get("version"):
+                    fail(
+                        "openhouse-web package version mismatch: "
+                        f"manifest={entry.get('version')}, package={package_doc.get('version')}"
+                    )
+        password_member = members.get("src/password-store.mjs")
+        if password_member is not None:
+            extracted = tar.extractfile(password_member)
+            password_source = extracted.read().decode("utf-8") if extracted is not None else ""
+            for fragment in (
+                "DEFAULT_PASSWORD = '123456'",
+                "MIN_PASSWORD_LENGTH = 6",
+                "MAX_PASSWORD_LENGTH = 128",
+                "0o700",
+                "0o600",
+            ):
+                if fragment not in password_source:
+                    fail(f"openhouse-web password store missing contract fragment: {fragment}")
+        server_member = members.get("src/server.mjs")
+        if server_member is not None:
+            extracted = tar.extractfile(server_member)
+            server_source = extracted.read().decode("utf-8") if extracted is not None else ""
+            for fragment in (
+                "/api/v1/session/password",
+                "/api/v1/password",
+                "auth.revokeSessions()",
+                "auth.issueSession()",
+            ):
+                if fragment not in server_source:
+                    fail(f"openhouse-web server missing password auth contract fragment: {fragment}")
         service_member = members.get("config/openhouse-web.service.json")
         if service_member is not None:
             extracted = tar.extractfile(service_member)

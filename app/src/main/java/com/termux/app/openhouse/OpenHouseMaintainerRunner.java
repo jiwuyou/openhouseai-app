@@ -164,6 +164,7 @@ public final class OpenHouseMaintainerRunner {
         STOP_CLAUDE_CODE_UI("stop_claude_code_ui", "停止 ClaudeCodeUI / CloudCLI", "stop-claude-code-ui.sh", 30),
         RESTART_CLAUDE_CODE_UI("restart_claude_code_ui", "重启 ClaudeCodeUI / CloudCLI", "restart-claude-code-ui.sh", 75),
         START_SMALLPHONE("start_smallphone", "启动 SmallPhoneAI 运行栈", "start-smallphone.sh", 150),
+        START_CONTROL_PLANE("start_control_plane", "启动运行中枢", "start-control-plane-termux-native.sh", 150),
         REPAIR_CONTROL_PLANE("repair_control_plane", "修复控制中枢", "repair-control-plane.sh", 150),
         REPAIR_SMALLPHONE("repair_smallphone", "修复 SmallPhoneAI 运行栈", "repair-smallphone.sh", 600),
         PI_WEB_RESCUE("pi_web_rescue", "AI 救援 pi-web", "pi-web-rescue.sh", 600),

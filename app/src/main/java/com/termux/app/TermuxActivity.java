@@ -51,7 +51,6 @@ import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.MaintenanceCenterActivity;
 import com.termux.app.activities.OpenHouseAgreementActivity;
 import com.termux.app.activities.OpenHouseHomeActivity;
-import com.termux.app.activities.OpenHouseWebHostActivity;
 import com.termux.app.activities.OpenHouseOnboardingActivity;
 import com.termux.app.activities.SettingsActivity;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
@@ -876,7 +875,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         }
 
         if (isOpenHouseFirstInstallGuideComplete()) {
-            ActivityUtils.startActivity(this, new Intent(this, OpenHouseWebHostActivity.class));
+            ActivityUtils.startActivity(this, new Intent(this, OpenHouseHomeActivity.class));
         } else {
             openOpenHouseInstallGuide();
         }

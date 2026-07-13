@@ -832,7 +832,7 @@ public final class ServiceManagerClient {
         } else if (e instanceof SocketTimeoutException) {
             message = fallbackMessage + "：控制中枢请求超时。"
                 + "\n请确认 service-manager 以 Termux native 方式运行；Ubuntu/proot 只应作为被管理环境。"
-                + "\n若端口已连接但无响应，请在运行控制中执行“修复控制中枢”。";
+                + "\n若端口已连接但无响应，请在运行控制中执行“启动运行中枢”。";
         } else if (e instanceof IOException) {
             message = fallbackMessage + "：控制中枢不可用或网络请求失败。"
                 + "\n请确认 Termux native service-manager 已安装并监听 " + DEFAULT_BASE_URL + "。"

@@ -81,7 +81,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private TextView statusView;
     private TextView controlPlaneStatusView;
     private Button returnMenuButton;
-    private Button repairControlPlaneButton;
+    private Button startControlPlaneButton;
     private Button maintenanceButton;
     private GuidedTutorialOverlay ccCodexTutorialOverlay;
     private boolean allMode;
@@ -184,13 +184,14 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         returnMenuButton = actionButton("返回菜单", v -> returnToOpenHouseMenu());
         header.addView(returnMenuButton, topMarginParams(10));
 
-        if (!componentUrl.isEmpty()) {
-            header.addView(actionButton("浏览器打开", v -> openBrowserUrl(componentUrl)), topMarginParams(10));
+        if (isOpenHouseWebService(componentId) || !componentUrl.isEmpty()) {
+            header.addView(actionButton(openActionLabel(componentId),
+                v -> openServiceEntry(componentId, componentUrl)), topMarginParams(10));
         }
 
-        repairControlPlaneButton = actionButton("修复控制中枢", v -> runControlPlaneRepair());
-        repairControlPlaneButton.setVisibility(View.GONE);
-        header.addView(repairControlPlaneButton, topMarginParams(10));
+        startControlPlaneButton = actionButton("启动运行中枢", v -> runControlPlaneStart());
+        startControlPlaneButton.setVisibility(View.GONE);
+        header.addView(startControlPlaneButton, topMarginParams(10));
 
         maintenanceButton = actionButton("打开维护与修复", v -> openMaintenanceCenter());
         maintenanceButton.setVisibility(View.GONE);
@@ -278,7 +279,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             } catch (Exception e) {
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to list services", e);
                 runOnUiThread(() -> showServiceManagerError(
-                    "控制中枢异常：无法读取 service-manager 服务列表。\n影响：运行控制无法统一查看、启动或关闭服务。\n推荐动作：请点击“修复控制中枢”。\n"
+                    "控制中枢异常：无法读取 service-manager 服务列表。\n影响：运行控制无法统一查看、启动或关闭服务。\n推荐动作：请点击“启动运行中枢”。\n"
                         + safeErrorMessage(e)));
             }
         });
@@ -309,7 +310,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                                 ? "这个组件注册的服务当前不可控。"
                                 : "这个组件没有声明可控制服务，也未在当前服务列表中匹配到同名服务。")
                             + formatMissingServices(resolution.missingServiceIds)
-                            + "\n可以打开“全部服务控制”查看当前可用服务，或点击“修复控制中枢”。");
+                            + "\n可以打开“全部服务控制”查看当前可用服务，或点击“启动运行中枢”。");
                         showMaintenanceFallback();
                         return;
                     }
@@ -410,7 +411,8 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         logView.setVisibility(View.GONE);
         cardView.addView(logView, topMarginParams(10));
 
-        Button openButton = actionButton("浏览器打开", v -> openBrowserUrl(currentServiceUrl(snapshot.id)));
+        Button openButton = actionButton(openActionLabel(snapshot.id),
+            v -> openServiceEntry(snapshot.id, currentServiceUrl(snapshot.id)));
         Button tutorialActionButton = actionButton("教学操作：读取状态中", v -> refreshServiceStatus(snapshot.id));
         tutorialActionButton.setVisibility(isCcCodexTutorialService(snapshot.id) ? View.VISIBLE : View.GONE);
         if (tutorialActionButton.getVisibility() == View.VISIBLE) {
@@ -478,7 +480,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                 setBusy(false);
                 if (!firstError.isEmpty()) {
                     setStatus("部分状态读取失败。\n" + firstError
-                        + "\n如果控制中枢异常，请点击“修复控制中枢”。");
+                        + "\n如果控制中枢异常，请点击“启动运行中枢”。");
                     showMaintenanceFallback();
                 } else {
                     setStatus("状态已刷新。");
@@ -759,7 +761,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         }
         card.titleView.setText(snapshot.displayName);
         card.url = firstNonBlank(snapshot.url, card.url);
-        updateOpenButton(card.openButton, card.url);
+        updateOpenButton(card.openButton, card.serviceId, card.url);
         updateTutorialActionButton(card, snapshot);
         String pid = snapshot.pid > 0 ? String.valueOf(snapshot.pid) : "-";
         card.detailView.setText(
@@ -789,14 +791,14 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private void showServiceManagerError(String message) {
         setBusy(false);
         setStatus(message);
-        setControlPlaneStatus("控制中枢：异常或无法连接。请点击“修复控制中枢”。");
+        setControlPlaneStatus("控制中枢：异常或无法连接。请点击“启动运行中枢”。");
         showMaintenanceFallback();
         maybeStartCcCodexControlTutorial();
     }
 
     private void showMaintenanceFallback() {
-        if (repairControlPlaneButton != null) {
-            repairControlPlaneButton.setVisibility(View.VISIBLE);
+        if (startControlPlaneButton != null) {
+            startControlPlaneButton.setVisibility(View.VISIBLE);
         }
         if (maintenanceButton != null) {
             maintenanceButton.setVisibility(View.VISIBLE);
@@ -804,8 +806,8 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     }
 
     private void hideMaintenanceFallback() {
-        if (repairControlPlaneButton != null) {
-            repairControlPlaneButton.setVisibility(View.GONE);
+        if (startControlPlaneButton != null) {
+            startControlPlaneButton.setVisibility(View.GONE);
         }
         if (maintenanceButton != null) {
             maintenanceButton.setVisibility(View.GONE);
@@ -815,6 +817,22 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private void openMaintenanceCenter() {
         Toast.makeText(this, "打开维护与修复", Toast.LENGTH_SHORT).show();
         startActivity(new Intent(this, MaintenanceCenterActivity.class));
+    }
+
+    private void openServiceEntry(String serviceId, String url) {
+        if (isOpenHouseWebService(serviceId)) {
+            startActivity(new Intent(this, OpenHouseWebHostActivity.class));
+            return;
+        }
+        openBrowserUrl(url);
+    }
+
+    private static String openActionLabel(String serviceId) {
+        return isOpenHouseWebService(serviceId) ? "打开 OpenHouse Web" : "浏览器打开";
+    }
+
+    private static boolean isOpenHouseWebService(String serviceId) {
+        return "openhouse-web".equals(ServiceManagerClient.sanitizeServiceId(serviceId));
     }
 
     private void openBrowserUrl(String url) {
@@ -912,7 +930,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             return;
         }
         setControlPlaneStatus(report.userActionRequired
-            ? "控制中枢：连续多次不可达，请点击“修复控制中枢”或“恢复默认核心服务”。"
+            ? "控制中枢：连续多次不可达，请点击“启动运行中枢”或“恢复默认核心服务”。"
             : "控制中枢：暂不可达，前台保活会按节流策略继续尝试。");
         showMaintenanceFallback();
         if (userVisible || report.userActionRequired) {
@@ -987,23 +1005,23 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         }
     }
 
-    private void runControlPlaneRepair() {
+    private void runControlPlaneStart() {
         setBusy(true);
-        setControlPlaneStatus("控制中枢：修复中...");
-        setStatus("正在修复控制中枢。\n会检查 service-manager，恢复控制配置，重新读取服务状态。\n不会删除项目文件、会话记录，也不会执行全量安装。");
+        setControlPlaneStatus("控制中枢：启动中...");
+        setStatus("正在启动运行中枢。\n会使用固定的 Termux native 启动入口拉起 service-manager，再重新读取服务状态。\n不会启动默认业务服务，也不会执行全量安装。");
         backgroundExecutor.execute(() -> {
             OpenHouseMaintainerRunner.Result result = new OpenHouseMaintainerRunner(this)
-                .run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0);
+                .run(OpenHouseMaintainerRunner.Action.START_CONTROL_PLANE, 0);
             runOnUiThread(() -> {
                 setBusy(false);
                 if (result.isSuccess()) {
-                    setControlPlaneStatus("控制中枢：修复完成，正在刷新服务状态。");
-                    setStatus("控制中枢修复完成。\n下一步：正在重新读取服务状态；回到服务页面后请刷新确认。"
+                    setControlPlaneStatus("控制中枢：启动完成，正在刷新服务状态。");
+                    setStatus("运行中枢启动完成。\n下一步：正在重新读取服务状态；回到服务页面后请刷新确认。"
                         + formatMaintainerOutput(result.output));
                     hideMaintenanceFallback();
                     loadInitialServices();
                 } else {
-                    showServiceManagerError("控制中枢修复失败。\n影响：运行控制可能无法启动、关闭或检查服务。\n下一步：可以打开维护与修复查看详细日志。\n退出码 " + result.exitCode
+                    showServiceManagerError("运行中枢启动失败。\n影响：运行控制可能无法启动、关闭或检查服务。\n下一步：可以打开维护与修复查看详细日志。\n退出码 " + result.exitCode
                         + formatMaintainerOutput(result.output));
                 }
             });
@@ -1271,10 +1289,10 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
 
     private String formatIgnoredServices(List<String> missingServiceIds) {
         if (missingServiceIds == null || missingServiceIds.isEmpty()) {
-            return "\n如果启动、关闭或状态刷新失败，请点击“修复控制中枢”。";
+            return "\n如果启动、关闭或状态刷新失败，请点击“启动运行中枢”。";
         }
         return "\n已忽略当前未注册的服务：" + joinValues(missingServiceIds)
-            + "\n如果需要这些服务，请点击“修复控制中枢”。";
+            + "\n如果需要这些服务，请点击“启动运行中枢”。";
     }
 
     private String formatMissingServices(List<String> missingServiceIds) {
@@ -1404,14 +1422,14 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         parent.addView(button, params);
     }
 
-    private void updateOpenButton(Button button, String url) {
+    private void updateOpenButton(Button button, String serviceId, String url) {
         if (button == null) {
             return;
         }
-        boolean hasUrl = !normalizeOpenUrl(url).isEmpty();
-        button.setTag(hasUrl ? null : LOCKED_DISABLED_BUTTON_TAG);
-        button.setEnabled(hasUrl);
-        button.setAlpha(hasUrl ? 1.0f : 0.72f);
+        boolean canOpen = isOpenHouseWebService(serviceId) || !normalizeOpenUrl(url).isEmpty();
+        button.setTag(canOpen ? null : LOCKED_DISABLED_BUTTON_TAG);
+        button.setEnabled(canOpen);
+        button.setAlpha(canOpen ? 1.0f : 0.72f);
     }
 
     private String currentServiceUrl(String serviceId) {

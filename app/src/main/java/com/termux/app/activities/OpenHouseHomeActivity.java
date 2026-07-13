@@ -4989,7 +4989,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 Toast.LENGTH_SHORT).show();
         });
         panel.addView(keepAliveToggle);
-        addBody(panel, "默认开启。关闭后，App 在前台也不会自动拉起 service-manager；运行控制里的“恢复默认核心服务”和“修复控制中枢”仍可手动使用。");
+        addBody(panel, "默认开启。关闭后，App 在前台也不会自动拉起 service-manager；运行控制里的“恢复默认核心服务”和“启动运行中枢”仍可手动使用。");
         CheckBox hintToggle = checkbox("在终端显示半透明小字提示", TermuxActivity.isOpenHouseTerminalHintVisible(this));
         hintToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             TermuxActivity.setOpenHouseTerminalHintVisible(this, isChecked);
