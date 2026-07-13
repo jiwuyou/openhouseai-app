@@ -4,6 +4,8 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
+import com.termux.app.openhouse.release.OpenHousePostUpdateSync;
+import com.termux.app.openhouse.resources.OpenHouseBundledResourceDelivery;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
@@ -114,6 +116,7 @@ public final class OpenHouseInstallController {
     private volatile OpenHouseInstallState.RetryMode currentRetryMode = OpenHouseInstallState.RetryMode.GENERAL;
     private volatile OpenHouseInstallState.TaskScope currentTaskScope = OpenHouseInstallState.TaskScope.FULL;
     private volatile int currentAttempt = 0;
+    private volatile int preparingAttempt = 0;
 
     public interface Listener {
         void onInstallStateChanged(OpenHouseInstallState state);
@@ -155,12 +158,16 @@ public final class OpenHouseInstallController {
     }
 
     public OpenHouseInstallState getState() {
+        OpenHouseInstallState entryState = state;
         if (!state.completed && (currentProcess == null || !state.running) && hasFreshRunningMarker()) {
             updateState(readRunningStateFromLog());
             schedulePollIfRunning();
             return state;
         }
         if (state.running && currentProcess == null) {
+            if (isCurrentLaunchPreparing()) {
+                return state;
+            }
             if (hasFreshRunningMarker()) {
                 updateState(readRunningStateFromLog());
             } else {
@@ -174,7 +181,57 @@ public final class OpenHouseInstallController {
             }
             schedulePollIfRunning();
         }
+        if (entryState != null && entryState.failed) {
+            reconcileFailedStateAfterSuccessfulExit();
+        }
         return state;
+    }
+
+    private void reconcileFailedStateAfterSuccessfulExit() {
+        synchronized (processLock) {
+            OpenHouseInstallState cachedState = state;
+            if (cachedState == null || !cachedState.failed || currentProcess != null) {
+                return;
+            }
+            boolean freshRunningMarker = hasFreshRunningMarker();
+            Integer latestExitCode = freshRunningMarker
+                ? null
+                : readLastExitCode(readLogTail(24000));
+            if (!shouldReconcileSuccessfulExit(
+                cachedState, false, freshRunningMarker, latestExitCode)) {
+                return;
+            }
+
+            OpenHouseInstallState.TaskScope taskScope = normalizeTaskScope(cachedState.taskScope);
+            if (!verifyTaskComplete(taskScope, VerificationMode.CHECK_ONCE)) {
+                return;
+            }
+
+            currentTaskScope = taskScope;
+            updateState(buildState(
+                OpenHouseInstallState.Status.SUCCEEDED,
+                100,
+                taskCompletedPhaseLabel(taskScope),
+                taskCompletedDetail(taskScope),
+                lastStageForTask(taskScope).slug
+            ));
+            if (taskScope != OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
+                statusRepository.markOneClickInstallCompleted();
+                OpenHousePostUpdateSync.onFirstInstallCompleted(context);
+            }
+        }
+    }
+
+    static boolean shouldReconcileSuccessfulExit(OpenHouseInstallState cachedState,
+                                                 boolean processTracked,
+                                                 boolean freshRunningMarker,
+                                                 Integer latestExitCode) {
+        return cachedState != null
+            && cachedState.failed
+            && !processTracked
+            && !freshRunningMarker
+            && latestExitCode != null
+            && latestExitCode == 0;
     }
 
     private void schedulePollIfRunning() {
@@ -250,6 +307,7 @@ public final class OpenHouseInstallController {
 
             currentRetryMode = resolvedRetryMode;
             currentAttempt = requestedAttempt > 0 ? requestedAttempt : nextAttemptForNewRun();
+            preparingAttempt = currentAttempt;
 
             updateState(buildState(
                 currentAttempt > 1
@@ -261,58 +319,121 @@ public final class OpenHouseInstallController {
                 firstStageForTask(resolvedTaskScope).slug
             ));
 
-            try {
-                File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");
-                if (!bash.isFile()) {
-                    updateState(buildState(
-                        OpenHouseInstallState.Status.FAILED,
-                        0,
-                        "初始化失败",
-                        "Termux 基础环境尚未安装完成，缺少 bash。",
-                        firstStageForTask(resolvedTaskScope).slug
-                    ));
-                    return true;
-                }
-
-                File logDir = ensureLogDir();
-                File tempScript = new File(logDir, "run-" + MANIFEST_FULL_SLUG + ".sh");
-                OpenHouseBundledRuntimeSync.Result runtimeSync = prepareBundledRuntimeAssets();
-                writeScript(tempScript, buildInstallScript(resolvedTaskScope, runtimeSync));
-                resetManifestLogForNewRun(resolvedTaskScope);
-                long startedAtMs = System.currentTimeMillis();
-                writeRunningMarker(startedAtMs, resolvedTaskScope);
-                resetProgressSimulation(startedAtMs, firstStageForTask(resolvedTaskScope));
-
-                File outputFile = File.createTempFile("openhouse-install-", ".log", context.getCacheDir());
-                ProcessBuilder processBuilder = new ProcessBuilder(
-                    bash.getAbsolutePath(),
-                    tempScript.getAbsolutePath()
-                );
-                processBuilder.directory(new File(TermuxConstants.TERMUX_HOME_DIR_PATH));
-                processBuilder.redirectErrorStream(true);
-                processBuilder.redirectOutput(ProcessBuilder.Redirect.to(outputFile));
-                configureEnvironment(processBuilder.environment(), startedAtMs, runtimeSync);
-
-                Process process = processBuilder.start();
-                currentProcess = process;
-                statusRepository.markOneClickInstallStarted();
-                mainHandler.removeCallbacks(pollRunnable);
-                mainHandler.postDelayed(pollRunnable, 500L);
-                executor.execute(() -> waitForInstallProcess(process, outputFile));
+            File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");
+            if (!bash.isFile()) {
+                clearPreparingAttemptIfMatchesLocked(currentAttempt);
+                updateState(buildState(
+                    OpenHouseInstallState.Status.FAILED,
+                    0,
+                    "初始化失败",
+                    "Termux 基础环境尚未安装完成，缺少 bash。",
+                    firstStageForTask(resolvedTaskScope).slug
+                ));
                 return true;
-            } catch (Exception e) {
-                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to start OpenHouseAI one-click install", e);
+            }
+
+            int launchAttempt = currentAttempt;
+            try {
+                executor.execute(() -> prepareAndStartInstall(resolvedTaskScope, launchAttempt));
+            } catch (RuntimeException e) {
+                clearPreparingAttemptIfMatchesLocked(launchAttempt);
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to schedule OpenHouseAI one-click install", e);
+                updateState(buildState(
+                    OpenHouseInstallState.Status.FAILED,
+                    state.percent,
+                    "初始化失败",
+                    "无法启动后台资源准备任务：" + safeMessage(e),
+                    firstStageForTask(resolvedTaskScope).slug
+                ));
+            }
+            return true;
+        }
+    }
+
+    private void prepareAndStartInstall(OpenHouseInstallState.TaskScope taskScope, int launchAttempt) {
+        try {
+            updateState(buildState(
+                launchAttempt > 1
+                    ? OpenHouseInstallState.Status.RETRYING
+                    : OpenHouseInstallState.Status.RUNNING,
+                1,
+                taskStartPhaseLabel(taskScope, launchAttempt),
+                "正在后台准备 APK 内置安装资源，完整性校验通过后将自动开始安装。",
+                firstStageForTask(taskScope).slug
+            ));
+
+            File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");
+            if (!bash.isFile()) {
+                throw new IOException("Termux 基础环境尚未安装完成，缺少 bash");
+            }
+
+            OpenHouseBundledRuntimeSync.Result runtimeSync = prepareBundledRuntimeAssets();
+            File logDir = ensureLogDir();
+            File tempScript = new File(logDir, "run-" + MANIFEST_FULL_SLUG + ".sh");
+            writeScript(tempScript, buildInstallScript(taskScope, runtimeSync));
+            resetManifestLogForNewRun(taskScope);
+            long startedAtMs = System.currentTimeMillis();
+            File outputFile = File.createTempFile("openhouse-install-", ".log", context.getCacheDir());
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                bash.getAbsolutePath(), tempScript.getAbsolutePath()
+            );
+            processBuilder.directory(new File(TermuxConstants.TERMUX_HOME_DIR_PATH));
+            processBuilder.redirectErrorStream(true);
+            processBuilder.redirectOutput(ProcessBuilder.Redirect.to(outputFile));
+            configureEnvironment(processBuilder.environment(), startedAtMs, runtimeSync);
+
+            Process process;
+            synchronized (processLock) {
+                if (launchAttempt != currentAttempt
+                    || normalizeTaskScope(taskScope) != normalizeTaskScope(currentTaskScope)
+                    || !state.running
+                    || currentProcess != null) {
+                    clearPreparingAttemptIfMatchesLocked(launchAttempt);
+                    return;
+                }
+                writeRunningMarker(startedAtMs, taskScope);
+                resetProgressSimulation(startedAtMs, firstStageForTask(taskScope));
+                process = processBuilder.start();
+                currentProcess = process;
+                clearPreparingAttemptIfMatchesLocked(launchAttempt);
+            }
+
+            statusRepository.markOneClickInstallStarted();
+            mainHandler.removeCallbacks(pollRunnable);
+            mainHandler.postDelayed(pollRunnable, 500L);
+            executor.execute(() -> waitForInstallProcess(process, outputFile));
+        } catch (Exception e) {
+            synchronized (processLock) {
+                clearPreparingAttemptIfMatchesLocked(launchAttempt);
+                if (launchAttempt != currentAttempt
+                    || normalizeTaskScope(taskScope) != normalizeTaskScope(currentTaskScope)) {
+                    return;
+                }
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to prepare or start OpenHouseAI one-click install", e);
                 appendCompletionMarkerIfMissing(1);
                 clearRunningMarker();
                 updateState(buildState(
                     OpenHouseInstallState.Status.FAILED,
                     state.percent,
                     "初始化失败",
-                    "无法启动初始化任务：" + safeMessage(e),
-                    firstStageForTask(resolvedTaskScope).slug
+                    "无法准备资源或启动初始化任务：" + safeMessage(e),
+                    firstStageForTask(taskScope).slug
                 ));
-                return true;
             }
+        }
+    }
+
+    static boolean isLaunchPreparing(int currentAttempt, int preparingAttempt) {
+        return currentAttempt > 0 && preparingAttempt == currentAttempt;
+    }
+
+    private boolean isCurrentLaunchPreparing() {
+        return isLaunchPreparing(currentAttempt, preparingAttempt);
+    }
+
+    private void clearPreparingAttemptIfMatchesLocked(int launchAttempt) {
+        if (preparingAttempt == launchAttempt) {
+            preparingAttempt = 0;
         }
     }
 
@@ -371,6 +492,7 @@ public final class OpenHouseInstallController {
             updateState(completedState);
             if (resolvedTaskScope != OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
                 statusRepository.markOneClickInstallCompleted();
+                OpenHousePostUpdateSync.onFirstInstallCompleted(context);
             }
             return true;
         }
@@ -512,6 +634,7 @@ public final class OpenHouseInstallController {
         if (finishedState.completed
             && finishedState.taskScope != OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
             statusRepository.markOneClickInstallCompleted();
+            OpenHousePostUpdateSync.onFirstInstallCompleted(context);
         }
     }
 
@@ -1364,6 +1487,11 @@ public final class OpenHouseInstallController {
         if (runtimeSync != null) {
             environment.put("SMALLPHONEAI_BOOTSTRAP", runtimeSync.bootstrapFile.getAbsolutePath());
             environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_DIR", runtimeSync.payloadDir.getAbsolutePath());
+            environment.put("SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT", runtimeSync.payloadDir.getAbsolutePath());
+            environment.put("OPENHOUSEAI_MAINTAINER_DIR", runtimeSync.maintainerDir.getAbsolutePath());
+            environment.put("SMALLPHONEAI_MAINTAINER_DIR", runtimeSync.maintainerDir.getAbsolutePath());
+            environment.put("OPENHOUSE_SCRIPTS_PUBLIC_DIR", runtimeSync.scriptsPublicDir.getAbsolutePath());
+            environment.put("SMALLPHONEAI_SCRIPTS_PUBLIC_DIR", runtimeSync.scriptsPublicDir.getAbsolutePath());
             File manifest = new File(runtimeSync.payloadDir, "manifest.json");
             if (manifest.isFile()) {
                 environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST", manifest.getAbsolutePath());
@@ -1429,7 +1557,8 @@ public final class OpenHouseInstallController {
 
     private OpenHouseBundledRuntimeSync.Result prepareBundledRuntimeAssets() throws IOException {
         try {
-            return OpenHouseBundledRuntimeSync.sync(context);
+            return OpenHouseBundledRuntimeSync.sync(
+                context, OpenHouseBundledResourceDelivery.Reason.FIRST_INSTALL);
         } catch (IOException e) {
             throw new IOException("APK 内置 bootstrap/scripts/payload 同步失败：" + e.getMessage(), e);
         }
@@ -1453,8 +1582,8 @@ public final class OpenHouseInstallController {
         builder.append("export OPENHOUSE_INSTALL_ATTEMPT=\"${OPENHOUSE_INSTALL_ATTEMPT:-1}\"\n");
         builder.append("export OPENHOUSE_INSTALL_TASK_SCOPE=\"${OPENHOUSE_INSTALL_TASK_SCOPE:-full}\"\n");
         builder.append("export OPENHOUSE_INSTALL_LOG_PATH=\"${OPENHOUSE_INSTALL_LOG_PATH:-$HOME/.maintainer-logs/").append(MANIFEST_FULL_SLUG).append(".log}\"\n");
-        builder.append("export SMALLPHONEAI_BOOTSTRAP=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n");
-        builder.append("export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n");
+        builder.append("export SMALLPHONEAI_BOOTSTRAP=\"${SMALLPHONEAI_BOOTSTRAP:?missing staged bootstrap path}\"\n");
+        builder.append("export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:?missing staged payload path}\"\n");
         builder.append("if [ -f \"$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST:-$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json}\"; fi\n");
         builder.append("unset http_proxy https_proxy ftp_proxy all_proxy no_proxy HTTP_PROXY HTTPS_PROXY FTP_PROXY ALL_PROXY NO_PROXY\n");
         builder.append("STAGE_NAME=").append(shellQuote(stageLabel)).append('\n');

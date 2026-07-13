@@ -3137,7 +3137,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             showMaintenanceActionBlockedToast();
             return;
         }
-
         if (stageAction == StageAction.RESTART_ENTRY_TERMINAL) {
             showRestartEntryTerminalDialog();
             return;
@@ -3235,7 +3234,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             showMaintenanceActionBlockedToast();
             return;
         }
-
         if (isBatteryRequirementBlocking()) {
             currentStageView.setText(getString(R.string.permission_requirement_state_required));
             Toast.makeText(this, R.string.permission_battery_required_toast, Toast.LENGTH_LONG).show();
@@ -3357,7 +3355,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         refreshStatus();
         updateExecutionModeViews();
 
-        String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody);
+        String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody, null);
         String tempScriptPath = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs/run-" + stageSlug + ".sh";
         StringBuilder command = new StringBuilder();
         command.append("mkdir -p ").append(shellQuote(TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs")).append('\n');
@@ -3378,7 +3376,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             showMaintenanceActionBlockedToast();
             return;
         }
-
         if (isBatteryRequirementBlocking()) {
             currentStageView.setText(getString(R.string.permission_requirement_state_required));
             Toast.makeText(this, R.string.permission_battery_required_toast, Toast.LENGTH_LONG).show();
@@ -3589,7 +3586,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action, String bootstrapUrl, String fallbackScriptBody, String postRemoteScriptBody) throws IOException {
-        syncBundledRuntimeAssets();
+        OpenHouseBundledRuntimeSync.Result runtimeSync = prepareBundledRuntimeAssets();
         StringBuilder scriptBody = new StringBuilder();
         scriptBody.append("BOOTSTRAP_URL=").append(shellQuote(bootstrapUrl)).append('\n');
         appendTermuxRepoShellFunctions(scriptBody);
@@ -3658,7 +3655,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             scriptBody.append("run_remote_bootstrap\n");
         }
 
-        String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody.toString());
+        String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody.toString(), runtimeSync);
         String tempScriptPath = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs/run-" + stageSlug + ".sh";
 
         StringBuilder builder = new StringBuilder();
@@ -3675,10 +3672,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildBundledBootstrapExecutionCommand(String stageLabel, String stageSlug, BootstrapAction action) throws IOException {
-        syncBundledRuntimeAssets();
+        OpenHouseBundledRuntimeSync.Result runtimeSync = prepareBundledRuntimeAssets();
         StringBuilder scriptBody = new StringBuilder();
-        scriptBody.append("bootstrap=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n");
-        scriptBody.append("payload_dir=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n");
+        scriptBody.append("bootstrap=").append(shellQuote(runtimeSync.bootstrapFile.getAbsolutePath())).append('\n');
+        scriptBody.append("payload_dir=").append(shellQuote(runtimeSync.payloadDir.getAbsolutePath())).append('\n');
         scriptBody.append("if [ ! -f \"$bootstrap\" ]; then log '未找到 APK 内置 OpenHouseAI bootstrap，请重新安装或修复应用。'; exit 1; fi\n");
         scriptBody.append("if [ -d \"$payload_dir\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"$payload_dir\" SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT=\"$payload_dir\"; fi\n");
         scriptBody.append("log \"正在执行 APK 内置维护动作：").append(action.toDisplayString()).append("\"\n");
@@ -3697,7 +3694,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
         scriptBody.append('\n');
 
-        String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody.toString());
+        String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody.toString(), runtimeSync);
         String tempScriptPath = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs/run-" + stageSlug + ".sh";
 
         StringBuilder builder = new StringBuilder();
@@ -3758,9 +3755,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private String buildAssetExecutionCommand(StageAction stageAction, String stageLabel, String stageSlug, String assetName) throws IOException {
-        syncBundledRuntimeAssets();
+        OpenHouseBundledRuntimeSync.Result runtimeSync = prepareBundledRuntimeAssets();
         String scriptBody = buildAssetScriptBody(stageAction, assetName);
-        String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody);
+        String wrapperScript = buildWrapperScript(stageLabel, stageSlug, scriptBody, runtimeSync);
         String tempScriptPath = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.maintainer-logs/run-" + stageSlug + ".sh";
 
         StringBuilder builder = new StringBuilder();
@@ -3807,15 +3804,18 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         return scriptBody.toString();
     }
 
-    private OpenHouseBundledRuntimeSync.Result syncBundledRuntimeAssets() throws IOException {
+    private OpenHouseBundledRuntimeSync.Result prepareBundledRuntimeAssets() throws IOException {
         try {
-            return OpenHouseBundledRuntimeSync.sync(this);
+            return OpenHouseBundledRuntimeSync.prepareExisting(this);
         } catch (IOException e) {
-            throw new IOException("APK 内置 bootstrap/scripts/payload 同步失败：" + e.getMessage(), e);
+            throw new IOException("未找到已校验的 APK 版本资源，请先完成首次安装：" + e.getMessage(), e);
         }
     }
 
-    private String buildWrapperScript(String stageLabel, String stageSlug, String scriptBody) {
+    private String buildWrapperScript(String stageLabel,
+                                      String stageSlug,
+                                      String scriptBody,
+                                      OpenHouseBundledRuntimeSync.Result runtimeSync) {
         StringBuilder builder = new StringBuilder();
         builder.append("#!/data/data/com.termux/files/usr/bin/bash\n");
         builder.append("set -euo pipefail\n");
@@ -3825,9 +3825,16 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         builder.append("export LD_LIBRARY_PATH=\"$PREFIX/lib:${LD_LIBRARY_PATH:-}\"\n");
         builder.append("export TMPDIR=\"${TMPDIR:-$PREFIX/tmp}\"\n");
         builder.append("export TERM=\"xterm-256color\"\n");
-        builder.append("export SMALLPHONEAI_BOOTSTRAP=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n");
-        builder.append("export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n");
-        builder.append("if [ -f \"$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json\" ]; then export SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST:-$SMALLPHONEAI_OFFLINE_PAYLOAD_DIR/manifest.json}\"; fi\n");
+        if (runtimeSync != null) {
+            builder.append("export SMALLPHONEAI_BOOTSTRAP=").append(shellQuote(runtimeSync.bootstrapFile.getAbsolutePath())).append('\n');
+            builder.append("export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=").append(shellQuote(runtimeSync.payloadDir.getAbsolutePath())).append('\n');
+            builder.append("export SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT=").append(shellQuote(runtimeSync.payloadDir.getAbsolutePath())).append('\n');
+            builder.append("export SMALLPHONEAI_OFFLINE_PAYLOAD_MANIFEST=").append(shellQuote(new File(runtimeSync.payloadDir, "manifest.json").getAbsolutePath())).append('\n');
+            builder.append("export OPENHOUSEAI_MAINTAINER_DIR=").append(shellQuote(runtimeSync.maintainerDir.getAbsolutePath())).append('\n');
+            builder.append("export SMALLPHONEAI_MAINTAINER_DIR=").append(shellQuote(runtimeSync.maintainerDir.getAbsolutePath())).append('\n');
+            builder.append("export OPENHOUSE_SCRIPTS_PUBLIC_DIR=").append(shellQuote(runtimeSync.scriptsPublicDir.getAbsolutePath())).append('\n');
+            builder.append("export SMALLPHONEAI_SCRIPTS_PUBLIC_DIR=").append(shellQuote(runtimeSync.scriptsPublicDir.getAbsolutePath())).append('\n');
+        }
         builder.append("STAGE_NAME=").append(shellQuote(stageLabel)).append('\n');
         builder.append("STAGE_SLUG=").append(shellQuote(stageSlug)).append('\n');
         builder.append("LOG_DIR=\"$HOME/.maintainer-logs\"\n");
@@ -4584,10 +4591,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         Process process = null;
         try {
             ProcessBuilder processBuilder = new ProcessBuilder(
-                TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash",
-                "-lc",
-                command
-            );
+                TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash", "-lc", command);
             processBuilder.directory(new File(TermuxConstants.TERMUX_HOME_DIR_PATH));
             processBuilder.redirectErrorStream(true);
             Map<String, String> environment = processBuilder.environment();
@@ -4599,33 +4603,26 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             environment.put("LANG", "C.UTF-8");
             environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
             environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
-
             process = processBuilder.start();
             StringBuilder output = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
-                while ((line = reader.readLine()) != null) {
-                    if (output.length() < 600) {
-                        if (output.length() > 0) output.append('\n');
-                        output.append(line);
-                    }
+                while ((line = reader.readLine()) != null && output.length() < 600) {
+                    if (output.length() > 0) output.append('\n');
+                    output.append(line);
                 }
             }
-
             if (!process.waitFor(12, TimeUnit.SECONDS)) {
                 process.destroyForcibly();
                 return new ShellCheckResult(124, output.toString());
             }
-
             return new ShellCheckResult(process.exitValue(), output.toString());
         } catch (Exception e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to run maintenance verification command", e);
             return new ShellCheckResult(1, e.getMessage());
         } finally {
-            if (process != null) {
-                process.destroy();
-            }
+            if (process != null) process.destroy();
         }
     }
 
