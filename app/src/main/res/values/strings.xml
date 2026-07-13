@@ -609,4 +609,14 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="full_log_error">读取日志失败：%1$s</string>
     <string name="full_log_unavailable">当前阶段还没有完整日志。</string>
 
+    <string name="openhouse_web_host_checking">正在启动 OpenHouse</string>
+    <string name="openhouse_web_host_checking_detail">正在启动 Termux 控制中枢，并依次检查 service-manager 与 OpenHouse Web。</string>
+    <string name="openhouse_web_host_loading">正在载入本机 Web 界面</string>
+    <string name="openhouse_web_host_ready">OpenHouse Web 已就绪</string>
+    <string name="openhouse_web_host_service_manager_fallback">service-manager 安全控制页</string>
+    <string name="openhouse_web_host_fallback_loading">正在进入安全控制页</string>
+    <string name="openhouse_web_host_native_recovery">需要原生恢复</string>
+    <string name="openhouse_web_host_retry">重新检查</string>
+    <string name="openhouse_web_host_open_recovery">打开原生 Recovery</string>
+    <string name="openhouse_web_host_open_terminal">打开 Termux</string>
 </resources>

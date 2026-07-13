@@ -3,44 +3,23 @@ package com.termux.app.openhouse;
 import android.content.Context;
 import android.os.SystemClock;
 
-import com.termux.app.openhouse.servicecontrol.ServiceManagerActionResult;
-import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerRedactor;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerResult;
-import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceStatus;
-import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 
 public final class OpenHouseRuntimeSupervisor {
 
-    private static final String LOG_TAG = "OpenHouseRuntimeSupervisor";
-    private static final String[] DEFAULT_LONG_RUNNING_SERVICES = new String[] {
-        "smallphone-frontend-beta",
-        "smallphone-core",
-        "pi-agent",
-        "pi-web",
-        "cloudcli"
-    };
     private static final long MIN_FOREGROUND_TICK_MS = 15_000L;
-    private static final long MIN_SERVICE_CHECK_MS = 30_000L;
-    private static final long MIN_REPAIR_INTERVAL_MS = 60_000L;
 
     private static final Object LOCK = new Object();
     private static long lastForegroundTickMs;
-    private static long lastServiceCheckMs;
-    private static long lastRepairMs;
     private static int consecutiveControlPlaneFailures;
     private static boolean runtimeStackStoppedForSession;
-    private static boolean controlPlaneRepairInFlight;
 
     private final Context context;
     private final ServiceManagerControlClient controlClient;
@@ -60,51 +39,22 @@ public final class OpenHouseRuntimeSupervisor {
     }
 
     public MaintenanceReport recoverControlPlaneNow() {
-        clearRuntimeStackStoppedForSession(context);
-        StringBuilder message = new StringBuilder();
-        appendLine(message, "正在通过受控维护入口修复 Termux native service-manager；此路径不依赖 service-manager HTTP API 已在线。");
-
-        OpenHouseMaintainerRunner.Result repair = runControlPlaneRepair();
-        boolean repairSuccess = repair.isSuccess();
-        appendLine(message, repairSuccess
-            ? "控制中枢修复命令已完成。"
-            : "控制中枢修复失败，退出码 " + repair.exitCode + formatOutput(repair.output));
-
         ServiceManagerResult health = controlClient.healthCheck();
         if (!health.success) {
             int failureCount = recordControlPlaneFailure();
-            appendLine(message, "修复后 Termux native service-manager 仍不可达：" + safeText(health.message));
-            appendLine(message, "连续失败次数：" + failureCount);
             return MaintenanceReport.failure(
-                message.toString(),
+                "Termux native service-manager 不可达：" + safeText(health.message)
+                    + "\n不会自动执行修复或重启命令，请打开 native Recovery。",
                 false,
-                true,
-                repairSuccess,
+                false,
+                false,
                 failureCount,
                 true
             );
         }
 
         resetControlPlaneFailures();
-        MaintenanceReport services = startDefaultServices(true, true);
-        if (!services.success) {
-            appendLine(message, "Termux native service-manager 已恢复；部分默认核心服务仍需要单独检查。");
-        }
-        appendLine(message, services.message);
-        return new MaintenanceReport(
-            true,
-            false,
-            true,
-            true,
-            repairSuccess,
-            0,
-            !services.success,
-            services.startedCount,
-            services.skippedCount,
-            services.failedCount,
-            message.toString(),
-            services.defaultServiceIds
-        );
+        return MaintenanceReport.success("Termux native service-manager 可达。", true, false, false);
     }
 
     public static boolean isExitAllRequested(Context context) {
@@ -156,140 +106,26 @@ public final class OpenHouseRuntimeSupervisor {
             StringBuilder message = new StringBuilder();
             appendLine(message, "Termux native service-manager 暂不可达：" + safeText(health.message));
             appendLine(message, "连续失败次数：" + failureCount);
-            boolean repairAttempted = false;
-            boolean repairSuccess = false;
-            if (shouldAttemptRepair(now)) {
-                repairAttempted = true;
-                OpenHouseMaintainerRunner.Result repair = runControlPlaneRepair();
-                repairSuccess = repair.isSuccess();
-                appendLine(message, repairSuccess
-                    ? "已执行控制中枢轻量修复。"
-                    : "控制中枢修复失败，退出码 " + repair.exitCode + formatOutput(repair.output));
-                if (repairSuccess) {
-                    health = controlClient.healthCheck();
-                    if (health.success) {
-                        resetControlPlaneFailures();
-                        MaintenanceReport services = startDefaultServices(true, true);
-                        return services.withControlPlane(true, repairAttempted, repairSuccess)
-                            .withMessage(message + "\n" + services.message);
-                    }
-                }
-            }
+            appendLine(message, "前台保活不会执行修复、重启、RUN_COMMAND 或服务动作；请打开 native Recovery。");
             return MaintenanceReport.failure(
                 message.toString(),
                 false,
-                repairAttempted,
-                repairSuccess,
+                false,
+                false,
                 failureCount,
-                failureCount >= 3
+                true
             );
         }
 
         resetControlPlaneFailures();
-        boolean shouldCheckServices;
-        synchronized (LOCK) {
-            shouldCheckServices = userInitiated || now - lastServiceCheckMs >= MIN_SERVICE_CHECK_MS;
-            if (shouldCheckServices) {
-                lastServiceCheckMs = now;
-            }
-        }
-        if (!shouldCheckServices) {
-            return MaintenanceReport.success("Termux native service-manager 可达；默认长期服务检查已节流。", true, false, false);
-        }
-        return startDefaultServices(userInitiated, false).withControlPlane(true, false, false);
-    }
-
-    private MaintenanceReport startDefaultServices(boolean userInitiated, boolean afterRepair) {
-        StringBuilder details = new StringBuilder();
-        int startedCount = 0;
-        int skippedCount = 0;
-        int failedCount = 0;
-
-        ServiceManagerActionResult groupStart = controlClient.runGroupAction("local-stack", "start");
-        if (groupStart.success()) {
-            appendLine(details, "local-stack：已提交启动。");
-        } else if (userInitiated || afterRepair) {
-            appendLine(details, "local-stack：启动失败或未注册，继续逐个检查。"
-                + optionalMessage(groupStart.message()));
-        }
-
-        for (String serviceId : DEFAULT_LONG_RUNNING_SERVICES) {
-            try {
-                ServiceManagerServiceStatus status = controlClient.getStatus(serviceId);
-                if (isRunningState(status.state())) {
-                    skippedCount++;
-                    appendLine(details, serviceId + "：已运行。");
-                    continue;
-                }
-                ServiceManagerActionResult start = controlClient.runAction(serviceId, "start");
-                if (start.success()) {
-                    startedCount++;
-                    appendLine(details, serviceId + "：已提交启动。");
-                } else {
-                    failedCount++;
-                    appendLine(details, serviceId + "：启动失败。" + optionalMessage(start.message()));
-                }
-            } catch (Exception e) {
-                failedCount++;
-                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to ensure default service: " + serviceId, e);
-                appendLine(details, serviceId + "：状态检查失败。" + safeText(e.getMessage()));
-            }
-        }
-
-        boolean success = failedCount == 0;
-        String summary = "默认核心服务检查完成：启动 " + startedCount
-            + "，已运行 " + skippedCount
-            + "，失败 " + failedCount + "。";
-        String message = details.length() == 0 ? summary : summary + "\n" + details;
-        return new MaintenanceReport(
-            success,
-            false,
+        return MaintenanceReport.success(
+            userInitiated
+                ? "Termux native service-manager 可达；已交由常驻策略管理业务服务。"
+                : "Termux native service-manager 可达；前台仅保活控制中枢。",
             true,
             false,
-            false,
-            0,
-            false,
-            startedCount,
-            skippedCount,
-            failedCount,
-            message,
-            Collections.unmodifiableList(copyDefaultServices())
+            false
         );
-    }
-
-    private OpenHouseMaintainerRunner.Result runControlPlaneRepair() {
-        synchronized (LOCK) {
-            if (controlPlaneRepairInFlight) {
-                return new OpenHouseMaintainerRunner.Result(
-                    OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE,
-                    125,
-                    "控制中枢修复已在执行中，请稍后重试。"
-                );
-            }
-            controlPlaneRepairInFlight = true;
-            lastRepairMs = SystemClock.elapsedRealtime();
-        }
-        try {
-            return new OpenHouseMaintainerRunner(context)
-                .run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0, controlPlaneRepairEnvironment());
-        } finally {
-            synchronized (LOCK) {
-                controlPlaneRepairInFlight = false;
-            }
-        }
-    }
-
-    private Map<String, String> controlPlaneRepairEnvironment() {
-        Map<String, String> environment = new HashMap<>();
-        String baseUrl = safeTrim(ServiceManagerClient.resolveConfiguredBaseUrl());
-        if (!baseUrl.isEmpty()) {
-            environment.put("SERVICE_MANAGER_URL", baseUrl);
-        }
-        String listenAddr = safeTrim(ServiceManagerClient.resolveConfiguredListenAddr());
-        if (!listenAddr.isEmpty()) {
-            environment.put("SMALLPHONEAI_SERVICE_MANAGER_BIND", listenAddr);
-        }
-        return environment;
     }
 
     private boolean isForegroundMaintenanceEligible() {
@@ -328,12 +164,6 @@ public final class OpenHouseRuntimeSupervisor {
         }
     }
 
-    private static boolean shouldAttemptRepair(long now) {
-        synchronized (LOCK) {
-            return lastRepairMs == 0L || now - lastRepairMs >= MIN_REPAIR_INTERVAL_MS;
-        }
-    }
-
     private static int recordControlPlaneFailure() {
         synchronized (LOCK) {
             consecutiveControlPlaneFailures++;
@@ -347,29 +177,8 @@ public final class OpenHouseRuntimeSupervisor {
         }
     }
 
-    private static boolean isRunningState(String state) {
-        String normalized = safeTrim(state).toLowerCase(Locale.US);
-        return "running".equals(normalized)
-            || "active".equals(normalized)
-            || "up".equals(normalized)
-            || "healthy".equals(normalized)
-            || "ready".equals(normalized);
-    }
-
     private static List<String> copyDefaultServices() {
-        List<String> values = new ArrayList<>();
-        Collections.addAll(values, DEFAULT_LONG_RUNNING_SERVICES);
-        return values;
-    }
-
-    private static String optionalMessage(String message) {
-        String clean = safeText(message);
-        return clean.isEmpty() ? "" : " " + clean;
-    }
-
-    private static String formatOutput(String output) {
-        String clean = safeText(output);
-        return clean.isEmpty() ? "" : "\n" + clean;
+        return Collections.emptyList();
     }
 
     private static void appendLine(StringBuilder builder, String line) {

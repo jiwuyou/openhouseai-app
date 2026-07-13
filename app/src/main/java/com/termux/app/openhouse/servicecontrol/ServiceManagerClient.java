@@ -106,6 +106,20 @@ public final class ServiceManagerClient {
         }
     }
 
+    /** Returns a loopback-relative one-time Web session path without exposing the bearer token. */
+    public String issueWebSessionPath() throws IOException, JSONException {
+        HttpResponse response = request("POST", "/api/v1/web-session-tickets");
+        if (!response.isSuccess()) {
+            throw new IOException("service-manager Web session ticket failed: HTTP " + response.code);
+        }
+        JSONObject json = parseObject(response.body);
+        String path = json.optString("path", "").trim();
+        if (path.isEmpty()) {
+            throw new IOException("service-manager Web session ticket response did not include path");
+        }
+        return path;
+    }
+
     public ServiceManagerResult getStatus(String serviceId) {
         String cleanServiceId = sanitizeServiceId(serviceId);
         if (cleanServiceId.isEmpty()) {
