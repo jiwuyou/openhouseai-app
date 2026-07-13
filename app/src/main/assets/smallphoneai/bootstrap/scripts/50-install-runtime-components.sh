@@ -185,6 +185,9 @@ normalize_bootstrap_target() {
     pi-web)
       printf 'pi-web'
       ;;
+    openhouse-web|web-shell|openhouse-shell)
+      printf 'openhouse-web'
+      ;;
     *)
       printf '%s' "$1"
       ;;
@@ -241,7 +244,7 @@ openhouse_pi_runtime() {
 }
 
 default_component_targets() {
-  printf '%s\n' "service-manager,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes"
+  printf '%s\n' "service-manager,openhouse-web,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes"
 }
 
 bootstrap_targets_for_runtime() {
@@ -269,13 +272,16 @@ bootstrap_targets_for_runtime() {
     [ -n "$normalized" ] || continue
     if [ "$wanted_runtime" = "termux" ]; then
       case "$normalized" in
+        openhouse-web)
+          out="$(append_csv "$out" "$normalized")"
+          ;;
         pi-agent|pi-web)
           [ "$pi_runtime" = "termux" ] && out="$(append_csv "$out" "$normalized")"
           ;;
       esac
     else
       case "$normalized" in
-        service-manager|openhouse-system)
+        service-manager|openhouse-system|openhouse-web)
           ;;
         pi-agent|pi-web)
           [ "$pi_runtime" = "ubuntu" ] && out="$(append_csv "$out" "$normalized")"
@@ -303,7 +309,7 @@ component_binary_current_env_executable() {
 
   case "$payload_name" in
     service-manager)
-      [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.2.1" ]
+      [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.0" ]
       ;;
     openhouse-connect)
       "$binary" --version >/dev/null 2>&1 || "$binary" --help >/dev/null 2>&1
@@ -878,6 +884,9 @@ normalize_target() {
     hermes-agent|hermes-webui)
       printf 'hermes'
       ;;
+    openhouse-web|web-shell|openhouse-shell)
+      printf 'openhouse-web'
+      ;;
     *)
       printf '%s' "$1"
       ;;
@@ -928,7 +937,7 @@ validate_component_targets() {
     [ -n "$item" ] || continue
     target="$(normalize_target "$item")"
     case "$target" in
-      openhouse-system|service-manager|pi-agent|pi-web|wuyou|github-config-helper|cc-connect|smallphone|hermes)
+      openhouse-system|service-manager|openhouse-web|pi-agent|pi-web|wuyou|github-config-helper|cc-connect|smallphone|hermes)
         ;;
       *)
         warn "未知组件目标：$item"
@@ -1067,7 +1076,7 @@ payload_dir_needs_refresh() {
   case "$payload_name" in
     service-manager)
       [ -x "$source/service-manager" ] \
-        && [ "$("$source/service-manager" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.2.1" ] \
+        && [ "$("$source/service-manager" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.0" ] \
         || return 0
       ;;
     openhouse-connect)
@@ -1082,6 +1091,14 @@ payload_dir_needs_refresh() {
       ;;
     smallphone)
       [ -f "$source/scripts/install.sh" ] && grep -Fq 'Dependency installation is disabled' "$source/scripts/install.sh" \
+        || return 0
+      ;;
+    openhouse-web)
+      [ -f "$source/src/server.mjs" ] \
+        && [ -f "$source/src/auth.mjs" ] \
+        && [ -f "$source/config/openhouse-web.service.json" ] \
+        && grep -Fq 'residentByDefault' "$source/config/openhouse-web.service.json" \
+        && grep -Fq 'issueTicket(now = Date.now())' "$source/src/auth.mjs" \
         || return 0
       ;;
     hermes)
@@ -1686,6 +1703,7 @@ run_component() {
 }
 
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
+openhouse_web_dir="${OPENHOUSE_WEB_DIR:-${SMALLPHONEAI_OPENHOUSE_WEB_DIR:-$(default_path openhouse-web)}}"
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path pi-agent)}}"
 pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path pi-web)}}"
 wuyou_dir="${OPENHOUSE_WUYOU_DIR:-${SMALLPHONEAI_WUYOU_DIR:-$(default_path wuyou)}}"
@@ -1707,7 +1725,7 @@ fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"
 else
-  log "本次处理默认组件：openhouse-system、service-manager、pi-agent、pi-web、wuyou、github-config-helper、cc-connect/openhouse-connect、SmallPhone、Hermes。"
+  log "本次处理默认组件：openhouse-system、service-manager、openhouse-web、pi-agent、pi-web、wuyou、github-config-helper、cc-connect/openhouse-connect、SmallPhone、Hermes。"
 fi
 
 install_openhouse_system || warn "OpenHouse 主系统 CLI/主体名片部署未完成。"
@@ -1716,6 +1734,13 @@ validate_component_targets
 
 if should_run_component "service-manager"; then
   run_component "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"
+fi
+if should_run_component "openhouse-web"; then
+  if ensure_termux_node_for_pi; then
+    run_component "OpenHouse Web" "$openhouse_web_dir" "${OPENHOUSE_WEB_GIT_URL:-}" "1" "openhouse-web"
+  else
+    failures=$((failures + 1))
+  fi
 fi
 if should_run_component "pi-agent"; then
   if ensure_termux_node_for_pi; then

@@ -4,7 +4,7 @@
   "registryApiVersion": 2,
   "compatibility": {
     "registryApiVersion": 2,
-    "serviceManager": ">=0.2.1",
+    "serviceManager": ">=0.3.0",
     "requiresRegistryApply": true,
     "requiresStableServiceIds": true
   },
@@ -12,16 +12,29 @@
     {
       "id": "service-manager",
       "archive": "service-manager.tar",
-      "sha256": "83d98b9175b82e38c2b103b34dec3da5fe498737ff7cc103554885d2c41b0355",
-      "size": 7321600,
-      "binarySha256": "92ace596d9b976e425a58dc14219daf7480b9ef528a12d570548071fe5f11da9",
+      "sha256": "1cfd945b8b371904464a83a9ed7e8d3b535a4d57c0de067efa56d7ccb8a14af2",
+      "size": 7751680,
+      "binarySha256": "9c4132695ceae45fa6be6cd2bfe9886c49fdb73c2ec040bfbb5be48388b07148",
       "platform": "termux-arm64",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "registryApiVersion": 2,
       "provides": {
         "registryApiVersion": 2,
         "registryApply": true,
         "stableServiceIds": true
+      }
+    },
+    {
+      "id": "openhouse-web",
+      "archive": "openhouse-web.tar",
+      "targetDir": "openhouse-web",
+      "sha256": "ba9a4673055b84d8773107913c55825b8f4e5a5440fecdffede810e123677345",
+      "size": 122880,
+      "platform": "termux-android-arm64",
+      "version": "1.0.0",
+      "requires": {
+        "serviceManager": ">=0.3.0",
+        "registryApiVersion": 2
       }
     },
     {
@@ -43,7 +56,7 @@
       "size": 6133760,
       "version": "openhouse.20260711",
       "requires": {
-        "serviceManager": ">=0.2.1",
+        "serviceManager": ">=0.3.0",
         "registryApiVersion": 2
       }
     },
@@ -59,7 +72,7 @@
       "sourceCommit": "483ae51fa348b4899e241118c353a2a0daff6155",
       "sourceTreeSha256": "4cba34d163e576683c8b3da4086b75e0473f7a4ad266abfa78dd204871f22af6",
       "requires": {
-        "serviceManager": ">=0.2.1",
+        "serviceManager": ">=0.3.0",
         "registryApiVersion": 2
       }
     },
@@ -91,7 +104,7 @@
       "platform": "linux-arm64",
       "version": "2.1.32",
       "requires": {
-        "serviceManager": ">=0.2.1",
+        "serviceManager": ">=0.3.0",
         "registryApiVersion": 2
       }
     },

@@ -70,6 +70,9 @@ normalize_component_target() {
     openhouse-pi-web|pi-web)
       printf 'pi-web'
       ;;
+    openhouse-web|web-shell|openhouse-shell)
+      printf 'openhouse-web'
+      ;;
     sm|service-manager)
       printf 'service-manager'
       ;;
@@ -90,6 +93,9 @@ component_install_label() {
     pi-web)
       printf '正在安装并立即注册 pi-web。'
       ;;
+    openhouse-web)
+      printf '正在安装并注册 OpenHouse Web 系统壳。'
+      ;;
     *)
       printf '正在安装并注册组件：%s' "$1"
       ;;
@@ -97,9 +103,9 @@ component_install_label() {
 }
 
 log "正在从 APK 内置 payload 安装 Termux pi 主线运行组件。"
-log "默认顺序：service-manager -> pi-agent -> pi-web；Ubuntu 工作台组件仍由后续固定阶段处理。"
+log "默认顺序：service-manager -> openhouse-web -> pi-agent -> pi-web；Ubuntu 工作台组件仍由后续固定阶段处理。"
 
-targets="${SMALLPHONEAI_COMPONENT_TARGETS:-service-manager,pi-agent,pi-web}"
+targets="${SMALLPHONEAI_COMPONENT_TARGETS:-service-manager,openhouse-web,pi-agent,pi-web}"
 while [ -n "$targets" ]; do
   case "$targets" in
     *,*)

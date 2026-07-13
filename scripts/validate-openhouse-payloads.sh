@@ -109,7 +109,18 @@ def validate_archive(entry, source):
 
 
 def compare_entries(left, right, component_id):
-    for field in ("archive", "sha256", "size", "version", "platform", "registryApiVersion", "requires", "provides"):
+    for field in (
+        "archive",
+        "sha256",
+        "size",
+        "binarySha256",
+        "binarySize",
+        "version",
+        "platform",
+        "registryApiVersion",
+        "requires",
+        "provides",
+    ):
         if field in left and field in right and left.get(field) != right.get(field):
             fail(f"manifest disagreement for {component_id}.{field}: manifest.json={left.get(field)!r}, payload-manifest.json={right.get(field)!r}")
 
@@ -311,11 +322,75 @@ def validate_pi_web_payload(pi_web_entry):
 
 def validate_service_manager_payload(entry):
     archive_path = os.path.join(payload_dir, entry["archive"])
+    expected_binary_sha = str(entry.get("binarySha256") or "").lower()
     with tarfile.open(archive_path, "r:*") as tar:
         members = {member.name.lstrip("./"): member for member in tar.getmembers()}
         binary = members.get("service-manager")
-        if binary is None or binary.size <= 0:
+        if binary is None or not binary.isfile() or binary.size <= 0:
             fail("service-manager.tar is missing non-empty service-manager binary")
+        else:
+            if binary.mode & 0o111 == 0:
+                fail("service-manager.tar service-manager binary must be executable")
+            extracted = tar.extractfile(binary)
+            binary_bytes = extracted.read() if extracted is not None else b""
+            if not re.fullmatch(r"[0-9a-f]{64}", expected_binary_sha):
+                fail("service-manager binarySha256 must be a lowercase 64-char hex digest")
+            else:
+                actual_binary_sha = hashlib.sha256(binary_bytes).hexdigest()
+                if actual_binary_sha != expected_binary_sha:
+                    fail(
+                        "service-manager binarySha256 mismatch: "
+                        f"expected {expected_binary_sha}, actual {actual_binary_sha}"
+                    )
+            if entry.get("platform") == "termux-arm64":
+                is_arm64_elf = (
+                    len(binary_bytes) >= 20
+                    and binary_bytes[:4] == b"\x7fELF"
+                    and binary_bytes[4] == 2
+                    and binary_bytes[5] == 1
+                    and int.from_bytes(binary_bytes[18:20], "little") == 183
+                )
+                if not is_arm64_elf:
+                    fail("service-manager binary must be a little-endian ELF64 AArch64 executable")
+                elif b"/system/bin/linker64\x00" not in binary_bytes:
+                    fail("service-manager termux-arm64 binary must use /system/bin/linker64")
+
+        for required_script in ("scripts/install.sh", "scripts/check.sh"):
+            member = members.get(required_script)
+            if member is None or not member.isfile() or member.size <= 0:
+                fail(f"service-manager.tar is missing non-empty {required_script}")
+            elif member.mode & 0o111 == 0:
+                fail(f"service-manager.tar {required_script} must be executable")
+
+
+def validate_openhouse_web_payload(entry):
+    archive_path = os.path.join(payload_dir, entry["archive"])
+    with tarfile.open(archive_path, "r:*") as tar:
+        members = {member.name.lstrip("./"): member for member in tar.getmembers()}
+        for required_file in (
+            "src/server.mjs",
+            "src/auth.mjs",
+            "public/index.html",
+            "config/openhouse-web.service.json",
+            "config/openhouse.component.json",
+            "scripts/install.sh",
+            "scripts/check.sh",
+            "scripts/register-service.sh",
+        ):
+            member = members.get(required_file)
+            if member is None or member.size <= 0:
+                fail(f"openhouse-web.tar is missing non-empty {required_file}")
+        service_member = members.get("config/openhouse-web.service.json")
+        if service_member is not None:
+            extracted = tar.extractfile(service_member)
+            if extracted is not None:
+                service_doc = json.loads(extracted.read().decode("utf-8"))
+                service = service_doc.get("service") or {}
+                if service.get("residentByDefault") is not True:
+                    fail("openhouse-web service must declare residentByDefault=true")
+                ports = service.get("ports") or []
+                if not ports or ports[0].get("preferred") != 22110:
+                    fail("openhouse-web service must prefer fixed port 22110")
 
 
 def validate_wuyou_payload(entry):
@@ -347,8 +422,8 @@ payload_manifest = load_json(payload_manifest_path)
 components = by_id(component_array(manifest, "components"), "manifest.json")
 payloads = by_id(component_array(payload_manifest, "payloads"), "payload-manifest.json")
 
-required = ("service-manager", "pi-agent", "pi-web", "wuyou", "aionui-web")
-registry_managed = ("pi-agent", "pi-web", "aionui-web")
+required = ("service-manager", "openhouse-web", "pi-agent", "pi-web", "wuyou", "aionui-web")
+registry_managed = ("openhouse-web", "pi-agent", "pi-web", "aionui-web")
 for component_id in required:
     if component_id not in components:
         fail(f"manifest.json missing required component {component_id}")
@@ -410,6 +485,8 @@ if "pi-web" in components and isinstance(components["pi-web"].get("archive"), st
     validate_pi_web_payload(components["pi-web"])
 if "service-manager" in components and isinstance(components["service-manager"].get("archive"), str):
     validate_service_manager_payload(components["service-manager"])
+if "openhouse-web" in components and isinstance(components["openhouse-web"].get("archive"), str):
+    validate_openhouse_web_payload(components["openhouse-web"])
 if "wuyou" in components and isinstance(components["wuyou"].get("archive"), str):
     validate_wuyou_payload(components["wuyou"])
 
