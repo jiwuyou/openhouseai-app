@@ -436,9 +436,26 @@ def validate_openhouse_web_payload(entry):
                 service = service_doc.get("service") or {}
                 if service.get("residentByDefault") is not True:
                     fail("openhouse-web service must declare residentByDefault=true")
+                env = service.get("env") or {}
+                if env.get("SERVICE_MANAGER_CONFIG") != "/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json":
+                    fail("openhouse-web service must use the OpenHouse service-manager config")
                 ports = service.get("ports") or []
                 if not ports or ports[0].get("preferred") != 22110:
                     fail("openhouse-web service must prefer fixed port 22110")
+        component_member = members.get("config/openhouse.component.json")
+        if component_member is not None:
+            extracted = tar.extractfile(component_member)
+            if extracted is not None:
+                component = json.loads(extracted.read().decode("utf-8"))
+                shell_menu = component.get("shellMenu") or {}
+                desktop = shell_menu.get("desktop") or {}
+                smallphone_app = component.get("smallphoneApp") or {}
+                if component.get("kind") != "app":
+                    fail("openhouse-web component must be registered as a normal app")
+                if shell_menu.get("visible") is not True or desktop.get("visible") is not True:
+                    fail("openhouse-web component must be visible in the shell menu and desktop")
+                if smallphone_app.get("visible") is not True:
+                    fail("openhouse-web component must be visible in the app list")
 
 
 def validate_wuyou_payload(entry):
