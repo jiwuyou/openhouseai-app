@@ -17,7 +17,7 @@ items = doc.get("components") or doc.get("payloads") or []
 entry = next((item for item in items if item.get("id") == "openhouse-web"), None)
 assert entry, "openhouse-web entry missing"
 assert entry.get("archive") == "openhouse-web.tar"
-assert entry.get("version") == "1.1.0"
+assert entry.get("version") == "1.1.1"
 assert entry.get("requires", {}).get("serviceManager") == ">=0.3.0"
 PY
 done
@@ -41,7 +41,7 @@ for executable in scripts/install.sh scripts/check.sh scripts/register-service.s
 done
 
 package_json="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./package.json)"
-printf '%s' "$package_json" | grep -Fq '"version": "1.1.0"' || fail 'package version 1.1.0 missing'
+printf '%s' "$package_json" | grep -Fq '"version": "1.1.1"' || fail 'package version 1.1.1 missing'
 
 password_store="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./src/password-store.mjs)"
 for required in \

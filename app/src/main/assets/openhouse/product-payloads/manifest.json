@@ -30,10 +30,10 @@
       "id": "openhouse-web",
       "archive": "openhouse-web.tar",
       "targetDir": "openhouse-web",
-      "sha256": "75493ec94042c9892f1e6a0c95d240e0bb9f4c11a7913cc5c9c1ec2410ee6481",
+      "sha256": "aa7bae111150a3bac4c36bf431f577776e990a2399380bd120d99fa2a1b9abd0",
       "size": 153600,
       "platform": "termux-android-arm64",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "requires": {
         "serviceManager": ">=0.3.0",
         "registryApiVersion": 2
