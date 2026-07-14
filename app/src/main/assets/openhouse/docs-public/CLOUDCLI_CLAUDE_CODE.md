@@ -107,7 +107,9 @@ cp agent.js "agent.js.bak.$(date +%Y%m%d-%H%M%S)"
 先确认服务状态：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh status
 service-manager status cloudcli 2>/dev/null || true
 service-manager status cc-connect 2>/dev/null || true

@@ -36,14 +36,14 @@
 | --- | --- | --- |
 | Termux home | `/data/data/com.termux/files/home` | Android 侧 Termux 主目录。 |
 | Termux prefix | `/data/data/com.termux/files/usr` | Termux 包和命令目录。 |
-| Bootstrap root | `/data/data/com.termux/files/home/.smallphoneai-bootstrap` | APK 释放的安装脚本、assets、阶段状态和日志。 |
+| Bootstrap root | 最新 `/data/data/com.termux/files/home/.local/share/openhouseai/update-resources/apk-*/bootstrap` | APK 释放的版本化安装脚本；使用前必须验证 `bootstrap.sh` 存在。 |
 | Ubuntu root | `/root` | proot-distro Ubuntu 内的 root home。 |
 | OpenHouse docs | `/root/openhouse/docs` | AI 和用户共同读取的正式文档目录。 |
 | OpenHouse scripts | `/root/openhouse/scripts` | 后置安装、检查、修复脚本目录。 |
 | Runtime repos | `/root/smallphoneai-repos` | service-manager、openhouse-connect、smallphone、pi-agent、pi-web 等运行组件。 |
 | service-manager config | `/root/.config/openhouseai/service-manager/config.json` | service-manager 本机配置，包含 auth token，日志和 UI 不得原样打印。 |
-| Stage state | `$TERMUX_HOME/.smallphoneai-bootstrap/state` | 阶段状态、marker、当前 run id。 |
-| Stage logs | `$TERMUX_HOME/.smallphoneai-bootstrap/logs` | 分阶段日志。 |
+| APK pending marker | `$TERMUX_HOME/.local/share/openhouseai/update-resources/PENDING_APK_RESOURCES.json` | 当前 APK 资源是否仍待首次安装或用户 AI 处理。 |
+| Stage logs | `$TERMUX_HOME/.maintainer-logs` | 分阶段维护和安装日志。 |
 
 ## 状态机
 

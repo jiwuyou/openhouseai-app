@@ -86,7 +86,7 @@ OpenHouse 的路径必须按层理解。`/root` 是 Ubuntu 内的 root home，�
 | --- | --- |
 | `/data/data/com.termux/files/home` | Termux 外层 home。bootstrap、安装日志、Termux 侧配置通常在这里。 |
 | `/data/data/com.termux/files/usr` | Termux prefix。Termux 包、二进制、库和 proot-distro 安装在这里。 |
-| `/data/data/com.termux/files/home/.smallphoneai-bootstrap` | bootstrap 脚本和状态目录，具体是否存在以当前安装为准。 |
+| `/data/data/com.termux/files/home/.local/share/openhouseai/update-resources/apk-*` | APK 版本化资源目录；真实 bootstrap 位于最新目录的 `bootstrap/bootstrap.sh`。 |
 | `/data/data/com.termux/files/home/.maintainer-logs` | 常见维护/安装日志目录，具体日志名以当前版本为准。 |
 | `/data/data/com.termux/files/home/.openhouseai` | 启动入口和 OpenHouse 侧配置可能使用的目录。 |
 | `/data/data/com.termux/files/home/openhouseai-docs/official` | 官方文档的运行期物理目录。Ubuntu 内的 `/root/openhouse/docs` 和兼容文档路径应指向这里。 |

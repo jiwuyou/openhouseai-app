@@ -3,8 +3,11 @@ set -euo pipefail
 
 app_root="$(cd "$(dirname "$0")/.." && pwd)"
 source_dir="${PI_WEB_SOURCE_DIR:-/root/projects/pi-web}"
+required_branch="${PI_WEB_REQUIRED_BRANCH:-openhouse}"
+required_commit="${PI_WEB_REQUIRED_COMMIT:-82a025dbc98cf522f42e36d97972485f02712be8}"
 ssh_target="${PI_WEB_BUILD_SSH:-phonetermux}"
 remote_dependencies="${PI_WEB_REMOTE_DEPENDENCIES:-\$HOME/projects/pi-web/node_modules}"
+prompt_assets_dir="$app_root/app/src/main/assets/openhouse/pi-prompts"
 payload_dir="$app_root/app/src/main/assets/openhouse/product-payloads"
 output="$payload_dir/pi-web.tar"
 remote_build_dir=""
@@ -24,7 +27,23 @@ trap cleanup EXIT
 
 [ -f "$source_dir/package.json" ] || die "pi-web source missing: $source_dir"
 [ -f "$source_dir/package-lock.json" ] || die "pi-web package-lock missing: $source_dir"
+[ "$(git -C "$source_dir" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ] \
+  || die "pi-web source is not a Git checkout: $source_dir"
+source_branch="$(git -C "$source_dir" branch --show-current)"
+source_commit="$(git -C "$source_dir" rev-parse HEAD)"
+resolved_required_commit="$(git -C "$source_dir" rev-parse "${required_commit}^{commit}" 2>/dev/null)" \
+  || die "required pi-web commit is unavailable: $required_commit"
+[ "$source_branch" = "$required_branch" ] \
+  || die "pi-web branch mismatch: required $required_branch, found ${source_branch:-detached HEAD}"
+[ "$source_commit" = "$resolved_required_commit" ] \
+  || die "pi-web commit mismatch: required $resolved_required_commit, found $source_commit"
+[ -z "$(git -C "$source_dir" status --porcelain --untracked-files=all)" ] \
+  || die "pi-web source has uncommitted changes: $source_dir"
 [ -f "$output" ] || die "existing pi-web.tar is required as the registration-script template"
+for prompt_name in openhouse-first-config openhouse-docs openhouse-second-ai-handoff; do
+  [ -s "$prompt_assets_dir/$prompt_name.md" ] \
+    || die "OpenHouse pi prompt missing: $prompt_assets_dir/$prompt_name.md"
+done
 
 if [ -n "${PI_WEB_REMOTE_BUILD_DIR:-}" ]; then
   remote_build_dir="$PI_WEB_REMOTE_BUILD_DIR"
@@ -63,7 +82,12 @@ else
 fi
 
 staging="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-pi-web-payload.XXXXXX")"
-mkdir -p "$staging/bin" "$staging/runtime/pi-web/.next" "$staging/scripts"
+mkdir -p "$staging/bin" "$staging/runtime/pi-web/.next" "$staging/scripts" "$staging/prompts"
+for prompt_name in openhouse-first-config openhouse-docs openhouse-second-ai-handoff; do
+  cp "$prompt_assets_dir/$prompt_name.md" "$staging/prompts/$prompt_name.md"
+  cmp -s "$prompt_assets_dir/$prompt_name.md" "$staging/prompts/$prompt_name.md" \
+    || die "staged prompt differs from App-owned source: $prompt_name"
+done
 
 ssh "$ssh_target" "tar -cf - -C '$remote_build_dir/.next/standalone' ." \
   | tar -xf - -C "$staging/runtime/pi-web"
@@ -76,6 +100,46 @@ fi
 
 tar -xOf "$output" ./scripts/register-service.sh \
   | sed 's#/root#${HOME}#g' > "$staging/scripts/register-service.sh"
+sed -i \
+  -e '/"PI_WEB_DEFAULT_CWD":/d' \
+  -e '/"OPENHOUSE_PI_WEB_DEFAULT_CWD":/d' \
+  -e '/"OPENHOUSE_DOCS_DIR":/d' \
+  -e '/"OPENHOUSE_SCRIPTS_DIR":/d' \
+  -e '/"OPENHOUSE_FIRST_CONFIG_STATE_PATH":/d' \
+  -e '/"OPENHOUSE_SECOND_AI_HANDOFF_DIR":/d' \
+  "$staging/scripts/register-service.sh"
+sed -i '/"PI_CODING_AGENT_DIR": "${HOME}\/\.pi",/a\
+    "PI_WEB_DEFAULT_CWD": "${HOME}",' "$staging/scripts/register-service.sh"
+python3 - "$staging/scripts/register-service.sh" <<'PYBUILD'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+needle = "resolve_token() {\n"
+config_token_block = '''  _openhouse_config="$CONFIG_DIR/service-manager/config.json"
+  _openhouse_token=""
+  if [ -r "$_openhouse_config" ] && have node; then
+    _openhouse_token="$(node -e '
+const fs = require("fs");
+try {
+  const config = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const token = config && typeof config.auth_token === "string" ? config.auth_token.trim() : "";
+  if (token) process.stdout.write(token);
+} catch (_) {}
+' "$_openhouse_config" 2>/dev/null || true)"
+    if [ -n "$_openhouse_token" ]; then
+      printf '%s' "$_openhouse_token"
+      return
+    fi
+  fi
+'''
+if needle not in source:
+    raise SystemExit("register-service.sh is missing resolve_token()")
+if '_openhouse_config="$CONFIG_DIR/service-manager/config.json"' not in source:
+    source = source.replace(needle, needle + config_token_block, 1)
+path.write_text(source, encoding="utf-8")
+PYBUILD
 
 cat > "$staging/bin/openhouse-pi-web-start" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/env sh
@@ -84,7 +148,7 @@ set -eu
 : "${HOME:?HOME is required}"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 export PI_CODING_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi}"
-export OPENHOUSE_PI_WEB_DEFAULT_CWD="${OPENHOUSE_PI_WEB_DEFAULT_CWD:-$HOME}"
+export PI_WEB_DEFAULT_CWD="${PI_WEB_DEFAULT_CWD:-$HOME}"
 export PI_WEB_HOST="${PI_WEB_HOST:-127.0.0.1}"
 export PORT="${PORT:-${PI_WEB_PORT:-30141}}"
 export HOSTNAME="${HOSTNAME:-$PI_WEB_HOST}"
@@ -141,6 +205,8 @@ ROOT_DIR=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 PI_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi}"
 RUNTIME_SRC="$ROOT_DIR/runtime/pi-web"
 RUNTIME_DST="${OPENHOUSE_PI_WEB_RUNTIME_DIR:-$HOME/.local/share/openhouseai/pi-web}"
+PROMPT_SRC="$ROOT_DIR/prompts"
+PROMPT_DST="$PI_AGENT_DIR/prompts"
 LOCAL_BIN="$HOME/.local/bin"
 GLOBAL_BIN="${OPENHOUSE_PI_WEB_GLOBAL_BIN:-$PREFIX/bin}"
 
@@ -154,7 +220,7 @@ node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a
 
 tmp="$RUNTIME_DST.tmp.$$"
 mkdir -p "$(dirname "$RUNTIME_DST")" "$LOCAL_BIN" "$GLOBAL_BIN" \
-  "$PI_AGENT_DIR/extensions" "$PI_AGENT_DIR/agent/extensions" "$HOME/workspace"
+  "$PI_AGENT_DIR/extensions" "$PI_AGENT_DIR/agent/extensions" "$PROMPT_DST" "$HOME/workspace"
 rm -rf "$tmp"
 mkdir -p "$tmp"
 (cd "$RUNTIME_SRC" && tar -cf - .) | (cd "$tmp" && tar -xf -)
@@ -162,6 +228,10 @@ rm -rf "$RUNTIME_DST"
 mv "$tmp" "$RUNTIME_DST"
 install -m 755 "$ROOT_DIR/bin/openhouse-pi-web-start" "$LOCAL_BIN/openhouse-pi-web-start"
 install -m 755 "$ROOT_DIR/bin/pi-web" "$GLOBAL_BIN/pi-web"
+for prompt_name in openhouse-first-config openhouse-docs openhouse-second-ai-handoff; do
+  [ -s "$PROMPT_SRC/$prompt_name.md" ] || die "Bundled pi prompt is missing: $prompt_name"
+  install -m 600 "$PROMPT_SRC/$prompt_name.md" "$PROMPT_DST/$prompt_name.md"
+done
 printf 'done: pi-web runtime installed; default URL http://127.0.0.1:%s/\n' "${PI_WEB_PORT:-30141}"
 EOF
 
@@ -184,16 +254,22 @@ pi-web --help >/dev/null 2>&1 || die "pi-web global command failed"
 [ -f "$RUNTIME_DIR/server.js" ] || die "pi-web standalone server is missing"
 [ -d "$RUNTIME_DIR/node_modules" ] || die "pi-web runtime node_modules are missing"
 [ -d "$RUNTIME_DIR/.next/static" ] || die "pi-web static assets are missing"
+for prompt_name in openhouse-first-config openhouse-docs openhouse-second-ai-handoff; do
+  [ -s "${PI_CODING_AGENT_DIR:-$HOME/.pi}/prompts/$prompt_name.md" ] \
+    || die "pi prompt is missing: /$prompt_name"
+done
 printf 'ok: pi-web standalone runtime is installed\n'
 EOF
 
 chmod 0755 "$staging/bin/"* "$staging/scripts/"*.sh
+chmod 0644 "$staging/prompts/"*.md
 
 tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner \
   -cf "$output.tmp" -C "$staging" .
 mv "$output.tmp" "$output"
 
 log "built on $ssh_target: $(ssh "$ssh_target" 'node -p "process.platform+\"/\"+process.arch+\" \"+process.version"')"
-log "source commit: $(git -C "$source_dir" rev-parse HEAD)"
+log "source branch: $source_branch"
+log "source commit: $source_commit"
 log "sha256: $(sha256sum "$output" | awk '{print $1}')"
 log "size: $(wc -c < "$output" | tr -d ' ')"

@@ -10,7 +10,11 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 2
 fi
 
-python3 - "$PAYLOAD_DIR" <<'PY'
+python3 - \
+  "$PAYLOAD_DIR" \
+  "$REPO_DIR/app/src/main/assets/openhouse/pi-prompts" \
+  "${PI_WEB_REQUIRED_BRANCH:-openhouse}" \
+  "${PI_WEB_REQUIRED_COMMIT:-82a025dbc98cf522f42e36d97972485f02712be8}" <<'PY'
 import hashlib
 import json
 import os
@@ -19,12 +23,18 @@ import sys
 import tarfile
 
 payload_dir = os.path.abspath(sys.argv[1])
+prompt_assets_dir = os.path.abspath(sys.argv[2])
+required_pi_web_branch = sys.argv[3]
+required_pi_web_commit = sys.argv[4].lower()
 manifest_path = os.path.join(payload_dir, "manifest.json")
 payload_manifest_path = os.path.join(payload_dir, "payload-manifest.json")
 
 errors = []
 warnings = []
 digest_cache = {}
+
+if not re.fullmatch(r"[0-9a-f]{40}", required_pi_web_commit):
+    raise SystemExit("PI_WEB_REQUIRED_COMMIT must be a full 40-character lowercase Git commit")
 
 
 def fail(message):
@@ -120,8 +130,16 @@ def compare_entries(left, right, component_id):
         "registryApiVersion",
         "requires",
         "provides",
+        "sourceRepo",
+        "sourceBranch",
+        "sourceCommit",
+        "sourceTreeSha256",
     ):
-        if field in left and field in right and left.get(field) != right.get(field):
+        if field in ("sourceRepo", "sourceBranch", "sourceCommit", "sourceTreeSha256"):
+            disagrees = left.get(field) != right.get(field)
+        else:
+            disagrees = field in left and field in right and left.get(field) != right.get(field)
+        if disagrees:
             fail(f"manifest disagreement for {component_id}.{field}: manifest.json={left.get(field)!r}, payload-manifest.json={right.get(field)!r}")
 
 
@@ -289,6 +307,13 @@ def validate_pi_agent_payload(pi_agent_entry):
 
 def validate_pi_web_payload(pi_web_entry):
     archive_path = os.path.join(payload_dir, pi_web_entry["archive"])
+    prompt_names = (
+        "openhouse-first-config",
+        "openhouse-docs",
+        "openhouse-second-ai-handoff",
+    )
+    prompt_bytes = {}
+    prompt_texts = {}
     with tarfile.open(archive_path, "r:*") as tar:
         members = {member.name.lstrip("./"): member for member in tar.getmembers()}
         start = members.get("bin/openhouse-pi-web-start")
@@ -297,6 +322,15 @@ def validate_pi_web_payload(pi_web_entry):
         launcher = members.get("bin/pi-web")
         if launcher is None or launcher.size <= 0:
             fail("pi-web.tar is missing non-empty bin/pi-web global command launcher")
+        for prompt_name in prompt_names:
+            prompt_path = f"prompts/{prompt_name}.md"
+            member = members.get(prompt_path)
+            if member is None or not member.isfile() or member.size <= 0:
+                fail(f"pi-web.tar is missing non-empty {prompt_path}")
+                continue
+            extracted = tar.extractfile(member)
+            prompt_bytes[prompt_name] = extracted.read() if extracted is not None else b""
+            prompt_texts[prompt_name] = prompt_bytes[prompt_name].decode("utf-8", errors="replace")
         for member in members.values():
             name = member.name.lstrip("./")
             if member.isfile() and member.size == 0 and (
@@ -305,6 +339,108 @@ def validate_pi_web_payload(pi_web_entry):
                 or name in ("services.d/pi-web.json", "components.d/pi-web.json")
             ):
                 fail(f"pi-web.tar contains a zero-byte generated spec candidate: {name}")
+
+    source_branch = str(pi_web_entry.get("sourceBranch") or "")
+    source_commit = str(pi_web_entry.get("sourceCommit") or "").lower()
+    if source_branch != required_pi_web_branch:
+        fail(
+            "pi-web sourceBranch mismatch: "
+            f"required {required_pi_web_branch!r}, found {source_branch!r}"
+        )
+    if source_commit != required_pi_web_commit:
+        fail(
+            "pi-web sourceCommit mismatch: "
+            f"required {required_pi_web_commit}, found {source_commit or 'missing'}"
+        )
+
+    command_requirements = {
+        "openhouse-first-config": (
+            "# /openhouse-first-config",
+            "$HOME/openhouse/docs",
+            "/root/openhouse/docs",
+            "$HOME/.local/share/openhouseai/handoffs/second-ai/latest",
+            "agent identity",
+            "HANDOFF.md",
+            "system-check.json",
+            "task.json",
+            "不同",
+        ),
+        "openhouse-docs": (
+            "# /openhouse-docs",
+            "$HOME/openhouse/docs",
+            "/root/openhouse/docs",
+        ),
+        "openhouse-second-ai-handoff": (
+            "# /openhouse-second-ai-handoff",
+            "$HOME/.local/share/openhouseai/handoffs/second-ai/latest",
+            "agent identity",
+            "HANDOFF.md",
+            "system-check.json",
+            "task.json",
+            "不同",
+        ),
+    }
+    for prompt_name, required_texts in command_requirements.items():
+        prompt_text = prompt_texts.get(prompt_name, "")
+        for required_text in required_texts:
+            if required_text not in prompt_text:
+                fail(f"pi-web prompt {prompt_name} is missing contract text: {required_text}")
+
+    for prompt_name in prompt_names:
+        source_path = os.path.join(prompt_assets_dir, f"{prompt_name}.md")
+        if not os.path.isfile(source_path):
+            fail(f"missing App-owned pi prompt asset: {source_path}")
+            continue
+        with open(source_path, "rb") as source_file:
+            source_bytes = source_file.read()
+        bundled_bytes = prompt_bytes.get(prompt_name, b"")
+        if hashlib.sha256(bundled_bytes).digest() != hashlib.sha256(source_bytes).digest():
+            fail(f"pi-web bundled prompt differs from App-owned source: {prompt_name}")
+
+    first_config_prompt = prompt_texts.get("openhouse-first-config", "")
+    for required_text in (
+        "/openhouse-first-config",
+        "$HOME/openhouse/docs",
+        "/root/openhouse/docs",
+        "$HOME/.local/share/openhouseai/handoffs/second-ai/latest",
+    ):
+        if required_text not in first_config_prompt:
+            fail(f"openhouse-first-config prompt is missing required path or command: {required_text}")
+    secret_patterns = (
+        r"\bsk-[A-Za-z0-9_-]{12,}\b",
+        r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]{12,}",
+        r"(?i)\b(api[_ -]?key|token|authorization|password)\s*[:=]\s*['\"]?[A-Za-z0-9._~+/-]{12,}",
+    )
+    for prompt_name, prompt_text in prompt_texts.items():
+        for pattern in secret_patterns:
+            if re.search(pattern, prompt_text):
+                fail(f"pi-web prompt {prompt_name} contains secret-like material")
+
+    install_script = read_tar_member(archive_path, ["scripts/install.sh"])
+    if 'PI_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi}"' not in install_script:
+        fail("pi-web install.sh must default PI_AGENT_DIR to $HOME/.pi")
+    if '$PI_AGENT_DIR/prompts' not in install_script:
+        fail("pi-web install.sh must install prompts under $HOME/.pi/prompts by default")
+    if "$PROMPT_SRC/$prompt_name.md" not in install_script:
+        fail("pi-web install.sh must copy named prompt files from the bundled prompts directory")
+    for prompt_name in prompt_names:
+        if prompt_name not in install_script:
+            fail(f"pi-web install.sh does not list prompt: {prompt_name}")
+    if "install -m 600" not in install_script:
+        fail("pi-web install.sh must install prompt files with private permissions")
+
+    start_script = read_tar_member(archive_path, ["bin/openhouse-pi-web-start"])
+    if "PI_WEB_DEFAULT_CWD" not in start_script:
+        fail("pi-web launcher must expose the generic PI_WEB_DEFAULT_CWD")
+    for legacy_name in (
+        "OPENHOUSE_PI_WEB_DEFAULT_CWD",
+        "OPENHOUSE_DOCS_DIR",
+        "OPENHOUSE_SCRIPTS_DIR",
+        "OPENHOUSE_FIRST_CONFIG_STATE_PATH",
+        "OPENHOUSE_SECOND_AI_HANDOFF_DIR",
+    ):
+        if legacy_name in start_script:
+            fail(f"pi-web launcher must not inject product-specific environment: {legacy_name}")
 
     register_script = read_tar_member(archive_path, ["scripts/register-service.sh"])
     if not register_script:
@@ -316,6 +452,42 @@ def validate_pi_web_payload(pi_web_entry):
         fail("pi-web register-service.sh writes directly to $COMPONENT_PATH; write a temp file, validate JSON, then mv atomically")
     if "PI_WEB_HOST" not in register_script or "HOSTNAME" not in register_script:
         fail("pi-web register-service.sh must set PI_WEB_HOST and HOSTNAME for the service environment")
+    if "PI_WEB_DEFAULT_CWD" not in register_script:
+        fail("pi-web register-service.sh must set generic PI_WEB_DEFAULT_CWD")
+    config_token_marker = '_openhouse_config="$CONFIG_DIR/service-manager/config.json"'
+    config_field_marker = "config.auth_token"
+    env_token_marker = 'if [ -n "${SERVICE_MANAGER_TOKEN:-}" ]'
+    cli_token_marker = "service-manager token show"
+    token_markers = (
+        config_token_marker,
+        config_field_marker,
+        env_token_marker,
+        cli_token_marker,
+    )
+    for marker in token_markers:
+        if marker not in register_script:
+            fail(f"pi-web register-service.sh token resolver is missing: {marker}")
+    if all(marker in register_script for marker in token_markers):
+        positions = tuple(register_script.index(marker) for marker in token_markers)
+        if positions != tuple(sorted(positions)):
+            fail(
+                "pi-web register-service.sh must resolve OpenHouse config auth_token "
+                "before environment and service-manager CLI fallbacks"
+            )
+    token_resolver = register_script[
+        register_script.find("resolve_token() {") : register_script.find("write_spec() {")
+    ]
+    if re.search(r"(?:log|warn|echo)\s+.*(?:auth_token|_openhouse_token)", token_resolver):
+        fail("pi-web register-service.sh must not log the resolved auth token")
+    for legacy_name in (
+        "OPENHOUSE_PI_WEB_DEFAULT_CWD",
+        "OPENHOUSE_DOCS_DIR",
+        "OPENHOUSE_SCRIPTS_DIR",
+        "OPENHOUSE_FIRST_CONFIG_STATE_PATH",
+        "OPENHOUSE_SECOND_AI_HANDOFF_DIR",
+    ):
+        if legacy_name in register_script:
+            fail(f"pi-web service environment must not embed product-specific paths: {legacy_name}")
     if "pi-web --host" not in register_script:
         fail("pi-web register-service.sh must launch the global pi-web command")
 

@@ -130,7 +130,9 @@ $EDITOR "$HOME/.config/openhouseai/service-manager/services.d/hermes-webui.json"
 写入 JSON 后，重启或修复控制中枢：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh start
 ```
 

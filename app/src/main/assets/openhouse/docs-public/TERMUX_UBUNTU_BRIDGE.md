@@ -91,10 +91,10 @@ oh-termux-ensure-sshd ensure
 
 当前首装把 `oh-termux-ensure-sshd` 作为底座修复入口；如果后续把 `termux-sshd` 注册为 service-manager 服务，服务命令也应调用这个幂等入口，而不是复制一份新的 sshd 启动逻辑。
 
-首次安装和维护脚本会同步 APK 内置 payload 到：
+APK 会把完整资源复制到版本化目录：
 
 ```text
-/data/data/com.termux/files/home/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads
+/data/data/com.termux/files/home/.local/share/openhouseai/update-resources/apk-版本-versionCode-日期/product-payloads
 ```
 
 版本与兼容性摘要来自该目录的 `manifest.json`，并会在维护动作日志头打印。AI 排障时优先看摘要里的 APK 版本、bootstrap tree hash、service-manager、registryApi、pi-agent、pi-web 和 aionui-web 条目。
@@ -148,5 +148,7 @@ oh-termux-ensure-sshd ensure
 ```bash
 tail -n 80 "$HOME/.maintainer-logs/manifest_full.log" 2>/dev/null || true
 tail -n 80 "$HOME/.smallphoneai/logs/service-manager.log" 2>/dev/null || true
-cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+cat "$HOME/.local/share/openhouseai/update-resources/PENDING_APK_RESOURCES.json" 2>/dev/null || true
+[ -z "$resource_dir" ] || sed -n '1,220p' "$resource_dir/product-payloads/manifest.json" 2>/dev/null || true
 ```

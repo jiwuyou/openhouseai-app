@@ -1,13 +1,22 @@
 # 首次 OpenHouse 配置
 
-本文说明：用户已经在 pi-web 配好可用大模型之后，如何由 `pi-agent` 完成 OpenHouse 的首次配置闭环。
+本文说明：固定安装已经完成后，如何让用户选择的第一阶段 AI 完成第一次系统检查、准备另一个独立 AI，并把任务交给第二阶段 AI 接力。pi-web、AionUI、Claude Code、Codex、Hermes 或其它工作台都只是入口或载体，不固定两阶段的产品、模型或 agent identity。
 
-目标不是再让用户手工填很多配置，而是让 `pi-agent` 读取文档、检查后置 AI 工具、迁移模型配置、测通 CloudCLI 中的 Claude Code，然后把用户带到可以真正工作的界面。
+目标不是让用户手工搬运上下文，而是让第一阶段 AI 读取文档、检查系统、准备一个身份不同的第二阶段 AI，并把脱敏任务交给它继续完成。内测闭环以“双 AI 已接力且完成双签名”为准，不以某个固定工作台是否被选中为准。
 
 ## 触发条件
 
-pi-web 或 OpenHouseAI / AionUi 检测到：
+用户打开 OpenHouse 适配版 pi-web 后，点击页面内的“OpenHouse 首次配置”入口。pi-web 在内部运行标准模板：
 
+```text
+/openhouse-first-config
+```
+
+pi-web 的 OpenHouse 适配分支只负责显示入口、创建会话并调用模板名，不内置文档地址和任务正文，也不代表第一阶段 AI 的身份。完整模板由最终 APK payload 安装到 `$PI_CODING_AGENT_DIR/prompts`；实机默认文件是 `$HOME/.pi/prompts/openhouse-first-config.md`。Android 不传 prompt URL，也不理解 AI 会话协议。
+
+执行前应确认：
+
+- OpenHouse 固定安装已完成，官方文档和 service-manager 可用。
 - 已存在可用模型配置，并且至少一个模型已经测试成功。
 - OpenHouse 首次配置尚未完成。
 
@@ -17,33 +26,37 @@ pi-web 或 OpenHouseAI / AionUi 检测到：
 首次使用 OpenHouse，看到我，请点击我，完成首次配置。
 ```
 
-用户点击后，pi-web 应在 `/root` 开启新会话，默认开启全部工具，并把首次配置任务交给 `pi-agent`。
+用户点击后，pi-web 应在 `PI_WEB_DEFAULT_CWD` 指定的默认工作目录开启新会话并运行模板。也可以在新会话中手动运行 `/openhouse-first-config`。不要假设第一阶段 AI 是 pi-agent，也不要假设当前命令层一定是 Ubuntu `/root`。
 
-## pi-agent 要做什么
+## 第一阶段 AI 要做什么
 
-`pi-agent` 应按顺序执行：
+第一阶段 AI 应按顺序执行：
 
 1. 阅读 OpenHouse 文档索引。
 2. 确认当前文档路径。
-3. 读取 pi-web 已保存的模型配置。
-4. 核对 OpenHouseAI / AionUi 配置是否符合 AionUi 文档和 `MODEL_API_SETUP.md` 的字段要求。
-5. 执行 `/root/openhouse/scripts/check-ai-tools.sh`，判断 Codex、Claude Code、CloudCLI、cc-switch 是否已安装。
+3. 确认当前实际使用的模型和 agent identity；不把 pi-web 当作 identity。
+4. 按用户选择读取当前工作台或模型配置，并按 `MODEL_API_SETUP.md` 核对协议和字段。
+5. 检查后置 AI 工具状态；在 Ubuntu 直接执行 `/root/openhouse/scripts/check-ai-tools.sh`，在 Termux 使用 `oh-ubuntu-root -- bash /root/openhouse/scripts/check-ai-tools.sh`。
 6. 按用户目标执行后置安装脚本，例如 `install-claude-code.sh`、`install-cloudcli.sh`、`install-cc-switch.sh`。
 7. 判断 provider、baseUrl、modelId、协议和凭据来源。
-8. 把可用配置迁移到 CloudCLI / Claude Code 所需的位置。
+8. 只在用户选择相应工作台时，把可用配置迁移到 CloudCLI、Claude Code、Codex 或其它目标所需的位置。
 9. 遇到协议差异时，按文档和网络检索确认正确配置。
 10. 启动或重启相关服务。
-11. 测通 CloudCLI 中的 Claude Code。
+11. 对用户实际选择的目标 AI 完成一次最小真实请求。
 12. 向用户介绍基本入口和下一步选择。
-13. 给用户 Claude Code 交接提示词，引用 `CLAUDE_CODE_HANDOFF.md`。
+13. 如果用户选择 Claude Code，再给出引用 `CLAUDE_CODE_HANDOFF.md` 的交接提示词。
+14. 生成第二 AI 交接文件，引用 `SECOND_AI_HANDOFF.md`，完成第一阶段签名。
+15. 给用户一句可直接复制给第二阶段 AI 的话，并引导用户打开所选择的第二阶段工作台。
 
 ## 首先阅读的文档
 
-优先路径：
+Termux native 第一阶段 AI 的优先路径：
 
 ```text
-/root/openhouse/docs
+/data/data/com.termux/files/home/openhouse/docs
 ```
+
+Ubuntu 工作台中 AI 的等价路径是 `/root/openhouse/docs`。两个路径指向同一份公开文档。
 
 必读文档：
 
@@ -58,6 +71,7 @@ pi-web 或 OpenHouseAI / AionUi 检测到：
 /root/openhouse/docs/SERVICE_MANAGER.md
 /root/openhouse/docs/GITHUB_NETWORK_MIRRORS.md
 /root/openhouse/docs/CLAUDE_CODE_HANDOFF.md
+/root/openhouse/docs/SECOND_AI_HANDOFF.md
 ```
 
 如果 `/root/openhouse/docs` 不存在，改用：
@@ -66,9 +80,9 @@ pi-web 或 OpenHouseAI / AionUi 检测到：
 /root/openhouseai-docs/official
 ```
 
-## OpenHouseAI / AionUi 应当如何配置
+## 用户选择 OpenHouseAI / AionUI 时如何配置
 
-首次配置开始前，OpenHouseAI / AionUi 只需要先完成一个目标：AionUi 中有一个能真实回复的默认模型。
+只有用户把 OpenHouseAI / AionUI 选作当前或第二阶段工作台时，才需要执行本节。目标是 AionUI 中有一个能真实回复的默认模型；它不是所有内测的必选前置条件。
 
 应指导用户在 OpenHouseAI / AionUi 的模型配置页面确认：
 
@@ -84,7 +98,7 @@ pi-web 或 OpenHouseAI / AionUi 检测到：
 - 如果使用 New API 网关，每个模型的“请求协议”已按上游设置为 OpenAI、Gemini 或 Anthropic。
 - 模型健康检查已经通过，`model_health.status` 为 healthy，并已保存为默认模型。
 
-如果用户还没有完成这一步，pi-agent 不应继续迁移 Claude Code 配置。应先让用户回到 OpenHouseAI / AionUi 配好并测通模型，或由用户提供 `base_url`、`key/token`、`model id` 和协议类型后再继续。
+如果用户选择 AionUI 但还没有完成这一步，当前 AI 不应把它标记为可用。应先让用户在 AionUI 配好并测通模型，或由用户提供 `base_url`、`key/token`、`model id` 和协议类型后再继续。若用户选择其它工作台，按对应文档验证即可。
 
 ## 模型配置迁移原则
 
@@ -121,13 +135,13 @@ model/modelId: deepseek-chat
 
 配置完成后，至少确认：
 
+- OpenHouse 文档可读。
 - service-manager 可用。
-- `/root/openhouse/scripts/check-ai-tools.sh` 已执行，并清楚说明缺失项。
-- CloudCLI 服务已注册并运行。
-- Claude Code 页面可访问。
-- 默认账号密码说明清楚，仅限本机使用，后续可修改。
-- Claude Code 能选择或使用迁移后的默认模型。
-- 能完成一次最小模型请求。
+- pi/pi-web 与 Ubuntu 的真实状态已检查。
+- 后置 AI 工具检查已执行，并清楚区分阻断项和可选缺失项。
+- 用户实际选择的第二阶段工作台可打开。
+- 第二阶段 AI 使用的模型完成一次最小真实请求。
+- 若用户选择 CloudCLI、Claude Code、Codex、AionUI 或其它工作台，其对应配置与服务已按该工作台文档验证。
 
 不要只报告“配置已写入”。必须说明是否实际测通。
 
@@ -135,15 +149,26 @@ model/modelId: deepseek-chat
 
 测通后，简要说明：
 
-- `pi-agent` 是首次配置助手和文档索引员。
+- pi-web 是推荐的首次配置入口，`pi-agent` 是可选运行时和文档索引员，两者都不是固定的 AI identity。
 - 主工作台由用户选择，可以是 Claude Code、Codex、Hermes Web 或其它开源项目。
 - `cc/codex` 是 CloudCLI / Claude Code / Codex 的统一入口。
 - service-manager 是运行期控制平面。
 - 终端一般不需要日常使用，高级排障时再进入。
 - 内置浏览器可以打开本地服务。
-- 文档目录在 `/root/openhouse/docs`。
+- Termux 文档目录是 `$HOME/openhouse/docs`，Ubuntu 文档目录是 `/root/openhouse/docs`。
 
-最后给用户 `CLAUDE_CODE_HANDOFF.md` 中的复制提示词。
+最后生成 `SECOND_AI_HANDOFF.md` 规定的三个本地交接文件，验证两个 JSON 可解析，完成第一阶段签名，给用户可复制的接力提示词，并打开用户选择的第二阶段工作台。AionUI、Claude Code、Codex、Hermes、另一个 pi 会话和其它 AI 都是可选项；第二阶段必须使用不同于第一阶段的真实 agent identity。
+
+## 内测通过标准
+
+一次完整内测必须看到：
+
+1. 第一阶段 AI 真实检查系统并完成至少一次目标模型最小请求。
+2. Termux 唯一交接目录中存在 `HANDOFF.md`、`system-check.json`、`task.json`，两个 JSON 可解析且没有密钥。
+3. 第一阶段签名存在，bootstrap 状态明确等待第二阶段签名。
+4. 用户获得一句可直接复制的话，并在任意不同 identity 的第二阶段 AI 中成功开始接力。
+5. 第二阶段 AI 独立复核、完成任务、完成第二阶段签名，并把 `task.json.status` 更新为 `completed`。
+6. 最终 bootstrap 状态显示双阶段签名完整且 signer 不同。
 
 ## 不要做什么
 

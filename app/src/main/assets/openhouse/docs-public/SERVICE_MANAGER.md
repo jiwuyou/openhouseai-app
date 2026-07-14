@@ -103,7 +103,9 @@ $HOME/.config/openhouseai/service-manager/services.d/*.json
 写入 `services.d` 文件后，需要让 service-manager 重新加载注册目录。service-manager 只在启动时加载 `services.d/*.json`，因此默认做法是回到 bootstrap 重新启动控制平面：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh start
 ```
 
@@ -262,7 +264,9 @@ $HOME/.smallphoneai/logs/service-manager.log
 优先使用 bootstrap 状态，因为它会同时检查 service-manager、pi-web、pi-agent、cc-connect 和端口：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh status
 ```
 
@@ -283,10 +287,13 @@ curl -fsS --max-time 2 "${SM_URL%/}/api/v1/health"
 
 ## 版本和协议定位
 
-首次安装和维护动作会同步 APK 内置 runtime，并在 sync marker 中写入版本摘要：
+APK 会把完整版本化资源放在 `update-resources/apk-*`，并在需要 AI 处理时写入待处理标记。查看最新 payload 摘要：
 
 ```bash
-cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/product-payloads/manifest.json" ] || { echo "未找到可用的 APK payload manifest" >&2; exit 1; }
+cat "$HOME/.local/share/openhouseai/update-resources/PENDING_APK_RESOURCES.json" 2>/dev/null || true
+sed -n '1,220p' "$resource_dir/product-payloads/manifest.json"
 ```
 
 摘要至少应包含 APK `versionName/versionCode`、Termux package variant、bootstrap asset tree sha256、`service-manager`、registryApi、`pi-agent`、`pi-web` 和 `aionui-web`。如果 registryApi 仍显示 `unknown`，说明当前 payload manifest 没有声明协议版本，安装脚本必须保留兼容兜底。
@@ -389,14 +396,18 @@ curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1
 如果 service-manager 不可访问，先使用 bootstrap 启动：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh start
 ```
 
 如果启动失败，再修复运行栈：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh repair
 ```
 

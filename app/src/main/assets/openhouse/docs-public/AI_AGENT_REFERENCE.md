@@ -104,10 +104,13 @@ OpenHouse 桌面、菜单总览 App 或终端 App 中可进入 Termux 或 Ubuntu
 openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
 ```
 
-首次安装或 APK 更新后，优先查看 runtime 版本摘要：
+首次安装或 APK 更新后，优先查看最新版本化资源的 payload 摘要：
 
 ```bash
-cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/product-payloads/manifest.json" ] || { echo "未找到可用的 APK payload manifest" >&2; exit 1; }
+cat "$HOME/.local/share/openhouseai/update-resources/PENDING_APK_RESOURCES.json" 2>/dev/null || true
+sed -n '1,220p' "$resource_dir/product-payloads/manifest.json"
 ```
 
 这个摘要用于确认 APK 版本、bootstrap tree hash、service-manager、registryApi、pi-agent、pi-web 和 aionui-web 是否属于同一批 payload。
@@ -230,13 +233,17 @@ oh-termux-ensure-sshd ensure
 ```bash
 tail -n 160 "$HOME/.maintainer-logs/manifest_full.log" 2>/dev/null || true
 ls -la "$HOME/.maintainer-logs" 2>/dev/null || true
-cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+cat "$HOME/.local/share/openhouseai/update-resources/PENDING_APK_RESOURCES.json" 2>/dev/null || true
+[ -z "$resource_dir" ] || sed -n '1,220p' "$resource_dir/product-payloads/manifest.json" 2>/dev/null || true
 ```
 
 4. 读取机器可读运行状态：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap" && bash bootstrap.sh status
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+(cd "$resource_dir/bootstrap" && bash bootstrap.sh status)
 ```
 
 5. 检查 service-manager：

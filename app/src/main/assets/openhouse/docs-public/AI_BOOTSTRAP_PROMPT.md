@@ -7,15 +7,15 @@
 ```text
 你现在运行在 OpenHouse 环境中。
 
-这是一个基于 Termux 的 Ubuntu 环境。请先不要自行猜测环境结构，也不要先扫描整个系统。
+这是一个 OpenHouse 环境。当前 AI 可能运行在 Termux native，也可能运行在 Termux 中的 Ubuntu。请先识别运行层，不要自行猜测环境结构，也不要先扫描整个系统。
 
 请按下面顺序先阅读官方文档：
 
-1. /data/data/com.termux/files/home/product-docs/official/START_HERE.md
-2. /data/data/com.termux/files/home/product-docs/official/AGENT_GUIDE.md
-3. /data/data/com.termux/files/home/product-docs/official/PATHS_AND_PORTS.md
+1. /data/data/com.termux/files/home/openhouse/docs/START_HERE.md
+2. /data/data/com.termux/files/home/openhouse/docs/AGENT_GUIDE.md
+3. /data/data/com.termux/files/home/openhouse/docs/PATHS_AND_PORTS.md
 
-如果 Ubuntu 中存在更短的入口路径，比如 ~/product-docs/official，请优先使用短路径读取同名文件。
+如果当前位于 Ubuntu，使用等价短路径 `/root/openhouse/docs`。
 
 阅读完成后：
 
@@ -29,9 +29,9 @@
 ```text
 请先阅读 OpenHouse 起始文档：
 
-- /data/data/com.termux/files/home/product-docs/official/START_HERE.md
-- /data/data/com.termux/files/home/product-docs/official/AGENT_GUIDE.md
-- /data/data/com.termux/files/home/product-docs/official/PATHS_AND_PORTS.md
+- /data/data/com.termux/files/home/openhouse/docs/START_HERE.md
+- /data/data/com.termux/files/home/openhouse/docs/AGENT_GUIDE.md
+- /data/data/com.termux/files/home/openhouse/docs/PATHS_AND_PORTS.md
 
 读完后先总结环境，再继续回答我。
 ```

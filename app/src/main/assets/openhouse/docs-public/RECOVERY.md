@@ -18,9 +18,9 @@
 | --- | --- |
 | Termux home | `/data/data/com.termux/files/home` |
 | Termux prefix | `/data/data/com.termux/files/usr` |
-| Bootstrap | `$HOME/.smallphoneai-bootstrap/bootstrap.sh` |
-| APK runtime sync marker | `$HOME/.smallphoneai-bootstrap/.apk-sync-marker` |
-| APK payload | `$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads` |
+| Bootstrap | 最新 `$HOME/.local/share/openhouseai/update-resources/apk-*/bootstrap/bootstrap.sh` |
+| APK 待处理标记 | `$HOME/.local/share/openhouseai/update-resources/PENDING_APK_RESOURCES.json` |
+| APK payload | 最新 `$HOME/.local/share/openhouseai/update-resources/apk-*/product-payloads` |
 | 安装日志 | `$HOME/.maintainer-logs` |
 | 运行日志 | `$HOME/.smallphoneai/logs` |
 | OpenHouse 文档 | `$HOME/openhouseai-docs/official` |
@@ -67,8 +67,11 @@
 
 ```bash
 openhouseai-env-probe 2>/dev/null || smallphoneai-env-probe 2>/dev/null || true
-cd "$HOME/.smallphoneai-bootstrap" && bash bootstrap.sh status
-cat "$HOME/.smallphoneai-bootstrap/.apk-sync-marker" 2>/dev/null | sed -n '/runtime_report_begin/,/runtime_report_end/p'
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+(cd "$resource_dir/bootstrap" && bash bootstrap.sh status)
+cat "$HOME/.local/share/openhouseai/update-resources/PENDING_APK_RESOURCES.json" 2>/dev/null || true
+sed -n '1,220p' "$resource_dir/product-payloads/manifest.json" 2>/dev/null || true
 ls -la "$HOME/.maintainer-logs" "$HOME/.smallphoneai/logs" 2>/dev/null || true
 tail -n 160 "$HOME/.maintainer-logs/manifest_full.log" 2>/dev/null || true
 ```
@@ -102,21 +105,27 @@ curl -fsS --max-time 2 "${SM_URL%/}/api/v1/health"
 如果 Termux 可用，但 service-manager、pi-agent 或 pi-web 不可用，先尝试启动：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh start
 ```
 
 如果启动失败，执行运行栈修复：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh repair
 ```
 
 完成后重新读取状态：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh status
 ```
 
@@ -154,7 +163,9 @@ proot-distro login ubuntu -- bash -lc 'apt update'
 如果 Ubuntu 可以进入但核心工具缺失，按缺失项执行最小阶段：
 
 ```bash
-cd "$HOME/.smallphoneai-bootstrap"
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+cd "$resource_dir/bootstrap"
 bash bootstrap.sh ubuntu-packages
 bash bootstrap.sh node
 bash bootstrap.sh codex
