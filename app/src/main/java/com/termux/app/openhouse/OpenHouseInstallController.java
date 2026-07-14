@@ -23,9 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -86,26 +88,19 @@ public final class OpenHouseInstallController {
 
     private final Context context;
     private final OpenHouseStatusRepository statusRepository;
+    private final Executor recoveryExecutor;
+    private final RecoveryVerifier recoveryVerifier;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
     private final Object processLock = new Object();
+    private final AtomicBoolean initialStateLoadInFlight = new AtomicBoolean(false);
+    private final AtomicBoolean runningStatePollInFlight = new AtomicBoolean(false);
+    private final AtomicBoolean finishedStateRecoveryInFlight = new AtomicBoolean(false);
     private final Runnable pollRunnable = new Runnable() {
         @Override
         public void run() {
-            OpenHouseInstallState current = state;
-            if (!current.running) {
-                return;
-            }
-
-            updateState(readRunningStateFromLog());
-            if (state.running && shouldFailStuckRun()) {
-                executor.execute(() -> failStuckRunRequiringManualRetry());
-                return;
-            }
-            if (state.running) {
-                mainHandler.postDelayed(this, POLL_INTERVAL_MS);
-            }
+            scheduleRunningStatePoll(state);
         }
     };
 
@@ -117,9 +112,14 @@ public final class OpenHouseInstallController {
     private volatile OpenHouseInstallState.TaskScope currentTaskScope = OpenHouseInstallState.TaskScope.FULL;
     private volatile int currentAttempt = 0;
     private volatile int preparingAttempt = 0;
+    private volatile boolean initialStateLoaded;
 
     public interface Listener {
         void onInstallStateChanged(OpenHouseInstallState state);
+    }
+
+    interface RecoveryVerifier {
+        boolean verifyOnce(OpenHouseInstallState.TaskScope taskScope);
     }
 
     public static OpenHouseInstallController getInstance(Context context) {
@@ -134,12 +134,23 @@ public final class OpenHouseInstallController {
     }
 
     private OpenHouseInstallController(Context context) {
+        this(context, Executors.newSingleThreadExecutor(), null);
+    }
+
+    OpenHouseInstallController(Context context,
+                               Executor recoveryExecutor,
+                               RecoveryVerifier recoveryVerifier) {
         this.context = context.getApplicationContext();
         this.statusRepository = new OpenHouseStatusRepository(this.context);
-        this.state = readInitialStateFromLog();
-        if (this.state.running) {
-            mainHandler.postDelayed(pollRunnable, POLL_INTERVAL_MS);
-        }
+        this.recoveryExecutor = recoveryExecutor == null
+            ? Executors.newSingleThreadExecutor()
+            : recoveryExecutor;
+        this.recoveryVerifier = recoveryVerifier == null
+            ? taskScope -> verifyTaskComplete(taskScope, VerificationMode.CHECK_ONCE)
+            : recoveryVerifier;
+        this.state = OpenHouseInstallState.idle();
+        syncCurrentMetadata(this.state);
+        scheduleInitialStateLoad(this.state);
     }
 
     public void addListener(Listener listener) {
@@ -158,68 +169,298 @@ public final class OpenHouseInstallController {
     }
 
     public OpenHouseInstallState getState() {
-        OpenHouseInstallState entryState = state;
-        if (!state.completed && (currentProcess == null || !state.running) && hasFreshRunningMarker()) {
-            updateState(readRunningStateFromLog());
-            schedulePollIfRunning();
-            return state;
-        }
-        if (state.running && currentProcess == null) {
+        OpenHouseInstallState snapshot = state;
+        if (!initialStateLoaded) {
+            scheduleInitialStateLoad(snapshot);
+        } else if (snapshot != null && snapshot.running) {
             if (isCurrentLaunchPreparing()) {
                 return state;
             }
-            if (hasFreshRunningMarker()) {
-                updateState(readRunningStateFromLog());
-            } else {
-                updateState(buildState(
-                    OpenHouseInstallState.Status.FAILED,
-                    state.percent,
-                    "初始化状态异常",
-                    "安装进程状态已过期，请查看详细进度后重新初始化。",
-                    state.currentStageSlug
-                ));
-            }
-            schedulePollIfRunning();
+            scheduleRunningStatePoll(snapshot);
+        } else if (snapshot != null && snapshot.failed) {
+            scheduleFailedStateReconciliation(snapshot);
         }
-        if (entryState != null && entryState.failed) {
-            reconcileFailedStateAfterSuccessfulExit();
-        }
-        return state;
+        return snapshot;
     }
 
-    private void reconcileFailedStateAfterSuccessfulExit() {
-        synchronized (processLock) {
-            OpenHouseInstallState cachedState = state;
-            if (cachedState == null || !cachedState.failed || currentProcess != null) {
+    private void scheduleInitialStateLoad(OpenHouseInstallState placeholderSnapshot) {
+        if (initialStateLoaded || placeholderSnapshot == null
+            || !initialStateLoadInFlight.compareAndSet(false, true)) {
+            return;
+        }
+        int scheduledAttempt = placeholderSnapshot.attempt;
+        OpenHouseInstallState.TaskScope scheduledTaskScope = normalizeTaskScope(placeholderSnapshot.taskScope);
+        OpenHouseInstallState.RetryMode scheduledRetryMode = normalizeRetryMode(placeholderSnapshot.retryMode);
+        Process scheduledProcess = currentProcess;
+        try {
+            recoveryExecutor.execute(() -> loadInitialStateInBackground(
+                placeholderSnapshot,
+                scheduledAttempt,
+                scheduledTaskScope,
+                scheduledRetryMode,
+                scheduledProcess));
+        } catch (RuntimeException e) {
+            initialStateLoadInFlight.set(false);
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to schedule initial install state load", e);
+        }
+    }
+
+    private void loadInitialStateInBackground(OpenHouseInstallState placeholderSnapshot,
+                                              int scheduledAttempt,
+                                              OpenHouseInstallState.TaskScope scheduledTaskScope,
+                                              OpenHouseInstallState.RetryMode scheduledRetryMode,
+                                              Process scheduledProcess) {
+        boolean loaded = false;
+        try {
+            LoadedState loadedState = readInitialStateFromLog(placeholderSnapshot);
+            synchronized (processLock) {
+                if (!isStateSnapshotCurrent(
+                    placeholderSnapshot,
+                    scheduledAttempt,
+                    scheduledTaskScope,
+                    scheduledRetryMode,
+                    scheduledProcess)) {
+                    initialStateLoaded = state != placeholderSnapshot;
+                    return;
+                }
+                applyLoadedStateLocked(loadedState);
+                loaded = true;
+                initialStateLoaded = true;
+            }
+            scheduleFollowUpForState(loadedState.state);
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to load initial install state", e);
+        } finally {
+            initialStateLoadInFlight.set(false);
+            if (!loaded && state != placeholderSnapshot) {
+                initialStateLoaded = true;
+                scheduleFollowUpForState(state);
+            }
+        }
+    }
+
+    private void scheduleRunningStatePoll(OpenHouseInstallState runningSnapshot) {
+        if (runningSnapshot == null || !runningSnapshot.running
+            || !runningStatePollInFlight.compareAndSet(false, true)) {
+            return;
+        }
+        int scheduledAttempt = runningSnapshot.attempt;
+        OpenHouseInstallState.TaskScope scheduledTaskScope = normalizeTaskScope(runningSnapshot.taskScope);
+        OpenHouseInstallState.RetryMode scheduledRetryMode = normalizeRetryMode(runningSnapshot.retryMode);
+        Process scheduledProcess = currentProcess;
+        try {
+            recoveryExecutor.execute(() -> pollRunningStateInBackground(
+                runningSnapshot,
+                scheduledAttempt,
+                scheduledTaskScope,
+                scheduledRetryMode,
+                scheduledProcess));
+        } catch (RuntimeException e) {
+            runningStatePollInFlight.set(false);
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to schedule running install state poll", e);
+            schedulePollIfRunning();
+        }
+    }
+
+    private void pollRunningStateInBackground(OpenHouseInstallState runningSnapshot,
+                                              int scheduledAttempt,
+                                              OpenHouseInstallState.TaskScope scheduledTaskScope,
+                                              OpenHouseInstallState.RetryMode scheduledRetryMode,
+                                              Process scheduledProcess) {
+        try {
+            if (!isStateSnapshotCurrent(
+                runningSnapshot,
+                scheduledAttempt,
+                scheduledTaskScope,
+                scheduledRetryMode,
+                scheduledProcess)) {
                 return;
             }
-            boolean freshRunningMarker = hasFreshRunningMarker();
+
+            RunningMarker runningMarker = readRunningMarker();
+            boolean freshRunningMarker = isFreshRunningMarker(runningMarker);
+            LoadedState loadedState;
+            if (freshRunningMarker) {
+                loadedState = readRunningStateFromLog(runningSnapshot, runningMarker);
+            } else if (isLaunchPreparing(scheduledAttempt, preparingAttempt)) {
+                return;
+            } else {
+                loadedState = new LoadedState(newState(
+                    OpenHouseInstallState.Status.FAILED,
+                    runningSnapshot.percent,
+                    "初始化状态异常",
+                    "安装进程状态已过期，请查看详细进度后重新初始化。",
+                    runningSnapshot.currentStageSlug,
+                    scheduledRetryMode,
+                    scheduledAttempt,
+                    scheduledTaskScope), false);
+            }
+
+            boolean shouldFailStuck = loadedState.state.running
+                && shouldFailStuckRun(runningMarker);
+            synchronized (processLock) {
+                if (!isStateSnapshotCurrent(
+                    runningSnapshot,
+                    scheduledAttempt,
+                    scheduledTaskScope,
+                    scheduledRetryMode,
+                    scheduledProcess)) {
+                    return;
+                }
+                if (shouldFailStuck) {
+                    failStuckRunRequiringManualRetryLocked(runningSnapshot, scheduledTaskScope);
+                } else {
+                    applyLoadedStateLocked(loadedState);
+                }
+            }
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to poll running install state", e);
+        } finally {
+            runningStatePollInFlight.set(false);
+            scheduleFollowUpForState(state);
+        }
+    }
+
+    private void scheduleFollowUpForState(OpenHouseInstallState latestState) {
+        if (latestState == null) {
+            return;
+        }
+        if (latestState.running) {
+            schedulePollIfRunning();
+        } else if (latestState.failed) {
+            scheduleFailedStateReconciliation(latestState);
+        }
+    }
+
+    private void scheduleFailedStateReconciliation(OpenHouseInstallState failedSnapshot) {
+        if (failedSnapshot == null || !failedSnapshot.failed || currentProcess != null) {
+            return;
+        }
+        int scheduledAttempt = failedSnapshot.attempt;
+        OpenHouseInstallState.TaskScope scheduledTaskScope = normalizeTaskScope(failedSnapshot.taskScope);
+        OpenHouseInstallState.RetryMode scheduledRetryMode = normalizeRetryMode(failedSnapshot.retryMode);
+        if (!finishedStateRecoveryInFlight.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            recoveryExecutor.execute(() -> reconcileFailedStateAfterSuccessfulExit(
+                failedSnapshot, scheduledAttempt, scheduledTaskScope, scheduledRetryMode));
+        } catch (RuntimeException e) {
+            finishedStateRecoveryInFlight.set(false);
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to schedule finished install state recovery", e);
+        }
+    }
+
+    private void reconcileFailedStateAfterSuccessfulExit(OpenHouseInstallState failedSnapshot,
+                                                           int scheduledAttempt,
+                                                           OpenHouseInstallState.TaskScope scheduledTaskScope,
+                                                           OpenHouseInstallState.RetryMode scheduledRetryMode) {
+        try {
+            if (!isRecoverySnapshotCurrent(
+                failedSnapshot, scheduledAttempt, scheduledTaskScope, scheduledRetryMode)) {
+                return;
+            }
+
+            RunningMarker recoveryMarker = readRunningMarker();
+            boolean freshRunningMarker = isFreshRunningMarker(recoveryMarker);
             Integer latestExitCode = freshRunningMarker
                 ? null
                 : readLastExitCode(readLogTail(24000));
             if (!shouldReconcileSuccessfulExit(
-                cachedState, false, freshRunningMarker, latestExitCode)) {
+                failedSnapshot, false, freshRunningMarker, latestExitCode)) {
+                return;
+            }
+            if (!recoveryVerifier.verifyOnce(scheduledTaskScope)) {
                 return;
             }
 
-            OpenHouseInstallState.TaskScope taskScope = normalizeTaskScope(cachedState.taskScope);
-            if (!verifyTaskComplete(taskScope, VerificationMode.CHECK_ONCE)) {
-                return;
+            RunningMarker markerBeforeCommit = readRunningMarker();
+            boolean freshMarkerBeforeCommit = isFreshRunningMarker(markerBeforeCommit);
+            boolean runCompletionHooks = false;
+            synchronized (processLock) {
+                if (!canCommitRecoveredState(
+                    failedSnapshot,
+                    scheduledAttempt,
+                    scheduledTaskScope,
+                    state,
+                    currentAttempt,
+                    currentTaskScope,
+                    currentProcess != null,
+                    freshMarkerBeforeCommit)
+                    || normalizeRetryMode(currentRetryMode) != scheduledRetryMode) {
+                    return;
+                }
+
+                if (markerBeforeCommit.exists) {
+                    clearRunningMarker();
+                }
+                currentTaskScope = scheduledTaskScope;
+                updateState(buildState(
+                    OpenHouseInstallState.Status.SUCCEEDED,
+                    100,
+                    taskCompletedPhaseLabel(scheduledTaskScope),
+                    taskCompletedDetail(scheduledTaskScope),
+                    lastStageForTask(scheduledTaskScope).slug
+                ));
+                runCompletionHooks = scheduledTaskScope
+                    != OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT;
             }
 
-            currentTaskScope = taskScope;
-            updateState(buildState(
-                OpenHouseInstallState.Status.SUCCEEDED,
-                100,
-                taskCompletedPhaseLabel(taskScope),
-                taskCompletedDetail(taskScope),
-                lastStageForTask(taskScope).slug
-            ));
-            if (taskScope != OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
+            if (runCompletionHooks) {
                 statusRepository.markOneClickInstallCompleted();
                 OpenHousePostUpdateSync.onFirstInstallCompleted(context);
             }
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to reconcile finished install state", e);
+        } finally {
+            finishedStateRecoveryInFlight.set(false);
+            OpenHouseInstallState latestState = state;
+            if (latestState != failedSnapshot
+                && latestState != null
+                && latestState.failed
+                && currentProcess == null) {
+                scheduleFailedStateReconciliation(latestState);
+            }
         }
+    }
+
+    private boolean isRecoverySnapshotCurrent(OpenHouseInstallState failedSnapshot,
+                                              int scheduledAttempt,
+                                              OpenHouseInstallState.TaskScope scheduledTaskScope,
+                                              OpenHouseInstallState.RetryMode scheduledRetryMode) {
+        return canCommitRecoveredState(
+            failedSnapshot,
+            scheduledAttempt,
+            scheduledTaskScope,
+            state,
+            currentAttempt,
+            currentTaskScope,
+            currentProcess != null,
+            false)
+            && normalizeRetryMode(currentRetryMode) == scheduledRetryMode;
+    }
+
+    static boolean canCommitRecoveredState(OpenHouseInstallState failedSnapshot,
+                                           int scheduledAttempt,
+                                           OpenHouseInstallState.TaskScope scheduledTaskScope,
+                                           OpenHouseInstallState currentState,
+                                           int observedAttempt,
+                                           OpenHouseInstallState.TaskScope observedTaskScope,
+                                           boolean processTracked,
+                                           boolean freshRunningMarker) {
+        return failedSnapshot != null
+            && failedSnapshot.failed
+            && failedSnapshot.attempt == scheduledAttempt
+            && currentState == failedSnapshot
+            && observedAttempt == scheduledAttempt
+            && normalizeTaskScopeValue(observedTaskScope) == normalizeTaskScopeValue(scheduledTaskScope)
+            && !processTracked
+            && !freshRunningMarker;
+    }
+
+    private static OpenHouseInstallState.TaskScope normalizeTaskScopeValue(
+        OpenHouseInstallState.TaskScope taskScope) {
+        return taskScope == null ? OpenHouseInstallState.TaskScope.FULL : taskScope;
     }
 
     static boolean shouldReconcileSuccessfulExit(OpenHouseInstallState cachedState,
@@ -278,9 +519,10 @@ public final class OpenHouseInstallController {
             OpenHouseInstallState.TaskScope resolvedTaskScope = normalizeTaskScope(taskScope);
             OpenHouseInstallState.RetryMode resolvedRetryMode = normalizeRetryMode(retryMode);
             if (hasFreshRunningMarker()) {
-                OpenHouseInstallState runningState = readRunningStateFromLog();
-                updateState(runningState);
-                if (runningState.running) {
+                RunningMarker runningMarker = readRunningMarker();
+                LoadedState loadedState = readRunningStateFromLog(state, runningMarker);
+                applyLoadedStateLocked(loadedState);
+                if (loadedState.state.running) {
                     statusRepository.markOneClickInstallStarted();
                     return false;
                 }
@@ -638,66 +880,80 @@ public final class OpenHouseInstallController {
         }
     }
 
-    private void failStuckRunRequiringManualRetry() {
-        synchronized (processLock) {
-            if (!state.running || !shouldFailStuckRun()) {
-                return;
-            }
-            OpenHouseInstallState.TaskScope taskScope = normalizeTaskScope(state.taskScope);
-            Stage stage = Stage.fromSlug(state.currentStageSlug);
-            if (stage == null) {
-                stage = firstStageForTask(taskScope);
-            }
-            stopTrackedInstallProcess();
-            terminateExistingInstallProcesses();
-            appendCompletionMarkerIfMissing(124);
-            clearRunningMarker();
-            updateState(buildState(
-                OpenHouseInstallState.Status.FAILED,
-                failurePercent(stage, taskScope),
-                "安装等待人工重试",
-                "安装任务长时间没有新进展，已停止卡住的任务。请查看详细日志后手动重试当前步骤。",
-                stage.slug
-            ));
+    private void failStuckRunRequiringManualRetryLocked(OpenHouseInstallState runningSnapshot,
+                                                        OpenHouseInstallState.TaskScope taskScope) {
+        Stage stage = Stage.fromSlug(runningSnapshot.currentStageSlug);
+        if (stage == null) {
+            stage = firstStageForTask(taskScope);
         }
+        stopTrackedInstallProcess();
+        terminateExistingInstallProcesses();
+        appendCompletionMarkerIfMissing(124);
+        clearRunningMarker();
+        updateState(newState(
+            OpenHouseInstallState.Status.FAILED,
+            failurePercent(stage, taskScope, runningSnapshot),
+            "安装等待人工重试",
+            "安装任务长时间没有新进展，已停止卡住的任务。请查看详细日志后手动重试当前步骤。",
+            stage.slug,
+            runningSnapshot.retryMode,
+            runningSnapshot.attempt,
+            taskScope
+        ));
     }
 
-    private OpenHouseInstallState readInitialStateFromLog() {
+    private LoadedState readInitialStateFromLog(OpenHouseInstallState placeholderSnapshot) {
         String logTail = readLogTail(24000);
-        if (hasFreshRunningMarker()) {
-            return readRunningStateFromLog();
+        RunningMarker runningMarker = readRunningMarker();
+        if (isFreshRunningMarker(runningMarker)) {
+            return readRunningStateFromLog(placeholderSnapshot, runningMarker);
         }
-        currentTaskScope = inferTaskScopeFromLog(logTail);
+        OpenHouseInstallState.TaskScope taskScope = inferTaskScopeFromLog(
+            logTail, placeholderSnapshot.taskScope);
         Integer exitCode = readLastExitCode(logTail);
         if (exitCode == null) {
-            return buildState(
+            return new LoadedState(newState(
                 OpenHouseInstallState.Status.PENDING,
                 0,
                 "等待初始化",
                 "点击“一键初始化”后会开始准备 Linux 环境和安装 AI 工具。",
-                MANIFEST_FULL_SLUG
-            );
+                MANIFEST_FULL_SLUG,
+                placeholderSnapshot.retryMode,
+                0,
+                taskScope), runningMarker.exists);
         }
-        return buildFinishedState(logTail, exitCode, VerificationMode.CHECK_ONCE);
+        return buildFinishedState(
+            logTail,
+            exitCode,
+            VerificationMode.CHECK_ONCE,
+            placeholderSnapshot,
+            placeholderSnapshot.retryMode,
+            Math.max(1, placeholderSnapshot.attempt),
+            taskScope,
+            runningMarker.exists);
     }
 
-    private OpenHouseInstallState readRunningStateFromLog() {
+    private LoadedState readRunningStateFromLog(OpenHouseInstallState baseState,
+                                                RunningMarker runningMarker) {
         String logTail = readLogTail(24000);
         Integer exitCode = readLastExitCode(logTail);
+        OpenHouseInstallState.TaskScope taskScope = normalizeTaskScope(runningMarker.taskScope);
+        OpenHouseInstallState.RetryMode retryMode = normalizeRetryMode(runningMarker.retryMode);
+        int attempt = runningMarker.attempt > 0
+            ? runningMarker.attempt
+            : Math.max(1, baseState.attempt);
         if (exitCode != null) {
-            clearRunningMarker();
-            return buildFinishedState(logTail, exitCode, VerificationMode.CHECK_ONCE);
+            return buildFinishedState(
+                logTail,
+                exitCode,
+                VerificationMode.CHECK_ONCE,
+                baseState,
+                retryMode,
+                attempt,
+                taskScope,
+                true);
         }
 
-        RunningMarker runningMarker = readRunningMarker();
-        OpenHouseInstallState.TaskScope taskScope = normalizeTaskScope(runningMarker.taskScope);
-        currentTaskScope = taskScope;
-        if (runningMarker.retryMode != null) {
-            currentRetryMode = runningMarker.retryMode;
-        }
-        if (runningMarker.attempt > 0) {
-            currentAttempt = runningMarker.attempt;
-        }
         StageMarkerInfo stageMarkerInfo = inferCurrentStageMarker(logTail, taskScope);
         Stage stage = stageMarkerInfo.found
             ? stageMarkerInfo.stage
@@ -706,24 +962,26 @@ public final class OpenHouseInstallController {
         if (shouldUseScheduledRemoteStage(stageMarkerInfo, runningMarker)) {
             stage = inferScheduledStage(runningMarker, System.currentTimeMillis());
         }
-        stage = resolveMonotonicStage(stage, stageMarkerInfo, runningMarker, taskScope);
+        stage = resolveMonotonicStage(stage, stageMarkerInfo, runningMarker, taskScope, baseState);
         String detail = latestReadableLogLine(logTail);
         if (detail.isEmpty()) {
             detail = stage.detail;
         }
-        int percent = Math.max(simulateRunningPercent(stage, runningMarker, taskScope), currentRunningPercentFloor());
-        return new OpenHouseInstallState(
+        int percent = Math.max(
+            simulateRunningPercent(stage, runningMarker, taskScope),
+            currentRunningPercentFloor(baseState));
+        return new LoadedState(new OpenHouseInstallState(
             OpenHouseInstallState.Status.RUNNING,
             percent,
             stage.phaseLabel,
             detail,
             stage.slug,
-            currentRetryMode,
-            Math.max(1, currentAttempt),
+            retryMode,
+            attempt,
             getManifestLogPath(),
             "",
             taskScope
-        );
+        ), false);
     }
 
     private OpenHouseInstallState readFinishedStateFromLog(int processExitCode) {
@@ -732,11 +990,71 @@ public final class OpenHouseInstallController {
         return buildFinishedState(logTail, markerExitCode == null ? processExitCode : markerExitCode, VerificationMode.WAIT_BRIEFLY);
     }
 
+    private LoadedState buildFinishedState(String logTail,
+                                           int exitCode,
+                                           VerificationMode verificationMode,
+                                           OpenHouseInstallState baseState,
+                                           OpenHouseInstallState.RetryMode retryMode,
+                                           int attempt,
+                                           OpenHouseInstallState.TaskScope fallbackTaskScope,
+                                           boolean clearRunningMarker) {
+        OpenHouseInstallState.TaskScope taskScope = inferTaskScopeFromLog(logTail, fallbackTaskScope);
+        int resolvedAttempt = Math.max(1, attempt);
+        if (exitCode == 0) {
+            if (!verifyTaskCompleteForMode(taskScope, verificationMode)) {
+                StageMarkerInfo stageMarkerInfo = inferCurrentStageMarker(logTail, taskScope);
+                Stage stage = resolveMonotonicStage(
+                    stageMarkerInfo.stage, stageMarkerInfo, null, taskScope, baseState);
+                String detail = latestReadableLogLine(logTail);
+                if (detail.isEmpty()) {
+                    detail = taskIncompleteAfterExitDetail(taskScope);
+                } else {
+                    detail = taskIncompleteAfterExitDetail(taskScope) + "最后日志：" + detail;
+                }
+                return new LoadedState(newState(
+                    OpenHouseInstallState.Status.FAILED,
+                    Math.max(90, failurePercent(stage, taskScope, baseState)),
+                    "安装未完全就绪",
+                    detail,
+                    stage.slug,
+                    retryMode,
+                    resolvedAttempt,
+                    taskScope), clearRunningMarker);
+            }
+            return new LoadedState(newState(
+                OpenHouseInstallState.Status.SUCCEEDED,
+                100,
+                taskCompletedPhaseLabel(taskScope),
+                taskCompletedDetail(taskScope),
+                lastStageForTask(taskScope).slug,
+                retryMode,
+                resolvedAttempt,
+                taskScope), clearRunningMarker);
+        }
+
+        StageMarkerInfo stageMarkerInfo = inferCurrentStageMarker(logTail, taskScope);
+        Stage stage = resolveMonotonicStage(
+            stageMarkerInfo.stage, stageMarkerInfo, null, taskScope, baseState);
+        String detail = latestReadableLogLine(logTail);
+        if (detail.isEmpty()) {
+            detail = "请点击“查看详细进度”查看完整日志。";
+        }
+        return new LoadedState(newState(
+            OpenHouseInstallState.Status.FAILED,
+            failurePercent(stage, taskScope, baseState),
+            "初始化失败",
+            detail,
+            stage.slug,
+            retryMode,
+            resolvedAttempt,
+            taskScope), clearRunningMarker);
+    }
+
     private OpenHouseInstallState buildFinishedState(String logTail, int exitCode, VerificationMode verificationMode) {
         OpenHouseInstallState.TaskScope taskScope = inferTaskScopeFromLog(logTail);
         currentTaskScope = taskScope;
         if (exitCode == 0) {
-            if (!verifyTaskComplete(taskScope, verificationMode)) {
+            if (!verifyTaskCompleteForMode(taskScope, verificationMode)) {
                 StageMarkerInfo stageMarkerInfo = inferCurrentStageMarker(logTail, taskScope);
                 Stage stage = resolveMonotonicStage(stageMarkerInfo.stage, stageMarkerInfo, null, taskScope);
                 String detail = latestReadableLogLine(logTail);
@@ -835,6 +1153,13 @@ public final class OpenHouseInstallController {
         WAIT_BRIEFLY
     }
 
+    private boolean verifyTaskCompleteForMode(OpenHouseInstallState.TaskScope taskScope,
+                                              VerificationMode verificationMode) {
+        return verificationMode == VerificationMode.CHECK_ONCE
+            ? recoveryVerifier.verifyOnce(taskScope)
+            : verifyTaskComplete(taskScope, verificationMode);
+    }
+
     private Integer readLastExitCode(String logContent) {
         Matcher matcher = DONE_PATTERN.matcher(logContent == null ? "" : logContent);
         Integer exitCode = null;
@@ -845,6 +1170,12 @@ public final class OpenHouseInstallController {
     }
 
     private OpenHouseInstallState.TaskScope inferTaskScopeFromLog(String logContent) {
+        return inferTaskScopeFromLog(logContent, state == null ? currentTaskScope : state.taskScope);
+    }
+
+    private OpenHouseInstallState.TaskScope inferTaskScopeFromLog(
+        String logContent,
+        OpenHouseInstallState.TaskScope fallbackTaskScope) {
         Matcher matcher = TASK_PATTERN.matcher(logContent == null ? "" : logContent);
         OpenHouseInstallState.TaskScope taskScope = null;
         while (matcher.find()) {
@@ -853,11 +1184,7 @@ public final class OpenHouseInstallController {
         if (taskScope != null) {
             return taskScope;
         }
-        OpenHouseInstallState current = state;
-        if (current != null && current.taskScope != null) {
-            return current.taskScope;
-        }
-        return normalizeTaskScope(currentTaskScope);
+        return normalizeTaskScope(fallbackTaskScope);
     }
 
     private StageMarkerInfo inferCurrentStageMarker(String logContent,
@@ -1022,6 +1349,14 @@ public final class OpenHouseInstallController {
                                         StageMarkerInfo stageMarkerInfo,
                                         RunningMarker runningMarker,
                                         OpenHouseInstallState.TaskScope taskScope) {
+        return resolveMonotonicStage(stage, stageMarkerInfo, runningMarker, taskScope, state);
+    }
+
+    private Stage resolveMonotonicStage(Stage stage,
+                                        StageMarkerInfo stageMarkerInfo,
+                                        RunningMarker runningMarker,
+                                        OpenHouseInstallState.TaskScope taskScope,
+                                        OpenHouseInstallState baseState) {
         OpenHouseInstallState.TaskScope resolvedTaskScope = normalizeTaskScope(taskScope);
         stage = normalizeStageForTask(stage, resolvedTaskScope);
         if (runningMarker != null && !runningMarker.remoteSchedule && stageMarkerInfo != null && stageMarkerInfo.found) {
@@ -1030,7 +1365,7 @@ public final class OpenHouseInstallController {
         if (stageMarkerInfo != null && stageMarkerInfo.markerCount > 1) {
             return stage;
         }
-        OpenHouseInstallState current = state;
+        OpenHouseInstallState current = baseState;
         Stage currentStage = current == null || !current.running || current.taskScope != resolvedTaskScope
             ? null
             : Stage.fromSlug(current.currentStageSlug);
@@ -1051,9 +1386,15 @@ public final class OpenHouseInstallController {
     }
 
     private int failurePercent(Stage stage, OpenHouseInstallState.TaskScope taskScope) {
+        return failurePercent(stage, taskScope, state);
+    }
+
+    private int failurePercent(Stage stage,
+                               OpenHouseInstallState.TaskScope taskScope,
+                               OpenHouseInstallState baseState) {
         OpenHouseInstallState.TaskScope resolvedTaskScope = normalizeTaskScope(taskScope);
         int percent = getStageStartPercent(stage, resolvedTaskScope);
-        OpenHouseInstallState current = state;
+        OpenHouseInstallState current = baseState;
         if (current != null && current.running && current.taskScope == resolvedTaskScope) {
             percent = Math.max(percent, current.percent);
         }
@@ -1061,16 +1402,18 @@ public final class OpenHouseInstallController {
     }
 
     private int currentRunningPercentFloor() {
-        OpenHouseInstallState current = state;
+        return currentRunningPercentFloor(state);
+    }
+
+    private int currentRunningPercentFloor(OpenHouseInstallState current) {
         if (current == null || !current.running) {
             return 0;
         }
         return Math.min(99, clampPercent(current.percent));
     }
 
-    private boolean shouldFailStuckRun() {
-        RunningMarker runningMarker = readRunningMarker();
-        if (!runningMarker.exists) {
+    private boolean shouldFailStuckRun(RunningMarker runningMarker) {
+        if (runningMarker == null || !runningMarker.exists) {
             return false;
         }
 
@@ -1122,12 +1465,65 @@ public final class OpenHouseInstallController {
     }
 
     private void updateState(OpenHouseInstallState nextState) {
-        state = nextState == null ? OpenHouseInstallState.idle() : nextState;
+        OpenHouseInstallState resolvedState = nextState == null ? OpenHouseInstallState.idle() : nextState;
+        syncCurrentMetadata(resolvedState);
+        state = resolvedState;
         mainHandler.post(() -> {
             for (Listener listener : listeners) {
                 listener.onInstallStateChanged(state);
             }
         });
+    }
+
+    private void syncCurrentMetadata(OpenHouseInstallState nextState) {
+        currentRetryMode = normalizeRetryMode(nextState.retryMode);
+        currentTaskScope = normalizeTaskScope(nextState.taskScope);
+        currentAttempt = nextState.attempt;
+    }
+
+    private OpenHouseInstallState newState(OpenHouseInstallState.Status status,
+                                           int percent,
+                                           String phaseLabel,
+                                           String detailText,
+                                           String currentStageSlug,
+                                           OpenHouseInstallState.RetryMode retryMode,
+                                           int attempt,
+                                           OpenHouseInstallState.TaskScope taskScope) {
+        String safeDetail = redactSecrets(detailText == null ? "" : detailText);
+        return new OpenHouseInstallState(
+            status,
+            percent,
+            phaseLabel,
+            safeDetail,
+            currentStageSlug,
+            normalizeRetryMode(retryMode),
+            Math.max(0, attempt),
+            getManifestLogPath(),
+            status == OpenHouseInstallState.Status.FAILED ? safeDetail : "",
+            normalizeTaskScope(taskScope));
+    }
+
+    private void applyLoadedStateLocked(LoadedState loadedState) {
+        if (loadedState.clearRunningMarker) {
+            clearRunningMarker();
+        }
+        updateState(loadedState.state);
+    }
+
+    private boolean isStateSnapshotCurrent(OpenHouseInstallState snapshot,
+                                           int scheduledAttempt,
+                                           OpenHouseInstallState.TaskScope scheduledTaskScope,
+                                           OpenHouseInstallState.RetryMode scheduledRetryMode,
+                                           Process scheduledProcess) {
+        return snapshot != null
+            && snapshot.attempt == scheduledAttempt
+            && normalizeTaskScope(snapshot.taskScope) == scheduledTaskScope
+            && normalizeRetryMode(snapshot.retryMode) == scheduledRetryMode
+            && state == snapshot
+            && currentAttempt == scheduledAttempt
+            && normalizeTaskScope(currentTaskScope) == scheduledTaskScope
+            && normalizeRetryMode(currentRetryMode) == scheduledRetryMode
+            && currentProcess == scheduledProcess;
     }
 
     private OpenHouseInstallState buildState(OpenHouseInstallState.Status status,
@@ -1420,17 +1816,20 @@ public final class OpenHouseInstallController {
 
     private boolean hasFreshRunningMarker() {
         RunningMarker marker = readRunningMarker();
+        boolean fresh = isFreshRunningMarker(marker);
+        if (!fresh && marker.exists) {
+            clearRunningMarker();
+        }
+        return fresh;
+    }
+
+    private boolean isFreshRunningMarker(RunningMarker marker) {
         if (!marker.exists) {
             return false;
         }
 
         long ageMs = Math.max(0L, System.currentTimeMillis() - marker.lastModifiedAtMs);
-        if (ageMs <= STALE_RUNNING_MARKER_MS) {
-            return true;
-        }
-
-        clearRunningMarker();
-        return false;
+        return ageMs <= STALE_RUNNING_MARKER_MS;
     }
 
     private void writeScript(File file, String content) throws IOException {
@@ -1768,6 +2167,16 @@ public final class OpenHouseInstallController {
             this.stage = stage == null ? Stage.PREPARE : stage;
             this.found = found;
             this.markerCount = Math.max(0, markerCount);
+        }
+    }
+
+    private static final class LoadedState {
+        final OpenHouseInstallState state;
+        final boolean clearRunningMarker;
+
+        LoadedState(OpenHouseInstallState state, boolean clearRunningMarker) {
+            this.state = state == null ? OpenHouseInstallState.idle() : state;
+            this.clearRunningMarker = clearRunningMarker;
         }
     }
 

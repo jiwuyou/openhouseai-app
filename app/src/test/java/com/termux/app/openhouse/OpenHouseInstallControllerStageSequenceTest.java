@@ -101,9 +101,16 @@ public class OpenHouseInstallControllerStageSequenceTest {
         Assert.assertFalse(OpenHouseInstallController.isLaunchPreparing(3, 2));
 
         String install = source("app/src/main/java/com/termux/app/openhouse/OpenHouseInstallController.java");
-        String getter = methodSource(install, "public OpenHouseInstallState getState()", "private void schedulePollIfRunning");
-        Assert.assertTrue(getter.contains(
-            "if (isCurrentLaunchPreparing()) {\n                return state;\n            }"));
+        String getter = methodSource(
+            install, "public OpenHouseInstallState getState()", "private void scheduleInitialStateLoad");
+        Assert.assertTrue(getter.contains("scheduleRunningStatePoll(snapshot)"));
+        Assert.assertTrue(getter.contains("return snapshot;"));
+        Assert.assertFalse(getter.contains("readRunningStateFromLog"));
+
+        String pollWorker = methodSource(
+            install, "private void pollRunningStateInBackground", "private void scheduleFollowUpForState");
+        Assert.assertTrue(pollWorker.contains(
+            "isLaunchPreparing(scheduledAttempt, preparingAttempt)"));
 
         String starter = methodSource(install, "private boolean startInstallInternal", "private void prepareAndStartInstall");
         Assert.assertTrue(starter.indexOf("preparingAttempt = currentAttempt")
