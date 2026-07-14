@@ -14,18 +14,19 @@
 
 只有一阶段签名时，状态必须保持未完成，并提示用户找第二个 AI 完成二阶段引导签名。
 
-## 二阶段 AI 可以是谁
+## 二阶段 Agent 默认选择
 
-二阶段 AI 可以运行在：
+当前内测默认使用 AionUI 作为第二阶段 Agent。第一阶段签名前应确认 AionUI 可打开、模型配置已保存、协议/Base URL/model id 可用，并且模型健康检查通过或真实对话收到有效响应。AionUI 必须独立复核后才能完成第二阶段签名。
 
-- OpenHouseAI / AionUI / smallhouseai。
+通用任选 Agent 流程保留为高级或备用路径。二阶段 Agent 也可以运行在：
+
 - Claude Code、Codex、CloudCLI 中的 `cc/codex`。
 - pi 或 Hermes。
 - 其它能读取本机状态并独立复核的 AI。
 
 这些只是可选入口，不是固定身份。一阶段 AI 的责任不是代替二阶段 AI 签名，而是帮助用户让至少一个不同 identity 的二阶段 AI 可用，并按 `SECOND_AI_HANDOFF.md` 生成三个交接文件和一句可复制提示词。
 
-pi-web 是推荐的第一阶段 Agent 工作台，通过它执行任务时可以使用 `pi-web` 作为 Agent identity；AionUI 是固定安装后可选的工作台之一。两阶段 Agent 都不绑定具体模型；签名记录实际的 Agent 应用或工作台名称，并保持两者不同。交接文件按 `SECOND_AI_HANDOFF.md` 保存。
+pi-web 是当前内测默认的第一阶段 Agent 工作台，通过它执行任务时可以使用 `pi-web` 作为 Agent identity；AionUI 是默认的第二阶段 Agent 工作台。两阶段 Agent 都不绑定具体模型；签名记录实际的 Agent 应用或工作台名称，并保持两者不同。交接文件按 `SECOND_AI_HANDOFF.md` 保存。
 
 ## 第一阶段签名命令
 
@@ -128,6 +129,8 @@ bash bootstrap.sh status
 ```
 
 确认完整签名状态为 true。若仍未通过，向用户报告缺项和下一步。
+
+双签和 `task.json.status=completed` 已确认后，配置 Claude Code、配置 Codex、创建小型 Web App 和跳过都是非阻断后续选项，不改变健康签名结果。
 
 ## 禁止事项
 

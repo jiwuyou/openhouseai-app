@@ -72,7 +72,7 @@
       "id": "pi-web",
       "archive": "pi-web.tar",
       "targetDir": "pi-web",
-      "sha256": "62b9a03f892d8e890bfdbe89d55ef731917dd9e2ce921c292aedd5802f02ca87",
+      "sha256": "125eaa9445b315490d452f90a337757c49d072d5560353c2815e046fdd555034",
       "size": 89118720,
       "platform": "termux-android-arm64",
       "buildPlatform": "android-arm64",

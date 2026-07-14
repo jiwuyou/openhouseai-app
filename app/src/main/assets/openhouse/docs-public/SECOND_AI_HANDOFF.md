@@ -4,6 +4,8 @@ OpenHouse 的首次配置由两个 Agent 应用或工作台接力完成。第一
 
 pi-web 是推荐的第一阶段 Agent 工作台，通过它执行任务时可以使用 `pi-web` 作为 Agent identity。OpenHouse 适配分支在页面内调用 `/openhouse-first-config` 或 `/openhouse-second-ai-handoff`；完整任务、文档地址和交接规则由最终 APK payload 中的标准 prompt 提供，Android 不注入 prompt URL。
 
+当前内测默认由 pi-web 完成第一阶段，再由已真实测通的 AionUI 完成第二阶段独立复核与签名。其它 Agent 组合保留为高级或备用路径。
+
 ## 唯一交接目录
 
 交接目录只保存在 Termux native：
@@ -62,7 +64,7 @@ latest/
     "serviceManager": { "status": "pass", "evidence": "health endpoint responded" },
     "piWeb": { "status": "pass", "evidence": "local page responded" },
     "ubuntu": { "status": "pass", "evidence": "proot login and id succeeded" },
-    "secondAi": { "status": "pass", "evidence": "selected workbench completed a minimal request" }
+    "secondAi": { "status": "pass", "evidence": "AionUI opened and returned a valid model response" }
   },
   "warnings": [],
   "secretsRedacted": true
@@ -111,14 +113,14 @@ latest/
 
 1. 阅读 `START_HERE.md`、`OPENHOUSE_FIRST_CONFIGURATION.md`、`OPENHOUSE_HEALTH_SIGNOFF.md` 和 `SERVICE_MANAGER.md`。
 2. 确认固定安装、文档、service-manager、pi/pi-web、Ubuntu 和已安装工作台的真实状态。
-3. 帮助用户选择一个与当前 identity 不同的第二阶段 AI，并完成一次最小真实请求。
+3. 默认配置并测通 AionUI：确认页面可打开、模型配置已保存、协议/Base URL/model id 可用，并且健康检查通过或真实对话收到有效响应。用户明确需要其它工作台时，才走高级或备用路径。
 4. 生成并验证三个脱敏交接文件。
 5. 使用自己的真实 identity 完成第一阶段签名。
 6. 再次检查 bootstrap 状态，确认当前仍在等待第二阶段签名。
-7. 把下面的一句话交给用户，并替换其中的 `<firstStageAgentIdentity>`：
+7. 默认把下面的一句话交给用户，并替换其中的 `<firstStageAgentIdentity>`；高级或备用路径再把 AionUI 替换为实际工作台：
 
 ```text
-请作为与第一阶段 AI（<firstStageAgentIdentity>）不同的 OpenHouse 第二阶段 AI，先阅读本机 OpenHouse 文档，再读取 Termux 的 $HOME/.local/share/openhouseai/handoffs/second-ai/latest（若你在 Ubuntu，请通过 openhouse-termux 访问）中的 HANDOFF.md、system-check.json 和 task.json，独立复核、完成任务，并仅在全部验收通过后以你的真实 identity 完成第二阶段签名。
+请在 AionUI 中作为与第一阶段 Agent（<firstStageAgentIdentity>）不同的 OpenHouse 第二阶段 Agent，先阅读本机 OpenHouse 文档，再读取 Termux 的 $HOME/.local/share/openhouseai/handoffs/second-ai/latest（若你在 Ubuntu，请通过 openhouse-termux 访问）中的 HANDOFF.md、system-check.json 和 task.json，独立复核、完成任务，并仅在全部验收通过后以你的真实 identity 完成第二阶段签名。
 ```
 
 ## 第二阶段执行顺序
@@ -130,6 +132,15 @@ latest/
 5. 只有全部验收通过后，使用自己的真实 identity 完成第二阶段签名。
 6. 将 `task.json.status` 更新为 `completed`，写入第二阶段 identity、完成时间和脱敏摘要。
 7. 再次检查 bootstrap 状态，确认双阶段 signer 均存在且不同。
+
+## 完成后的可选任务
+
+第二阶段签名完成且 `task.json.status` 已更新为 `completed` 后，首次配置已经完成。此时提供四个非阻断选项：
+
+- 配置 Claude Code：阅读 `CLOUDCLI_CLAUDE_CODE.md` 和 `MODEL_API_SETUP.md`。
+- 配置 Codex：阅读 `codex-setup.md` 和 `MODEL_API_SETUP.md`。
+- 创建小型 Web App：阅读 `CUSTOM_FRONTEND_AND_APPS.md`。
+- 跳过：不执行额外任务，保持完成状态。
 
 ## 真实签名命令
 

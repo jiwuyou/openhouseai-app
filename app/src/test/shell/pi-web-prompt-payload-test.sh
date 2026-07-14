@@ -48,6 +48,11 @@ for contract in \
   'openhouse-first-config|MODEL_API_SETUP.md' \
   'openhouse-first-config|model-config-migration.md' \
   'openhouse-first-config|CLOUDCLI_CLAUDE_CODE.md' \
+  'openhouse-first-config|默认第二阶段 Agent identity 为 `aionui`' \
+  'openhouse-first-config|配置并真实测通 AionUI' \
+  'openhouse-first-config|最小真实请求' \
+  'openhouse-first-config|只有 AionUI 不可用，或者用户主动选择其它 Agent 时' \
+  'openhouse-first-config|identity=aionui' \
   'openhouse-docs|# /openhouse-docs' \
   'openhouse-docs|$HOME/openhouse/docs' \
   'openhouse-docs|/root/openhouse/docs' \
@@ -59,6 +64,13 @@ for contract in \
   'openhouse-second-ai-handoff|system-check.json' \
   'openhouse-second-ai-handoff|task.json' \
   'openhouse-second-ai-handoff|两个 Agent 可以使用相同模型' \
+  'openhouse-second-ai-handoff|默认由 AionUI 执行' \
+  'openhouse-second-ai-handoff|task.json.status` 为 `completed' \
+  'openhouse-second-ai-handoff|配置 Claude Code' \
+  'openhouse-second-ai-handoff|配置 Codex' \
+  'openhouse-second-ai-handoff|创建一个小型 Web App' \
+  'openhouse-second-ai-handoff|跳过' \
+  'openhouse-second-ai-handoff|CUSTOM_FRONTEND_AND_APPS.md' \
   'openhouse-second-ai-handoff|不同'; do
   prompt_name="${contract%%|*}"
   required="${contract#*|}"

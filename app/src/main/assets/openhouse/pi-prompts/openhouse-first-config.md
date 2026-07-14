@@ -23,7 +23,9 @@
 
 按文档完成第一阶段检查，确认固定安装、文档、service-manager、pi/pi-web、Ubuntu 和已安装工作台的真实状态。不要把“命令存在”当成健康；需要模型能力时必须完成最小真实请求。若有非阻断缺项，记录到交接文件后继续；只有固定安装、文档、service-manager 或第二阶段 AI 均不可用时才停止。
 
-帮助用户选择并准备一个独立的第二阶段 Agent 应用或工作台。第二阶段不固定为 AionUI、Claude Code、Codex、Hermes 或 pi；identity 应填写 `aionui`、`claude-code`、`codex`、`hermes`、`pi-web` 等 Agent 名称，而不是模型名称。第二阶段 identity 必须与第一阶段不同，但可以使用相同模型。不要替第二阶段 Agent 做独立复核或签名。
+默认按 `OPENHOUSE_FIRST_CONFIGURATION.md` 和 `MODEL_API_SETUP.md` 配置并真实测通 AionUI：确认 AionUI 已安装且可打开，完成默认模型配置，并发起一次最小真实请求，得到有意义的模型回复。不要把页面可打开、配置已保存或模型列表可见当成测通，也不要在交接材料中记录密钥。默认第二阶段 Agent identity 为 `aionui`。
+
+只有 AionUI 不可用，或者用户主动选择其它 Agent 时，才进入高级/备用通用接力：准备用户选择的独立 Agent 应用或工作台，并按对应文档完成真实验证。identity 应填写 `aionui`、`claude-code`、`codex`、`hermes`、`pi-web` 等 Agent 名称，而不是模型名称。第二阶段 identity 必须与第一阶段不同，但可以使用相同模型。不要替第二阶段 Agent 做独立复核或签名。
 
 第一阶段完成后，把脱敏交接材料写入 Termux 目录：
 
@@ -31,7 +33,7 @@
 
 目录必须包含：
 
-- `HANDOFF.md`：第一阶段 identity、已完成事项、阻断项、第二阶段动作和验收标准。
+- `HANDOFF.md`：第一阶段 identity、已完成事项、阻断项、第二阶段动作和验收标准；默认明确交给 `aionui`，使用备用接力时记录用户实际选择的 Agent identity。
 - `system-check.json`：有效 JSON，至少包含 `schema`、`generatedAt`、`firstStageAgentIdentity`、`runtimeLayer`、`checks`、`warnings`、`secretsRedacted`；`secretsRedacted` 必须为 `true`。
 - `task.json`：有效 JSON，至少包含 `schema`、`status`、`firstStageAgentIdentity`、`requireDifferentSecondStageIdentity`、`objective`、`requiredChecks`、`completionCriteria`；初始 `status` 为 `ready_for_second_ai`，`requireDifferentSecondStageIdentity` 为 `true`。
 
@@ -47,8 +49,10 @@ Ubuntu 使用：
 
 复核通过后，按 `OPENHOUSE_HEALTH_SIGNOFF.md` 使用当前真实 agent identity 完成第一阶段签名；确认状态要求第二阶段签名，而不是错误地报告全部完成。
 
-最后必须单独输出这一句可复制文本，并把同一句写入 `HANDOFF.md`：
+默认必须单独输出下面这句可复制文本，并把同一句写入 `HANDOFF.md`：
 
-`请作为与第一阶段 AI（<firstStageAgentIdentity>）不同的 OpenHouse 第二阶段 AI，先阅读本机 OpenHouse 文档，再读取 Termux 的 $HOME/.local/share/openhouseai/handoffs/second-ai/latest（若你在 Ubuntu，请通过 openhouse-termux 访问）中的 HANDOFF.md、system-check.json 和 task.json，独立复核、完成任务，并仅在全部验收通过后以你的真实 identity 完成第二阶段签名。`
+`请在 AionUI 中作为 OpenHouse 第二阶段 Agent（identity=aionui），先阅读本机 OpenHouse 文档，再读取 Termux 的 $HOME/.local/share/openhouseai/handoffs/second-ai/latest（若你在 Ubuntu，请通过 openhouse-termux 访问）中的 HANDOFF.md、system-check.json 和 task.json，独立复核、完成任务，并仅在全部验收通过后完成第二阶段签名。`
+
+如果已进入高级/备用通用接力，把上句中的 `AionUI` 和 `aionui` 替换成用户实际选择的 Agent 应用或工作台及其 identity。
 
 不得在文档、交接文件、日志或回复中写出 API key、token、Authorization、cookie、密码、完整私有模型配置或带认证参数的 URL。

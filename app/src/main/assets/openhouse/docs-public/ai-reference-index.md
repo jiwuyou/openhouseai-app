@@ -35,14 +35,15 @@
 | 新用户教学 | `first-use-tutorial.md` | 按界面、箭头、点击主体和跳过规则设计教学。 |
 | 终端和路径 | `terminal-guide.md`, `TERMUX_UBUNTU_BRIDGE.md`, `TERMINAL_PROFILES.md`, `ENVIRONMENT.md` | 判断 Android、Termux、Ubuntu 层级和跨层调用。 |
 | 路径和端口规范 | `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 确认稳定安装路径、service-manager endpoint、端口分段、已用/保留端口和新 App 选端口规则。 |
-| 首次配置和 AI 接力 | `pi-agent-first-use.md`, `OPENHOUSE_FIRST_CONFIGURATION.md`, `SECOND_AI_HANDOFF.md`, `OPENHOUSE_HEALTH_SIGNOFF.md` | 第一和第二阶段指两个 Agent 应用或工作台，不是两个模型；pi-web 可作为 Agent identity，两个 Agent 可以使用相同模型。 |
+| 首次配置和 AI 接力 | `pi-agent-first-use.md`, `OPENHOUSE_FIRST_CONFIGURATION.md`, `SECOND_AI_HANDOFF.md`, `OPENHOUSE_HEALTH_SIGNOFF.md` | 内测默认 pi-web 第一阶段、AionUI 第二阶段；通用任选 Agent 作为高级/备用路径。 |
 | AionUI 模型配置 | `OPENHOUSE_FIRST_CONFIGURATION.md`, `MODEL_API_SETUP.md` | 配置平台、协议、Base URL、模型、Key 测试和模型健康检查。 |
 | 模型配置迁移 | `model-config-migration.md`, `MODEL_API_SETUP.md` | 按协议迁移 `base_url`、key/token、model id。 |
-| Claude Code / CloudCLI | `CLOUDCLI_CLAUDE_CODE.md` | 安装、配置并测通 CloudCLI 中的 Claude Code。 |
+| Claude Code / CloudCLI | `CLOUDCLI_CLAUDE_CODE.md`, `MODEL_API_SETUP.md` | 安装、配置并测通 CloudCLI 中的 Claude Code。 |
 | Codex | `codex-setup.md`, `MODEL_API_SETUP.md` | 配置并实测 Codex。 |
 | GitHub 本地授权和 gh 配置 | `GITHUB_CONFIG_HELPER.md`, `GITHUB_NETWORK_MIRRORS.md` | 复用 GitHub CLI 官方 OAuth 流程，不注册 OAuth App，配置 `gh auth login` 和 `gh auth setup-git`，让同一 Ubuntu 用户和同一 `$HOME` 下的 Codex / Claude Code 直接调用 `git` 和 `gh`。 |
 | service-manager | `SERVICE_MANAGER.md` | 注册、启动、停止、修复长期服务。 |
 | 自定义前端或 App | `CUSTOM_FRONTEND_AND_APPS.md`, `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 生成真实代码，先按规范选择路径和端口，再注册 component manifest 和 service-manager 服务，并按 AI 更新流程维护。 |
+| 首次配置后创建小型 Web App | `CUSTOM_FRONTEND_AND_APPS.md` | 作为双签完成后的可选任务创建手机优先的小型本地 Web App。 |
 | 前台保活 | `openhouse-runtime-policy.md` | 理解 Android 和 service-manager 的分工。 |
 | 停止运行栈 / 全部退出 | `openhouse-exit-all.md` | 明确停止范围、界面行为、保留范围和恢复行为。 |
 | 故障排查 | `TROUBLESHOOTING.md`, `RECOVERY.md` | 按症状选择最小修复步骤。 |
@@ -61,6 +62,7 @@
 - App 前台默认保持 `service-manager`、`smallphone`、`pi-agent`、`cloudcli` 可用。
 - `pi-agent` 是首次配置助手，不是唯一主工作台。
 - Agent identity 使用 `pi-web`、`codex`、`claude-code`、`aionui` 等 Agent 应用或工作台名称，不使用模型名称。
+- 内测默认由 pi-web 第一阶段和 AionUI 第二阶段完成双签；Claude Code、Codex、小型 Web App 和跳过是完成后的非阻断选项。
 - `cc-switch` 是配置工具箱，不是长期服务。
 - GitHub 配置助手只做本机授权和环境配置；后续 GitHub 操作应交给 Codex / Claude Code 调用 `git` 和 `gh`。
 - 首次教学不进入终端教学。

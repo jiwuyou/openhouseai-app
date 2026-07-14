@@ -61,11 +61,11 @@ scripts/sync-runtime-docs.sh
 2. `first-use-tutorial.md`
    - 了解首次教学会指向哪里、哪些动作需要用户点击、哪些只是说明。
 3. `pi-agent-first-use.md`
-   - 进入 pi-agent 后，按它的提示配置模型、Claude 或 Codex。
+   - 按内测默认线从 pi-web 配置并测通 AionUI，再由 AionUI 完成第二阶段复核与签名。
 4. `model-config-migration.md`
    - 准备 `base_url`、`key/token`、`model id` 和协议类型。
 5. `CLOUDCLI_CLAUDE_CODE.md` 或 `codex-setup.md`
-   - 根据你要先使用 Claude 还是 Codex，完成后置配置和实测。
+   - 双签完成后，如果选择配置 Claude Code 或 Codex，再完成对应后置配置和实测。
 6. `GITHUB_CONFIG_HELPER.md`
    - 需要让 Codex / Claude Code 管理 GitHub 仓库、PR、Actions、issue 或组织资源时，先完成本机 `gh` 授权和 `git` credential helper 配置。
 7. `OPENHOUSE_DESKTOP.md`
@@ -157,9 +157,9 @@ openhouse-termux exec -- 'id; echo "$HOME"; echo "$PREFIX"'
 12. `GITHUB_CONFIG_HELPER.md`
    - 需要让 Codex / Claude Code 后续直接使用 `git` 和 `gh` 管理 GitHub 时阅读。
 13. `OPENHOUSE_FIRST_CONFIGURATION.md`
-   - pi-web 模型可用后，让当前 AI 检查系统、准备独立的第二阶段 AI 并生成交接任务。
+   - 按内测默认线由 pi-web 检查系统、真实测通 AionUI，再由 AionUI 完成第二阶段接力。
 14. `SECOND_AI_HANDOFF.md`
-   - 了解两个不同 AI 如何独立复核、接力任务并完成双阶段签名。
+   - 了解 pi-web 与 AionUI 的默认接力，以及其它 Agent 的高级/备用接力方式。
 15. `CLOUDCLI_CLAUDE_CODE.md`
    - 需要让 pi-agent 配置 CloudCLI 中的 Claude Code 时阅读。
 16. `HERMES_SETUP.md`
@@ -212,14 +212,15 @@ OpenCode、Reasonix 等外部工具不是 APK 默认核心能力。Hermes 不进
 
 | 提示词 | 参考文档 | 目标 |
 | --- | --- | --- |
-| `/openhouse-first-config` | `OPENHOUSE_FIRST_CONFIGURATION.md`, `SECOND_AI_HANDOFF.md`, `OPENHOUSE_HEALTH_SIGNOFF.md` | 通过 pi-web 启动当前会话 AI 检查系统，准备用户选择的独立 AI，并生成接力任务。 |
+| `/openhouse-first-config` | `OPENHOUSE_FIRST_CONFIGURATION.md`, `SECOND_AI_HANDOFF.md`, `OPENHOUSE_HEALTH_SIGNOFF.md` | 内测默认由 pi-web 第一阶段检查并测通 AionUI，再由 AionUI 第二阶段独立复核与签名。 |
 | 首次使用 | `/root/openhouse/docs/START_HERE.md`, `/root/openhouse/docs/CAPABILITIES_MAP.md`, `/root/openhouse/docs/AI_AGENT_REFERENCE.md` | 让用户理解 OpenHouse 能力、入口、文档和安全边界。 |
 | 后置安装 AI 工具 | `/root/openhouse/docs/AI_TOOL_POSTINSTALL.md`, `/root/openhouse/scripts/check-ai-tools.sh` | 检查并安装 Codex、Claude Code、CloudCLI、Hermes。 |
 | 授权 GitHub 本地访问 | `/root/openhouse/docs/GITHUB_CONFIG_HELPER.md`, `/root/openhouse/docs/GITHUB_NETWORK_MIRRORS.md` | 复用 GitHub CLI 官方 OAuth 流程，配置 `gh auth login` 和 `gh auth setup-git`，让 Codex / Claude Code 后续直接调用 `git` 和 `gh`。 |
 | 配置 Claude Code | `/root/openhouse/docs/CLOUDCLI_CLAUDE_CODE.md`, `/root/openhouse/docs/MODEL_API_SETUP.md`, `/root/openhouse/docs/GITHUB_NETWORK_MIRRORS.md` | 按文档配置并测通 CloudCLI 中的 Claude Code；不确定时联网检索。 |
+| 配置 Codex | `/root/openhouse/docs/codex-setup.md`, `/root/openhouse/docs/MODEL_API_SETUP.md` | 按文档配置并真实测通 Codex。 |
 | 选择主工作台 | `/root/openhouse/docs/WORKBENCH_OPTIONS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md` | 让用户选择 Claude Code、Codex、Hermes Web 或其它开源项目作为长期工作台。 |
 | 安装和配置 Hermes | `/root/openhouse/docs/HERMES_SETUP.md`, `/root/openhouse/docs/OPTIONAL_EXTERNAL_TOOLS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md` | 可选高级能力，耗时较久，使用独立 uv 环境。 |
 | 熟悉 OpenHouse 整个系统 | `/root/openhouse/docs/PRODUCT_OVERVIEW.md`, `/root/openhouse/docs/SERVICE_MANAGER.md`, `/root/openhouse/docs/RECOVERY.md`, `/root/openhouse/docs/AI_AGENT_REFERENCE.md` | 理解系统入口、服务控制、修复和终端分层。 |
 | 编写自定义前端或 App | `/root/openhouse/docs/CUSTOM_FRONTEND_AND_APPS.md`, `/root/openhouse/docs/PATHS_AND_PORTS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md`, `/root/openhouse/docs/OPENHOUSE_DESKTOP.md` | 让 AI 生成真实代码，先按规范选择路径和端口，再注册组件和服务，并支持后续 AI 更新。 |
 
-首次安装不要求配置默认模型或 API key。安装完成后，用户先在 pi-web 完成模型配置；检测到模型可用后，点击首次配置入口，让当前 Agent 检查系统、准备另一个独立 Agent，并生成接力任务。两个 Agent 可以使用相同模型，但 identity 使用各自的 Agent 应用或工作台名称。
+首次安装不要求配置默认模型或 API key。安装完成后的内测默认线是：pi-web 第一阶段检查系统，配置并真实测通 AionUI，再由 AionUI 第二阶段独立复核和签名。双签完成后提供配置 Claude Code、配置 Codex、创建小型 Web App、跳过四个非阻断选项；通用任选 Agent 路径保留为高级或备用。
