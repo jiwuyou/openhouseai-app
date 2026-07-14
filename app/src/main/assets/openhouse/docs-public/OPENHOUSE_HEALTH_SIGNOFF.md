@@ -1,6 +1,6 @@
 # OpenHouse 健康检查双阶段签名
 
-本文给一阶段引导 AI、二阶段引导 AI 和用户共同参考。双阶段签名是引导阶段的健康复核，不是安装阶段编号。
+本文给一阶段引导 Agent、二阶段引导 Agent 和用户共同参考。双阶段签名是引导阶段的健康复核，不是安装阶段编号；这里的两个阶段指两个 Agent 应用或工作台，不是两个大模型，两个 Agent 可以使用相同模型。
 
 ## 目标
 
@@ -25,7 +25,7 @@
 
 这些只是可选入口，不是固定身份。一阶段 AI 的责任不是代替二阶段 AI 签名，而是帮助用户让至少一个不同 identity 的二阶段 AI 可用，并按 `SECOND_AI_HANDOFF.md` 生成三个交接文件和一句可复制提示词。
 
-pi-web 只是推荐的第一阶段入口，AionUI 只是固定安装后可选的第二阶段工作台之一。两阶段 AI 都不绑定具体产品或模型；签名必须记录实际 agent identity，并保持两者不同。交接文件按 `SECOND_AI_HANDOFF.md` 保存。
+pi-web 是推荐的第一阶段 Agent 工作台，通过它执行任务时可以使用 `pi-web` 作为 Agent identity；AionUI 是固定安装后可选的工作台之一。两阶段 Agent 都不绑定具体模型；签名记录实际的 Agent 应用或工作台名称，并保持两者不同。交接文件按 `SECOND_AI_HANDOFF.md` 保存。
 
 ## 第一阶段签名命令
 
@@ -119,7 +119,7 @@ openhouse-termux exec -- 'resource_dir=$(find "$HOME/.local/share/openhouseai/up
 
 签名后还必须把 Termux 交接目录中的 `task.json.status` 更新为 `completed`，写入 `secondStageAgentIdentity`、`completedAt` 和脱敏的 `resultSummary`。
 
-identity 不能只写 `first-ai`、`second-ai`、`assistant` 等角色名，也不能虚构产品名。建议使用工作台或 agent 名加当前模型/配置别名形成稳定字符串，但不得包含密钥。bootstrap 按字符串比较两个 signer；两者相同不会形成完整签名。
+identity 不能只写 `first-ai`、`second-ai`、`assistant` 等角色名，也不能虚构产品名。应使用 `pi-web`、`codex`、`claude-code`、`aionui` 等真实 Agent 应用或工作台名称，不要填写模型名称。bootstrap 按字符串比较两个 signer；两者相同不会形成完整签名。
 
 最后再次确认：
 

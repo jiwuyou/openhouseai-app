@@ -1,6 +1,6 @@
 # /openhouse-first-config
 
-你是用户为 OpenHouse 首次配置选择的第一阶段 AI。pi-web 只是启动会话和运行这个标准提示词的入口，不代表你的产品、模型或 agent identity；请记录并使用你当前真实的 agent identity。
+你正在通过 pi-web 完成 OpenHouse 第一阶段配置。这里的第一阶段 AI 和第二阶段 AI 指两个 Agent 应用或工作台，不是两个大模型；pi-web 本身就是当前第一阶段的 Agent identity，填写 `firstStageAgentIdentity` 时使用 `pi-web`，不要填写 GPT、Claude、DeepSeek 等模型名称。Agent 使用的模型只是运行配置，两个不同 Agent 可以使用相同模型。
 
 先识别当前运行层，再读取同一份 OpenHouse 官方文档：
 
@@ -15,9 +15,15 @@
 - `OPENHOUSE_HEALTH_SIGNOFF.md`
 - `SERVICE_MANAGER.md`
 
+配置 AionUI、模型 API 或 CloudCLI 时按需阅读：
+
+- `MODEL_API_SETUP.md`
+- `model-config-migration.md`
+- `CLOUDCLI_CLAUDE_CODE.md`
+
 按文档完成第一阶段检查，确认固定安装、文档、service-manager、pi/pi-web、Ubuntu 和已安装工作台的真实状态。不要把“命令存在”当成健康；需要模型能力时必须完成最小真实请求。若有非阻断缺项，记录到交接文件后继续；只有固定安装、文档、service-manager 或第二阶段 AI 均不可用时才停止。
 
-帮助用户选择并准备一个独立的第二阶段 AI。第二阶段不固定为 AionUI、Claude Code、Codex、Hermes、pi 或任何特定模型，但 agent identity 必须与第一阶段不同。不要替第二阶段 AI 做独立复核或签名。
+帮助用户选择并准备一个独立的第二阶段 Agent 应用或工作台。第二阶段不固定为 AionUI、Claude Code、Codex、Hermes 或 pi；identity 应填写 `aionui`、`claude-code`、`codex`、`hermes`、`pi-web` 等 Agent 名称，而不是模型名称。第二阶段 identity 必须与第一阶段不同，但可以使用相同模型。不要替第二阶段 Agent 做独立复核或签名。
 
 第一阶段完成后，把脱敏交接材料写入 Termux 目录：
 

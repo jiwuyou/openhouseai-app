@@ -43,15 +43,22 @@ for contract in \
   'openhouse-first-config|system-check.json' \
   'openhouse-first-config|task.json' \
   'openhouse-first-config|不同' \
+  'openhouse-first-config|pi-web 本身就是当前第一阶段的 Agent identity' \
+  'openhouse-first-config|两个不同 Agent 可以使用相同模型' \
+  'openhouse-first-config|MODEL_API_SETUP.md' \
+  'openhouse-first-config|model-config-migration.md' \
+  'openhouse-first-config|CLOUDCLI_CLAUDE_CODE.md' \
   'openhouse-docs|# /openhouse-docs' \
   'openhouse-docs|$HOME/openhouse/docs' \
   'openhouse-docs|/root/openhouse/docs' \
+  'openhouse-docs|不是两个大模型' \
   'openhouse-second-ai-handoff|# /openhouse-second-ai-handoff' \
   'openhouse-second-ai-handoff|$HOME/.local/share/openhouseai/handoffs/second-ai/latest' \
   'openhouse-second-ai-handoff|agent identity' \
   'openhouse-second-ai-handoff|HANDOFF.md' \
   'openhouse-second-ai-handoff|system-check.json' \
   'openhouse-second-ai-handoff|task.json' \
+  'openhouse-second-ai-handoff|两个 Agent 可以使用相同模型' \
   'openhouse-second-ai-handoff|不同'; do
   prompt_name="${contract%%|*}"
   required="${contract#*|}"

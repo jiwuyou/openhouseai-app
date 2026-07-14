@@ -1,8 +1,8 @@
 # 第二 AI 接力
 
-OpenHouse 的首次配置由两个不同真实 identity 的 AI 接力完成。第一阶段 AI 检查系统、准备可用的第二阶段入口并生成脱敏任务；第二阶段 AI 独立复核、继续完成任务并完成第二阶段签名。两阶段不固定具体产品、供应商、模型或工作台。
+OpenHouse 的首次配置由两个 Agent 应用或工作台接力完成。第一阶段 Agent 检查系统、准备可用的第二阶段入口并生成脱敏任务；第二阶段 Agent 独立复核、继续完成任务并完成第二阶段签名。第一阶段和第二阶段不是指两个大模型，两个 Agent 可以使用相同模型。
 
-pi-web 只是推荐入口。OpenHouse 适配分支在页面内调用 `/openhouse-first-config` 或 `/openhouse-second-ai-handoff`；完整任务、文档地址和交接规则由最终 APK payload 中的标准 prompt 提供，Android 不注入 prompt URL。
+pi-web 是推荐的第一阶段 Agent 工作台，通过它执行任务时可以使用 `pi-web` 作为 Agent identity。OpenHouse 适配分支在页面内调用 `/openhouse-first-config` 或 `/openhouse-second-ai-handoff`；完整任务、文档地址和交接规则由最终 APK payload 中的标准 prompt 提供，Android 不注入 prompt URL。
 
 ## 唯一交接目录
 
@@ -160,7 +160,7 @@ openhouse-termux exec -- 'resource_dir=$(find "$HOME/.local/share/openhouseai/up
 openhouse-termux exec -- 'resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name "apk-*" | sort | tail -n 1); [ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }; cd "$resource_dir/bootstrap" && bash bootstrap.sh status'
 ```
 
-identity 应使用真实、稳定、可比较的名称，不能写成 `first-ai`、`second-ai`、`assistant` 或虚构产品名。签名命令会按字符串比较两阶段 signer；两者相同不会形成完整签名。
+identity 应使用真实、稳定、可比较的 Agent 应用或工作台名称，例如 `pi-web`、`codex`、`claude-code`、`aionui`；不能写成 `first-ai`、`second-ai`、`assistant` 等阶段角色名，也不要填写 GPT、Claude、DeepSeek 等模型名称。签名命令会按字符串比较两阶段 signer；两者相同不会形成完整签名。
 
 ## 失败处理
 

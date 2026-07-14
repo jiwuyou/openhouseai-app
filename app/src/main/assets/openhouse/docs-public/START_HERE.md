@@ -31,7 +31,7 @@ APK 会把产品自有的标准 pi 提示词安装到：
 /openhouse-second-ai-handoff
 ```
 
-pi-web 适配分支只负责入口和模板名；完整提示词、文档地址和交接要求由最终 APK payload 安装。第一阶段与第二阶段 AI 都不固定产品、供应商或模型；两阶段必须记录各自真实 agent identity，并由不同 identity 独立复核。
+pi-web 适配分支只负责入口和模板名；完整提示词、文档地址和交接要求由最终 APK payload 安装。第一阶段与第二阶段指两个 Agent 应用或工作台，不是两个大模型；`pi-web` 可以作为 Agent identity，两个 Agent 可以使用相同模型。identity 应填写 Agent 名称而不是模型名称。
 
 ## 文档更新通道
 
@@ -222,4 +222,4 @@ OpenCode、Reasonix 等外部工具不是 APK 默认核心能力。Hermes 不进
 | 熟悉 OpenHouse 整个系统 | `/root/openhouse/docs/PRODUCT_OVERVIEW.md`, `/root/openhouse/docs/SERVICE_MANAGER.md`, `/root/openhouse/docs/RECOVERY.md`, `/root/openhouse/docs/AI_AGENT_REFERENCE.md` | 理解系统入口、服务控制、修复和终端分层。 |
 | 编写自定义前端或 App | `/root/openhouse/docs/CUSTOM_FRONTEND_AND_APPS.md`, `/root/openhouse/docs/PATHS_AND_PORTS.md`, `/root/openhouse/docs/SERVICE_MANAGER.md`, `/root/openhouse/docs/OPENHOUSE_DESKTOP.md` | 让 AI 生成真实代码，先按规范选择路径和端口，再注册组件和服务，并支持后续 AI 更新。 |
 
-首次安装不要求配置默认模型或 API key。安装完成后，用户先在 pi-web 完成模型配置；检测到模型可用后，点击首次配置入口，让当前 AI 检查系统、准备另一个独立 AI，并生成接力任务。两个 AI 不绑定具体产品或模型。
+首次安装不要求配置默认模型或 API key。安装完成后，用户先在 pi-web 完成模型配置；检测到模型可用后，点击首次配置入口，让当前 Agent 检查系统、准备另一个独立 Agent，并生成接力任务。两个 Agent 可以使用相同模型，但 identity 使用各自的 Agent 应用或工作台名称。

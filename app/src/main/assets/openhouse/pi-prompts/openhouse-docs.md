@@ -1,6 +1,6 @@
 # /openhouse-docs
 
-请先识别当前运行层，然后阅读 OpenHouse 官方文档并回答用户的问题。pi-web 只是本提示词的入口，不代表你的产品、模型或 agent identity。
+请先识别当前运行层，然后阅读 OpenHouse 官方文档并回答用户的问题。pi-web 本身是当前 Agent 应用或工作台的 identity；它使用的具体大模型只是运行配置，不是 identity。文档中的第一阶段 AI 和第二阶段 AI 指两个 Agent 应用或工作台，不是两个大模型，两个 Agent 可以使用相同模型。
 
 - Termux native 文档：`$HOME/openhouse/docs`
 - Ubuntu 文档：`/root/openhouse/docs`

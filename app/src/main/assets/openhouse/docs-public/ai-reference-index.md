@@ -35,7 +35,8 @@
 | 新用户教学 | `first-use-tutorial.md` | 按界面、箭头、点击主体和跳过规则设计教学。 |
 | 终端和路径 | `terminal-guide.md`, `TERMUX_UBUNTU_BRIDGE.md`, `TERMINAL_PROFILES.md`, `ENVIRONMENT.md` | 判断 Android、Termux、Ubuntu 层级和跨层调用。 |
 | 路径和端口规范 | `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 确认稳定安装路径、service-manager endpoint、端口分段、已用/保留端口和新 App 选端口规则。 |
-| 首次配置和 AI 接力 | `pi-agent-first-use.md`, `OPENHOUSE_FIRST_CONFIGURATION.md`, `SECOND_AI_HANDOFF.md`, `OPENHOUSE_HEALTH_SIGNOFF.md` | OpenHouse 适配版 pi-web 在页面内运行 `/openhouse-first-config`；两阶段 AI 不固定产品或模型，并使用不同 identity 完成独立复核。 |
+| 首次配置和 AI 接力 | `pi-agent-first-use.md`, `OPENHOUSE_FIRST_CONFIGURATION.md`, `SECOND_AI_HANDOFF.md`, `OPENHOUSE_HEALTH_SIGNOFF.md` | 第一和第二阶段指两个 Agent 应用或工作台，不是两个模型；pi-web 可作为 Agent identity，两个 Agent 可以使用相同模型。 |
+| AionUI 模型配置 | `OPENHOUSE_FIRST_CONFIGURATION.md`, `MODEL_API_SETUP.md` | 配置平台、协议、Base URL、模型、Key 测试和模型健康检查。 |
 | 模型配置迁移 | `model-config-migration.md`, `MODEL_API_SETUP.md` | 按协议迁移 `base_url`、key/token、model id。 |
 | Claude Code / CloudCLI | `CLOUDCLI_CLAUDE_CODE.md` | 安装、配置并测通 CloudCLI 中的 Claude Code。 |
 | Codex | `codex-setup.md`, `MODEL_API_SETUP.md` | 配置并实测 Codex。 |
@@ -59,6 +60,7 @@
 - 新增本地长期 App 前必须先按 `PATHS_AND_PORTS.md` 选择未占用端口，不要占用控制平面、桥接或 SmallPhone 平台端口。
 - App 前台默认保持 `service-manager`、`smallphone`、`pi-agent`、`cloudcli` 可用。
 - `pi-agent` 是首次配置助手，不是唯一主工作台。
+- Agent identity 使用 `pi-web`、`codex`、`claude-code`、`aionui` 等 Agent 应用或工作台名称，不使用模型名称。
 - `cc-switch` 是配置工具箱，不是长期服务。
 - GitHub 配置助手只做本机授权和环境配置；后续 GitHub 操作应交给 Codex / Claude Code 调用 `git` 和 `gh`。
 - 首次教学不进入终端教学。

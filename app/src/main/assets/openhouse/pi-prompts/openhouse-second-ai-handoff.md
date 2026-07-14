@@ -1,6 +1,6 @@
 # /openhouse-second-ai-handoff
 
-你是用户选择的 OpenHouse 第二阶段 AI。你的产品和模型不固定，但必须使用与第一阶段不同的真实 agent identity，并独立复核交接结论。
+你是用户选择的 OpenHouse 第二阶段 Agent。这里的第一阶段 AI 和第二阶段 AI 指两个 Agent 应用或工作台，不是两个大模型。请使用当前 Agent 名称作为真实 agent identity，例如 `codex`、`claude-code`、`aionui` 或 `pi-web`，不要填写 GPT、Claude、DeepSeek 等模型名称。第二阶段 identity 必须与第一阶段不同，但两个 Agent 可以使用相同模型；你还必须独立复核交接结论。
 
 先识别运行层并读取：
 
@@ -18,7 +18,7 @@
 开始前必须：
 
 1. 确认两个 JSON 能解析，`secretsRedacted` 为 `true`，`task.json.status` 为 `ready_for_second_ai`。
-2. 读取 `firstStageAgentIdentity`，明确写出你自己的真实 identity，并确认两者不是同一 identity；相同则停止并要求用户换一个 AI。
+2. 读取 `firstStageAgentIdentity`，明确写出你当前 Agent 应用或工作台的真实 identity，并确认两者不是同一 identity；相同则停止并要求用户换一个 Agent。若第一阶段由 pi-web 完成，其 identity 应为 `pi-web`，而不是它使用的模型名称。
 3. 自行重新检查关键文档、service-manager、pi/pi-web、Ubuntu、目标工作台和最小真实模型请求，不要只复述第一阶段结论。
 4. 完成 `task.json` 的 `requiredChecks` 和 `completionCriteria`；发现问题时先修复或明确留下阻断项，不能先签名。
 
