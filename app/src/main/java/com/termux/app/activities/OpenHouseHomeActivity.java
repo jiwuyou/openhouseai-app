@@ -107,6 +107,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String PREF_TOP_ACTION_BAR_BUBBLE_Y_RATIO = "top_action_bar_bubble_y_ratio";
     private static final String PREF_DYNAMIC_WEBVIEW_RETAIN_COUNT = "dynamic_webview_retain_count";
     private static final String PREF_AI_RESCUE_PORT = "ai_rescue_port";
+    private static final String PREF_AI_RESCUE_CONTROLS_COLLAPSED = "ai_rescue_controls_collapsed";
+    private static final String PREF_AI_RESCUE_BUBBLE_EDGE = "ai_rescue_bubble_edge";
+    private static final String PREF_AI_RESCUE_BUBBLE_Y_RATIO = "ai_rescue_bubble_y_ratio";
     private static final int MIN_AI_RESCUE_PORT = 1024;
     private static final int MAX_AI_RESCUE_PORT = 65535;
     private static final int MIN_DYNAMIC_WEBVIEW_RETAIN_COUNT = 0;
@@ -216,7 +219,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private LinearLayout piWebFallbackView;
     private TextView piWebStatusView;
     private boolean piWebLoadFailed = false;
-    private LinearLayout aiRescuePageView;
+    private FrameLayout aiRescuePageView;
+    private LinearLayout aiRescueControlsView;
+    private TextView aiRescueBubbleView;
     private WebView aiRescueWebView;
     private LinearLayout aiRescueFallbackView;
     private TextView aiRescueStatusView;
@@ -1546,10 +1551,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         String rescueUrl = getAiRescueUrl();
         if (aiRescuePageView == null || !rescueUrl.equals(renderedAiRescueUrl)) {
-            if (aiRescueWebView != null) {
-                aiRescueWebView.destroy();
-                aiRescueWebView = null;
-            }
+            releaseAiRescuePage();
             aiRescuePageView = createAiRescuePageView();
             renderedAiRescueUrl = rescueUrl;
         }
@@ -1562,15 +1564,26 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
     }
 
-    private LinearLayout createAiRescuePageView() {
+    private FrameLayout createAiRescuePageView() {
+        FrameLayout pageHost = new FrameLayout(this);
+        pageHost.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setBackgroundColor(ContextCompat.getColor(this, R.color.surface));
+        pageHost.addView(page, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
 
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(12));
         panel.setBackgroundColor(ContextCompat.getColor(this, R.color.panel));
+        aiRescueControlsView = panel;
+
+        LinearLayout statusRow = new LinearLayout(this);
+        statusRow.setOrientation(LinearLayout.HORIZONTAL);
+        statusRow.setGravity(Gravity.TOP);
 
         aiRescueStatusView = new TextView(this);
         aiRescueStatusView.setText("AI救援地址：" + getAiRescueUrl()
@@ -1578,7 +1591,13 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         aiRescueStatusView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
         aiRescueStatusView.setTextSize(13);
         aiRescueStatusView.setLineSpacing(dp(2), 1.0f);
-        panel.addView(aiRescueStatusView);
+        statusRow.addView(aiRescueStatusView, new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        Button collapseButton = compactButton("收起", v -> setAiRescueControlsCollapsed(true), true);
+        LinearLayout.LayoutParams collapseParams = new LinearLayout.LayoutParams(dp(72), dp(40));
+        collapseParams.setMargins(dp(8), 0, 0, 0);
+        statusRow.addView(collapseButton, collapseParams);
+        panel.addView(statusRow);
 
         TextView portLabel = new TextView(this);
         portLabel.setText("救援端口");
@@ -1642,7 +1661,184 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             LinearLayout.LayoutParams.MATCH_PARENT,
             0,
             1));
-        return page;
+
+        aiRescueBubbleView = new TextView(this);
+        aiRescueBubbleView.setText("救援");
+        aiRescueBubbleView.setTextColor(Color.WHITE);
+        aiRescueBubbleView.setTextSize(13);
+        aiRescueBubbleView.setGravity(Gravity.CENTER);
+        aiRescueBubbleView.setContentDescription("展开 AI 救援控制");
+        aiRescueBubbleView.setClickable(true);
+        aiRescueBubbleView.setFocusable(true);
+        aiRescueBubbleView.setElevation(dp(8));
+        GradientDrawable bubbleBackground = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[] { 0xFF1E6F52, 0xFF155F43 });
+        bubbleBackground.setShape(GradientDrawable.OVAL);
+        bubbleBackground.setStroke(dp(1), 0x66FFFFFF);
+        aiRescueBubbleView.setBackground(bubbleBackground);
+        aiRescueBubbleView.setOnClickListener(v -> setAiRescueControlsCollapsed(false));
+        attachAiRescueBubbleDrag(aiRescueBubbleView);
+        FrameLayout.LayoutParams bubbleParams = new FrameLayout.LayoutParams(dp(52), dp(52));
+        bubbleParams.gravity = Gravity.TOP | Gravity.START;
+        pageHost.addView(aiRescueBubbleView, bubbleParams);
+        aiRescueBubbleView.setVisibility(View.GONE);
+        pageHost.post(this::updateAiRescueControlsChrome);
+        return pageHost;
+    }
+
+    private void setAiRescueControlsCollapsed(boolean collapsed) {
+        getOpenHouseHomePrefs().edit()
+            .putBoolean(PREF_AI_RESCUE_CONTROLS_COLLAPSED, collapsed)
+            .apply();
+        updateAiRescueControlsChrome();
+    }
+
+    private boolean isAiRescueControlsCollapsed() {
+        return getOpenHouseHomePrefs().getBoolean(PREF_AI_RESCUE_CONTROLS_COLLAPSED, false);
+    }
+
+    private void updateAiRescueControlsChrome() {
+        boolean collapsed = isAiRescueControlsCollapsed();
+        if (aiRescueControlsView != null) {
+            aiRescueControlsView.setVisibility(collapsed ? View.GONE : View.VISIBLE);
+        }
+        if (aiRescueBubbleView != null) {
+            aiRescueBubbleView.setVisibility(collapsed ? View.VISIBLE : View.GONE);
+            if (collapsed) {
+                aiRescueBubbleView.bringToFront();
+                aiRescueBubbleView.post(this::applyAiRescueBubblePosition);
+            }
+        }
+    }
+
+    private void attachAiRescueBubbleDrag(View bubble) {
+        if (bubble == null) {
+            return;
+        }
+        final int touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
+        final float[] downRaw = new float[2];
+        final int[] startMargins = new int[2];
+        final boolean[] dragging = new boolean[1];
+        bubble.setOnTouchListener((view, event) -> {
+            if (!(view.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+                return false;
+            }
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) view.getLayoutParams();
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downRaw[0] = event.getRawX();
+                    downRaw[1] = event.getRawY();
+                    startMargins[0] = params.leftMargin;
+                    startMargins[1] = params.topMargin;
+                    dragging[0] = false;
+                    view.getParent().requestDisallowInterceptTouchEvent(true);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    float dx = event.getRawX() - downRaw[0];
+                    float dy = event.getRawY() - downRaw[1];
+                    if (!dragging[0] && Math.hypot(dx, dy) > touchSlop) {
+                        dragging[0] = true;
+                    }
+                    if (dragging[0]) {
+                        moveAiRescueBubbleTo(
+                            startMargins[0] + Math.round(dx),
+                            startMargins[1] + Math.round(dy),
+                            false);
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    view.getParent().requestDisallowInterceptTouchEvent(false);
+                    if (dragging[0]) {
+                        snapAndSaveAiRescueBubble();
+                    } else if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                        setAiRescueControlsCollapsed(false);
+                    }
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    private void applyAiRescueBubblePosition() {
+        if (aiRescuePageView == null || aiRescueBubbleView == null) {
+            return;
+        }
+        int hostWidth = aiRescuePageView.getWidth();
+        int hostHeight = aiRescuePageView.getHeight();
+        int bubbleSize = aiRescueBubbleView.getWidth() > 0 ? aiRescueBubbleView.getWidth() : dp(52);
+        if (hostWidth <= 0 || hostHeight <= 0) {
+            aiRescuePageView.post(this::applyAiRescueBubblePosition);
+            return;
+        }
+        SharedPreferences prefs = getOpenHouseHomePrefs();
+        int edge = prefs.getInt(PREF_AI_RESCUE_BUBBLE_EDGE, BUBBLE_EDGE_START);
+        float yRatio = prefs.getFloat(PREF_AI_RESCUE_BUBBLE_Y_RATIO, 0.16f);
+        int margin = dp(14);
+        int left = edge == BUBBLE_EDGE_END ? hostWidth - bubbleSize - margin : margin;
+        int top = Math.round(clampFloat(yRatio, 0f, 1f)
+            * Math.max(0, hostHeight - bubbleSize - margin * 2)) + margin;
+        moveAiRescueBubbleTo(left, top, false);
+    }
+
+    private void moveAiRescueBubbleTo(int left, int top, boolean save) {
+        if (aiRescuePageView == null || aiRescueBubbleView == null
+            || !(aiRescueBubbleView.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+            return;
+        }
+        int hostWidth = aiRescuePageView.getWidth();
+        int hostHeight = aiRescuePageView.getHeight();
+        int bubbleWidth = aiRescueBubbleView.getWidth() > 0 ? aiRescueBubbleView.getWidth() : dp(52);
+        int bubbleHeight = aiRescueBubbleView.getHeight() > 0 ? aiRescueBubbleView.getHeight() : dp(52);
+        int margin = dp(10);
+        int maxLeft = Math.max(margin, hostWidth - bubbleWidth - margin);
+        int maxTop = Math.max(margin, hostHeight - bubbleHeight - margin);
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) aiRescueBubbleView.getLayoutParams();
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.leftMargin = clampInt(left, margin, maxLeft);
+        params.topMargin = clampInt(top, margin, maxTop);
+        params.rightMargin = 0;
+        params.bottomMargin = 0;
+        aiRescueBubbleView.setLayoutParams(params);
+        if (save) {
+            saveAiRescueBubblePosition(params.leftMargin, params.topMargin);
+        }
+    }
+
+    private void snapAndSaveAiRescueBubble() {
+        if (aiRescuePageView == null || aiRescueBubbleView == null
+            || !(aiRescueBubbleView.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+            return;
+        }
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) aiRescueBubbleView.getLayoutParams();
+        int bubbleWidth = aiRescueBubbleView.getWidth() > 0 ? aiRescueBubbleView.getWidth() : dp(52);
+        int margin = dp(14);
+        int center = params.leftMargin + bubbleWidth / 2;
+        int snappedLeft = center < aiRescuePageView.getWidth() / 2
+            ? margin
+            : Math.max(margin, aiRescuePageView.getWidth() - bubbleWidth - margin);
+        moveAiRescueBubbleTo(snappedLeft, params.topMargin, true);
+    }
+
+    private void saveAiRescueBubblePosition(int left, int top) {
+        if (aiRescuePageView == null || aiRescueBubbleView == null) {
+            return;
+        }
+        int hostWidth = aiRescuePageView.getWidth();
+        int hostHeight = aiRescuePageView.getHeight();
+        int bubbleWidth = aiRescueBubbleView.getWidth() > 0 ? aiRescueBubbleView.getWidth() : dp(52);
+        int bubbleHeight = aiRescueBubbleView.getHeight() > 0 ? aiRescueBubbleView.getHeight() : dp(52);
+        int edge = left + bubbleWidth / 2 < hostWidth / 2 ? BUBBLE_EDGE_START : BUBBLE_EDGE_END;
+        int margin = dp(14);
+        float yRatio = hostHeight <= bubbleHeight + margin * 2
+            ? 0.16f
+            : (float) (top - margin) / (float) Math.max(1, hostHeight - bubbleHeight - margin * 2);
+        getOpenHouseHomePrefs().edit()
+            .putInt(PREF_AI_RESCUE_BUBBLE_EDGE, edge)
+            .putFloat(PREF_AI_RESCUE_BUBBLE_Y_RATIO, clampFloat(yRatio, 0f, 1f))
+            .apply();
     }
 
     private LinearLayout createAiRescueFallbackView() {
@@ -2510,6 +2706,8 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             aiRescueWebView = null;
         }
         aiRescuePageView = null;
+        aiRescueControlsView = null;
+        aiRescueBubbleView = null;
         aiRescueFallbackView = null;
         aiRescueStatusView = null;
         aiRescuePortInput = null;
