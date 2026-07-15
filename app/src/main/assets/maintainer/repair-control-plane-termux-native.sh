@@ -152,7 +152,7 @@ termux_service_manager_log() {
 service_manager_is_current() {
   local binary="$1"
   [ -x "$binary" ] || return 1
-  [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.0" ]
+  [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]
 }
 
 find_termux_service_manager() {

@@ -353,6 +353,17 @@ if ! curl --version >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! jq --version >/dev/null 2>&1; then
+  log "jq 仍不可用，尝试单独修复 jq。"
+  repair_termux_package_state
+  run_termux_apt_install jq || true
+fi
+
+if ! jq --version >/dev/null 2>&1; then
+  log "jq 修复失败，请手动执行：apt update && apt install -y jq"
+  exit 1
+fi
+
 ensure_termux_bridge_sshd || true
 
 log "Termux 软件包阶段已完成。"

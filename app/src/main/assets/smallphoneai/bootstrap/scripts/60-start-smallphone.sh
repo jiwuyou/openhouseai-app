@@ -169,7 +169,7 @@ find_termux_service_manager_binary() {
   local candidate
   if command -v service-manager >/dev/null 2>&1; then
     candidate="$(command -v service-manager)"
-    if [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.0" ]; then
+    if [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -180,7 +180,7 @@ find_termux_service_manager_binary() {
     "$HOME/smallphoneai-repos/service-manager/target/release/service-manager" \
     "$HOME/smallphoneai-repos/service-manager/target/debug/service-manager"; do
     if [ -x "$candidate" ] \
-      && [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.0" ]; then
+      && [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -573,7 +573,7 @@ find_service_manager() {
   local candidate
   if command -v service-manager >/dev/null 2>&1; then
     candidate="$(command -v service-manager)"
-    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.0" ]; then
+    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -583,7 +583,7 @@ find_service_manager() {
     "$service_manager_dir/target/release/service-manager" \
     "$service_manager_dir/target/debug/service-manager"; do
     [ -x "$candidate" ] || continue
-    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.0" ]; then
+    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi

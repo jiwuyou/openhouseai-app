@@ -5,8 +5,38 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PAYLOAD_DIR="$REPO_ROOT/app/src/main/assets/openhouse/product-payloads"
 VALIDATOR="$REPO_ROOT/scripts/validate-openhouse-payloads.sh"
+SERVICE_CONTROL="$REPO_ROOT/app/src/main/assets/smallphoneai/bootstrap/subjects.d/service-control.json"
+COMPONENT_INSTALLER="$REPO_ROOT/app/src/main/assets/smallphoneai/bootstrap/scripts/50-install-runtime-components.sh"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+
+for manifest in "$PAYLOAD_DIR/manifest.json" "$PAYLOAD_DIR/payload-manifest.json"; do
+  python3 - "$manifest" <<'PY'
+import json, sys
+doc = json.load(open(sys.argv[1], encoding="utf-8"))
+items = doc.get("components") or doc.get("payloads") or []
+entry = next((item for item in items if item.get("id") == "service-manager"), None)
+assert entry, "service-manager entry missing"
+assert entry.get("version") == "0.3.1"
+assert entry.get("provides", {}).get("residency") is True
+PY
+done
+
+python3 - "$SERVICE_CONTROL" "$COMPONENT_INSTALLER" <<'PY'
+import json, sys
+
+expected = [
+    {"id": "openhouse-web", "runtime": "termux", "manager": "service-manager"},
+    {"id": "pi-agent", "runtime": "termux", "manager": "service-manager"},
+    {"id": "pi-web", "runtime": "termux", "manager": "service-manager"},
+    {"id": "aionui-web", "runtime": "termux", "manager": "service-manager"},
+]
+subject = json.load(open(sys.argv[1], encoding="utf-8"))
+assert subject.get("serviceRefs") == expected, "service-control serviceRefs contract mismatch"
+source = open(sys.argv[2], encoding="utf-8").read()
+marker = '"serviceRefs":' + json.dumps(expected, separators=(",", ":"))
+assert marker in source, "embedded service-control serviceRefs contract mismatch"
+PY
 
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT

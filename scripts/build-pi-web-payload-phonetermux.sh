@@ -4,9 +4,8 @@ set -euo pipefail
 app_root="$(cd "$(dirname "$0")/.." && pwd)"
 source_dir="${PI_WEB_SOURCE_DIR:-/root/projects/pi-web}"
 required_branch="${PI_WEB_REQUIRED_BRANCH:-openhouse}"
-required_commit="${PI_WEB_REQUIRED_COMMIT:-82a025dbc98cf522f42e36d97972485f02712be8}"
+required_commit="${PI_WEB_REQUIRED_COMMIT:-19a4496149bf8198be1362e31d81d79b5d250051}"
 ssh_target="${PI_WEB_BUILD_SSH:-phonetermux}"
-remote_dependencies="${PI_WEB_REMOTE_DEPENDENCIES:-\$HOME/projects/pi-web/node_modules}"
 prompt_assets_dir="$app_root/app/src/main/assets/openhouse/pi-prompts"
 payload_dir="$app_root/app/src/main/assets/openhouse/product-payloads"
 output="$payload_dir/pi-web.tar"
@@ -69,10 +68,9 @@ else
 
   ssh "$ssh_target" "
     set -eu
-    test -d $remote_dependencies
-    cp -a $remote_dependencies '$remote_build_dir/node_modules'
     cd '$remote_build_dir'
     node -e 'if (process.platform !== \"android\" || process.arch !== \"arm64\") process.exit(1)'
+    npm ci --prefer-offline
     node_modules/.bin/tsc --noEmit
     npm run lint
     npm run build

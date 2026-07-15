@@ -408,7 +408,7 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="one_click_auto_status_checking">检查中</string>
     <string name="one_click_auto_status_optional">可选</string>
     <string name="one_click_auto_prepare_title">基础准备</string>
-    <string name="one_click_auto_prepare_detail">创建产品文档、工作区和 Termux 配置；再下载 Termux 基础包、Ubuntu rootfs，并同步内置官方文档</string>
+    <string name="one_click_auto_prepare_detail">创建产品文档、工作区和 Termux 配置；安装 proot-distro、openssh、curl、jq 和证书依赖，再下载 Ubuntu rootfs 并同步内置官方文档</string>
     <string name="one_click_auto_ubuntu_title">下载 Ubuntu 基础包</string>
     <string name="one_click_auto_ubuntu_detail">apt 安装 curl、ca-certificates、git、procps、ripgrep、unzip</string>
     <string name="one_click_auto_entry_ubuntu_title">设置启动入口</string>
@@ -464,7 +464,7 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="entry_terminal_restart_started">入口终端已重新创建</string>
     <string name="entry_terminal_restart_failed">入口终端重启失败</string>
     <string name="help_title">说明</string>
-    <string name="help_body">1. 建议先完成“权限获取”中的系统权限，然后点击阶段一键执行并等待安装完成。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “准备本地目录”会创建 openhouse ai 文档目录、工作区和 Termux 配置。\n\n4. “下载 Termux 基础包”会安装 proot-distro、curl 和证书依赖。\n\n5. “下载 Ubuntu rootfs”会先测速 Ubuntu rootfs 镜像源，再安装 Ubuntu 并注入环境探测命令。\n\n6. “同步官方文档”会把 app 内置的 openhouse ai 文档同步到 ~/openhouseai-docs/official。\n\n7. “下载 Ubuntu 基础包”会在 Ubuntu 内安装 curl、证书、git、procps、ripgrep 和 unzip。\n\n8. “启动后直接进入 Ubuntu”会在核心服务安装前设置默认终端入口。\n\n9. “安装 Node.js 24 LTS”会安装统一 Node 运行时；随后安装 pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。\n\n10. Codex CLI、Claude Code、CloudCLI / ClaudeCodeUI 不再阻塞首次安装。安装完成后进入 pi-agent，让它按内置文档引导安装、配置和测通。\n\n11. 首次安装不要求填写模型或 API Key；需要使用模型时，再通过 pi-agent、CloudCLI、Codex 或 Claude Code 的配置流程处理。</string>
+    <string name="help_body">1. 建议先完成“权限获取”中的系统权限，然后点击阶段一键执行并等待安装完成。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “准备本地目录”会创建 openhouse ai 文档目录、工作区和 Termux 配置。\n\n4. “下载 Termux 基础包”会安装 proot-distro、openssh、curl、jq 和证书依赖。\n\n5. “下载 Ubuntu rootfs”会先测速 Ubuntu rootfs 镜像源，再安装 Ubuntu 并注入环境探测命令。\n\n6. “同步官方文档”会把 app 内置的 openhouse ai 文档同步到 ~/openhouseai-docs/official。\n\n7. “下载 Ubuntu 基础包”会在 Ubuntu 内安装 curl、证书、git、procps、ripgrep 和 unzip。\n\n8. “启动后直接进入 Ubuntu”会在核心服务安装前设置默认终端入口。\n\n9. “安装 Node.js 24 LTS”会安装统一 Node 运行时；随后安装 pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。\n\n10. Codex CLI、Claude Code、CloudCLI / ClaudeCodeUI 不再阻塞首次安装。安装完成后进入 pi-agent，让它按内置文档引导安装、配置和测通。\n\n11. 首次安装不要求填写模型或 API Key；需要使用模型时，再通过 pi-agent、CloudCLI、Codex 或 Claude Code 的配置流程处理。</string>
     <string name="permission_overview_label">系统权限：%1$d/3 已开启</string>
     <string name="permission_badge_open">去开启</string>
     <string name="permission_badge_enabled">已开启</string>
@@ -554,7 +554,7 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="stage_detail_prepare_ready">创建 openhouseai-docs、workspace 和 Termux 配置；不联网</string>
     <string name="stage_detail_prepare_complete">文档、工作区和外部接口已就绪</string>
     <string name="stage_detail_prepare_failed">上次写入未通过，请查看完整日志</string>
-    <string name="stage_detail_termux_packages_ready">pkg 安装 proot-distro、curl、openssl、ca-certificates</string>
+    <string name="stage_detail_termux_packages_ready">安装 proot-distro、openssh、curl、jq 和证书依赖</string>
     <string name="stage_detail_termux_packages_complete">Termux 依赖已安装</string>
     <string name="stage_detail_termux_packages_failed">Termux 依赖未装齐，请重新执行</string>
     <string name="stage_detail_install_ubuntu_ready">测速 Ubuntu rootfs 镜像源后安装</string>

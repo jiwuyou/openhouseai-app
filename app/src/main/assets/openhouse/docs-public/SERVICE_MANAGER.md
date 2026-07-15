@@ -1,8 +1,10 @@
 # service-manager 操作手册
 
-service-manager 是安装完成后的运行期控制平面。AI agent 管理后台服务时，默认通过 service-manager，而不是直接后台启动进程。
+service-manager 是安装完成后的运行期控制平面。AI agent 管理后台服务时，默认通过 service-manager，而不是直接后台启动进程。本文以 `service-manager 0.3.1` 的正式契约为基线。
 
 OpenHouseAI 的正式部署基线是：service-manager daemon 运行在 Termux native 层，使用 OpenHouse 专用配置和 token。Ubuntu/proot 里的长期服务由 Termux native service-manager 通过 provider 管理，不在 Ubuntu 内另起一个常驻 service-manager。
+
+`service-manager` CLI 只用于 `serve`、`doctor`、token 和系统服务安装等 daemon 管理。它没有 `list`、`status`、`register`、`create` 或 `upsert` 子命令；业务服务的查询、注册和生命周期控制统一使用带 bearer token 的 REST API。用户能力的组合检查使用 `openhouse-system check <subject-id>`，详见 `OPENHOUSE_SYSTEM.md`。
 
 ## 角色
 
@@ -18,6 +20,7 @@ service-manager 负责：
 当前核心服务通常包括：
 
 - `service-manager`
+- `openhouse-web`
 - `smallphone`
 - `pi-agent`
 - `pi-web`
@@ -30,7 +33,7 @@ service-manager 负责：
 - 插件服务
 - 用户自定义后台服务
 
-具体服务 ID 以 `service-manager list` 或 `/api/v1/services` 返回结果为准。
+具体服务 ID 以 `GET /api/v1/services` 返回结果为准，不要猜测。
 
 ## 注册服务到 service-manager
 
@@ -123,8 +126,7 @@ curl -q -fsS --max-time 10 \
 注册后验证：
 
 ```bash
-service-manager list
-service-manager status pi-web
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services"
 curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/status"
 ```
 
@@ -215,8 +217,8 @@ service-manager://actions/<serviceId>.repair
 
 ```bash
 ls -la "$HOME/.config/openhouseai/components.d"
-service-manager list
-service-manager status pi-web
+openhouse-system validate
+openhouse-system check pi-agent
 ```
 
 再回到 OpenHouseAI 桌面/主菜单，或重新打开页面触发刷新。
@@ -300,19 +302,12 @@ sed -n '1,220p' "$resource_dir/product-payloads/manifest.json"
 
 构建 APK 前会执行 `scripts/validate-openhouse-payloads.sh`。这个校验会拒绝 sha/size 不一致的 payload，也会拒绝可能把 `pi-web.json` 截断成 0 字节的注册脚本。
 
-查看服务列表：
+查看服务列表和单个服务状态时，使用下文“API 调用模板”准备的认证配置：
 
 ```bash
-service-manager list
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services"
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/status"
 ```
-
-查看某个服务状态：
-
-```bash
-service-manager status pi-web
-```
-
-如果本地 CLI 不可用，使用 API。
 
 ## 运行控制页展示规则
 
@@ -390,6 +385,103 @@ curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1
 ```bash
 curl -q -fsS --max-time 10 -X POST -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/groups/local-stack/start"
 ```
+
+批量状态接口返回 wrapper 数组，每项形如 `{ "service": {...}, "status": {...}, "error": "" }`。读取运行状态时使用 `.status.state`；不要把 `.serviceId` 或 `.state` 当成 wrapper 顶层字段：
+
+```bash
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg \
+  "$SM_URL/api/v1/services/statuses" \
+  | jq '[.[] | {id: .service.id, state: (.status.state // "unknown"), error}]'
+```
+
+单服务 `GET /api/v1/services/:id/status` 直接返回状态对象，运行状态字段是顶层 `.state`。
+
+## 常驻设置与取消
+
+`service-manager 0.3.1` 把常驻意图保存在独立策略中：
+
+```text
+<data_dir>/residency.json
+```
+
+查询全部或单服务策略：
+
+```bash
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/residency"
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/pi-web/residency"
+```
+
+设置和取消常驻：
+
+```bash
+curl -q -fsS --max-time 10 -X PUT -K /tmp/openhouse-sm-curl.cfg \
+  -H 'Content-Type: application/json' -d '{"resident":true}' \
+  "$SM_URL/api/v1/services/pi-web/residency"
+
+curl -q -fsS --max-time 10 -X PUT -K /tmp/openhouse-sm-curl.cfg \
+  -H 'Content-Type: application/json' -d '{"resident":false}' \
+  "$SM_URL/api/v1/services/pi-web/residency"
+```
+
+返回字段包括 `serviceId`、`resident`、`suspendedByUser`、`lastError`、`updatedAt` 和 `registered`。
+
+语义必须区分：
+
+- `resident: false` 只取消以后自动拉起，不会停止当前正在运行的服务；若还要停服务，再调用 `/stop`。
+- 手动停止一个常驻服务会保留常驻意图，但设置 `suspendedByUser: true`，避免立刻反弹。
+- 手动启动或重启会清除暂停，常驻对账重新生效。
+- service-manager 启动后会对账常驻且未暂停的服务，运行期间也会周期性复查。
+- ServiceSpec 的 `residentByDefault` 只用于首次建立策略，不能覆盖用户之后的选择。
+- `DELETE /api/v1/residency/:id` 只用于清理服务已经删除后的孤立策略；已注册服务不能用它代替取消常驻。
+
+清理孤立策略：
+
+```bash
+curl -q -fsS --max-time 10 -X DELETE -K /tmp/openhouse-sm-curl.cfg \
+  "$SM_URL/api/v1/residency/removed-service-id"
+```
+
+## 正确安装 OpenHouse Web
+
+OpenHouse Web 是独立的本地桌面与服务控制服务，不负责聊天。正式运行基线：
+
+```text
+服务 ID：openhouse-web
+页面：http://127.0.0.1:22110/
+健康检查：http://127.0.0.1:22110/health
+安装目录：$HOME/.local/lib/openhouse-web
+数据目录：$HOME/.local/share/openhouseai/openhouse-web
+启动器：$PREFIX/bin/openhouse-web
+service-manager：http://127.0.0.1:20087
+```
+
+首次安装必须消费 APK 中同版本、已校验的 `openhouse-web.tar`，然后依次执行 payload 自带的 `scripts/install.sh`、`scripts/check.sh` 和 `scripts/register-service.sh`。注册脚本通过 `/api/v1/registry/apply` 同时写入服务和 component；不要只启动 Node 进程，也不要长期使用散落的 `nohup`。
+
+从最新 APK 资源目录单独重装或修复该组件：
+
+```bash
+resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' | sort | tail -n 1)
+[ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/scripts/50-install-runtime-components.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
+SMALLPHONEAI_OFFLINE_PAYLOAD_DIR="$resource_dir/product-payloads" \
+SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT="$resource_dir/product-payloads" \
+SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle \
+SMALLPHONEAI_COMPONENT_TARGETS=openhouse-web \
+bash "$resource_dir/bootstrap/scripts/50-install-runtime-components.sh"
+```
+
+安装后验证：
+
+```bash
+test -f "$HOME/.local/lib/openhouse-web/src/server.mjs"
+test -x "$PREFIX/bin/openhouse-web"
+curl -fsS --max-time 5 http://127.0.0.1:22110/health
+curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/openhouse-web/status"
+openhouse-system check service-control
+```
+
+正式 ServiceSpec 使用 Termux native Node、固定服务 ID `openhouse-web`、端口 `22110`、HTTP health 和 `residentByDefault: true`。component 的 `entry` 指向 `22110`，`controlEntry.serviceRefs` 必须包含 `service-manager://services/openhouse-web`。
+
+首次启动会在数据目录以明文创建默认密码 `123456`；文件权限应为 `0600`，用户可在已登录页面修改。Android 通过一次性 bootstrap ticket 建立 Web 会话，浏览器不应获得 service-manager bearer token。
 
 ## 启动和修复控制平面
 

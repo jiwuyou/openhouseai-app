@@ -140,9 +140,10 @@ OpenHouse registry 和 AI 文档：
 
 ```bash
 ss -ltnp | rg ':(23110|23120|23083|30141)\b' || true
-service-manager list 2>/dev/null || true
-service-manager status <service-id> 2>/dev/null || true
+openhouse-system check service-control 2>/dev/null || true
 ```
+
+需要逐服务核对时，按 `SERVICE_MANAGER.md` 的带 token REST API 模板查询 `/api/v1/services` 和 `/api/v1/services/<service-id>/status`。
 
 注册长期 App 时，component manifest 只写入口 URL、图标、服务引用和 AI 元数据；启动命令、端口环境变量和 health check 写在 service-manager ServiceSpec 里。
 

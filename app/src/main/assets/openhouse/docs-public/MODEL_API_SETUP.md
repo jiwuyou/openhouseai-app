@@ -1,6 +1,6 @@
-# Codex、Claude Code 和 CloudCLI 登录/API 配置
+# AionUI、Codex、Claude Code 和 CloudCLI 登录/API 配置
 
-本文件说明后置安装完成后，如何让 Codex CLI、Claude Code 和 CloudCLI 连接大模型服务。
+本文件说明后置安装完成后，如何标准化 AionUI、完成命令行真实消息验证，并让 Codex CLI、Claude Code 和 CloudCLI 连接大模型服务。
 
 如果命令尚未安装，先由 pi-agent 使用：
 
@@ -15,9 +15,268 @@
 
 如果用户正在 `pi-agent` 中配置 CloudCLI 里的 Claude Code，优先阅读 `CLOUDCLI_CLAUDE_CODE.md`。该文档描述网页配置、`agent.js` 修复、默认账号密码和测通目标。
 
-## OpenHouseAI / AionUi 模型配置
+## OpenHouseAI / AionUI 模型配置
 
-OpenHouseAI 中的 AionUi 模型配置应以 AionUi 官方文档和 AionUi 后端字段为准。AionUi README 指向的官方入口是 `https://github.com/iOfficeAI/AionUi/wiki/LLM-Configuration`；本地实现里的 provider 结构是 `IProvider`，核心字段为 `platform`、`name`、`base_url`、`api_key`、`models[]`、`model_protocols`。
+本节是 AionUI 命令行配置和真实消息验证的唯一主文档，以下接口已在 AionUI `2.1.32` 真机实例确认。第一阶段 Agent 必须全程使用中文回答。第二阶段 Agent 默认使用 AionUI，只有用户明确指定其它 Agent 应用或工作台时才覆盖默认选择。
+
+OpenHouse 当前标准登录凭据是：
+
+```text
+用户名：openhouse
+密码：openhouse123
+```
+
+第一阶段 Agent 必须亲自完成账号标准化，把自己当前已验证有效的大模型配置按 AionUI 的协议和字段写入，再驱动 AionUI 发出一条最小真实消息并核验回复。页面可打开、`/health` 可用、provider 存在或健康检查通过，都不能替代真实消息验证。真实请求通过后，第一阶段 Agent 才能签名。
+
+### 将未知账号密码标准化
+
+先在 Termux native 按 `SERVICE_MANAGER.md` 的 API 模板设置 `SM_URL` 和 `/tmp/openhouse-sm-curl.cfg`，停止 AionUI；再进入 Ubuntu 执行 `resetpass`：
+
+```bash
+curl -q -fsS --max-time 10 -X POST \
+  -K /tmp/openhouse-sm-curl.cfg \
+  "$SM_URL/api/v1/services/aionui-web/stop"
+
+oh-ubuntu-root -- bash -lc \
+  'aionui-web resetpass --data-dir /root/.aionui-web'
+```
+
+`resetpass` 会输出当前用户名（初始实例通常是 `admin`）和一条随机临时密码。不要把临时密码复制到聊天、日志或交接文件。该操作会让旧 session 失效。随后重新启动 AionUI：
+
+```bash
+curl -q -fsS --max-time 10 -X POST \
+  -K /tmp/openhouse-sm-curl.cfg \
+  "$SM_URL/api/v1/services/aionui-web/start"
+```
+
+把 `AIONUI_URL` 设为 service-manager 返回的 AionUI endpoint；默认端口未被动态调整时是 `http://127.0.0.1:25808`。用 `resetpass` 输出的临时凭据登录，认证结果保存在 session cookie 中，不是 JSON token：
+
+```bash
+AIONUI_URL="${AIONUI_URL:-http://127.0.0.1:25808}"
+COOKIE_JAR="$(mktemp)"
+chmod 600 "$COOKIE_JAR"
+read -r -p 'resetpass 输出的 username: ' TEMP_USER
+read -r -s -p 'resetpass 输出的临时密码: ' TEMP_PASSWORD
+printf '\n'
+
+curl -fsS -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -d "$(jq -cn --arg u "$TEMP_USER" --arg p "$TEMP_PASSWORD" \
+    '{username:$u,password:$p,remember:false}')" \
+  "$AIONUI_URL/login" \
+  | jq -e '.success == true' >/dev/null
+unset TEMP_PASSWORD
+```
+
+使用同一个 cookie 依次修改用户名和密码。字段名必须是 snake_case：`new_username`、`new_password`，不能写成 `newUsername` 或 `newPassword`。
+
+```bash
+curl -fsS -b "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -d '{"new_username":"openhouse"}' \
+  "$AIONUI_URL/api/webui/change-username" \
+  | jq -e '.success == true' >/dev/null
+
+curl -fsS -b "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -d '{"new_password":"openhouse123"}' \
+  "$AIONUI_URL/api/webui/change-password" \
+  | jq -e '.success == true' >/dev/null
+
+curl -fsS -b "$COOKIE_JAR" -X POST \
+  -H 'Content-Type: application/json' -d '{}' \
+  "$AIONUI_URL/logout" >/dev/null || true
+rm -f "$COOKIE_JAR"
+
+COOKIE_JAR="$(mktemp)"
+chmod 600 "$COOKIE_JAR"
+curl -fsS -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"openhouse","password":"openhouse123","remember":false}' \
+  "$AIONUI_URL/login" \
+  | jq -e '.success == true and (.user.username // .data.user.username) == "openhouse"' >/dev/null
+```
+
+AionUI `2.1.32` 已确认密码至少需要 8 位，因此 `123456` 会因过短被拒绝。其它弱密码规则不作为流程假设；OpenHouse 统一使用 `openhouse123`。
+
+### Provider 的 `models` 格式
+
+创建或更新 provider 时，`models` 必须是模型 ID 的字符串数组，而不是前端展示对象。AionUI `2.1.32` 对对象数组返回 HTTP 400。
+
+错误示例：
+
+```json
+{
+  "platform": "deepseek",
+  "models": [
+    {"id": "deepseek-v4-pro", "name": "DeepSeek V4 Pro"}
+  ]
+}
+```
+
+正确示例：
+
+```json
+{
+  "platform": "deepseek",
+  "models": ["deepseek-v4-pro"]
+}
+```
+
+模型 ID 必须精确。真机已确认：`deepseek-v4 pro`（中间有空格）请求失败；`deepseek-v4-pro` 和 `deepseek-v4-flash` 均可真实请求成功。本文所有主示范统一使用 `deepseek-v4-pro`，`deepseek-v4-flash` 仅作为另一个已验证可用的模型。
+
+先只投影安全字段查看现有 provider，不要把 `api_key` 输出到终端或日志：
+
+```bash
+curl -fsS -b "$COOKIE_JAR" "$AIONUI_URL/api/providers" \
+  | jq '(.data // .) | map({id,name,platform,models})'
+```
+
+下面示例默认创建 provider。若要修改现有实例，先把 `PROVIDER_ID` 设为上一步的 `id`；脚本会自动改用 `PUT /api/providers/$PROVIDER_ID`。Key 采用隐藏输入，只进入权限为 `600` 的临时请求文件：
+
+```bash
+MODEL_ID='deepseek-v4-pro'
+read -r -p 'AionUI provider Base URL: ' AIONUI_BASE_URL
+read -r -s -p 'AionUI provider API Key: ' AIONUI_API_KEY
+printf '\n'
+PROVIDER_BODY="$(mktemp)"
+chmod 600 "$PROVIDER_BODY"
+jq -n \
+  --arg base_url "$AIONUI_BASE_URL" \
+  --arg api_key "$AIONUI_API_KEY" \
+  --arg model "$MODEL_ID" \
+  '{platform:"deepseek",name:"DeepSeek",base_url:$base_url,
+    api_key:$api_key,models:[$model],enabled:true}' \
+  >"$PROVIDER_BODY"
+unset AIONUI_API_KEY
+
+if [ -n "${PROVIDER_ID:-}" ]; then
+  PROVIDER_URL="$AIONUI_URL/api/providers/$PROVIDER_ID"
+  PROVIDER_METHOD=(-X PUT)
+else
+  PROVIDER_URL="$AIONUI_URL/api/providers"
+  PROVIDER_METHOD=()
+fi
+
+PROVIDER_ID="$(
+  curl -fsS -b "$COOKIE_JAR" "${PROVIDER_METHOD[@]}" \
+    -H 'Content-Type: application/json' \
+    --data-binary @"$PROVIDER_BODY" \
+    "$PROVIDER_URL" \
+    | jq -er '.data.id'
+)"
+rm -f "$PROVIDER_BODY"
+unset AIONUI_API_KEY PROVIDER_URL PROVIDER_METHOD
+printf 'provider_id=%s model=%s\n' "$PROVIDER_ID" "$MODEL_ID"
+```
+
+### 从 CLI 创建对话并发送真实消息
+
+以下流程已按 AionUI `2.1.32` 的 `{success,data}` 返回包络编写。创建 AionRS 对话时，模型使用 `provider_id + model`；请求与当前真机持久化结果中的 `extra.sessionMode` 均为 `default`。创建必须返回 HTTP 201，发送消息必须返回 HTTP 202。
+
+```bash
+NONCE="OPENHOUSE_AIONUI_$(date +%s)_$RANDOM"
+PROMPT="请使用中文回答，并且只回复这一条唯一校验串：$NONCE"
+CREATE_RESPONSE="$(mktemp)"
+SEND_RESPONSE="$(mktemp)"
+chmod 600 "$CREATE_RESPONSE" "$SEND_RESPONSE"
+cleanup_aionui_cli() {
+  rm -f "${CREATE_RESPONSE:-}" "${SEND_RESPONSE:-}" \
+    "${MESSAGES_JSON:-}" "${COOKIE_JAR:-}"
+}
+trap cleanup_aionui_cli EXIT
+
+CREATE_HTTP_CODE="$(
+  jq -n \
+    --arg provider_id "$PROVIDER_ID" \
+    --arg model "$MODEL_ID" \
+    '{type:"aionrs",name:"OpenHouse 最小真实请求",
+      model:{provider_id:$provider_id,model:$model},
+      extra:{workspace:"/root",sessionMode:"default"}}' \
+  | curl -sS -b "$COOKIE_JAR" \
+      -H 'Content-Type: application/json' \
+      --data-binary @- \
+      -o "$CREATE_RESPONSE" \
+      -w '%{http_code}' \
+      "$AIONUI_URL/api/conversations" \
+)"
+[ "$CREATE_HTTP_CODE" = '201' ] || {
+  echo "创建 AionUI 对话失败，HTTP $CREATE_HTTP_CODE" >&2
+  exit 1
+}
+jq -e '.success == true' "$CREATE_RESPONSE" >/dev/null
+CONVERSATION_ID="$(jq -er '.data.id' "$CREATE_RESPONSE")"
+
+SEND_HTTP_CODE="$(
+  jq -n --arg content "$PROMPT" \
+    '{content:$content,files:[],inject_skills:[]}' \
+  | curl -sS -b "$COOKIE_JAR" \
+      -H 'Content-Type: application/json' \
+      --data-binary @- \
+      -o "$SEND_RESPONSE" \
+      -w '%{http_code}' \
+      "$AIONUI_URL/api/conversations/$CONVERSATION_ID/messages"
+)"
+[ "$SEND_HTTP_CODE" = '202' ] || {
+  echo "发送 AionUI 消息失败，HTTP $SEND_HTTP_CODE" >&2
+  exit 1
+}
+jq -e '.success == true' "$SEND_RESPONSE" >/dev/null
+```
+
+轮询对话，必须等到 `status=finished`；只看到请求已接收不能算成功：
+
+```bash
+STATUS=''
+for _ in $(seq 1 90); do
+  STATUS="$(
+    curl -fsS -b "$COOKIE_JAR" \
+      "$AIONUI_URL/api/conversations/$CONVERSATION_ID" \
+    | jq -r '.data.status // empty'
+  )"
+  [ "$STATUS" = 'finished' ] && break
+  sleep 2
+done
+[ "$STATUS" = 'finished' ] || {
+  echo "AionUI 对话未进入 finished：$STATUS" >&2
+  exit 1
+}
+```
+
+最后读取消息。提示词已要求只回复唯一 nonce，因此目标 assistant 的最终文本必须精确等于 `$NONCE`，不能只做包含判断：
+
+```bash
+MESSAGES_JSON="$(mktemp)"
+chmod 600 "$MESSAGES_JSON"
+curl -fsS -b "$COOKIE_JAR" \
+  "$AIONUI_URL/api/conversations/$CONVERSATION_ID/messages?limit=100&content_mode=full" \
+  >"$MESSAGES_JSON"
+
+ASSISTANT_TEXT="$(
+  jq -er '
+    [(.data.items // .data // [])[]
+      | select(.position == "left" and .type == "text")
+      | .content.content // empty]
+    | last
+  ' "$MESSAGES_JSON"
+)"
+[ "$ASSISTANT_TEXT" = "$NONCE" ] || {
+  echo 'AionUI assistant 回复未精确匹配唯一校验串' >&2
+  exit 1
+}
+printf 'assistant: %s\n' "$ASSISTANT_TEXT"
+
+cleanup_aionui_cli
+trap - EXIT
+unset NONCE PROMPT PROVIDER_ID MODEL_ID ASSISTANT_TEXT \
+  CREATE_RESPONSE SEND_RESPONSE CREATE_HTTP_CODE SEND_HTTP_CODE MESSAGES_JSON
+```
+
+只有上述真实消息链路通过，才能确认“第一阶段 Agent 使用的模型配置已配置给第二阶段 Agent，并且第二阶段 Agent 能实际调用”。不要使用 `set -x`，不要把 cookie jar、Key、临时密码或带 Key 的 provider JSON 留在日志中。
+
+### 页面配置字段
+
+OpenHouseAI 中的 AionUI 模型配置应以 AionUI 官方文档和后端字段为准。AionUI README 指向 `https://github.com/iOfficeAI/AionUi/wiki/LLM-Configuration`；provider 核心字段为 `platform`、`name`、`base_url`、`api_key`、`models[]`、`model_protocols`。
 
 用户侧推荐流程：
 

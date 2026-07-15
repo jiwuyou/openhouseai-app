@@ -244,7 +244,7 @@ openhouse_pi_runtime() {
 }
 
 default_component_targets() {
-  printf '%s\n' "service-manager,openhouse-web,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes"
+  printf '%s\n' "wuyou,service-manager,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes,openhouse-web"
 }
 
 bootstrap_targets_for_runtime() {
@@ -281,7 +281,7 @@ bootstrap_targets_for_runtime() {
       esac
     else
       case "$normalized" in
-        service-manager|openhouse-system|openhouse-web)
+        wuyou|service-manager|openhouse-system|openhouse-web)
           ;;
         pi-agent|pi-web)
           [ "$pi_runtime" = "ubuntu" ] && out="$(append_csv "$out" "$normalized")"
@@ -309,7 +309,7 @@ component_binary_current_env_executable() {
 
   case "$payload_name" in
     service-manager)
-      [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.0" ]
+      [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]
       ;;
     openhouse-connect)
       "$binary" --version >/dev/null 2>&1 || "$binary" --help >/dev/null 2>&1
@@ -534,10 +534,20 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
   log "正在 Termux native 部署 openhouse-system 主系统 CLI。"
   SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
     SMALLPHONEAI_ROOT="$bootstrap_root" \
-    SMALLPHONEAI_COMPONENT_TARGETS=openhouse-system \
+  SMALLPHONEAI_COMPONENT_TARGETS=openhouse-system \
     SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
     SERVICE_MANAGER_CONFIG_PATH="$native_config" \
     bash -s < "$0"
+
+  if bootstrap_target_requested "wuyou"; then
+    log "正在 Termux native 优先安装独立 wuyou 命令。"
+    SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
+      SMALLPHONEAI_ROOT="$bootstrap_root" \
+      SMALLPHONEAI_COMPONENT_TARGETS=wuyou \
+      SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
+      SERVICE_MANAGER_CONFIG_PATH="$native_config" \
+      bash -s < "$0"
+  fi
 
   if bootstrap_target_requested "service-manager"; then
     log "正在 Termux native 安装 service-manager 控制面。"
@@ -741,7 +751,7 @@ JSON
 {"id":"openhouse-workspace","title":"OpenHouse Workspace","kind":"file","summary":"Native work partition with Android, Termux, and Ubuntu visible roots.","serviceRefs":[],"entries":[{"type":"file","label":"Android workspace","path":"/storage/emulated/0/OpenHouse"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse","purpose":"shared phone storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse","purpose":"Termux-native workspace"},{"runtime":"ubuntu","path":"/root/OpenHouse","purpose":"Ubuntu/proot workspace"}],"ai":{"description":"Use this workspace when explaining where OpenHouse data lives across Android, Termux, and Ubuntu.","whenUnavailable":"Check storage permission and root directory projections."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse","timeoutSeconds":3},{"type":"pathExists","runtime":"ubuntu","path":"/root/OpenHouse","timeoutSeconds":4}]}}
 JSON
   install_default_subject_file "service-control.json" <<'JSON'
-{"id":"service-control","title":"Service Control","kind":"runtime-http","summary":"Local service-manager control surface for service status, lifecycle actions, and logs.","serviceRefs":[],"entries":[{"type":"web","label":"service-manager","url":"http://127.0.0.1:20087/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json","purpose":"OpenHouse service-manager config and token"}],"ai":{"description":"service-manager is the standing service control layer. It answers service status, lifecycle, and logs for explicit service ids; it does not infer runtime or perform subject endpoint/file/skill checks.","whenUnavailable":"Repair the Termux native service-manager control plane before using higher-level subject checks."},"checks":{"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:20087/api/v1/health","timeoutSeconds":3}]}}
+{"id":"service-control","title":"Service Control","kind":"runtime-http","summary":"Local service-manager control surface for service status, lifecycle actions, and logs.","serviceRefs":[{"id":"openhouse-web","runtime":"termux","manager":"service-manager"},{"id":"pi-agent","runtime":"termux","manager":"service-manager"},{"id":"pi-web","runtime":"termux","manager":"service-manager"},{"id":"aionui-web","runtime":"termux","manager":"service-manager"}],"entries":[{"type":"web","label":"service-manager","url":"http://127.0.0.1:20087/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json","purpose":"OpenHouse service-manager config and token"}],"ai":{"description":"service-manager is the standing service control layer. It answers service status, lifecycle, and logs for explicit service ids; it does not infer runtime or perform subject endpoint/file/skill checks.","whenUnavailable":"Repair the Termux native service-manager control plane before using higher-level subject checks."},"checks":{"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:20087/api/v1/health","timeoutSeconds":3}]}}
 JSON
 }
 
@@ -848,7 +858,7 @@ render_openhouse_system_index() {
     return 1
   fi
   if ! command -v jq >/dev/null 2>&1; then
-    warn "jq 不可用，跳过系统目录渲染。请安装：pkg install jq"
+    warn "jq 不可用，无法完成 OpenHouse 主系统目录渲染。请安装：pkg install jq"
     return 1
   fi
   OPENHOUSEAI_HOME="$openhouse_home" \
@@ -866,7 +876,7 @@ install_openhouse_system() {
   install_openhouse_system_cli || return 1
   install_openhouse_system_schema
   install_default_subjects
-  render_openhouse_system_index || warn "OpenHouse 主系统目录暂未渲染成功；可稍后执行：openhouse-system render"
+  render_openhouse_system_index || return 1
   install_ubuntu_openhouse_system_shim || warn "Ubuntu openhouse-system shim 部署未完成；可稍后从 Termux 重新运行：bash bootstrap.sh components"
 }
 
@@ -1076,7 +1086,7 @@ payload_dir_needs_refresh() {
   case "$payload_name" in
     service-manager)
       [ -x "$source/service-manager" ] \
-        && [ "$("$source/service-manager" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.0" ] \
+        && [ "$("$source/service-manager" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ] \
         || return 0
       ;;
     openhouse-connect)
@@ -1725,22 +1735,21 @@ fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"
 else
-  log "本次处理默认组件：openhouse-system、service-manager、openhouse-web、pi-agent、pi-web、wuyou、github-config-helper、cc-connect/openhouse-connect、SmallPhone、Hermes。"
+  log "本次处理默认组件：openhouse-system、wuyou、service-manager、pi-agent、pi-web、github-config-helper、cc-connect/openhouse-connect、SmallPhone、Hermes，最后安装 OpenHouse Web。"
 fi
 
-install_openhouse_system || warn "OpenHouse 主系统 CLI/主体名片部署未完成。"
+if ! install_openhouse_system; then
+  warn "OpenHouse 主系统 CLI/主体名片部署失败。"
+  failures=$((failures + 1))
+fi
 
 validate_component_targets
 
+if should_run_component "wuyou"; then
+  run_component "wuyou" "$wuyou_dir" "${OPENHOUSE_WUYOU_GIT_URL:-}" "1" "wuyou"
+fi
 if should_run_component "service-manager"; then
   run_component "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"
-fi
-if should_run_component "openhouse-web"; then
-  if ensure_termux_node_for_pi; then
-    run_component "OpenHouse Web" "$openhouse_web_dir" "${OPENHOUSE_WEB_GIT_URL:-}" "1" "openhouse-web"
-  else
-    failures=$((failures + 1))
-  fi
 fi
 if should_run_component "pi-agent"; then
   if ensure_termux_node_for_pi; then
@@ -1756,9 +1765,6 @@ if should_run_component "pi-web"; then
     failures=$((failures + 1))
   fi
 fi
-if should_run_component "wuyou"; then
-  run_component "wuyou" "$wuyou_dir" "${OPENHOUSE_WUYOU_GIT_URL:-}" "1" "wuyou"
-fi
 if should_run_component "github-config-helper"; then
   run_component "github-config-helper" "$github_config_helper_dir" "${OPENHOUSE_GITHUB_CONFIG_HELPER_GIT_URL:-}" "1" "github-config-helper"
 fi
@@ -1770,6 +1776,13 @@ if should_run_component "smallphone"; then
 fi
 if should_run_component "hermes"; then
   run_component "Hermes" "$hermes_dir" "${SMALLPHONEAI_HERMES_GIT_URL:-}" "1" "hermes"
+fi
+if should_run_component "openhouse-web"; then
+  if ensure_termux_node_for_pi; then
+    run_component "OpenHouse Web" "$openhouse_web_dir" "${OPENHOUSE_WEB_GIT_URL:-}" "1" "openhouse-web"
+  else
+    failures=$((failures + 1))
+  fi
 fi
 
 if [ "$failures" -ne 0 ]; then

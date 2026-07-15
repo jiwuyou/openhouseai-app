@@ -135,7 +135,7 @@ pi-web 首装问题的优先排查点：
 
 ```bash
 ls -l "$HOME/.config/openhouseai/service-manager/services.d/pi-web.json" 2>/dev/null || true
-service-manager status pi-web 2>/dev/null || true
+openhouse-system check pi-agent 2>/dev/null || true
 tail -n 160 "$HOME/.smallphoneai/logs/service-manager.log" 2>/dev/null || true
 ```
 

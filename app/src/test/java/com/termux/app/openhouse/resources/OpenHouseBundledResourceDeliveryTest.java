@@ -89,8 +89,10 @@ public class OpenHouseBundledResourceDeliveryTest {
         assertEquals(42L, value.getLong("apkVersionCode"));
         assertEquals("apk_update", value.getString("reason"));
         assertEquals("pending_ai", value.getString("status"));
-        assertEquals("$HOME/" + OpenHouseBundledResourceDelivery.ROOT_RELATIVE_PATH
-            + "/apk-1.2-beta-42-20260713", value.getString("resourceDir"));
+        String resourceDir = value.getString("resourceDir");
+        assertEquals(new File(root, "apk-1.2-beta-42-20260713").getAbsolutePath(), resourceDir);
+        assertTrue(resourceDir.startsWith(home.getAbsolutePath() + File.separator));
+        assertFalse(resourceDir.contains("$HOME"));
         assertPrivateFile(pending);
         assertFalse(hasAndroidDeliveryTemporary(root));
     }

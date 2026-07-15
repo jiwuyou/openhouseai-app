@@ -587,7 +587,7 @@ run_full_install() {
   run_stage 10-prepare-termux.sh
   run_stage 12-update-termux-packages.sh
   run_stage 13-install-termux-node.sh
-  SMALLPHONEAI_COMPONENT_TARGETS=service-manager,pi-agent,pi-web,wuyou run_stage 50-install-runtime-components.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=wuyou,service-manager,pi-agent,pi-web,openhouse-web run_stage 50-install-runtime-components.sh
   SMALLPHONEAI_START_TARGETS=pi-agent,pi-web \
     SMALLPHONEAI_START_READY_TIMEOUT="${SMALLPHONEAI_EARLY_PI_START_READY_TIMEOUT:-45}" \
     run_stage 60-start-smallphone.sh

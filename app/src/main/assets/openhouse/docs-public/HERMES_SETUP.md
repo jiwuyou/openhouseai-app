@@ -139,9 +139,11 @@ bash bootstrap.sh start
 验证：
 
 ```bash
-service-manager list
-service-manager status hermes-webui
+openhouse-system validate
+openhouse-system check hermes 2>/dev/null || true
 ```
+
+如果尚未安装 Hermes subject，按 `SERVICE_MANAGER.md` 的带 token REST API 模板查询 `/api/v1/services` 和 `/api/v1/services/hermes-webui/status`。
 
 ## 注册到菜单
 

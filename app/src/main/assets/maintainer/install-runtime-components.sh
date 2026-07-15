@@ -103,9 +103,9 @@ component_install_label() {
 }
 
 log "正在从 APK 内置 payload 安装 Termux pi 主线运行组件。"
-log "默认顺序：service-manager -> openhouse-web -> pi-agent -> pi-web；Ubuntu 工作台组件仍由后续固定阶段处理。"
+log "默认顺序：wuyou -> service-manager -> pi-agent -> pi-web -> openhouse-web；OpenHouse Web 最后安装。"
 
-targets="${SMALLPHONEAI_COMPONENT_TARGETS:-service-manager,openhouse-web,pi-agent,pi-web}"
+targets="${SMALLPHONEAI_COMPONENT_TARGETS:-wuyou,service-manager,pi-agent,pi-web,openhouse-web}"
 while [ -n "$targets" ]; do
   case "$targets" in
     *,*)

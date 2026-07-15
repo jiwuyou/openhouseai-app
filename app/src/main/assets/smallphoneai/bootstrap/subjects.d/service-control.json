@@ -3,7 +3,28 @@
   "title": "Service Control",
   "kind": "runtime-http",
   "summary": "Local service-manager control surface for service status, lifecycle actions, and logs.",
-  "serviceRefs": [],
+  "serviceRefs": [
+    {
+      "id": "openhouse-web",
+      "runtime": "termux",
+      "manager": "service-manager"
+    },
+    {
+      "id": "pi-agent",
+      "runtime": "termux",
+      "manager": "service-manager"
+    },
+    {
+      "id": "pi-web",
+      "runtime": "termux",
+      "manager": "service-manager"
+    },
+    {
+      "id": "aionui-web",
+      "runtime": "termux",
+      "manager": "service-manager"
+    }
+  ],
   "entries": [
     {
       "type": "web",

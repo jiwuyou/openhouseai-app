@@ -14,7 +14,11 @@ python3 - \
   "$PAYLOAD_DIR" \
   "$REPO_DIR/app/src/main/assets/openhouse/pi-prompts" \
   "${PI_WEB_REQUIRED_BRANCH:-openhouse}" \
-  "${PI_WEB_REQUIRED_COMMIT:-82a025dbc98cf522f42e36d97972485f02712be8}" <<'PY'
+  "${PI_WEB_REQUIRED_COMMIT:-19a4496149bf8198be1362e31d81d79b5d250051}" \
+  "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/subjects.d/service-control.json" \
+  "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/scripts/50-install-runtime-components.sh" \
+  "$REPO_DIR/app/src/main/assets/maintainer/update-termux-packages.sh" \
+  "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/scripts/12-update-termux-packages.sh" <<'PY'
 import hashlib
 import json
 import os
@@ -26,6 +30,10 @@ payload_dir = os.path.abspath(sys.argv[1])
 prompt_assets_dir = os.path.abspath(sys.argv[2])
 required_pi_web_branch = sys.argv[3]
 required_pi_web_commit = sys.argv[4].lower()
+service_control_path = os.path.abspath(sys.argv[5])
+component_installer_path = os.path.abspath(sys.argv[6])
+termux_package_delegate_path = os.path.abspath(sys.argv[7])
+termux_package_bootstrap_path = os.path.abspath(sys.argv[8])
 manifest_path = os.path.join(payload_dir, "manifest.json")
 payload_manifest_path = os.path.join(payload_dir, "payload-manifest.json")
 
@@ -43,6 +51,89 @@ def fail(message):
 
 def warn(message):
     warnings.append(message)
+
+
+def validate_service_control_contract():
+    expected = [
+        {"id": "openhouse-web", "runtime": "termux", "manager": "service-manager"},
+        {"id": "pi-agent", "runtime": "termux", "manager": "service-manager"},
+        {"id": "pi-web", "runtime": "termux", "manager": "service-manager"},
+        {"id": "aionui-web", "runtime": "termux", "manager": "service-manager"},
+    ]
+    try:
+        with open(service_control_path, "r", encoding="utf-8") as handle:
+            subject = json.load(handle)
+    except Exception as exc:
+        fail(f"invalid service-control subject: {exc}")
+        return
+    if subject.get("serviceRefs") != expected:
+        fail("service-control subject must reference exactly openhouse-web, pi-agent, pi-web, and aionui-web in Termux service-manager")
+    try:
+        with open(component_installer_path, "r", encoding="utf-8") as handle:
+            installer = handle.read()
+    except Exception as exc:
+        fail(f"cannot read component installer service-control template: {exc}")
+        return
+    marker = '"serviceRefs":' + json.dumps(expected, separators=(",", ":"))
+    if marker not in installer:
+        fail("embedded service-control template does not contain the exact required serviceRefs")
+
+
+def validate_termux_package_contract():
+    try:
+        with open(termux_package_delegate_path, "r", encoding="utf-8") as handle:
+            delegate = handle.read()
+    except Exception as exc:
+        fail(f"cannot read Termux package delegate: {exc}")
+        return
+
+    for fragment in (
+        "SMALLPHONEAI_BOOTSTRAP",
+        "OPENHOUSEAI_MAINTAINER_DIR",
+        "SMALLPHONEAI_MAINTAINER_DIR",
+        "/../bootstrap/bootstrap.sh",
+        'exec bash "$bootstrap" termux-packages',
+    ):
+        if fragment not in delegate:
+            fail(f"maintainer Termux package delegate is missing contract fragment: {fragment}")
+
+    forbidden_delegate_patterns = {
+        r"\bapt\b": "apt implementation",
+        r"\bpkg\b": "pkg implementation",
+        r"\bproot-distro\b": "package list",
+        r"\bopenssh\b": "package list",
+        r"\bcurl\b": "package list",
+        r"\bjq\b": "package list",
+        r"\bca-certificates\b": "package list",
+        r"mirrors\.": "mirror policy",
+        r"termux_main_repo": "mirror policy",
+    }
+    for pattern, label in forbidden_delegate_patterns.items():
+        if re.search(pattern, delegate):
+            fail(f"maintainer Termux package delegate must not contain {label}; bootstrap is the single implementation")
+
+    try:
+        with open(termux_package_bootstrap_path, "r", encoding="utf-8") as handle:
+            bootstrap = handle.read()
+    except Exception as exc:
+        fail(f"cannot read canonical Termux package bootstrap: {exc}")
+        return
+
+    jq_install_positions = [
+        match.start()
+        for match in re.finditer(r"^\s*run_termux_apt_install\b[^\n]*\bjq\b", bootstrap, re.MULTILINE)
+    ]
+    if not jq_install_positions:
+        fail("canonical Termux package bootstrap must install jq")
+        return
+
+    final_jq_check = bootstrap.rfind("if ! jq --version")
+    if final_jq_check <= jq_install_positions[-1]:
+        fail("canonical Termux package bootstrap must perform a final jq --version check after jq installation")
+        return
+    final_jq_block = bootstrap[final_jq_check:]
+    if "exit 1" not in final_jq_block:
+        fail("canonical Termux package bootstrap final jq check must fail the stage when jq is unavailable")
 
 
 def load_json(path):
@@ -196,6 +287,7 @@ def service_manager_registry_api(entry, source, expected_api):
     )
     require_true(provides.get("registryApply"), f"{source}:service-manager.provides.registryApply")
     require_true(provides.get("stableServiceIds"), f"{source}:service-manager.provides.stableServiceIds")
+    require_true(provides.get("residency"), f"{source}:service-manager.provides.residency")
     if direct_api is not None and provided_api is not None and direct_api != provided_api:
         fail(f"{source}:service-manager registryApiVersion mismatch: direct={direct_api}, provides={provided_api}")
     for observed, label in ((direct_api, "direct"), (provided_api, "provides")):
@@ -658,6 +750,8 @@ payload_manifest = load_json(payload_manifest_path)
 
 components = by_id(component_array(manifest, "components"), "manifest.json")
 payloads = by_id(component_array(payload_manifest, "payloads"), "payload-manifest.json")
+validate_service_control_contract()
+validate_termux_package_contract()
 
 required = ("service-manager", "openhouse-web", "pi-agent", "pi-web", "wuyou", "aionui-web")
 registry_managed = ("openhouse-web", "pi-agent", "pi-web", "aionui-web")

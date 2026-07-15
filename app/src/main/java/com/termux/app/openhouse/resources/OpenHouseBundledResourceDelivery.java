@@ -389,7 +389,7 @@ public final class OpenHouseBundledResourceDelivery {
         JSONObject value = new JSONObject()
             .put("apkVersionName", versionName == null ? "" : versionName)
             .put("apkVersionCode", versionCode)
-            .put("resourceDir", "$HOME/" + ROOT_RELATIVE_PATH + "/" + resourceDirectoryName)
+            .put("resourceDir", new File(root, resourceDirectoryName).getAbsolutePath())
             .put("reason", reason.value)
             .put("status", "pending_ai");
         byte[] bytes = (value.toString() + "\n").getBytes(StandardCharsets.UTF_8);

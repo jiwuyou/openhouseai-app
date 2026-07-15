@@ -100,7 +100,7 @@ print_second_ai_copy_prompt() {
 必须先阅读这些文档，按存在的路径优先：
 - /root/openhouse/docs/OPENHOUSE_HEALTH_SIGNOFF.md
 - /root/openhouse/docs/openhouse-install-flow.md
-- /root/openhouse/docs/service-manager.md
+- /root/openhouse/docs/SERVICE_MANAGER.md
 - /root/openhouse/docs/OPENHOUSE_FIRST_CONFIGURATION.md
 - 如果 /root/openhouse/docs 不存在，使用 /root/openhouseai-docs/official 下的同名文档。
 

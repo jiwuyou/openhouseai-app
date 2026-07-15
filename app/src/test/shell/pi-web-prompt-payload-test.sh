@@ -9,7 +9,7 @@ BUILD_SCRIPT="$REPO_ROOT/scripts/build-pi-web-payload-phonetermux.sh"
 MANIFEST="$REPO_ROOT/app/src/main/assets/openhouse/product-payloads/manifest.json"
 PAYLOAD_MANIFEST="$REPO_ROOT/app/src/main/assets/openhouse/product-payloads/payload-manifest.json"
 REQUIRED_BRANCH="${PI_WEB_REQUIRED_BRANCH:-openhouse}"
-REQUIRED_COMMIT="${PI_WEB_REQUIRED_COMMIT:-82a025dbc98cf522f42e36d97972485f02712be8}"
+REQUIRED_COMMIT="${PI_WEB_REQUIRED_COMMIT:-19a4496149bf8198be1362e31d81d79b5d250051}"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
@@ -35,6 +35,7 @@ done
 
 for contract in \
   'openhouse-first-config|# /openhouse-first-config' \
+  'openhouse-first-config|全程使用中文进行回答' \
   'openhouse-first-config|$HOME/openhouse/docs' \
   'openhouse-first-config|/root/openhouse/docs' \
   'openhouse-first-config|$HOME/.local/share/openhouseai/handoffs/second-ai/latest' \
@@ -48,11 +49,43 @@ for contract in \
   'openhouse-first-config|MODEL_API_SETUP.md' \
   'openhouse-first-config|model-config-migration.md' \
   'openhouse-first-config|CLOUDCLI_CLAUDE_CODE.md' \
-  'openhouse-first-config|默认第二阶段 Agent identity 为 `aionui`' \
   'openhouse-first-config|配置并真实测通 AionUI' \
+  'openhouse-first-config|第二阶段 Agent 默认直接取 AionUI，identity 为 `aionui`，无需再次询问用户' \
+  'openhouse-first-config|只有用户已经明确指定其它第二阶段 Agent 时，才用该选择覆盖 AionUI 默认值' \
+  'openhouse-first-config|不要为了确认默认值再次询问用户' \
+  'openhouse-first-config|发生覆盖时，对最终实际目标执行相同的模型配置复制和主动最小真实请求流程' \
+  'openhouse-first-config|不把非默认选择称为高级或备用' \
+  'openhouse-first-config|始终使用最终实际选定的 Agent 名称与 identity' \
   'openhouse-first-config|最小真实请求' \
-  'openhouse-first-config|只有 AionUI 不可用，或者用户主动选择其它 Agent 时' \
-  'openhouse-first-config|identity=aionui' \
+  'openhouse-first-config|默认账号固定为 `openhouse`，默认密码固定为 `openhouse123`' \
+  'openhouse-first-config|aionui-web resetpass --data-dir /root/.aionui-web' \
+  'openhouse-first-config|`POST /login`' \
+  'openhouse-first-config|`{"new_username":"openhouse"}`' \
+  'openhouse-first-config|`{"new_password":"openhouse123"}`' \
+  'openhouse-first-config|`123456` 过短' \
+  'openhouse-first-config|不要未经实测声称“常见密码”必然被拒绝' \
+  'openhouse-first-config|字段名必须是 `new_password`，不是 `newPassword`' \
+  'openhouse-first-config|`"models":["deepseek-v4-pro"]`' \
+  'openhouse-first-config|不得传成 `[{"id":"deepseek-v4-pro","name":"..."}]` 对象数组' \
+  'openhouse-first-config|`deepseek-v4 pro` 中间带空格是错误 ID' \
+  'openhouse-first-config|`deepseek-v4-flash` 也已验证成功' \
+  'openhouse-first-config|创建一个新 AionRS conversation' \
+  'openhouse-first-config|`extra.sessionMode="default"`' \
+  'openhouse-first-config|HTTP 状态码精确为 `201`' \
+  'openhouse-first-config|HTTP 状态码精确为 `202`' \
+  'openhouse-first-config|assistant 最终文本只能原样回复该 nonce' \
+  'openhouse-first-config|轮询 conversation 直到 `status=finished`' \
+  'openhouse-first-config|消息历史响应的 `data.items`' \
+  'openhouse-first-config|assistant 文本精确等于该 nonce' \
+  'openhouse-first-config|不能只是包含 nonce 或表达对应语义' \
+  'openhouse-first-config|页面可打开、health-check' \
+  'openhouse-first-config|不得直接请求供应商 API 冒充 AionUI 测通' \
+  'openhouse-first-config|一阶段 Agent 还必须亲自读取自身当前实际生效的模型配置' \
+  'openhouse-first-config|一阶段 Agent 主动调用或驱动第二阶段 Agent 发起一次最小真实请求' \
+  'openhouse-first-config|不能把这一步留给第二阶段 Agent 自行完成' \
+  'openhouse-first-config|用户实际选定的第二阶段 Agent' \
+  'openhouse-first-config|第二阶段 Agent 名称和 identity' \
+  'openhouse-first-config|输出前必须把 Agent 名称和 identity 替换为实际值，不得保留占位符' \
   'openhouse-docs|# /openhouse-docs' \
   'openhouse-docs|$HOME/openhouse/docs' \
   'openhouse-docs|/root/openhouse/docs' \
@@ -76,6 +109,15 @@ for contract in \
   required="${contract#*|}"
   tar -xOf "$PAYLOAD" "./prompts/$prompt_name.md" | grep -Fq "$required" \
     || fail "$prompt_name prompt missing: $required"
+done
+
+first_config_prompt="$(tar -xOf "$PAYLOAD" ./prompts/openhouse-first-config.md)"
+for forbidden in \
+  '只有 AionUI 不可用，或者用户主动选择其它 Agent 时' \
+  '默认明确交给 `aionui`'; do
+  if printf '%s' "$first_config_prompt" | grep -Fq "$forbidden"; then
+    fail "openhouse-first-config still fixes the second-stage Agent: $forbidden"
+  fi
 done
 
 install_script="$(tar -xOf "$PAYLOAD" ./scripts/install.sh)"
@@ -136,7 +178,7 @@ grep -Fq 'app/src/main/assets/openhouse/pi-prompts' "$BUILD_SCRIPT" \
   || fail 'payload build script does not source App-owned prompts'
 grep -Fq 'PI_WEB_REQUIRED_BRANCH:-openhouse' "$BUILD_SCRIPT" \
   || fail 'payload build script does not require the OpenHouse pi-web branch by default'
-grep -Fq 'PI_WEB_REQUIRED_COMMIT:-82a025dbc98cf522f42e36d97972485f02712be8' "$BUILD_SCRIPT" \
+grep -Fq 'PI_WEB_REQUIRED_COMMIT:-19a4496149bf8198be1362e31d81d79b5d250051' "$BUILD_SCRIPT" \
   || fail 'payload build script does not pin the reviewed pi-web commit by default'
 
 python3 - "$PAYLOAD" "$MANIFEST" "$PAYLOAD_MANIFEST" "$REQUIRED_BRANCH" "$REQUIRED_COMMIT" <<'PY'

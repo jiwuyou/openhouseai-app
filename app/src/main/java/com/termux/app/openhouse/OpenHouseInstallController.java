@@ -2221,7 +2221,7 @@ public final class OpenHouseInstallController {
 
     private enum Stage {
         PREPARE("prepare", "prepare-product.sh", "准备本机目录", "正在创建文档目录和工作区。"),
-        TERMUX_PACKAGES("termux_packages", "update-termux-packages.sh", "准备 Linux 环境", "正在安装 Termux 基础包。"),
+        TERMUX_PACKAGES("termux_packages", "update-termux-packages.sh", "准备 Linux 环境", "正在安装 proot-distro、openssh、curl、jq 和证书依赖。"),
         INSTALL_TERMUX_NODE("install_termux_node", "install-termux-node.sh", "安装 Termux Node.js 24 LTS", "正在安装或检查 Termux native Node.js 24 LTS/npm，供 pi-agent 和 pi-web 常驻服务使用。"),
         INSTALL_UBUNTU("install_ubuntu", "install-ubuntu.sh", "下载 Linux 系统", "正在下载并安装 Ubuntu。"),
         SYNC_OFFICIAL_DOCS("sync_official_docs", "sync-official-docs.sh", "同步使用文档", "正在同步 OpenHouseAI 使用文档。"),

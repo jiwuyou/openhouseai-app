@@ -111,11 +111,9 @@ resource_dir=$(find "$HOME/.local/share/openhouseai/update-resources" -mindepth 
 [ -n "$resource_dir" ] && [ -f "$resource_dir/bootstrap/bootstrap.sh" ] || { echo "未找到可用的 APK bootstrap 资源" >&2; exit 1; }
 cd "$resource_dir/bootstrap"
 bash bootstrap.sh status
-service-manager status cloudcli 2>/dev/null || true
-service-manager status cc-connect 2>/dev/null || true
 ```
 
-如果 service-manager 不可用，先按 `SERVICE_MANAGER.md` 和 `RECOVERY.md` 修复控制中枢。
+需要逐服务确认时，按 `SERVICE_MANAGER.md` 的带 token REST API 模板查询 `cloudcli` 和 `cc-connect`；不要调用不存在的业务服务 CLI。若有相应 subject，也可以使用 `openhouse-system check <subject-id>`。如果 service-manager 不可用，先按 `SERVICE_MANAGER.md` 和 `RECOVERY.md` 修复控制中枢。
 
 确认 CloudCLI 页面可访问：
 

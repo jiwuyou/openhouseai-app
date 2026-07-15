@@ -85,7 +85,7 @@ oh-termux-ensure-sshd ensure
 首次安装会做这些准备：
 
 1. `10-prepare-termux.sh` 注入 `oh-ubuntu-root`、`oh-ubuntu-user`、`oh-termux-ensure-sshd`。
-2. `12-update-termux-packages.sh` 安装 `openssh`，并启动/检查 Termux native `sshd`。
+2. `12-update-termux-packages.sh` 安装 `openssh`、`curl` 和 `jq`，并启动/检查 Termux native `sshd`。
 3. `20-install-ubuntu.sh` 向 Ubuntu 注入 `/usr/local/bin/openhouse-termux` 和 `/usr/local/bin/oh-termux`。
 4. `30-update-ubuntu-packages.sh` 安装 `openssh-client` 和 `jq`。
 

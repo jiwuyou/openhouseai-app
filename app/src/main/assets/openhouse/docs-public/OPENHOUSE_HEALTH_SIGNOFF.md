@@ -56,6 +56,7 @@ openhouse-termux exec -- 'resource_dir=$(find "$HOME/.local/share/openhouseai/up
 ```text
 /root/openhouse/docs/OPENHOUSE_HEALTH_SIGNOFF.md
 /root/openhouse/docs/openhouse-install-flow.md
+/root/openhouse/docs/OPENHOUSE_SYSTEM.md
 /root/openhouse/docs/SERVICE_MANAGER.md
 /root/openhouse/docs/OPENHOUSE_FIRST_CONFIGURATION.md
 /root/openhouse/docs/SECOND_AI_HANDOFF.md
@@ -66,6 +67,7 @@ openhouse-termux exec -- 'resource_dir=$(find "$HOME/.local/share/openhouseai/up
 ```text
 /root/openhouseai-docs/official/OPENHOUSE_HEALTH_SIGNOFF.md
 /root/openhouseai-docs/official/openhouse-install-flow.md
+/root/openhouseai-docs/official/OPENHOUSE_SYSTEM.md
 /root/openhouseai-docs/official/SERVICE_MANAGER.md
 /root/openhouseai-docs/official/OPENHOUSE_FIRST_CONFIGURATION.md
 /root/openhouseai-docs/official/SECOND_AI_HANDOFF.md

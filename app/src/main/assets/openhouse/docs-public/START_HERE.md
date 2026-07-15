@@ -85,9 +85,10 @@ AI agent 优先阅读：
 2. `openhouse-overview.md`
 3. `AI_AGENT_REFERENCE.md`
 4. `TERMUX_UBUNTU_BRIDGE.md`
-5. `SERVICE_MANAGER.md`
-6. `TROUBLESHOOTING.md`
-7. `PATHS_AND_PORTS.md`
+5. `OPENHOUSE_SYSTEM.md`
+6. `SERVICE_MANAGER.md`
+7. `TROUBLESHOOTING.md`
+8. `PATHS_AND_PORTS.md`
 
 如果你要实现或审查下一轮代码改动，还必须阅读：
 

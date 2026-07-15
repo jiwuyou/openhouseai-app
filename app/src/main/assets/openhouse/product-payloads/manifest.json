@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-13",
+  "generatedAt": "2026-07-15",
   "description": "OpenHouseAI runtime packages bundled inside the APK. pi-web first install uses the bundled complete runtime package and does not run npm install for pi-web; Node.js, Codex, Claude Code, CloudCLI and other stages may still require network access.",
   "registryApiVersion": 2,
   "compatibility": {
     "registryApiVersion": 2,
-    "serviceManager": ">=0.3.0",
+    "serviceManager": ">=0.3.1",
     "requiresRegistryApply": true,
     "requiresStableServiceIds": true
   },
@@ -14,28 +14,29 @@
       "id": "service-manager",
       "archive": "service-manager.tar",
       "targetDir": "service-manager",
-      "sha256": "1cfd945b8b371904464a83a9ed7e8d3b535a4d57c0de067efa56d7ccb8a14af2",
+      "sha256": "06501aac6cf0053a99486de7dba17505f371b80896ba539566582696e17e5a2c",
       "size": 7751680,
-      "binarySha256": "9c4132695ceae45fa6be6cd2bfe9886c49fdb73c2ec040bfbb5be48388b07148",
+      "binarySha256": "a40df666c56365d15013ca92447047143c60e11800aa44b80da3127cf013ac4c",
       "platform": "termux-arm64",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "registryApiVersion": 2,
       "provides": {
         "registryApiVersion": 2,
         "registryApply": true,
-        "stableServiceIds": true
+        "stableServiceIds": true,
+        "residency": true
       }
     },
     {
       "id": "openhouse-web",
       "archive": "openhouse-web.tar",
       "targetDir": "openhouse-web",
-      "sha256": "aba9f2eafb6b59d2ec5cbb61be6a3558ef872edbfc27d2b440ae57d5d93023f2",
-      "size": 153600,
+      "sha256": "f3ea81be6aaa5b0c613f48f0170e6dde6117882a273c9fc875594a29bcd4895a",
+      "size": 163840,
       "platform": "termux-android-arm64",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "requires": {
-        "serviceManager": ">=0.3.0",
+        "serviceManager": ">=0.3.1",
         "registryApiVersion": 2
       }
     },
@@ -72,15 +73,15 @@
       "id": "pi-web",
       "archive": "pi-web.tar",
       "targetDir": "pi-web",
-      "sha256": "125eaa9445b315490d452f90a337757c49d072d5560353c2815e046fdd555034",
-      "size": 89118720,
+      "sha256": "3d05efa8e916b805260f734f371a2897ab60d87715ea6475951e6298a6a211c4",
+      "size": 93143040,
       "platform": "termux-android-arm64",
       "buildPlatform": "android-arm64",
-      "version": "0.7.0",
+      "version": "0.7.12",
       "sourceRepo": "https://github.com/jiwuyou/pi-web.git",
       "sourceBranch": "openhouse",
-      "sourceCommit": "82a025dbc98cf522f42e36d97972485f02712be8",
-      "sourceTreeSha256": "a604655dea80dcc7d3ebfa2fa1dd5b77666c979954067c8a4c5c0d4952e99d35",
+      "sourceCommit": "19a4496149bf8198be1362e31d81d79b5d250051",
+      "sourceTreeSha256": "09dfffb3eacded71d11800364088759ccbe2875b5d47cdf2e79a5f8265535b01",
       "requires": {
         "serviceManager": ">=0.3.0",
         "registryApiVersion": 2

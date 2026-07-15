@@ -135,7 +135,7 @@ proot-distro login ubuntu -- <command>
 ```bash
 proot-distro login ubuntu -- bash -lc 'pwd; node -v'
 proot-distro login ubuntu -- bash -lc 'cd /root/projects && git status --short'
-proot-distro login ubuntu -- bash -lc 'cd /root && service-manager status 2>/dev/null || true'
+proot-distro login ubuntu -- bash -lc 'curl -fsS --max-time 2 http://127.0.0.1:20087/api/v1/health'
 ```
 
 规则：

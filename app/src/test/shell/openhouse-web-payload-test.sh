@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PAYLOAD_DIR="$REPO_ROOT/app/src/main/assets/openhouse/product-payloads"
 BOOTSTRAP="$REPO_ROOT/app/src/main/assets/smallphoneai/bootstrap/scripts/50-install-runtime-components.sh"
+FULL_INSTALL="$REPO_ROOT/app/src/main/assets/smallphoneai/bootstrap/bootstrap.sh"
 INSTALLER="$REPO_ROOT/app/src/main/assets/maintainer/install-runtime-components.sh"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -17,8 +18,8 @@ items = doc.get("components") or doc.get("payloads") or []
 entry = next((item for item in items if item.get("id") == "openhouse-web"), None)
 assert entry, "openhouse-web entry missing"
 assert entry.get("archive") == "openhouse-web.tar"
-assert entry.get("version") == "1.1.1"
-assert entry.get("requires", {}).get("serviceManager") == ">=0.3.0"
+assert entry.get("version") == "1.1.2"
+assert entry.get("requires", {}).get("serviceManager") == ">=0.3.1"
 PY
 done
 
@@ -41,7 +42,7 @@ for executable in scripts/install.sh scripts/check.sh scripts/register-service.s
 done
 
 package_json="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./package.json)"
-printf '%s' "$package_json" | grep -Fq '"version": "1.1.1"' || fail 'package version 1.1.1 missing'
+printf '%s' "$package_json" | grep -Fq '"version": "1.1.2"' || fail 'package version 1.1.2 missing'
 
 password_store="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./src/password-store.mjs)"
 for required in \
@@ -65,8 +66,12 @@ service_json="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./config/openhouse-web
 printf '%s' "$service_json" | grep -Fq '"residentByDefault": true' || fail 'residentByDefault=true missing'
 printf '%s' "$service_json" | grep -Fq '"preferred": 22110' || fail 'fixed port 22110 missing'
 
-grep -Fq 'service-manager,openhouse-web,pi-agent,pi-web' "$BOOTSTRAP" || fail 'bootstrap default order missing openhouse-web'
+grep -Fq 'wuyou,service-manager,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes,openhouse-web' "$BOOTSTRAP" \
+  || fail 'bootstrap default order does not install openhouse-web last'
 grep -Fq 'run_component "OpenHouse Web"' "$BOOTSTRAP" || fail 'bootstrap does not install openhouse-web'
-grep -Fq 'service-manager,openhouse-web,pi-agent,pi-web' "$INSTALLER" || fail 'maintainer default order missing openhouse-web'
+grep -Fq 'SMALLPHONEAI_COMPONENT_TARGETS=wuyou,service-manager,pi-agent,pi-web,openhouse-web' "$FULL_INSTALL" \
+  || fail 'full first install does not use the safe wuyou/service-manager/pi/openhouse-web order'
+grep -Fq 'wuyou,service-manager,pi-agent,pi-web,openhouse-web' "$INSTALLER" \
+  || fail 'maintainer default order does not install openhouse-web last'
 
 printf 'openhouse-web payload focused tests passed\n'
