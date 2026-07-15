@@ -47,8 +47,8 @@ android {
         applicationId "com.termux"
         minSdkVersion project.properties.minSdkVersion.toInteger()
         targetSdkVersion project.properties.targetSdkVersion.toInteger()
-        versionCode 123
-        versionName "0.118.105"
+        versionCode 124
+        versionName "0.118.106"
 
         if (appVersionName) versionName = appVersionName
         validateVersionName(versionName)
@@ -104,6 +104,9 @@ android {
 
     buildTypes {
         release {
+            // Use the repository's reproducible signing key for release artifacts as well.
+            // This keeps release APKs installable/updatable without a manual signing step.
+            signingConfig signingConfigs.debug
             minifyEnabled true
             shrinkResources false // Reproducible builds
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
