@@ -96,15 +96,8 @@ public final class OpenHouseOnboardingRuntime {
             RuntimeResult result;
             try {
                 NetworkLine line = getNetworkLine();
-                Boolean started = tryInvokeControllerBoolean(
-                    new String[]{"startRuntimeEnvironmentInstall", "startRuntimeInstall", "startEnvironmentInstall"},
-                    line.retryMode
-                );
-                if (started == null) {
-                    result = RuntimeResult.failure("分步安装接口尚未接入，请稍后重试。");
-                } else {
-                    result = buildStartResult(started, "运行环境准备已开始。");
-                }
+                boolean started = installController.startRuntimeEnvironmentInstall(line.retryMode);
+                result = buildStartResult(started, "运行环境准备已开始。");
             } catch (Exception e) {
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to start runtime environment install", e);
                 result = RuntimeResult.failure("无法启动运行环境准备：" + safeMessage(e));
@@ -119,15 +112,8 @@ public final class OpenHouseOnboardingRuntime {
             RuntimeResult result;
             try {
                 NetworkLine line = getNetworkLine();
-                Boolean started = tryInvokeControllerBoolean(
-                    new String[]{"startAiFeaturesInstall", "startAiInstall", "startFeatureInstall"},
-                    line.retryMode
-                );
-                if (started == null) {
-                    result = RuntimeResult.failure("分步安装接口尚未接入，请稍后重试。");
-                } else {
-                    result = buildStartResult(started, "AI 功能安装已开始。");
-                }
+                boolean started = installController.startAiFeaturesInstall(line.retryMode);
+                result = buildStartResult(started, "AI 功能安装已开始。");
             } catch (Exception e) {
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to start AI feature install", e);
                 result = RuntimeResult.failure("无法启动 AI 功能安装：" + safeMessage(e));
@@ -150,17 +136,10 @@ public final class OpenHouseOnboardingRuntime {
         executor.execute(() -> {
             RuntimeResult result;
             try {
-                Boolean started = tryInvokeControllerBoolean(
-                    new String[]{"forceRestartCurrentTask", "forceRestartCurrentInstallTask"},
-                    getNetworkLine().retryMode
-                );
-                if (started == null) {
-                    result = RuntimeResult.failure("当前步骤重试接口尚未接入，请稍后重试。");
-                } else {
-                    result = started
-                        ? RuntimeResult.success("已重新启动当前步骤。")
-                        : RuntimeResult.failure("无法重新启动当前步骤，请进入详细进度查看日志。");
-                }
+                boolean started = installController.forceRestartCurrentTask(getNetworkLine().retryMode);
+                result = started
+                    ? RuntimeResult.success("已重新启动当前步骤。")
+                    : RuntimeResult.failure("无法重新启动当前步骤，请进入详细进度查看日志。");
             } catch (Exception e) {
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to restart current install task", e);
                 result = RuntimeResult.failure("无法重新启动当前步骤：" + safeMessage(e));
@@ -370,42 +349,12 @@ public final class OpenHouseOnboardingRuntime {
         return usable ? RuntimeResult.success(message) : RuntimeResult.failure(message);
     }
 
-    private Boolean tryInvokeControllerBoolean(String[] methodNames, OpenHouseInstallState.RetryMode retryMode) throws Exception {
-        for (String methodName : methodNames) {
-            Method retryModeMethod = findMethod(installController.getClass(), methodName, OpenHouseInstallState.RetryMode.class);
-            if (retryModeMethod != null) {
-                return coerceBoolean(retryModeMethod.invoke(installController, retryMode));
-            }
-        }
-        for (String methodName : methodNames) {
-            Method noArgMethod = findMethod(installController.getClass(), methodName);
-            if (noArgMethod != null) {
-                return coerceBoolean(noArgMethod.invoke(installController));
-            }
-        }
-        return null;
-    }
-
     private Method findMethod(Class<?> type, String name, Class<?>... parameters) {
         try {
             return type.getMethod(name, parameters);
         } catch (NoSuchMethodException e) {
             return null;
         }
-    }
-
-    private Boolean coerceBoolean(Object result) {
-        if (result instanceof Boolean) {
-            return (Boolean) result;
-        }
-        if (result instanceof OpenHouseInstallState) {
-            OpenHouseInstallState state = (OpenHouseInstallState) result;
-            return !state.failed && (state.running || state.completed);
-        }
-        if (result == null) {
-            return true;
-        }
-        return null;
     }
 
     private Boolean tryInvokeStatusBoolean(OpenHouseStatus status, String... methodNames) {
