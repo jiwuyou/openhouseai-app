@@ -55,6 +55,7 @@ import com.termux.app.openhouse.OpenHouseClaudeCodeUiController;
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
 import com.termux.app.openhouse.OpenHousePiWebRescueController;
 import com.termux.app.openhouse.OpenHouseRuntimePreferences;
+import com.termux.app.openhouse.shizuku.OpenHouseShizukuManager;
 import com.termux.app.openhouse.components.OpenHouseComponent;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
 import com.termux.app.openhouse.desktop.DesktopAppAction;
@@ -204,6 +205,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private DesktopLayoutState desktopLayoutState;
     private OpenHouseDesktopView desktopView;
     private boolean bindingDesktopView;
+    private OpenHouseShizukuManager shizukuManager;
     private final String cloudCliUrl = ClaudeCodeUiSettings.getLoopbackUrl();
     private SmallPhoneHostController smallPhoneController;
     private View smallPhoneView;
@@ -295,6 +297,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         pageSubtitleView = findViewById(R.id.openhousePageSubtitle);
         desktopAppLauncher = new DesktopAppLauncher(this);
         desktopLayoutStore = new DesktopLayoutStore(this);
+        shizukuManager = new OpenHouseShizukuManager(this, this::onShizukuStateChanged);
+        shizukuManager.start();
+        shizukuManager.ensureRishInstalled();
 
         View openDrawerButton = findViewById(R.id.buttonOpenDrawer);
         topActionBarView = openDrawerButton == null ? null : (View) openDrawerButton.getParent();
@@ -334,6 +339,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         destroyUsageTutorialOverlay();
+        if (shizukuManager != null) {
+            shizukuManager.stop();
+            shizukuManager = null;
+        }
         if (smallPhoneController != null) {
             smallPhoneController.onDestroy();
             smallPhoneController = null;
@@ -5103,6 +5112,105 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             compactButton("文件权限", v -> openStoragePermissionSettings(), true));
         panel.addView(button("悬浮窗权限", v -> openOverlayPermissionSettings()));
         contentView.addView(panel);
+
+        renderShizukuPermissionPanel();
+    }
+
+    private void renderShizukuPermissionPanel() {
+        LinearLayout panel = panel();
+        addTitle(panel, getString(R.string.shizuku_permission_title), 19);
+        addBody(panel, getString(R.string.shizuku_permission_description));
+
+        OpenHouseShizukuManager.Snapshot snapshot = shizukuManager == null
+            ? null
+            : shizukuManager.snapshot();
+        if (snapshot == null) {
+            addStatusRow(panel, getString(R.string.shizuku_status_label), "正在检测");
+            contentView.addView(panel);
+            return;
+        }
+
+        addStatusRow(panel,
+            getString(R.string.shizuku_status_label),
+            snapshot.statusLabel);
+        addStatusRow(panel,
+            getString(R.string.shizuku_version_label),
+            snapshot.installed && !isBlank(snapshot.version)
+                ? snapshot.version
+                : getString(snapshot.installed
+                    ? R.string.shizuku_version_unknown
+                    : R.string.shizuku_not_installed));
+        addStatusRow(panel,
+            getString(R.string.shizuku_identity_label),
+            snapshot.running && snapshot.uid >= 0
+                ? getString(R.string.shizuku_identity_uid, snapshot.uid)
+                : getString(R.string.shizuku_identity_unavailable));
+        addStatusRow(panel,
+            getString(R.string.shizuku_rish_label),
+            getString(snapshot.rishReady
+                ? R.string.shizuku_rish_ready
+                : R.string.shizuku_rish_not_ready));
+
+        if (!snapshot.installed) {
+            panel.addView(button(getString(R.string.shizuku_install_bundled),
+                v -> runShizukuAction(() -> shizukuManager.installBundledShizuku())));
+        } else if (!snapshot.running) {
+            panel.addView(button(getString(R.string.shizuku_open),
+                v -> runShizukuAction(() -> shizukuManager.openShizuku())));
+        } else if (!snapshot.authorized) {
+            addBody(panel, getString(R.string.shizuku_permission_vendor_hint));
+            addButtonRow(panel,
+                compactButton(getString(R.string.shizuku_request_permission),
+                    v -> runShizukuAction(() -> shizukuManager.requestPermission()), true),
+                compactButton(getString(R.string.shizuku_open),
+                    v -> runShizukuAction(() -> shizukuManager.openShizuku()), true));
+        } else {
+            addButtonRow(panel,
+                compactButton(getString(R.string.shizuku_open),
+                    v -> runShizukuAction(() -> shizukuManager.openShizuku()), true),
+                compactButton(getString(R.string.shizuku_refresh),
+                    v -> refreshShizukuState(), true));
+        }
+
+        String rishTestCommand = getString(R.string.shizuku_rish_test_command);
+        addBody(panel, getString(R.string.shizuku_rish_test_hint, rishTestCommand));
+        panel.addView(button(getString(R.string.shizuku_copy_rish_test),
+            v -> copyText("rish", rishTestCommand)));
+        contentView.addView(panel);
+    }
+
+    private void onShizukuStateChanged() {
+        runOnUiThread(() -> {
+            if (isFinishing() || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && isDestroyed())) {
+                return;
+            }
+            if (PAGE_PERMISSIONS.equals(currentPage)) {
+                renderPage();
+            }
+        });
+    }
+
+    private void refreshShizukuState() {
+        if (shizukuManager == null) {
+            return;
+        }
+        runShizukuAction(() -> shizukuManager.ensureRishInstalled());
+        if (PAGE_PERMISSIONS.equals(currentPage)) {
+            renderPage();
+        }
+    }
+
+    private void runShizukuAction(Runnable action) {
+        if (shizukuManager == null) {
+            return;
+        }
+        try {
+            action.run();
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Shizuku action failed", e);
+            String detail = isBlank(e.getMessage()) ? e.getClass().getSimpleName() : e.getMessage();
+            Toast.makeText(this, getString(R.string.shizuku_action_failed, detail), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void renderAboutPage() {

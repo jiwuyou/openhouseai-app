@@ -8,6 +8,7 @@ release/
 !app/src/main/java/com/termux/app/openhouse/release/
 !app/src/main/java/com/termux/app/openhouse/release/**
 *.apk
+!app/src/main/assets/third-party/shizuku/shizuku.apk
 *.so
 .externalNativeBuild
 .cxx
