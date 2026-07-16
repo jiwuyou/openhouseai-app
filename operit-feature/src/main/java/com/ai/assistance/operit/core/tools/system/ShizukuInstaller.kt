@@ -1,13 +1,10 @@
 package com.ai.assistance.operit.core.tools.system
 
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import com.ai.assistance.operit.util.AppLogger
-import androidx.core.content.FileProvider
 import com.ai.assistance.operit.R
 import java.io.File
 import java.io.FileOutputStream
@@ -66,62 +63,14 @@ class ShizukuInstaller {
         }
 
         /**
-         * 安装或更新内置的Shizuku APK
+         * Hosted Operit does not install Shizuku itself. Open the OpenHouse host permission page,
+         * which owns Shizuku installation, startup and authorization.
          * @param context Android上下文
-         * @return 是否成功启动安装界面
+         * @return 是否成功打开宿主权限页面
          */
         fun installBundledShizuku(context: Context): Boolean {
-            try {
-                // 记录是安装还是更新
-                val isUpdate = ShizukuAuthorizer.isShizukuInstalled(context)
-                val action = if (isUpdate) context.getString(R.string.shizuku_install_update) else context.getString(R.string.shizuku_install_install)
-
-                AppLogger.d(TAG, "开始${action}内置Shizuku")
-
-                // 从assets目录提取APK
-                val apkFile = extractApkFromAssets(context)
-                if (apkFile == null) {
-                    AppLogger.e(TAG, "提取APK失败")
-                    return false
-                }
-
-                AppLogger.d(TAG, "APK提取成功: ${apkFile.absolutePath}, 大小: ${apkFile.length()} 字节")
-
-                // 生成APK的URI，考虑文件提供者权限
-                val apkUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    FileProvider.getUriForFile(
-                        context,
-                        "${context.packageName}.fileprovider",
-                        apkFile
-                    )
-                } else {
-                    Uri.fromFile(apkFile)
-                }
-
-                AppLogger.d(TAG, "生成APK URI: $apkUri")
-
-                // 创建安装意图
-                val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(apkUri, "application/vnd.android.package-archive")
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                }
-
-                AppLogger.d(TAG, "启动${action}界面")
-
-                // 启动安装界面
-                context.startActivity(installIntent)
-
-                // 清除缓存，强制下次检测重新计算
-                clearCache()
-
-                return true
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to install bundled Shizuku", e)
-                return false
-            }
+            AppLogger.i(TAG, "Shizuku setup is managed by the OpenHouse host")
+            return OpenHouseShizukuHost.openPermissions(context)
         }
 
         /**

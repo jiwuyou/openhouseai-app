@@ -18,9 +18,8 @@ class ShizukuAuthorizer {
         private const val SHIZUKU_PACKAGE_NAME = "moe.shizuku.privileged.api"
         private val mainHandler = Handler(Looper.getMainLooper())
 
-        // 注册Shizuku权限请求监听器
+        // 注册Shizuku Binder监听器
         private var binderReceivedListenerRegistered = false
-        private var permissionRequestListenerRegistered = false
 
         // 服务状态
         private var isServiceAvailable = false
@@ -258,67 +257,10 @@ class ShizukuAuthorizer {
          * @param onResult 权限请求结果回调，仅返回是否授予权限
          */
         fun requestShizukuPermission(onResult: (Boolean) -> Unit) {
-            val serviceRunning = isShizukuServiceRunning()
-            if (!serviceRunning) {
-                AppLogger.e(TAG, "Cannot request permission: $lastServiceErrorMessage")
-                onResult(false)
-                return
-            }
-
-            val hasPermission = hasShizukuPermission()
-            if (hasPermission) {
-                AppLogger.d(TAG, "Permission already granted")
-                onResult(true)
-                notifyStateChanged()
-                return
-            }
-
-            AppLogger.d(TAG, "Requesting Shizuku permission")
-
-            // 移除之前的监听器避免重复
-            try {
-                if (permissionRequestListenerRegistered) {
-                    Shizuku.removeRequestPermissionResultListener { _, _ -> }
-                    permissionRequestListenerRegistered = false
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Error removing existing permission listener", e)
-            }
-
-            try {
-                val requestCode = 100
-
-                AppLogger.d(TAG, "Setting up permission result listener")
-
-                Shizuku.addRequestPermissionResultListener { code, grantResult ->
-                    AppLogger.d(TAG, "Permission result received: code=$code, result=$grantResult")
-                    if (code == requestCode) {
-                        val granted = grantResult == PackageManager.PERMISSION_GRANTED
-                        AppLogger.d(TAG, "Shizuku permission request result: $granted")
-                        onResult(granted)
-                        if (granted) {
-                            // 权限授予时触发状态变更通知
-                            notifyStateChanged()
-                        }
-
-                        // 权限请求完成后移除监听器
-                        try {
-                            Shizuku.removeRequestPermissionResultListener { _, _ -> }
-                            permissionRequestListenerRegistered = false
-                        } catch (e: Exception) {
-                            AppLogger.e(TAG, "Error removing permission listener", e)
-                        }
-                    }
-                }
-                permissionRequestListenerRegistered = true
-
-                // 请求权限
-                AppLogger.d(TAG, "Calling Shizuku.requestPermission($requestCode)")
-                Shizuku.requestPermission(requestCode)
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Error requesting Shizuku permission", e)
-                onResult(false)
-            }
+            lastPermissionErrorMessage =
+                    "Shizuku permission is managed by the OpenHouse host permissions page"
+            AppLogger.i(TAG, lastPermissionErrorMessage)
+            onResult(false)
         }
 
         /** 初始化Shizuku绑定 */

@@ -4,6 +4,7 @@ import android.content.Context
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
+import com.ai.assistance.operit.core.tools.system.OpenHouseShizukuHost
 import com.ai.assistance.operit.core.tools.system.ShizukuAuthorizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -66,7 +67,13 @@ class DebuggerActionListener(private val context: Context) : ActionListener {
     }
 
     override suspend fun requestPermission(onResult: (Boolean) -> Unit) {
-        ShizukuAuthorizer.requestShizukuPermission(onResult)
+        val opened = withContext(Dispatchers.Main) {
+            OpenHouseShizukuHost.openPermissions(context)
+        }
+        if (!opened) {
+            AppLogger.e(TAG, "无法打开 OpenHouse 权限页面")
+        }
+        onResult(false)
     }
 
     override fun isListening(): Boolean = isListening.get()
