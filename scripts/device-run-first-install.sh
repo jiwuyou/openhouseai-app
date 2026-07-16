@@ -286,9 +286,6 @@ run_bootstrap_stage "install_ubuntu" "Install Ubuntu" \
 run_bootstrap_stage "ubuntu_packages" "Install Ubuntu packages" \
   bash "$SMALLPHONEAI_BOOTSTRAP" ubuntu-packages
 
-run_bootstrap_stage "entry_ubuntu" "Configure Ubuntu entry" \
-  bash "$SMALLPHONEAI_BOOTSTRAP" entry-ubuntu
-
 run_bootstrap_stage "install_node" "Install Ubuntu Node.js" \
   bash "$SMALLPHONEAI_BOOTSTRAP" node
 

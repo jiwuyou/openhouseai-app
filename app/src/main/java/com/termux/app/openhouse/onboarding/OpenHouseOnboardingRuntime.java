@@ -178,8 +178,7 @@ public final class OpenHouseOnboardingRuntime {
         return status != null
             && status.termuxReady
             && status.productPrepared
-            && status.ubuntuInstalled
-            && status.entryUbuntuConfigured;
+            && status.ubuntuInstalled;
     }
 
     public boolean isAiFeaturesReady(OpenHouseStatus status) {
@@ -213,11 +212,10 @@ public final class OpenHouseOnboardingRuntime {
             return 0;
         }
         int done = 0;
-        int total = 4;
+        int total = 3;
         if (status.termuxReady) done++;
         if (status.productPrepared) done++;
         if (status.ubuntuInstalled) done++;
-        if (status.entryUbuntuConfigured) done++;
         return Math.round((done * 100f) / total);
     }
 
@@ -253,9 +251,6 @@ public final class OpenHouseOnboardingRuntime {
         }
         if (!status.ubuntuInstalled) {
             return "正在准备运行环境";
-        }
-        if (!status.entryUbuntuConfigured) {
-            return "正在配置启动入口";
         }
         return "正在确认运行环境";
     }

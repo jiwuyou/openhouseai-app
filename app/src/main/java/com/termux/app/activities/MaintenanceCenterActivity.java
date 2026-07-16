@@ -141,7 +141,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageAction.TERMUX_PACKAGES,
         StageAction.INSTALL_UBUNTU,
         StageAction.UBUNTU_PACKAGES,
-        StageAction.CONFIGURE_ENTRY_UBUNTU,
         StageAction.INSTALL_NODE,
         StageAction.SYNC_OFFICIAL_DOCS,
         StageAction.RUNTIME_COMPONENTS,
@@ -2710,8 +2709,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             sequence.addAll(Arrays.asList(ONE_CLICK_STAGE_SEQUENCE));
         }
         ensureStageAfter(sequence, StageAction.UBUNTU_PACKAGES, StageAction.INSTALL_UBUNTU);
-        ensureStageAfter(sequence, StageAction.CONFIGURE_ENTRY_UBUNTU, StageAction.UBUNTU_PACKAGES);
-        ensureStageAfter(sequence, StageAction.INSTALL_NODE, StageAction.CONFIGURE_ENTRY_UBUNTU);
+        ensureStageAfter(sequence, StageAction.INSTALL_NODE, StageAction.UBUNTU_PACKAGES);
         ensureStageAfter(sequence, StageAction.SYNC_OFFICIAL_DOCS, StageAction.INSTALL_NODE);
         ensureStageAfter(sequence, StageAction.RUNTIME_COMPONENTS, StageAction.SYNC_OFFICIAL_DOCS);
         ensureStageAfter(sequence, StageAction.SYNC_OPENHOUSE_REGISTRY, StageAction.RUNTIME_COMPONENTS);
@@ -2726,7 +2724,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             case INSTALL_UBUNTU:
             case SYNC_OFFICIAL_DOCS:
             case UBUNTU_PACKAGES:
-            case CONFIGURE_ENTRY_UBUNTU:
             case INSTALL_NODE:
             case RUNTIME_COMPONENTS:
             case SYNC_OPENHOUSE_REGISTRY:
@@ -2779,11 +2776,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             getString(R.string.one_click_auto_ubuntu_title),
             getString(R.string.one_click_auto_ubuntu_detail),
             new StageAction[] { StageAction.UBUNTU_PACKAGES }
-        ));
-        groups.add(new StageFlowGroup(
-            getString(R.string.one_click_auto_entry_ubuntu_title),
-            getString(R.string.one_click_auto_entry_ubuntu_detail),
-            new StageAction[] { StageAction.CONFIGURE_ENTRY_UBUNTU }
         ));
         groups.add(new StageFlowGroup(
             getString(R.string.one_click_auto_node_title),

@@ -59,8 +59,7 @@ public final class OpenHouseInstallController {
         Stage.RUNTIME_COMPONENTS,
         Stage.START_SMALLPHONE,
         Stage.INSTALL_UBUNTU,
-        Stage.UBUNTU_PACKAGES,
-        Stage.CONFIGURE_ENTRY_UBUNTU
+        Stage.UBUNTU_PACKAGES
     };
     private static final Stage[] AI_FEATURES_STAGE_SEQUENCE = new Stage[] {
         Stage.START_SMALLPHONE,
@@ -77,7 +76,6 @@ public final class OpenHouseInstallController {
         Stage.START_SMALLPHONE,
         Stage.INSTALL_UBUNTU,
         Stage.UBUNTU_PACKAGES,
-        Stage.CONFIGURE_ENTRY_UBUNTU,
         Stage.INSTALL_NODE,
         Stage.SYNC_OFFICIAL_DOCS,
         Stage.INSTALL_AIONUI,
@@ -1646,7 +1644,7 @@ public final class OpenHouseInstallController {
     private String taskCompletedDetail(OpenHouseInstallState.TaskScope taskScope) {
         OpenHouseInstallState.TaskScope resolvedTaskScope = normalizeTaskScope(taskScope);
         if (resolvedTaskScope == OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
-            return "已检测到基础环境和启动入口配置完成，可以继续安装 AI 功能。";
+            return "已检测到基础运行环境准备完成，可以继续安装 AI 功能。";
         }
         return "已检测到 AI 功能和本地 AI 页面可用，首次安装完成；SmallPhone、openhouse-connect 等附属服务可稍后在运行控制中查看或修复。";
     }
@@ -1654,7 +1652,7 @@ public final class OpenHouseInstallController {
     private String taskAlreadyCompleteDetail(OpenHouseInstallState.TaskScope taskScope) {
         OpenHouseInstallState.TaskScope resolvedTaskScope = normalizeTaskScope(taskScope);
         if (resolvedTaskScope == OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
-            return "已检测到基础环境和启动入口配置完成，无需再次执行。";
+            return "已检测到基础运行环境准备完成，无需再次执行。";
         }
         if (resolvedTaskScope == OpenHouseInstallState.TaskScope.AI_FEATURES) {
             return "已检测到 AI 功能可用，无需再次执行安装。";
@@ -1665,7 +1663,7 @@ public final class OpenHouseInstallController {
     private String taskIncompleteAfterExitDetail(OpenHouseInstallState.TaskScope taskScope) {
         OpenHouseInstallState.TaskScope resolvedTaskScope = normalizeTaskScope(taskScope);
         if (resolvedTaskScope == OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
-            return "安装脚本已经退出，但尚未确认基础环境和启动入口配置完成。请等待状态刷新；如果仍停留在这里，请手动重试当前步骤。";
+            return "安装脚本已经退出，但尚未确认基础运行环境准备完成。请等待状态刷新；如果仍停留在这里，请手动重试当前步骤。";
         }
         return "安装脚本已经退出，但 3 分钟内没有确认 AI 功能和本地 AI 页面可用。请等待状态刷新；如果仍停留在这里，请手动重试当前步骤。";
     }

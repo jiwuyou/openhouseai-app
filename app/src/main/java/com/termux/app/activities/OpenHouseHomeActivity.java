@@ -5091,7 +5091,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addManualSection("终端里的 AI 怎么用",
             "Codex、Claude Code 和 CloudCLI 改为后置能力。先进入 pi-agent 完成安装配置；配置好后可在 Ubuntu 终端使用 claude、codex 或对应命令。");
         addManualSection("Termux 和 Ubuntu",
-            "启动后看到的是 Termux 终端。openhouse ai 会在 Termux 里安装 Ubuntu proot，Codex、Claude Code 和 CloudCLI 主要安装在 Ubuntu 的 /root 环境。普通入口终端可以默认进入 Ubuntu，维护中心底部终端固定为 Termux。");
+            "新装后普通 Termux 终端默认停留在 Termux native。openhouse ai 会在 Termux 里安装 Ubuntu proot，Codex、Claude Code 和 CloudCLI 主要安装在 Ubuntu 的 /root 环境；只有用户在手动模式显式执行“启动后直接进入 Ubuntu”后，普通入口终端才会自动进入 Ubuntu。维护中心底部终端始终固定为 Termux。");
         addManualSection("CloudCLI 和 SmallPhone",
             "CloudCLI 提供 cc/codex 统一入口，但不再是首次安装必需项。SmallPhone 是本机页面和兼容运行栈入口。两者的服务状态可从运行控制或维护中心查看。");
         addManualSection("pi-agent",

@@ -50,10 +50,14 @@ bash bootstrap.sh sync-core-stack
 ```text
 env-check -> prepare -> termux-packages -> termux-node ->
 components(service-manager,pi-agent,pi-web) -> start(pi-agent,pi-web) ->
-ubuntu -> ubuntu-packages -> entry-ubuntu -> node -> sync-docs ->
+ubuntu -> ubuntu-packages -> node -> sync-docs ->
 components(github-config-helper,cc-connect,smallphone) -> registry-sync ->
 start -> status
 ```
+
+New installs remain in Termux native when a terminal is opened. `entry-ubuntu`
+is retained only as an explicit opt-in command for users who want interactive
+Termux shells to enter Ubuntu automatically.
 
 Codex, Claude Code, and ClaudeCodeUI / CloudCLI remain available as explicit
 post-install commands (`codex`, `claude-code`, and `claude-code-ui`), but they

@@ -320,11 +320,12 @@ SmallPhoneAI 运行在 Android 手机上，结构如下：
 
 - Android 是宿主系统。
 - Termux 提供终端环境、包管理、Ubuntu 启动、bridge 和恢复兜底。
-- Ubuntu 通过 `proot-distro` 安装在 Termux 内，是主要运行域。
+- Ubuntu 通过 `proot-distro` 安装在 Termux 内，是主要 Linux 工作区。
 - Node.js、Codex CLI、Claude Code、CloudCLI 安装在 Ubuntu 内。
-- service-manager 默认运行在 Ubuntu/proot 内，是本机运行控制面。
-- cc-connect/openhouse-connect 默认运行在 Ubuntu/proot 内，提供 Agent bridge 和 Web client；它是可修复/可选连接服务，不是首次 readiness 必需项。
-- SmallPhone 默认运行在 Ubuntu/proot 内，是产品应用栈。
+- service-manager 默认运行在 Termux native，是本机运行控制面。
+- pi-agent、pi-web 和 OpenHouse Web 默认运行在 Termux native，并由 Termux native service-manager 管理。
+- cc-connect/openhouse-connect 可按需运行在 Ubuntu/proot 内，提供 Agent bridge 和 Web client；它是可修复/可选连接服务，不是首次 readiness 必需项。
+- SmallPhone 兼容服务由当前组件注册策略决定，默认核心入口先保持在 Termux native。
 
 ## 安装范围
 
@@ -350,18 +351,16 @@ Node.js 24 LTS 是单独可见阶段，后置 AI 工具只检查并使用该 Nod
 3. 测速并选择 Ubuntu rootfs 镜像源，然后安装 Ubuntu rootfs。
 4. 同步 SmallPhoneAI 文档。
 5. 安装 Ubuntu 基础包。
-6. 设置打开 Termux 后默认进入 Ubuntu。
-7. 安装 Node.js 24 LTS。
-8. 同步 OpenHouse 文档和后置脚本入口。
-9. 解包 pi-agent / pi-web。
-10. 安装并配置 service-manager。
-11. 注册并启动 pi-agent / pi-web。
-12. 安装 SmallPhone 兼容服务，并尝试安装 openhouse-connect 可选连接服务。
-13. 同步 OpenHouseAI registry 和 service-manager 服务配置。
-14. 在 Ubuntu/proot 内启动 service-manager，并通过 `group:local-stack` 启动已注册服务。
-15. 输出最终状态 JSON，供 App Shell 做健康判断。
+6. 安装 Node.js 24 LTS。
+7. 同步 OpenHouse 文档和后置脚本入口。
+8. 解包 pi-agent / pi-web。
+9. 安装并配置 Termux native service-manager。
+10. 注册并启动 pi-agent / pi-web。
+11. 安装 SmallPhone 兼容服务，并尝试安装 openhouse-connect 可选连接服务。
+12. 同步 OpenHouseAI registry 和 service-manager 服务配置。
+13. 启动已注册的核心服务并输出最终状态 JSON，供 App Shell 做健康判断。
 
-默认进入 Ubuntu 必须在后置 AI 工具安装之前完成。
+新装完成后默认停留在 Termux native。需要自动进入 Ubuntu 时，用户可显式运行 `bash bootstrap.sh entry-ubuntu`；该动作不属于默认首装流程。
 
 Ubuntu rootfs 安装不会使用代理。安装脚本会先测试内置的 Ubuntu cloud image 镜像源，选择当前可达且较快的 rootfs URL，再执行 `proot-distro install -n ubuntu <rootfs-url>`。如需指定源，可在执行前设置 `SMALLPHONEAI_UBUNTU_ROOTFS_URL`。
 
@@ -573,7 +572,7 @@ cloudcli --port 23083
 
 ## 配置检查
 
-重新打开 Termux 后会默认进入 Ubuntu。进入后检查：
+新装重新打开 Termux 默认停留在 Termux native。需要检查 Ubuntu 侧工具时，请先打开 Ubuntu 终端或执行 `proot-distro login ubuntu`，再检查：
 
 ```bash
 command -v codex

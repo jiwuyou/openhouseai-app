@@ -26,7 +26,7 @@ Termux prefix 通常是：
 /data/data/com.termux/files/usr
 ```
 
-OpenHouse 菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。安装完成后，打开 Termux 终端可能会自动进入 Ubuntu，因此排障时必须先用命令识别当前层。
+OpenHouse 菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。新装打开 Termux 终端默认停留在 Termux native；只有用户显式启用 `entry-ubuntu` 后才会自动进入 Ubuntu。排障时必须先用命令识别当前层。
 
 适合执行：
 

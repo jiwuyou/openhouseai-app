@@ -132,6 +132,11 @@ Use these defaults:
 
 Termux terminal and Ubuntu terminal must remain distinct.
 
+Fresh installs open the Termux terminal in Termux native. Entering Ubuntu is an
+explicit user action through the Ubuntu profile, `proot-distro login ubuntu`,
+or the optional `bootstrap.sh entry-ubuntu` preference; first install must not
+enable automatic Ubuntu entry.
+
 Termux terminal:
 
 - repairs the base

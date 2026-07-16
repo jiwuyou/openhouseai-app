@@ -438,7 +438,6 @@ required_stage_scripts() {
         60-start-smallphone.sh \
         20-install-ubuntu.sh \
         30-update-ubuntu-packages.sh \
-        70-configure-entry-ubuntu.sh \
         38-install-node.sh \
         35-sync-docs.sh \
         50-install-runtime-components.sh \
@@ -593,7 +592,6 @@ run_full_install() {
     run_stage 60-start-smallphone.sh
   run_stage 20-install-ubuntu.sh
   run_stage 30-update-ubuntu-packages.sh
-  run_stage 70-configure-entry-ubuntu.sh
   run_stage 38-install-node.sh
   run_stage 35-sync-docs.sh
   SMALLPHONEAI_COMPONENT_TARGETS=github-config-helper,cc-connect,smallphone run_stage 50-install-runtime-components.sh

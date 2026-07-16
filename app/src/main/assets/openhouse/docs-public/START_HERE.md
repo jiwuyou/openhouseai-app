@@ -106,7 +106,7 @@ OpenHouse 有三层常见路径，不要混用：
 - Termux 文件系统真实路径：`/data/data/com.termux/files/home` 和 `/data/data/com.termux/files/usr`。这是 Android 侧 Termux shell 的 home 和 prefix，负责底座、bootstrap、proot-distro 和 Ubuntu 修复。
 - Ubuntu rootfs 在 Termux 中的真实位置：`/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu`。知道这个位置有助于排障，但普通操作不要直接改 rootfs 文件。
 
-OpenHouse 桌面、菜单总览 App 或终端 App 中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。Termux 终端不是 `/root`；它是 Android 侧 Termux shell。安装完成后，Termux 终端可能会自动进入 Ubuntu，因此 AI 和用户排障时应先判断当前层。
+OpenHouse 桌面、菜单总览 App 或终端 App 中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。Termux 终端不是 `/root`；它是 Android 侧 Termux shell。新装默认停留在 Termux native，只有用户显式启用 `entry-ubuntu` 后才会自动进入 Ubuntu；AI 和用户排障时应先判断当前层。
 
 快速判断：
 

@@ -37,15 +37,14 @@ Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 是后置能力，�
 5. 先启动 `openhouse-web`、`pi-agent` 和 `pi-web`，让用户尽早看到系统入口和首次配置入口。
 6. 按 canonical 有序故障转移策略解析并锁定 Ubuntu rootfs 来源，然后安装 Ubuntu rootfs，同时注入 Ubuntu 侧环境探测和 `openhouse-termux` 桥接 CLI。
 7. 安装 Ubuntu 基础包，包括 `openssh-client`、`jq`、`git`、`gh`、`ripgrep` 等。
-8. 设置打开 Termux 后默认进入 Ubuntu。
-9. 安装 Ubuntu Node.js 24 LTS。
-10. 同步 OpenHouse 文档和后置脚本入口。
-11. 安装 openhouse-connect、SmallPhone 兼容服务和 GitHub 配置助手。
-12. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
-13. 启动 OpenHouse 基础运行栈。
-14. 记录最终健康检查。
+8. 安装 Ubuntu Node.js 24 LTS。
+9. 同步 OpenHouse 文档和后置脚本入口。
+10. 安装 openhouse-connect、SmallPhone 兼容服务和 GitHub 配置助手。
+11. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
+12. 启动 OpenHouse 基础运行栈。
+13. 记录最终健康检查。
 
-默认进入 Ubuntu 必须在后置 AI 工具安装之前完成。
+新装完成后，打开 Termux 默认停留在 Termux native。Ubuntu 仍是主要 AI/开发工作区，需要时使用 Ubuntu 终端入口或 `proot-distro login ubuntu`；只有用户显式运行 `bash bootstrap.sh entry-ubuntu` 才启用自动进入 Ubuntu。
 
 pi-web 首装使用 APK 内置完整 runtime，只做解压、校验、注册和启动，不通过 `npm install -g` 安装 pi-web tgz。Node.js、Ubuntu 基础包和其它缺失依赖阶段仍可能需要网络。Codex CLI、Claude Code、ClaudeCodeUI / CloudCLI 和 Hermes 的网络安装放到 pi-agent 后置引导阶段。
 
@@ -119,7 +118,7 @@ OpenHouse 菜单/终端页面中可进入 Termux 或 Ubuntu 终端，具体入�
 - Termux 终端：Android 侧 Termux shell，home 通常是 `/data/data/com.termux/files/home`。用于底座、bootstrap、proot-distro、安装日志和救援。
 - Ubuntu 终端：通过 proot-distro 进入的 Ubuntu shell，home 通常是 `/root`。用于开发、AI CLI、用户项目、pi、CloudCLI、Claude Code 和长期服务检查。
 
-安装完成后，Termux 终端可能被配置为打开后自动进入 Ubuntu。排障时不能只看入口名称，要用命令确认当前层。
+新装完成后，Termux 终端默认停留在 Termux native。用户显式启用 `entry-ubuntu` 后可能自动进入 Ubuntu；排障时仍应使用命令确认当前层。
 
 ### 跨层调用方法
 

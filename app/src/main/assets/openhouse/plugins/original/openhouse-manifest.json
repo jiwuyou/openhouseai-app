@@ -23,8 +23,8 @@
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "准备 Termux 路径、安装 Termux 基础包、Ubuntu rootfs，并配置 Ubuntu 侧基础依赖和入口。",
-      "stages": ["env_check", "prepare", "termux_packages", "install_ubuntu", "ubuntu_packages", "entry_ubuntu"]
+      "description": "准备 Termux 路径、安装 Termux 基础包和 Ubuntu rootfs；新装完成后默认停留在 Termux native。",
+      "stages": ["env_check", "prepare", "termux_packages", "install_ubuntu", "ubuntu_packages"]
     },
     {
       "title": "准备控制平面依赖",

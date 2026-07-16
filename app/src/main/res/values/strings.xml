@@ -393,7 +393,7 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="button_stage_one_click_mode">阶段一键执行</string>
     <string name="button_start_one_click_stages">开始执行阶段\n安装 Ubuntu、Node、pi-agent、pi-web 和控制平面</string>
     <string name="button_stop_one_click_stages">停止一键执行</string>
-    <string name="one_click_stage_summary_idle">权限已经单独处理后，再点这里。系统按真实下载依赖排序：先准备 Ubuntu 和文档，再设置默认进入 Ubuntu，随后安装 Node、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。安装期间只需要等待，不需要配置模型或 Key。</string>
+    <string name="one_click_stage_summary_idle">权限已经单独处理后，再点这里。系统按真实下载依赖排序：先准备 Ubuntu 和文档，随后安装 Node、pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。安装期间只需要等待，不需要配置模型或 Key。</string>
     <string name="one_click_stage_summary_running">阶段一键执行中：%1$s</string>
     <string name="one_click_stage_summary_complete">阶段一键执行已完成，pi-agent、pi-web 和 service-manager 控制平面已就绪；Codex、Claude Code、CloudCLI 可稍后由 pi-agent 引导安装配置。</string>
     <string name="one_click_stage_summary_waiting">阶段一键执行已暂停：%1$s</string>
@@ -411,8 +411,6 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="one_click_auto_prepare_detail">创建产品文档、工作区和 Termux 配置；安装 proot-distro、openssh、curl、jq 和证书依赖，再下载 Ubuntu rootfs 并同步内置官方文档</string>
     <string name="one_click_auto_ubuntu_title">下载 Ubuntu 基础包</string>
     <string name="one_click_auto_ubuntu_detail">apt 安装 curl、ca-certificates、git、procps、ripgrep、unzip</string>
-    <string name="one_click_auto_entry_ubuntu_title">设置启动入口</string>
-    <string name="one_click_auto_entry_ubuntu_detail">打开 Termux 后直接进入 Ubuntu</string>
     <string name="one_click_auto_codex_title">下载 Codex CLI</string>
     <string name="one_click_auto_codex_detail">在 Ubuntu 内通过 npm 安装 OpenAI Codex CLI</string>
     <string name="one_click_auto_claude_code_title">下载 Claude Code</string>
@@ -464,7 +462,7 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="entry_terminal_restart_started">入口终端已重新创建</string>
     <string name="entry_terminal_restart_failed">入口终端重启失败</string>
     <string name="help_title">说明</string>
-    <string name="help_body">1. 建议先完成“权限获取”中的系统权限，然后点击阶段一键执行并等待安装完成。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “准备本地目录”会创建 openhouse ai 文档目录、工作区和 Termux 配置。\n\n4. “下载 Termux 基础包”会安装 proot-distro、openssh、curl、jq 和证书依赖。\n\n5. “下载 Ubuntu rootfs”会先测速 Ubuntu rootfs 镜像源，再安装 Ubuntu 并注入环境探测命令。\n\n6. “同步官方文档”会把 app 内置的 openhouse ai 文档同步到 ~/openhouseai-docs/official。\n\n7. “下载 Ubuntu 基础包”会在 Ubuntu 内安装 curl、证书、git、procps、ripgrep 和 unzip。\n\n8. “启动后直接进入 Ubuntu”会在核心服务安装前设置默认终端入口。\n\n9. “安装 Node.js 24 LTS”会安装统一 Node 运行时；随后安装 pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。\n\n10. Codex CLI、Claude Code、CloudCLI / ClaudeCodeUI 不再阻塞首次安装。安装完成后进入 pi-agent，让它按内置文档引导安装、配置和测通。\n\n11. 首次安装不要求填写模型或 API Key；需要使用模型时，再通过 pi-agent、CloudCLI、Codex 或 Claude Code 的配置流程处理。</string>
+    <string name="help_body">1. 建议先完成“权限获取”中的系统权限，然后点击阶段一键执行并等待安装完成。\n\n2. “查看完整日志”会打开当前阶段在 ~/.maintainer-logs 下保存的完整日志文件。\n\n3. “准备本地目录”会创建 openhouse ai 文档目录、工作区和 Termux 配置。\n\n4. “下载 Termux 基础包”会安装 proot-distro、openssh、curl、jq 和证书依赖。\n\n5. “下载 Ubuntu rootfs”会先测速 Ubuntu rootfs 镜像源，再安装 Ubuntu 并注入环境探测命令。\n\n6. “同步官方文档”会把 app 内置的 openhouse ai 文档同步到 ~/openhouseai-docs/official。\n\n7. “下载 Ubuntu 基础包”会在 Ubuntu 内安装 curl、证书、git、procps、ripgrep 和 unzip。\n\n8. 如需让普通终端启动后直接进入 Ubuntu，可在手动模式单独执行；它不再是首次安装的必需步骤。\n\n9. “安装 Node.js 24 LTS”会安装统一 Node 运行时；随后安装 pi-agent、pi-web、service-manager、openhouse-connect 和 SmallPhone 兼容服务。\n\n10. Codex CLI、Claude Code、CloudCLI / ClaudeCodeUI 不再阻塞首次安装。安装完成后进入 pi-agent，让它按内置文档引导安装、配置和测通。\n\n11. 首次安装不要求填写模型或 API Key；需要使用模型时，再通过 pi-agent、CloudCLI、Codex 或 Claude Code 的配置流程处理。</string>
     <string name="permission_overview_label">系统权限：%1$d/3 已开启</string>
     <string name="permission_badge_open">去开启</string>
     <string name="permission_badge_enabled">已开启</string>
@@ -597,7 +595,7 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="stage_detail_install_node_ready">会在 Ubuntu 内安装或检查 Node.js 24 LTS</string>
     <string name="stage_detail_install_node_complete">Node.js 24 LTS 和 npm 已就绪</string>
     <string name="stage_detail_install_node_failed">Node.js 24 LTS 未装好，请查看日志</string>
-    <string name="stage_detail_install_node_blocked">先完成“启动后直接进入 Ubuntu”</string>
+    <string name="stage_detail_install_node_blocked">先完成“下载 Ubuntu 基础包”</string>
     <string name="stage_detail_install_codex_ready">会在 Ubuntu 内通过 npm 安装 @openai/codex</string>
     <string name="stage_detail_install_codex_complete">Codex CLI 已安装</string>
     <string name="stage_detail_install_codex_failed">Codex CLI 未装好，请查看日志</string>

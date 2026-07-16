@@ -111,8 +111,7 @@ public final class OpenHouseStatus {
             && serviceManagerInstalled
             && piAgentInstalled
             && piWebInstalled
-            && ubuntuInstalled
-            && entryUbuntuConfigured;
+            && ubuntuInstalled;
     }
 
     public boolean isAiFeaturesReady() {
@@ -164,7 +163,7 @@ public final class OpenHouseStatus {
         if (isFirstUseReady()) return "AI 功能已可使用";
         if (!termuxReady || !productPrepared) return "准备基础组件";
         if (!termuxNodeInstalled) return "准备 Termux Node.js 24 LTS/npm";
-        if (!ubuntuInstalled || !entryUbuntuConfigured) return "准备运行环境";
+        if (!ubuntuInstalled) return "准备运行环境";
         if (!ubuntuNodeInstalled) return "准备 Ubuntu Node.js 24 LTS 工作台运行时";
         if (!officialDocsSynced
             || !serviceManagerInstalled

@@ -946,7 +946,7 @@ public final class OpenHouseOnboardingOverlay {
         RUNTIME_ENVIRONMENT(
             "2",
             "准备运行环境",
-            "安装 AI 运行所需的基础环境。完成后，终端会自动进入运行环境。",
+            "安装 AI 运行所需的基础环境。完成后即可继续安装 AI 功能。",
             "开始准备",
             "正在准备",
             "运行环境已准备好",

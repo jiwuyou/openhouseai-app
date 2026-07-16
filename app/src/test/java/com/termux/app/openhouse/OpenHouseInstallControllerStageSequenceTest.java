@@ -23,8 +23,7 @@ public class OpenHouseInstallControllerStageSequenceTest {
             "RUNTIME_COMPONENTS",
             "START_SMALLPHONE",
             "INSTALL_UBUNTU",
-            "UBUNTU_PACKAGES",
-            "CONFIGURE_ENTRY_UBUNTU"
+            "UBUNTU_PACKAGES"
         ), stageNames("RUNTIME_ENVIRONMENT_STAGE_SEQUENCE"));
     }
 
@@ -43,7 +42,7 @@ public class OpenHouseInstallControllerStageSequenceTest {
     }
 
     @Test
-    public void fullSequenceRemainsUnchanged() throws Exception {
+    public void fullSequenceDoesNotConfigureUbuntuEntryMode() throws Exception {
         Assert.assertEquals(Arrays.asList(
             "PREPARE",
             "TERMUX_PACKAGES",
@@ -52,12 +51,45 @@ public class OpenHouseInstallControllerStageSequenceTest {
             "START_SMALLPHONE",
             "INSTALL_UBUNTU",
             "UBUNTU_PACKAGES",
-            "CONFIGURE_ENTRY_UBUNTU",
             "INSTALL_NODE",
             "SYNC_OFFICIAL_DOCS",
             "INSTALL_AIONUI",
             "SYNC_OPENHOUSE_REGISTRY"
         ), stageNames("FULL_STAGE_SEQUENCE"));
+    }
+
+    @Test
+    public void runtimeReadinessDoesNotRequireUbuntuEntryMode() {
+        OpenHouseStatus status = new OpenHouseStatus(
+            true, false, true, true, false, false,
+            true, false, false, false, false, false,
+            true, true, true, false, false, false,
+            false, false, false, false, false, false,
+            "", false, ""
+        );
+
+        Assert.assertTrue(status.isRuntimeEnvironmentPrepared());
+        Assert.assertEquals("准备 Ubuntu Node.js 24 LTS 工作台运行时", status.getNextStepLabel());
+    }
+
+    @Test
+    public void configureUbuntuEntryRemainsManualButIsExcludedFromOneClickFlow() throws Exception {
+        String controller = source("app/src/main/java/com/termux/app/openhouse/OpenHouseInstallController.java");
+        Assert.assertTrue(controller.contains("CONFIGURE_ENTRY_UBUNTU(\"entry_ubuntu\""));
+
+        String maintenance = source("app/src/main/java/com/termux/app/activities/MaintenanceCenterActivity.java");
+        Assert.assertTrue(maintenance.contains(
+            "bindStageButton(StageAction.CONFIGURE_ENTRY_UBUNTU, R.id.buttonConfigureEntryUbuntu)"));
+        Assert.assertFalse(methodSource(
+            maintenance,
+            "private List<StageAction> getOneClickStageSequence()",
+            "private boolean isCoreOneClickStage")
+            .contains("CONFIGURE_ENTRY_UBUNTU"));
+        Assert.assertFalse(methodSource(
+            maintenance,
+            "private boolean isCoreOneClickStage",
+            "private void ensureStageAfter")
+            .contains("CONFIGURE_ENTRY_UBUNTU"));
     }
 
     @Test

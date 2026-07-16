@@ -96,7 +96,7 @@ search
 | Termux 外层 | `/data/data/com.termux/files/home`, `/data/data/com.termux/files/usr` | bootstrap、Termux 包、proot-distro、Ubuntu 启停、底座修复。 |
 | Ubuntu rootfs 真实路径 | `/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu` | Ubuntu 数据在 Termux 文件系统中的位置；排障时识别，不要默认直接修改。 |
 
-OpenHouse 桌面、菜单总览 App 或终端 App 中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。Termux 终端不是 `/root`，它是 Android 侧 Termux shell；安装完成后可能自动进入 Ubuntu，所以必须用命令确认当前层。
+OpenHouse 桌面、菜单总览 App 或终端 App 中可进入 Termux 或 Ubuntu 终端，具体入口名称以当前 App 为准。Termux 终端不是 `/root`，它是 Android 侧 Termux shell；新装默认停留在 Termux native。只有用户显式执行 `bash bootstrap.sh entry-ubuntu` 后，Termux 交互 shell 才会自动进入 Ubuntu。
 
 在 Termux 外层优先运行：
 
@@ -287,16 +287,17 @@ proot-distro login ubuntu -- true
 3. 下载并安装 Ubuntu rootfs。
 4. 同步 OpenHouseAI 文档。
 5. 安装 Ubuntu 基础包。
-6. 设置打开 Termux 后默认进入 Ubuntu。
-7. 安装 Node.js 24 LTS。
-8. 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。
-9. 解包 pi-agent / pi-web。
-10. 安装并配置 service-manager。
-11. 注册并启动 pi-agent / pi-web。
-12. 安装 openhouse-connect 和 SmallPhone 兼容服务。
-13. 注册 openhouse-connect / SmallPhone 到 service-manager。
-14. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
-15. 启动 OpenHouse 基础运行栈。
+6. 安装 Node.js 24 LTS。
+7. 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。
+8. 解包 pi-agent / pi-web。
+9. 安装并配置 service-manager。
+10. 注册并启动 pi-agent / pi-web。
+11. 安装 openhouse-connect 和 SmallPhone 兼容服务。
+12. 注册 openhouse-connect / SmallPhone 到 service-manager。
+13. 同步默认 pi 扩展、service-manager 服务定义和 OpenHouseAI 组件注册。
+14. 启动 OpenHouse 基础运行栈。
+
+首次安装不修改 Termux 的默认交互入口。需要打开 Termux 后自动进入 Ubuntu 时，由用户显式运行 `bash bootstrap.sh entry-ubuntu`。
 
 首次安装完成后，service-manager 成为运行期控制平面。首次安装时不要要求用户配置默认模型或 API key，也不要强制安装 Codex、Claude Code、CloudCLI 或 Hermes。
 

@@ -108,8 +108,8 @@
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "准备 Termux、Termux Node/npm，先建立 service-manager + pi-agent/pi-web 常驻入口，再继续准备 Ubuntu 和基础系统依赖。",
-      "stages": ["env_check", "prepare", "termux_packages", "termux_node", "runtime_components", "start_smallphone", "install_ubuntu", "ubuntu_packages", "entry_ubuntu"]
+      "description": "准备 Termux、Termux Node/npm，先建立 service-manager + pi-agent/pi-web 常驻入口，再继续准备 Ubuntu 和基础系统依赖；新装终端默认停留在 Termux native。",
+      "stages": ["env_check", "prepare", "termux_packages", "termux_node", "runtime_components", "start_smallphone", "install_ubuntu", "ubuntu_packages"]
     },
     {
       "title": "准备 Ubuntu AI 工作台依赖",
