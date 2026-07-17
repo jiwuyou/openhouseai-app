@@ -69,8 +69,28 @@ printf '%s' "$service_json" | grep -Fq '"preferred": 22110' || fail 'fixed port 
 grep -Fq 'wuyou,service-manager,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes,openhouse-web' "$BOOTSTRAP" \
   || fail 'bootstrap default order does not install openhouse-web last'
 grep -Fq 'run_component "OpenHouse Web"' "$BOOTSTRAP" || fail 'bootstrap does not install openhouse-web'
-grep -Fq 'SMALLPHONEAI_COMPONENT_TARGETS=wuyou,service-manager,pi-agent,pi-web,openhouse-web' "$FULL_INSTALL" \
-  || fail 'full first install does not use the safe wuyou/service-manager/pi/openhouse-web order'
+python3 - "$FULL_INSTALL" <<'PY'
+import sys
+
+source = open(sys.argv[1], encoding="utf-8").read()
+markers = [
+    "SMALLPHONEAI_COMPONENT_TARGETS=wuyou",
+    "run_stage 13-install-termux-node.sh",
+    "SMALLPHONEAI_COMPONENT_TARGETS=pi-agent",
+    "SMALLPHONEAI_COMPONENT_TARGETS=pi-web",
+    "run_stage start-pi-web-rescue.sh",
+    "SMALLPHONEAI_COMPONENT_TARGETS=service-manager",
+    "SMALLPHONEAI_COMPONENT_ACTION=register-only",
+    "SMALLPHONEAI_START_TARGETS=pi-agent,pi-web",
+    "SMALLPHONEAI_COMPONENT_TARGETS=openhouse-web",
+]
+positions = [source.index(marker) for marker in markers]
+assert positions == sorted(positions), "first-install component order is incorrect"
+PY
+grep -Fq 'install-check|install-only|defer-registration' "$BOOTSTRAP" \
+  || fail 'component installer does not expose deferred pi registration mode'
+grep -Fq 'SMALLPHONEAI_COMPONENT_ACTION=register-only' "$FULL_INSTALL" \
+  || fail 'full first install does not register pi after service-manager'
 grep -Fq 'wuyou,service-manager,pi-agent,pi-web,openhouse-web' "$INSTALLER" \
   || fail 'maintainer default order does not install openhouse-web last'
 

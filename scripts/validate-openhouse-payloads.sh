@@ -300,19 +300,20 @@ def component_registry_requirement(entry, source, expected_api):
     if not isinstance(entry, dict):
         fail(f"{source} must be an object")
         return
-    requires = entry.get("requires")
+    requirement_key = "registrationRequires" if "registrationRequires" in entry else "requires"
+    requires = entry.get(requirement_key)
     if not isinstance(requires, dict):
-        fail(f"{source}.requires must be an object")
+        fail(f"{source}.{requirement_key} must be an object")
         return
     service_manager_range = str(requires.get("serviceManager") or "").strip()
     if not service_manager_range:
-        fail(f"{source}.requires.serviceManager must declare the supported service-manager range")
+        fail(f"{source}.{requirement_key}.serviceManager must declare the supported service-manager range")
     required_api = require_positive_int(
         requires.get("registryApiVersion"),
-        f"{source}.requires.registryApiVersion",
+        f"{source}.{requirement_key}.registryApiVersion",
     )
     if expected_api is not None and required_api is not None and required_api != expected_api:
-        fail(f"{source}.requires.registryApiVersion {required_api} does not match manifest {expected_api}")
+        fail(f"{source}.{requirement_key}.registryApiVersion {required_api} does not match manifest {expected_api}")
 
 
 def read_tar_member(tar_path, candidates):

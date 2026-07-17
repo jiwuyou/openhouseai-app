@@ -261,24 +261,35 @@ run_bootstrap_stage "prepare" "Prepare local directories" \
 run_bootstrap_stage "termux_packages" "Prepare Termux packages" \
   bash "$SMALLPHONEAI_BOOTSTRAP" termux-packages
 
+run_bootstrap_stage "install_wuyou" "Install wuyou" \
+  bash "$SMALLPHONEAI_BOOTSTRAP" install-wuyou
+
 run_bootstrap_stage "install_termux_node" "Install Termux Node.js" \
   bash "$SMALLPHONEAI_BOOTSTRAP" termux-node
 
-run_bootstrap_stage "runtime_components" "Install Termux runtime components" \
-  env \
-    OPENHOUSE_PI_RUNTIME=termux \
-    SMALLPHONEAI_PI_RUNTIME=termux \
-    OPENHOUSE_PI_NODE_RUNTIME=termux \
-    SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=1 \
-    SMALLPHONEAI_COMPONENT_TARGETS=service-manager,pi-agent,pi-web,wuyou \
-    SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-1}" \
-    bash "$SMALLPHONEAI_BOOTSTRAP" components
+run_bootstrap_stage "install_pi_agent" "Install pi-agent without service registration" \
+  bash "$SMALLPHONEAI_BOOTSTRAP" install-pi-agent
+
+run_bootstrap_stage "install_pi_web" "Install pi-web without service registration" \
+  bash "$SMALLPHONEAI_BOOTSTRAP" install-pi-web
+
+run_bootstrap_stage "start_pi_web_rescue" "Start independent pi-web rescue on 30142" \
+  bash "$SMALLPHONEAI_BOOTSTRAP" start-pi-web-rescue
+
+run_bootstrap_stage "install_service_manager" "Install and start service-manager" \
+  bash "$SMALLPHONEAI_BOOTSTRAP" install-service-manager
+
+run_bootstrap_stage "register_pi_services" "Register installed pi services" \
+  bash "$SMALLPHONEAI_BOOTSTRAP" register-pi-services
 
 run_bootstrap_stage "start_smallphone" "Start pi-agent and pi-web" \
   env \
     SMALLPHONEAI_START_TARGETS=pi-agent,pi-web \
     SMALLPHONEAI_START_READY_TIMEOUT="${SMALLPHONEAI_EARLY_PI_START_READY_TIMEOUT:-45}" \
     bash "$SMALLPHONEAI_BOOTSTRAP" start
+
+run_bootstrap_stage "install_openhouse_web" "Install OpenHouse Web" \
+  bash "$SMALLPHONEAI_BOOTSTRAP" install-openhouse-web
 
 run_bootstrap_stage "install_ubuntu" "Install Ubuntu" \
   bash "$SMALLPHONEAI_BOOTSTRAP" ubuntu

@@ -362,8 +362,17 @@ required_stage_scripts() {
     termux-packages)
       printf '%s\n' 12-update-termux-packages.sh
       ;;
+    install-wuyou|wuyou)
+      printf '%s\n' 50-install-runtime-components.sh
+      ;;
     termux-node|termux-nodejs|termux-npm)
       printf '%s\n' 13-install-termux-node.sh
+      ;;
+    install-pi-agent|install-pi-web|install-service-manager|register-pi-services|install-openhouse-web)
+      printf '%s\n' 50-install-runtime-components.sh
+      ;;
+    start-pi-web-rescue)
+      printf '%s\n' start-pi-web-rescue.sh
       ;;
     ubuntu)
       printf '%s\n' 20-install-ubuntu.sh
@@ -434,6 +443,7 @@ required_stage_scripts() {
         12-update-termux-packages.sh \
         13-install-termux-node.sh \
         50-install-runtime-components.sh \
+        start-pi-web-rescue.sh \
         openhouse-system \
         60-start-smallphone.sh \
         20-install-ubuntu.sh \
@@ -585,11 +595,32 @@ run_full_install() {
   run_stage 00-check-termux.sh
   run_stage 10-prepare-termux.sh
   run_stage 12-update-termux-packages.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=wuyou \
+    SMALLPHONEAI_COMPONENT_ACTION=install-check \
+    run_stage 50-install-runtime-components.sh
   run_stage 13-install-termux-node.sh
-  SMALLPHONEAI_COMPONENT_TARGETS=wuyou,service-manager,pi-agent,pi-web,openhouse-web run_stage 50-install-runtime-components.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=pi-agent \
+    SMALLPHONEAI_COMPONENT_ACTION=install-check \
+    run_stage 50-install-runtime-components.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=pi-web \
+    SMALLPHONEAI_COMPONENT_ACTION=install-check \
+    run_stage 50-install-runtime-components.sh
+  run_stage start-pi-web-rescue.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=service-manager \
+    SMALLPHONEAI_COMPONENT_ACTION=install-register \
+    SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
+    run_stage 50-install-runtime-components.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=pi-agent,pi-web \
+    SMALLPHONEAI_COMPONENT_ACTION=register-only \
+    SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
+    run_stage 50-install-runtime-components.sh
   SMALLPHONEAI_START_TARGETS=pi-agent,pi-web \
     SMALLPHONEAI_START_READY_TIMEOUT="${SMALLPHONEAI_EARLY_PI_START_READY_TIMEOUT:-45}" \
     run_stage 60-start-smallphone.sh
+  SMALLPHONEAI_COMPONENT_TARGETS=openhouse-web \
+    SMALLPHONEAI_COMPONENT_ACTION=install-register \
+    SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
+    run_stage 50-install-runtime-components.sh
   run_stage 20-install-ubuntu.sh
   run_stage 30-update-ubuntu-packages.sh
   run_stage 38-install-node.sh
@@ -682,8 +713,51 @@ main() {
       run_stage 12-update-termux-packages.sh
       return
       ;;
+    install-wuyou|wuyou)
+      SMALLPHONEAI_COMPONENT_TARGETS=wuyou \
+        SMALLPHONEAI_COMPONENT_ACTION=install-check \
+        run_stage 50-install-runtime-components.sh
+      return
+      ;;
     termux-node|termux-nodejs|termux-npm)
       run_stage 13-install-termux-node.sh
+      return
+      ;;
+    install-pi-agent)
+      SMALLPHONEAI_COMPONENT_TARGETS=pi-agent \
+        SMALLPHONEAI_COMPONENT_ACTION=install-check \
+        run_stage 50-install-runtime-components.sh
+      return
+      ;;
+    install-pi-web)
+      SMALLPHONEAI_COMPONENT_TARGETS=pi-web \
+        SMALLPHONEAI_COMPONENT_ACTION=install-check \
+        run_stage 50-install-runtime-components.sh
+      return
+      ;;
+    start-pi-web-rescue)
+      run_stage start-pi-web-rescue.sh
+      return
+      ;;
+    install-service-manager)
+      SMALLPHONEAI_COMPONENT_TARGETS=service-manager \
+        SMALLPHONEAI_COMPONENT_ACTION=install-register \
+        SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
+        run_stage 50-install-runtime-components.sh
+      return
+      ;;
+    register-pi-services)
+      SMALLPHONEAI_COMPONENT_TARGETS=pi-agent,pi-web \
+        SMALLPHONEAI_COMPONENT_ACTION=register-only \
+        SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
+        run_stage 50-install-runtime-components.sh
+      return
+      ;;
+    install-openhouse-web)
+      SMALLPHONEAI_COMPONENT_TARGETS=openhouse-web \
+        SMALLPHONEAI_COMPONENT_ACTION=install-register \
+        SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
+        run_stage 50-install-runtime-components.sh
       return
       ;;
     ubuntu)

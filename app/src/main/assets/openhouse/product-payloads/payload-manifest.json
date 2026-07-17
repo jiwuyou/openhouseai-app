@@ -57,7 +57,10 @@
       "size": 6133760,
       "version": "openhouse.20260711",
       "requires": {
-        "serviceManager": ">=0.3.0",
+        "termuxNode": ">=24"
+      },
+      "registrationRequires": {
+        "serviceManager": ">=0.3.1",
         "registryApiVersion": 2
       }
     },
@@ -74,7 +77,10 @@
       "sourceCommit": "19a4496149bf8198be1362e31d81d79b5d250051",
       "sourceTreeSha256": "09dfffb3eacded71d11800364088759ccbe2875b5d47cdf2e79a5f8265535b01",
       "requires": {
-        "serviceManager": ">=0.3.0",
+        "termuxNode": ">=24"
+      },
+      "registrationRequires": {
+        "serviceManager": ">=0.3.1",
         "registryApiVersion": 2
       }
     },

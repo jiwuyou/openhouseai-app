@@ -1,0 +1,14 @@
+set -euo pipefail
+
+bootstrap="${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}"
+[ -f "$bootstrap" ] || { log "未找到 APK 内置 SmallPhoneAI bootstrap：$bootstrap"; exit 1; }
+payload_dir="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}"
+[ -d "$payload_dir" ] || { log "未找到 APK 内置 payload：$payload_dir"; exit 1; }
+
+log "正在 Node.js 之前安装并检查独立 wuyou 命令。"
+run_logged env \
+  SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle \
+  SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE=0 \
+  SMALLPHONEAI_OFFLINE_PAYLOAD_DIR="$payload_dir" \
+  SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT="$payload_dir" \
+  bash "$bootstrap" install-wuyou

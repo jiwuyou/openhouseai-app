@@ -243,6 +243,23 @@ openhouse_pi_runtime() {
   esac
 }
 
+runtime_component_action() {
+  case "${SMALLPHONEAI_COMPONENT_ACTION:-install-register}" in
+    install-check|install-only|defer-registration)
+      printf 'install-check'
+      ;;
+    register-only|register)
+      printf 'register-only'
+      ;;
+    install-register|full|"")
+      printf 'install-register'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 default_component_targets() {
   printf '%s\n' "wuyou,service-manager,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes,openhouse-web"
 }
@@ -485,6 +502,122 @@ start_termux_service_manager_for_registration() {
   return 1
 }
 
+redact_service_manager_diagnostic_stream() {
+  sed -E \
+    -e 's/(Authorization:[[:space:]]*Bearer)[[:space:]]+[^[:space:]]+/\1 ***REDACTED***/Ig' \
+    -e "s/((auth[_-]?token|token|password|api[_-]?key)[\"']?[[:space:]]*[:=][[:space:]]*[\"']?)[^,\"'[:space:]}]+/\1***REDACTED***/Ig" \
+    -e 's/sk-[A-Za-z0-9_-]{8,}/sk-***REDACTED***/g'
+}
+
+diagnose_termux_service_manager_readiness() {
+  local context="${1:-readiness check}"
+  local bind url port cfg sm_bin version permissions pids ss_output
+  local health_code token auth_dir auth_cfg auth_code log_file
+
+  bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
+  url="${SERVICE_MANAGER_URL:-http://$bind}"
+  port="${bind##*:}"
+  cfg="$(termux_service_manager_config_path)"
+  log_file="$HOME/.smallphoneai/logs/service-manager.log"
+
+  warn "===== service-manager readiness diagnostics: $context ====="
+  sm_bin="$(find_termux_service_manager_binary || true)"
+  if [ -n "$sm_bin" ]; then
+    version="$("$sm_bin" --version 2>/dev/null | head -n 1 | tr -d '\r' || true)"
+    warn "binary path=$sm_bin version=${version:-unavailable}"
+  else
+    warn "binary unavailable"
+  fi
+
+  if [ -e "$cfg" ]; then
+    if command -v stat >/dev/null 2>&1; then
+      permissions="$(stat -c 'mode=%a owner=%U:%G' "$cfg" 2>/dev/null || true)"
+    else
+      permissions="stat unavailable"
+    fi
+    warn "canonical config path=$cfg exists=yes permissions=${permissions:-unavailable} readable=$([ -r "$cfg" ] && printf yes || printf no) writable=$([ -w "$cfg" ] && printf yes || printf no)"
+  else
+    warn "canonical config path=$cfg exists=no permissions=unavailable"
+  fi
+
+  pids="$(termux_service_manager_serve_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//' || true)"
+  if [ -n "$pids" ]; then
+    warn "service-manager serve PID=$pids"
+  else
+    warn "process exited: service-manager serve PID unavailable"
+  fi
+
+  if command -v ss >/dev/null 2>&1; then
+    ss_output="$(ss -ltn 2>/dev/null || true)"
+    if printf '%s\n' "$ss_output" | awk -v port="$port" '$4 ~ (":" port "$") { found=1 } END { exit(found ? 0 : 1) }'; then
+      warn "configured bind=$bind port listening=yes"
+    else
+      warn "port not listening: configured bind=$bind"
+    fi
+  else
+    warn "port listening check unavailable: ss command unavailable; configured bind=$bind"
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    health_code="$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "$url/api/v1/health" 2>/dev/null || true)"
+    case "$health_code" in
+      2??)
+        warn "health HTTP result=ok status=$health_code"
+        ;;
+      "")
+        warn "health HTTP result=unavailable"
+        ;;
+      *)
+        warn "health HTTP result=failed status=$health_code"
+        ;;
+    esac
+
+    token="$(termux_service_manager_config_token || true)"
+    if [ -z "$token" ]; then
+      warn "token mismatch: canonical service-manager token unavailable; auth API result=unavailable"
+    else
+      auth_dir="$(mktemp -d "$TMPDIR/smallphoneai-sm-diagnostic.XXXXXX" 2>/dev/null || true)"
+      if [ -n "$auth_dir" ]; then
+        auth_cfg="$auth_dir/curl.cfg"
+        printf 'header = "Authorization: Bearer %s"\n' "$token" > "$auth_cfg"
+        chmod 600 "$auth_cfg"
+        auth_code="$(curl -q -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 -K "$auth_cfg" "$url/api/v1/services" 2>/dev/null || true)"
+        rm -rf "$auth_dir" >/dev/null 2>&1 || true
+        case "$auth_code" in
+          2??)
+            warn "auth API result=ok status=$auth_code"
+            ;;
+          401|403)
+            warn "token mismatch: auth API rejected canonical token status=$auth_code"
+            ;;
+          "")
+            warn "auth API result=unavailable"
+            ;;
+          *)
+            warn "auth API result=failed status=$auth_code"
+            ;;
+        esac
+      else
+        warn "auth API result=unavailable: temporary directory creation failed"
+      fi
+    fi
+  else
+    warn "health HTTP result=unavailable: curl command unavailable"
+    warn "auth API result=unavailable: curl command unavailable"
+  fi
+
+  if [ -r "$log_file" ]; then
+    warn "service-manager log tail path=$log_file lines=80 (redacted)"
+    tail -n 80 "$log_file" 2>/dev/null \
+      | redact_service_manager_diagnostic_stream \
+      | sed 's/^/[SmallPhoneAI] SM LOG: /' >&2
+  else
+    warn "service-manager log tail unavailable: $log_file"
+  fi
+  warn "ready timeout: service-manager readiness check failed"
+  warn "===== end service-manager readiness diagnostics ====="
+}
+
 resolve_termux_service_manager_token() {
   local token sm_bin cfg
   token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
@@ -524,6 +657,11 @@ resolve_bootstrap_root() {
 }
 
 bootstrap_root="$(resolve_bootstrap_root)"
+component_action="$(runtime_component_action || true)"
+if [ -z "$component_action" ]; then
+  warn "未知 SMALLPHONEAI_COMPONENT_ACTION=${SMALLPHONEAI_COMPONENT_ACTION:-}；允许 install-check、register-only、install-register。"
+  exit 2
+fi
 
 if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; then
   termux_pi_targets="$(bootstrap_targets_for_runtime termux)"
@@ -557,15 +695,41 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
       SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
       SERVICE_MANAGER_CONFIG_PATH="$native_config" \
       bash -s < "$0"
-    start_termux_service_manager_for_registration || warn "Termux native service-manager 暂未就绪；业务组件会在启动阶段再次刷新注册。"
+    if ! start_termux_service_manager_for_registration; then
+      diagnose_termux_service_manager_readiness "install/start"
+      warn "Termux native service-manager 安装后仍未就绪。"
+      if [ "${SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY:-0}" = "1" ]; then
+        exit 1
+      fi
+    fi
     native_token="$(resolve_termux_service_manager_token || true)"
-  elif [ -n "$ubuntu_targets" ] || [ -n "$termux_pi_targets" ]; then
-    start_termux_service_manager_for_registration || warn "Termux native service-manager 暂未就绪；业务组件可能只能完成安装/检查，注册会在启动阶段重试。"
+  elif { [ -n "$ubuntu_targets" ] || [ -n "$termux_pi_targets" ]; } \
+    && [ "$component_action" != "install-check" ]; then
+    if ! start_termux_service_manager_for_registration; then
+      diagnose_termux_service_manager_readiness "component registration"
+      warn "Termux native service-manager 暂未就绪；无法完成业务组件注册。"
+      if [ "$component_action" = "register-only" ] \
+        || [ "${SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY:-0}" = "1" ]; then
+        exit 1
+      fi
+    fi
     native_token="$(resolve_termux_service_manager_token || true)"
+  elif [ -n "$termux_pi_targets" ]; then
+    log "pi 安装/检查阶段显式延后 service-manager 注册。"
   fi
 
   if [ -n "$termux_pi_targets" ]; then
-    log "正在 Termux native 安装、检查并注册 pi 常驻组件：$termux_pi_targets"
+    case "$component_action" in
+      install-check)
+        log "正在 Termux native 安装并检查 pi 组件（暂不注册）：$termux_pi_targets"
+        ;;
+      register-only)
+        log "正在向 Termux native service-manager 注册既有 pi 组件：$termux_pi_targets"
+        ;;
+      *)
+        log "正在 Termux native 安装、检查并注册 pi 常驻组件：$termux_pi_targets"
+        ;;
+    esac
     run_with_service_manager_auth "${SERVICE_MANAGER_TOKEN:-$native_token}" env \
       SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
       SMALLPHONEAI_ROOT="$bootstrap_root" \
@@ -1685,6 +1849,17 @@ run_component() {
   local required="$4"
   local payload_name="$5"
 
+  if [ "$component_action" = "register-only" ]; then
+    if [ ! -d "$dir" ]; then
+      warn "$name: register-only 要求组件已安装：$dir"
+      failures=$((failures + 1))
+      return 0
+    fi
+    patch_pi_payload_for_termux "$payload_name" "$dir"
+    run_repo_script "$name" "$dir" "scripts/register-service.sh" "1" "$payload_name"
+    return 0
+  fi
+
   if ! prepare_component "$name" "$dir" "$url" "$payload_name"; then
     if [ "$required" = "1" ]; then
       failures=$((failures + 1))
@@ -1703,13 +1878,17 @@ run_component() {
   if [ "$payload_name" = "hermes" ]; then
     run_repo_script "$name" "$dir" "openhouse/install.sh" "$required" "$payload_name"
     run_repo_script "$name" "$dir" "openhouse/check.sh" "$required" "$payload_name"
-    run_repo_script "$name" "$dir" "openhouse/register-service.sh" "0" "$payload_name"
+    if [ "$component_action" != "install-check" ]; then
+      run_repo_script "$name" "$dir" "openhouse/register-service.sh" "0" "$payload_name"
+    fi
     return 0
   fi
 
   run_repo_script "$name" "$dir" "scripts/install.sh" "$required" "$payload_name"
   run_repo_script "$name" "$dir" "scripts/check.sh" "$required" "$payload_name"
-  run_repo_script "$name" "$dir" "scripts/register-service.sh" "0" "$payload_name"
+  if [ "$component_action" != "install-check" ]; then
+    run_repo_script "$name" "$dir" "scripts/register-service.sh" "0" "$payload_name"
+  fi
 }
 
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
@@ -1726,6 +1905,7 @@ log "SmallPhoneAI 运行组件入口由各子仓库维护。"
 log "当前运行环境：$(detect_smallphoneai_runtime)"
 log "组件仓库根目录：$repo_root"
 log "组件来源模式：$component_source_mode"
+log "组件处理模式：$component_action"
 if [ "$component_source_mode" = "bundle" ]; then
   log "APK payload 根目录：$payload_root"
   if [ "$force_payload_refresh" = "1" ]; then
@@ -1793,4 +1973,14 @@ if [ "$failures" -ne 0 ]; then
   warn "SmallPhoneAI 运行组件存在 $failures 个失败项；SMALLPHONEAI_COMPONENTS_STRICT=0，继续。"
 fi
 
-log "SmallPhoneAI 运行组件安装/检查/注册阶段完成。"
+case "$component_action" in
+  install-check)
+    log "SmallPhoneAI 运行组件安装/检查阶段完成；服务注册已延后。"
+    ;;
+  register-only)
+    log "SmallPhoneAI 运行组件注册阶段完成。"
+    ;;
+  *)
+    log "SmallPhoneAI 运行组件安装/检查/注册阶段完成。"
+    ;;
+esac

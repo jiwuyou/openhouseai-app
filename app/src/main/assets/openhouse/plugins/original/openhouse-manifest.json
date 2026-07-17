@@ -23,18 +23,18 @@
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "准备 Termux 路径、安装 Termux 基础包和 Ubuntu rootfs；新装完成后默认停留在 Termux native。",
-      "stages": ["env_check", "prepare", "termux_packages", "install_ubuntu", "ubuntu_packages"]
+      "description": "先准备 Termux 和 wuyou，再安装 Node、pi-agent、pi-web 并开放 30142 紧急救援；随后安装 service-manager、注册并启动正式 30141，再继续 OpenHouse Web、Ubuntu 和基础依赖。",
+      "stages": ["env_check", "prepare", "termux_packages", "install_wuyou", "termux_node", "install_pi_agent", "install_pi_web", "start_pi_web_rescue", "install_service_manager", "register_pi_services", "start_smallphone", "install_openhouse_web", "install_ubuntu", "ubuntu_packages"]
     },
     {
-      "title": "准备控制平面依赖",
-      "description": "安装 Node.js 并同步 OpenHouse 文档；Codex、Claude Code、CloudCLI 和 Hermes 改为 pi-agent 后置引导安装。",
+      "title": "准备 Ubuntu AI 工作台依赖",
+      "description": "安装 Ubuntu Node.js 并同步 OpenHouse 文档；Termux Node/npm 专用于 pi-agent/pi-web 常驻层。",
       "stages": ["install_node", "sync_official_docs"]
     },
     {
       "title": "建立 OpenHouse 控制平面",
-      "description": "先安装 pi-agent 和 pi-web，再安装并准备 service-manager，随后注册基础栈、openhouse-connect 和 SmallPhone 兼容服务。",
-      "stages": ["runtime_components", "sync_openhouse_registry"]
+      "description": "核心 Termux 控制平面已在前一组完成；Ubuntu 准备完成后继续同步 registry。",
+      "stages": ["sync_openhouse_registry"]
     },
     {
       "title": "启动 pi-agent 运行栈",
@@ -80,8 +80,8 @@
         {
           "id": "runtime_components",
           "type": "button",
-          "label": "安装运行组件",
-          "description": "从 APK 内置运行组件包先安装 pi-agent/pi-web，再准备 service-manager，随后检查并注册 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容组件。",
+          "label": "手动修复运行组件",
+          "description": "手动兼容入口：重新执行 APK 内置运行组件的安装、检查和注册；默认一键流程使用上方拆分阶段。",
           "action": { "type": "bootstrap", "args": ["runtime-components"] }
         },
         {
@@ -119,6 +119,54 @@
       "title": "安装 Termux 基础包",
       "description": "pkg 安装 proot-distro、curl、openssl、ca-certificates。",
       "action": { "type": "bootstrap", "args": ["termux-packages"] }
+    },
+    {
+      "id": "install_wuyou",
+      "title": "安装 wuyou",
+      "description": "在安装 Node.js 之前，从 APK payload 安装并检查独立 wuyou 命令。",
+      "action": { "type": "bootstrap", "args": ["install-wuyou"] }
+    },
+    {
+      "id": "termux_node",
+      "title": "安装 Termux Node/npm",
+      "description": "安装并检查 Termux native Node.js 24 LTS 和 npm，供 pi-agent、pi-web 使用。",
+      "action": { "type": "bootstrap", "args": ["termux-node"] }
+    },
+    {
+      "id": "install_pi_agent",
+      "title": "安装 pi-agent",
+      "description": "安装并检查 Termux native pi-agent；暂不依赖 service-manager，不执行服务注册。",
+      "action": { "type": "bootstrap", "args": ["install-pi-agent"] }
+    },
+    {
+      "id": "install_pi_web",
+      "title": "安装 pi-web",
+      "description": "安装并检查 pi-web standalone runtime；暂不依赖 service-manager，不执行服务注册。",
+      "action": { "type": "bootstrap", "args": ["install-pi-web"] }
+    },
+    {
+      "id": "start_pi_web_rescue",
+      "title": "启动紧急 AI 救援",
+      "description": "在 30142 启动并验证不依赖 service-manager 的 pi-web 救援入口。",
+      "action": { "type": "bootstrap", "args": ["start-pi-web-rescue"] }
+    },
+    {
+      "id": "install_service_manager",
+      "title": "安装运行中枢",
+      "description": "安装并启动 Termux native service-manager，等待健康与认证接口就绪。",
+      "action": { "type": "bootstrap", "args": ["install-service-manager"] }
+    },
+    {
+      "id": "register_pi_services",
+      "title": "注册 pi 服务",
+      "description": "只把已经安装的 pi-agent、pi-web 注册到 service-manager，不重复安装 payload。",
+      "action": { "type": "bootstrap", "args": ["register-pi-services"] }
+    },
+    {
+      "id": "install_openhouse_web",
+      "title": "安装 OpenHouse Web",
+      "description": "在正式 pi-web 30141 启动后安装、检查并注册 OpenHouse Web。",
+      "action": { "type": "bootstrap", "args": ["install-openhouse-web"] }
     },
     {
       "id": "install_ubuntu",
@@ -170,8 +218,8 @@
     },
     {
       "id": "runtime_components",
-      "title": "安装 OpenHouse 运行组件",
-      "description": "从 APK 内置运行组件包先安装 pi-agent/pi-web，再准备 service-manager，随后检查并注册 pi-agent、pi-web、openhouse-connect 和 SmallPhone 兼容组件。",
+      "title": "手动修复 OpenHouse 运行组件",
+      "description": "手动兼容入口：重新执行运行组件 install/check/register；不进入默认一键 stageFlow。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {
@@ -182,8 +230,8 @@
     },
     {
       "id": "start_smallphone",
-      "title": "启动 pi-agent 运行栈",
-      "description": "启动 service-manager，通过 group:local-stack 启动 pi-web、SmallPhone 运行栈，并输出最终健康状态。",
+      "title": "启动正式 pi-web",
+      "description": "通过 service-manager 启动正式 pi-agent 和 pi-web 30141；紧急救援 30142 保持可用。",
       "action": { "type": "bootstrap", "args": ["start"] }
     }
   ]
