@@ -11,6 +11,7 @@ import com.termux.shared.termux.TermuxConstants;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -55,14 +56,21 @@ public final class OpenHouseInstallController {
     private static final Stage[] RUNTIME_ENVIRONMENT_STAGE_SEQUENCE = new Stage[] {
         Stage.PREPARE,
         Stage.TERMUX_PACKAGES,
+        Stage.INSTALL_WUYOU,
         Stage.INSTALL_TERMUX_NODE,
-        Stage.RUNTIME_COMPONENTS,
+        Stage.INSTALL_PI_AGENT,
+        Stage.INSTALL_PI_WEB,
+        Stage.START_PI_WEB_RESCUE,
+        Stage.INSTALL_SERVICE_MANAGER,
+        Stage.REGISTER_PI_SERVICES,
         Stage.START_SMALLPHONE,
+        Stage.INSTALL_OPENHOUSE_WEB,
         Stage.INSTALL_UBUNTU,
         Stage.UBUNTU_PACKAGES
     };
     private static final Stage[] AI_FEATURES_STAGE_SEQUENCE = new Stage[] {
         Stage.START_SMALLPHONE,
+        Stage.INSTALL_OPENHOUSE_WEB,
         Stage.INSTALL_NODE,
         Stage.SYNC_OFFICIAL_DOCS,
         Stage.INSTALL_AIONUI,
@@ -71,9 +79,15 @@ public final class OpenHouseInstallController {
     private static final Stage[] FULL_STAGE_SEQUENCE = new Stage[] {
         Stage.PREPARE,
         Stage.TERMUX_PACKAGES,
+        Stage.INSTALL_WUYOU,
         Stage.INSTALL_TERMUX_NODE,
-        Stage.RUNTIME_COMPONENTS,
+        Stage.INSTALL_PI_AGENT,
+        Stage.INSTALL_PI_WEB,
+        Stage.START_PI_WEB_RESCUE,
+        Stage.INSTALL_SERVICE_MANAGER,
+        Stage.REGISTER_PI_SERVICES,
         Stage.START_SMALLPHONE,
+        Stage.INSTALL_OPENHOUSE_WEB,
         Stage.INSTALL_UBUNTU,
         Stage.UBUNTU_PACKAGES,
         Stage.INSTALL_NODE,
@@ -111,6 +125,8 @@ public final class OpenHouseInstallController {
     private volatile int currentAttempt = 0;
     private volatile int preparingAttempt = 0;
     private volatile boolean initialStateLoaded;
+    private volatile boolean piWebRescueAvailable;
+    private volatile String cachedFailureReportText = "";
 
     public interface Listener {
         void onInstallStateChanged(OpenHouseInstallState state);
@@ -549,6 +565,21 @@ public final class OpenHouseInstallController {
             currentAttempt = requestedAttempt > 0 ? requestedAttempt : nextAttemptForNewRun();
             preparingAttempt = currentAttempt;
 
+            try {
+                resetManifestLogForNewRun(resolvedTaskScope);
+            } catch (IOException e) {
+                clearPreparingAttemptIfMatchesLocked(currentAttempt);
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to create first-install log", e);
+                updateState(buildState(
+                    OpenHouseInstallState.Status.FAILED,
+                    0,
+                    "初始化失败",
+                    "无法在安装开始前创建详细日志：" + safeMessage(e),
+                    firstStageForTask(resolvedTaskScope).slug
+                ));
+                return true;
+            }
+
             updateState(buildState(
                 currentAttempt > 1
                     ? OpenHouseInstallState.Status.RETRYING
@@ -562,6 +593,11 @@ public final class OpenHouseInstallController {
             File bash = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "bash");
             if (!bash.isFile()) {
                 clearPreparingAttemptIfMatchesLocked(currentAttempt);
+                appendManifestFailure(
+                    "TERMUX_BASH_MISSING",
+                    firstStageForTask(resolvedTaskScope),
+                    "Termux 基础环境尚未安装完成，缺少 bash。",
+                    null);
                 updateState(buildState(
                     OpenHouseInstallState.Status.FAILED,
                     0,
@@ -578,6 +614,11 @@ public final class OpenHouseInstallController {
             } catch (RuntimeException e) {
                 clearPreparingAttemptIfMatchesLocked(launchAttempt);
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to schedule OpenHouseAI one-click install", e);
+                appendManifestFailure(
+                    "INSTALL_SCHEDULING_FAILED",
+                    firstStageForTask(resolvedTaskScope),
+                    "无法启动后台资源准备任务。",
+                    e);
                 updateState(buildState(
                     OpenHouseInstallState.Status.FAILED,
                     state.percent,
@@ -607,11 +648,13 @@ public final class OpenHouseInstallController {
                 throw new IOException("Termux 基础环境尚未安装完成，缺少 bash");
             }
 
+            appendManifestLine("[preflight] 开始同步并校验 APK 内置安装资源。");
             OpenHouseBundledRuntimeSync.Result runtimeSync = prepareBundledRuntimeAssets();
+            appendManifestLine("[preflight] APK 内置安装资源同步和完整性校验完成。");
             File logDir = ensureLogDir();
             File tempScript = new File(logDir, "run-" + MANIFEST_FULL_SLUG + ".sh");
             writeScript(tempScript, buildInstallScript(taskScope, runtimeSync));
-            resetManifestLogForNewRun(taskScope);
+            appendManifestLine("[preflight] 安装脚本已生成：" + tempScript.getAbsolutePath());
             long startedAtMs = System.currentTimeMillis();
             File outputFile = File.createTempFile("openhouse-install-", ".log", context.getCacheDir());
             ProcessBuilder processBuilder = new ProcessBuilder(
@@ -634,6 +677,7 @@ public final class OpenHouseInstallController {
                 writeRunningMarker(startedAtMs, taskScope);
                 resetProgressSimulation(startedAtMs, firstStageForTask(taskScope));
                 process = processBuilder.start();
+                appendManifestLine("[preflight] 安装进程已启动。");
                 currentProcess = process;
                 clearPreparingAttemptIfMatchesLocked(launchAttempt);
             }
@@ -650,6 +694,11 @@ public final class OpenHouseInstallController {
                     return;
                 }
                 Logger.logStackTraceWithMessage(LOG_TAG, "Failed to prepare or start OpenHouseAI one-click install", e);
+                appendManifestFailure(
+                    "RESOURCE_PREPARATION_FAILED",
+                    firstStageForTask(taskScope),
+                    "无法准备资源或启动初始化任务。",
+                    e);
                 appendCompletionMarkerIfMissing(1);
                 clearRunningMarker();
                 updateState(buildState(
@@ -846,6 +895,55 @@ public final class OpenHouseInstallController {
         return redactSecrets(readLogTail(charLimit));
     }
 
+    /**
+     * Returns the complete, redacted first-install failure report. The report starts with the
+     * diagnosed error and evidence, then includes every available source log in full.
+     */
+    public String getFailureReportText() {
+        String cached = cachedFailureReportText;
+        if (!cached.isEmpty()) {
+            return cached;
+        }
+
+        OpenHouseInstallState snapshot = state == null ? OpenHouseInstallState.idle() : state;
+        String report = OpenHouseInstallFailureReport.build(
+            context,
+            snapshot,
+            getManifestLogFile(),
+            getServiceManagerLogFile(),
+            getPiWebRescueLogFile());
+        if (snapshot.failed) {
+            cachedFailureReportText = report;
+            OpenHouseInstallFailureReport.writeLatestFailureReport(report, getLatestFailureReportFile());
+        }
+        return report;
+    }
+
+    /**
+     * Fast availability check for the standalone 30142 rescue entry. It intentionally avoids
+     * network and shell probes so callers may use it while rendering the onboarding UI.
+     */
+    public boolean isPiWebRescueAvailable() {
+        if (piWebRescueAvailable) {
+            return true;
+        }
+
+        if (getPiWebRescueMarkerFile().isFile() || isPiWebRuntimeInstalled()) {
+            piWebRescueAvailable = true;
+            return true;
+        }
+
+        OpenHouseInstallState snapshot = state;
+        Stage currentStage = snapshot == null ? null : Stage.fromSlug(snapshot.currentStageSlug);
+        if (currentStage != null
+            && containsStage(snapshot.taskScope, Stage.START_PI_WEB_RESCUE)
+            && getStageIndex(currentStage, snapshot.taskScope)
+                >= getStageIndex(Stage.START_PI_WEB_RESCUE, snapshot.taskScope)) {
+            piWebRescueAvailable = true;
+        }
+        return piWebRescueAvailable;
+    }
+
     private void waitForInstallProcess(Process process, File outputFile) {
         int exitCode = 1;
         try {
@@ -856,6 +954,7 @@ public final class OpenHouseInstallController {
             exitCode = 130;
         } finally {
             if (outputFile != null) {
+                appendCapturedProcessOutput(outputFile);
                 outputFile.delete();
             }
         }
@@ -1465,12 +1564,39 @@ public final class OpenHouseInstallController {
     private void updateState(OpenHouseInstallState nextState) {
         OpenHouseInstallState resolvedState = nextState == null ? OpenHouseInstallState.idle() : nextState;
         syncCurrentMetadata(resolvedState);
+        updatePiWebRescueAvailability(resolvedState);
+        if (resolvedState.failed) {
+            String report = OpenHouseInstallFailureReport.build(
+                context,
+                resolvedState,
+                getManifestLogFile(),
+                getServiceManagerLogFile(),
+                getPiWebRescueLogFile());
+            cachedFailureReportText = report;
+            OpenHouseInstallFailureReport.writeLatestFailureReport(report, getLatestFailureReportFile());
+        } else if (resolvedState.running || resolvedState.status == OpenHouseInstallState.Status.PENDING) {
+            cachedFailureReportText = "";
+        }
         state = resolvedState;
         mainHandler.post(() -> {
             for (Listener listener : listeners) {
                 listener.onInstallStateChanged(state);
             }
         });
+    }
+
+    private void updatePiWebRescueAvailability(OpenHouseInstallState installState) {
+        if (piWebRescueAvailable || installState == null) {
+            return;
+        }
+        Stage currentStage = Stage.fromSlug(installState.currentStageSlug);
+        if (currentStage == null || !containsStage(installState.taskScope, Stage.START_PI_WEB_RESCUE)) {
+            return;
+        }
+        if (getStageIndex(currentStage, installState.taskScope)
+            >= getStageIndex(Stage.START_PI_WEB_RESCUE, installState.taskScope)) {
+            piWebRescueAvailable = true;
+        }
     }
 
     private void syncCurrentMetadata(OpenHouseInstallState nextState) {
@@ -1695,6 +1821,32 @@ public final class OpenHouseInstallController {
         return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".maintainer-logs/" + MANIFEST_FULL_SLUG + ".log");
     }
 
+    private File getServiceManagerLogFile() {
+        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".smallphoneai/logs/service-manager.log");
+    }
+
+    private File getPiWebRescueLogFile() {
+        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".smallphoneai/logs/pi-web-rescue-30142.log");
+    }
+
+    private File getPiWebRescueMarkerFile() {
+        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".smallphoneai/rescue/pi-web-30142.marker");
+    }
+
+    private File getLatestFailureReportFile() {
+        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".smallphoneai/rescue/latest-install-failure.txt");
+    }
+
+    private boolean isPiWebRuntimeInstalled() {
+        File home = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+        File installedRuntime = new File(home, ".local/share/openhouseai/pi-web/server.js");
+        File installedLauncher = new File(home, ".local/bin/openhouse-pi-web-start");
+        File bundledRuntime = new File(home, ".local/share/openhouseai/pi-web-bundle/runtime/pi-web/server.js");
+        File bundledLauncher = new File(home, ".local/share/openhouseai/pi-web-bundle/bin/openhouse-pi-web-start");
+        return (installedRuntime.isFile() && installedLauncher.isFile())
+            || (bundledRuntime.isFile() && bundledLauncher.isFile());
+    }
+
     private String getManifestLogPath() {
         return getManifestLogFile().getAbsolutePath();
     }
@@ -1845,11 +1997,65 @@ public final class OpenHouseInstallController {
             parent.mkdirs();
         }
         try (FileOutputStream outputStream = new FileOutputStream(logFile, false)) {
-            String taskLine = "__OPENHOUSE_INSTALL_TASK__:" + resolvedTaskScope.value + "\n";
-            outputStream.write(taskLine.getBytes(StandardCharsets.UTF_8));
-            outputStream.write(("开始执行 SmallPhoneAI " + taskLogLabel(resolvedTaskScope) + "。\n").getBytes(StandardCharsets.UTF_8));
-            String modeLine = "重试模式：" + currentRetryMode.label + "；尝试次数：" + Math.max(1, currentAttempt) + "\n";
-            outputStream.write(modeLine.getBytes(StandardCharsets.UTF_8));
+            String header = OpenHouseInstallFailureReport.createInstallLogHeader(
+                context,
+                resolvedTaskScope,
+                currentRetryMode,
+                Math.max(1, currentAttempt),
+                taskLogLabel(resolvedTaskScope));
+            outputStream.write(header.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private void appendManifestLine(String line) {
+        File logFile = getManifestLogFile();
+        File parent = logFile.getParentFile();
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs();
+        }
+        try (FileOutputStream outputStream = new FileOutputStream(logFile, true)) {
+            String safeLine = line == null ? "" : line;
+            outputStream.write((safeLine + "\n").getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to append first-install diagnostic", e);
+        }
+    }
+
+    private void appendManifestFailure(String code, Stage stage, String message, Exception error) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("__OPENHOUSE_INSTALL_FAILURE__:")
+            .append(code == null || code.isEmpty() ? "UNKNOWN_WITH_DIAGNOSTICS" : code)
+            .append(':')
+            .append(stage == null ? MANIFEST_FULL_SLUG : stage.slug)
+            .append(':')
+            .append(message == null ? "" : message);
+        if (error != null) {
+            builder.append(" exception=")
+                .append(error.getClass().getSimpleName())
+                .append(" message=")
+                .append(safeMessage(error));
+        }
+        appendManifestLine(builder.toString());
+    }
+
+    private void appendCapturedProcessOutput(File outputFile) {
+        if (outputFile == null || !outputFile.isFile() || outputFile.length() <= 0L) {
+            return;
+        }
+        File logFile = getManifestLogFile();
+        try (FileInputStream inputStream = new FileInputStream(outputFile);
+             FileOutputStream outputStream = new FileOutputStream(logFile, true)) {
+            outputStream.write("\n===== 安装进程完整 stdout/stderr =====\n".getBytes(StandardCharsets.UTF_8));
+            byte[] buffer = new byte[16 * 1024];
+            int count;
+            while ((count = inputStream.read(buffer)) >= 0) {
+                if (count > 0) {
+                    outputStream.write(buffer, 0, count);
+                }
+            }
+            outputStream.write("\n===== 安装进程 stdout/stderr 结束 =====\n".getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to retain complete installer output", e);
         }
     }
 
@@ -1989,7 +2195,7 @@ public final class OpenHouseInstallController {
         builder.append("LOG_FILE=\"$LOG_DIR/$STAGE_SLUG.log\"\n");
         builder.append("RUNNING_FILE=\"$LOG_DIR/$STAGE_SLUG.running\"\n");
         builder.append("mkdir -p \"$LOG_DIR\"\n");
-        builder.append(": > \"$LOG_FILE\"\n");
+        builder.append("touch \"$LOG_FILE\"\n");
         builder.append("current_epoch_ms(){ local seconds; seconds=\"$(date +%s 2>/dev/null || true)\"; if [ -n \"$seconds\" ]; then printf '%s000' \"$seconds\"; else printf '0'; fi; }\n");
         builder.append("RUN_STARTED_AT_MS=\"${OPENHOUSE_RUN_STARTED_AT_MS:-$(current_epoch_ms)}\"\n");
         builder.append("REMOTE_SCHEDULE_ACTIVE=0\n");
@@ -2220,15 +2426,21 @@ public final class OpenHouseInstallController {
     private enum Stage {
         PREPARE("prepare", "prepare-product.sh", "准备本机目录", "正在创建文档目录和工作区。"),
         TERMUX_PACKAGES("termux_packages", "update-termux-packages.sh", "准备 Linux 环境", "正在安装 proot-distro、openssh、curl、jq 和证书依赖。"),
+        INSTALL_WUYOU("install_wuyou", "install-wuyou.sh", "安装 wuyou", "正在安装或检查 Termux native wuyou 基础工具。"),
         INSTALL_TERMUX_NODE("install_termux_node", "install-termux-node.sh", "安装 Termux Node.js 24 LTS", "正在安装或检查 Termux native Node.js 24 LTS/npm，供 pi-agent 和 pi-web 常驻服务使用。"),
+        INSTALL_PI_AGENT("install_pi_agent", "install-pi-agent.sh", "安装 pi-agent", "正在从 APK 内置 payload 安装并检查 Termux native pi-agent，不依赖 service-manager。"),
+        INSTALL_PI_WEB("install_pi_web", "install-pi-web.sh", "安装 pi-web", "正在从 APK 内置 payload 安装并检查 Termux native pi-web，不依赖 service-manager。"),
+        START_PI_WEB_RESCUE("start_pi_web_rescue", "start-pi-web-rescue.sh", "启动紧急 AI 救援", "正在启动并检查独立的 pi-web 30142 紧急救援入口。"),
+        INSTALL_SERVICE_MANAGER("install_service_manager", "install-service-manager.sh", "安装 service-manager", "正在安装并启动 Termux native service-manager 控制中枢。"),
+        REGISTER_PI_SERVICES("register_pi_services", "register-pi-services.sh", "注册 pi 服务", "正在把已安装的 pi-agent 和 pi-web 注册到 service-manager。"),
         INSTALL_UBUNTU("install_ubuntu", "install-ubuntu.sh", "下载 Linux 系统", "正在下载并安装 Ubuntu。"),
         SYNC_OFFICIAL_DOCS("sync_official_docs", "sync-official-docs.sh", "同步使用文档", "正在同步 OpenHouseAI 使用文档。"),
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh", "安装 Linux 基础工具", "正在安装 curl、git 等基础工具。"),
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh", "设置启动方式", "正在配置默认进入 Ubuntu。"),
         INSTALL_NODE("install_node", "install-node.sh", "安装 Ubuntu Node.js 24 LTS", "正在 Ubuntu AI 工作台层安装或检查 Node.js 24 LTS，供 AionUI、OpenHouseAI 工作台和 AI CLI 工具使用。"),
-        RUNTIME_COMPONENTS("runtime_components", "install-runtime-components.sh", "安装本机 Agent 运行栈", "正在先确保 Termux native service-manager 可用，再按 pi-agent、pi-web 顺序安装并逐个注册；Ubuntu 工作台仍属于后续准备运行环境。"),
         SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh", "同步 OpenHouseAI 注册表", "正在把 Ubuntu mirror 同步到 Termux canonical，供 App、SmallPhone 和 AI 读取。"),
-        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动本机 pi-agent", "正在通过 Termux native service-manager 先启动 pi-agent 和 pi-web，让主入口先可用；后续继续准备 Ubuntu 工作台。"),
+        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动正式 pi-web", "正在通过 Termux native service-manager 启动正式 pi-agent 和 pi-web 30141；紧急救援 30142 保持可用。"),
+        INSTALL_OPENHOUSE_WEB("install_openhouse_web", "install-openhouse-web.sh", "安装 OpenHouse Web", "正在安装并注册 Termux native OpenHouse Web 服务。"),
         INSTALL_AIONUI("install_aionui", "install-aionui.sh", "安装 AI 工作台", "正在从 APK 内置离线包安装 AionUi 工作台，并检查本机入口。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),

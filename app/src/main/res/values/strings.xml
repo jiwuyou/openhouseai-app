@@ -380,11 +380,11 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="release_update_open_install_permission">打开安装权限</string>
     <string name="release_update_install_permission_failed">无法打开安装权限设置</string>
     <string name="permissions_title">权限获取</string>
-    <string name="permissions_legend">建议先完成以下系统权限，再执行下方阶段操作。电池优化默认是必选项；启动管理/后台保活是厂商手动设置项，Android 无统一检测 API；悬浮窗和存储访问仅作为可选增强。</string>
+    <string name="permissions_legend">建议先完成以下系统权限，再执行下方阶段操作。电池优化默认是必选项；启动管理/后台保活是厂商手动设置项，Android 无统一检测 API；悬浮窗和文件访问仅作为可选增强，不会阻止首次安装。</string>
     <string name="button_permission_battery">忽略电池优化</string>
     <string name="button_permission_startup">启动管理/后台保活</string>
     <string name="button_permission_overlay">悬浮窗权限</string>
-    <string name="button_permission_storage">存储访问</string>
+    <string name="button_permission_storage">文件访问</string>
     <string name="permission_requirement_hint">电池优化默认会阻止下方阶段操作。若你确认不需要这条约束，可在这里关闭“电池优化必选”。</string>
     <string name="switch_disable_battery_requirement">关闭“电池优化必选”</string>
     <string name="execution_mode_title">执行模式</string>
@@ -474,8 +474,8 @@ openhouse ai 是一个开源的本地工具。它运行在你自己的设备上�
     <string name="permission_detail_startup_manual">打开厂商自启动、后台运行或应用详情页；系统无法统一检测，不计入已开启数量</string>
     <string name="permission_detail_overlay_ready">用于悬浮入口和部分后台拉起辅助</string>
     <string name="permission_detail_overlay_complete">悬浮窗权限已开启</string>
-    <string name="permission_detail_storage_ready">用于完整访问共享存储与产品文档</string>
-    <string name="permission_detail_storage_complete">存储访问已开启</string>
+    <string name="permission_detail_storage_ready">用于将首次安装完整诊断日志导出到手机 Download 目录</string>
+    <string name="permission_detail_storage_complete">文件访问已开启，可向 Download 导出诊断日志</string>
     <string name="permission_requirement_state_required">电池优化要求：必选</string>
     <string name="permission_requirement_state_disabled">电池优化要求：已关闭必选，仅作提醒</string>
     <string name="permission_battery_required_toast">请先完成必选权限“忽略电池优化”，或在权限区底部关闭这个必选项。</string>

@@ -63,6 +63,26 @@ public final class OpenHouseOnboardingRuntime {
         return installController.getState();
     }
 
+    public String getFailureReportText() {
+        try {
+            return installController.getFailureReportText();
+        } catch (Throwable throwable) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read first-install failure report", throwable);
+            return "OpenHouse 首次安装错误报告\n\n"
+                + "错误结论：安装控制器暂时无法生成错误报告。\n"
+                + "状态说明：" + safeMessage(throwable);
+        }
+    }
+
+    public boolean isPiWebRescueAvailable() {
+        try {
+            return installController.isPiWebRescueAvailable();
+        } catch (Throwable throwable) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read pi-web rescue availability", throwable);
+            return false;
+        }
+    }
+
     public NetworkLine getNetworkLine() {
         return NetworkLine.fromOpenHouseLine(OpenHouseNetworkLinePreferences.getSelectedLine(activity));
     }

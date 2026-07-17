@@ -37,6 +37,13 @@ public class OpenHouseOnboardingActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onOpenAiRescue() {
+                Intent intent = new Intent(OpenHouseOnboardingActivity.this, OpenHouseHomeActivity.class);
+                intent.putExtra("openhouse_page", "ai-rescue");
+                ActivityUtils.startActivity(OpenHouseOnboardingActivity.this, intent);
+            }
+
+            @Override
             public void onStartTerminalTutorial(boolean restartEntrySession) {
                 openUsageTeaching();
             }

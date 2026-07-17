@@ -222,6 +222,42 @@
                         </androidx.core.widget.NestedScrollView>
 
                         <Button
+                            android:id="@+id/buttonCopySharedInstallReport"
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:layout_marginTop="10dp"
+                            android:gravity="center"
+                            android:text="一键复制错误报告"
+                            android:textAllCaps="false"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+
+                        <Button
+                            android:id="@+id/buttonExportSharedInstallReport"
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center"
+                            android:text="导出并发送完整日志"
+                            android:textAllCaps="false"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+
+                        <Button
+                            android:id="@+id/buttonOpenSharedInstallRescue"
+                            android:layout_width="match_parent"
+                            android:layout_height="44dp"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center"
+                            android:text="进入紧急 AI 救援"
+                            android:textAllCaps="false"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+
+                        <Button
                             android:id="@+id/buttonForceRestartSharedInstall"
                             android:layout_width="match_parent"
                             android:layout_height="48dp"

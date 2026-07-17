@@ -42,6 +42,7 @@ import com.termux.app.openhouse.OpenHouseInstallState;
 import com.termux.app.openhouse.OpenHouseStartupPermissionHelper;
 import com.termux.app.openhouse.OpenHouseStatusRepository;
 import com.termux.app.openhouse.components.OpenHouseComponentRegistry;
+import com.termux.app.openhouse.onboarding.OpenHouseInstallReportActions;
 import com.termux.app.openhouse.release.OpenHouseReleaseDownloader;
 import com.termux.app.openhouse.release.OpenHouseReleaseException;
 import com.termux.app.openhouse.release.OpenHouseReleaseInstaller;
@@ -139,13 +140,20 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private static final StageAction[] ONE_CLICK_STAGE_SEQUENCE = new StageAction[] {
         StageAction.PREPARE,
         StageAction.TERMUX_PACKAGES,
+        StageAction.INSTALL_WUYOU,
+        StageAction.INSTALL_TERMUX_NODE,
+        StageAction.INSTALL_PI_AGENT,
+        StageAction.INSTALL_PI_WEB,
+        StageAction.START_PI_WEB_RESCUE,
+        StageAction.INSTALL_SERVICE_MANAGER,
+        StageAction.REGISTER_PI_SERVICES,
+        StageAction.START_SMALLPHONE,
+        StageAction.INSTALL_OPENHOUSE_WEB,
         StageAction.INSTALL_UBUNTU,
         StageAction.UBUNTU_PACKAGES,
         StageAction.INSTALL_NODE,
         StageAction.SYNC_OFFICIAL_DOCS,
-        StageAction.RUNTIME_COMPONENTS,
-        StageAction.SYNC_OPENHOUSE_REGISTRY,
-        StageAction.START_SMALLPHONE
+        StageAction.SYNC_OPENHOUSE_REGISTRY
     };
 
     private TextView statusHeadlineView;
@@ -162,6 +170,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private TextView sharedInstallProgressView;
     private TextView sharedInstallDetailView;
     private TextView sharedInstallLogView;
+    private Button copySharedInstallReportButton;
+    private Button exportSharedInstallReportButton;
+    private Button openSharedInstallRescueButton;
     private Button forceRestartSharedInstallButton;
     private LinearLayout dynamicPluginSectionsContainer;
     private NestedScrollView liveLogScrollView;
@@ -328,6 +339,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         sharedInstallProgressView = findViewById(R.id.sharedInstallProgress);
         sharedInstallDetailView = findViewById(R.id.sharedInstallDetail);
         sharedInstallLogView = findViewById(R.id.sharedInstallLog);
+        copySharedInstallReportButton = findViewById(R.id.buttonCopySharedInstallReport);
+        exportSharedInstallReportButton = findViewById(R.id.buttonExportSharedInstallReport);
+        openSharedInstallRescueButton = findViewById(R.id.buttonOpenSharedInstallRescue);
         forceRestartSharedInstallButton = findViewById(R.id.buttonForceRestartSharedInstall);
         dynamicPluginSectionsContainer = findViewById(R.id.dynamicPluginSections);
         sharedInstallLogScrollView = findViewById(R.id.sharedInstallLogScroll);
@@ -1703,6 +1717,21 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         if (forceRestartSharedInstallButton != null) {
             forceRestartSharedInstallButton.setOnClickListener(v -> confirmForceRestartSharedInstall());
         }
+        if (copySharedInstallReportButton != null) {
+            copySharedInstallReportButton.setOnClickListener(v -> OpenHouseInstallReportActions.copyReport(
+                this,
+                readSharedInstallFailureReport()
+            ));
+        }
+        if (exportSharedInstallReportButton != null) {
+            exportSharedInstallReportButton.setOnClickListener(v -> OpenHouseInstallReportActions.exportAndShare(
+                this,
+                readSharedInstallFailureReport()
+            ));
+        }
+        if (openSharedInstallRescueButton != null) {
+            openSharedInstallRescueButton.setOnClickListener(v -> openSharedInstallAiRescue());
+        }
         setOneClickStageMode(true);
     }
 
@@ -2085,6 +2114,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean running = readBooleanInstallState(state, "running", false);
         boolean completed = readBooleanInstallState(state, "completed", false);
         boolean failed = readBooleanInstallState(state, "failed", false);
+        if (completed && sharedInstallFailed && !sharedInstallCoreVerified
+            && !sharedInstallCoreVerificationInFlight) {
+            completed = false;
+            failed = true;
+        }
         int percent = readIntInstallState(state, "percent", -1);
         String phaseLabel = readStringInstallState(state, "phaseLabel");
         String detailText = readStringInstallState(state, "detailText");
@@ -2135,7 +2169,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         } else if (completed) {
             detail.append("安装脚本已经退出，正在确认 Ubuntu、Node、service-manager、pi-web 和 SmallPhone 核心服务是否都已可用。未确认前不会进入使用说明。");
         } else if (failed) {
-            detail.append("安装失败。请查看下方共享日志或维护终端输出。");
+            detail.append(buildSharedInstallFailureSummary(readSharedInstallFailureReport()));
         } else {
             detail.append("后台权限处理完成后，点击开始安装即可；安装期间只需要等待。");
         }
@@ -2186,6 +2220,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
                 if (!finalCoreComplete) {
                     sharedInstallCoreVerified = false;
+                    sharedInstallFailed = true;
                     markOnboardingWaitingForInstall();
                     setSharedInstallText(
                         "详细进度：安装未完全就绪",
@@ -2260,6 +2295,114 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             sharedInstallLogView.setText("暂无共享安装日志。");
         }
         updateExecutionModeViews();
+    }
+
+    private String readSharedInstallFailureReport() {
+        String report = null;
+        if (sharedInstallController != null) {
+            try {
+                Method method = findMethod(sharedInstallController.getClass(), "getFailureReportText");
+                if (method != null) {
+                    Object value = method.invoke(sharedInstallController);
+                    if (value != null) {
+                        report = String.valueOf(value);
+                    }
+                }
+            } catch (Throwable throwable) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read shared install failure report", throwable);
+            }
+        }
+        return OpenHouseInstallReportActions.normalizeReport(report, buildSharedInstallReportFallback());
+    }
+
+    private String buildSharedInstallReportFallback() {
+        String progress = sharedInstallProgressView == null || sharedInstallProgressView.getText() == null
+            ? "未读取到安装进度"
+            : sharedInstallProgressView.getText().toString();
+        String detail = sharedInstallDetailView == null || sharedInstallDetailView.getText() == null
+            ? "未读取到安装状态说明"
+            : sharedInstallDetailView.getText().toString();
+        String sharedLog = sharedInstallLogView == null || sharedInstallLogView.getText() == null
+            ? "未读取到共享安装日志"
+            : sharedInstallLogView.getText().toString();
+        String terminalLog = liveLogView == null || liveLogView.getText() == null
+            ? "未读取到维护终端日志"
+            : liveLogView.getText().toString();
+        return "OpenHouse 首次安装错误报告\n\n"
+            + "一、错误结论\n"
+            + "安装未完成，安装控制器暂时没有返回专用诊断报告。\n\n"
+            + "二、当前状态\n" + progress + "\n" + detail + "\n\n"
+            + "三、共享安装日志\n" + sharedLog + "\n\n"
+            + "四、维护终端可见日志\n" + terminalLog;
+    }
+
+    private String buildSharedInstallFailureSummary(String report) {
+        String summary = OpenHouseInstallReportActions.normalizeReport(report, buildSharedInstallReportFallback());
+        String[] markers = {
+            "\n四、完整日志",
+            "\n五、完整原始日志",
+            "\n===== 完整日志",
+            "\n===== 完整原始日志",
+            "\n===== manifest_full.log"
+        };
+        for (String marker : markers) {
+            int index = summary.indexOf(marker);
+            if (index > 0) {
+                summary = summary.substring(0, index).trim();
+                break;
+            }
+        }
+        if (summary.length() > 1600) {
+            summary = summary.substring(0, 1600).trim()
+                + "\n\n…请点击“一键复制错误报告”或“导出并发送完整日志”获取完整内容。";
+        }
+        return summary;
+    }
+
+    private boolean isSharedInstallPiWebRescueAvailable() {
+        if (sharedInstallController == null) {
+            return false;
+        }
+        try {
+            Method method = findMethod(sharedInstallController.getClass(), "isPiWebRescueAvailable");
+            if (method == null) {
+                return false;
+            }
+            Object value = method.invoke(sharedInstallController);
+            return value instanceof Boolean && (Boolean) value;
+        } catch (Throwable throwable) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read shared pi-web rescue availability", throwable);
+            return false;
+        }
+    }
+
+    private void updateSharedInstallReportActions() {
+        if (copySharedInstallReportButton != null) {
+            copySharedInstallReportButton.setVisibility(sharedInstallFailed ? View.VISIBLE : View.GONE);
+            copySharedInstallReportButton.setEnabled(sharedInstallFailed);
+            copySharedInstallReportButton.setAlpha(sharedInstallFailed ? 1.0f : 0.72f);
+            copySharedInstallReportButton.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(
+                this,
+                R.color.stageFailed
+            )));
+            copySharedInstallReportButton.setTextColor(ContextCompat.getColor(this, R.color.stageOnDark));
+        }
+        if (exportSharedInstallReportButton != null) {
+            exportSharedInstallReportButton.setVisibility(sharedInstallFailed ? View.VISIBLE : View.GONE);
+            exportSharedInstallReportButton.setEnabled(sharedInstallFailed);
+            exportSharedInstallReportButton.setAlpha(sharedInstallFailed ? 1.0f : 0.72f);
+        }
+        if (openSharedInstallRescueButton != null) {
+            openSharedInstallRescueButton.setVisibility(
+                isSharedInstallPiWebRescueAvailable() ? View.VISIBLE : View.GONE
+            );
+        }
+    }
+
+    private void openSharedInstallAiRescue() {
+        Intent intent = new Intent(this, OpenHouseHomeActivity.class);
+        intent.putExtra("openhouse_page", "ai-rescue");
+        ActivityUtils.startActivity(this, intent);
     }
 
     private void setSharedInstallText(String progress, String detail) {
@@ -2513,6 +2656,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 canForceRestartSharedInstall ? R.color.stageOnDark : R.color.stageBlockedText
             ));
         }
+        updateSharedInstallReportActions();
         updateOneClickStageItems();
     }
 
@@ -2708,12 +2852,20 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         if (sequence.isEmpty()) {
             sequence.addAll(Arrays.asList(ONE_CLICK_STAGE_SEQUENCE));
         }
+        ensureStageAfter(sequence, StageAction.INSTALL_WUYOU, StageAction.TERMUX_PACKAGES);
+        ensureStageAfter(sequence, StageAction.INSTALL_TERMUX_NODE, StageAction.INSTALL_WUYOU);
+        ensureStageAfter(sequence, StageAction.INSTALL_PI_AGENT, StageAction.INSTALL_TERMUX_NODE);
+        ensureStageAfter(sequence, StageAction.INSTALL_PI_WEB, StageAction.INSTALL_PI_AGENT);
+        ensureStageAfter(sequence, StageAction.START_PI_WEB_RESCUE, StageAction.INSTALL_PI_WEB);
+        ensureStageAfter(sequence, StageAction.INSTALL_SERVICE_MANAGER, StageAction.START_PI_WEB_RESCUE);
+        ensureStageAfter(sequence, StageAction.REGISTER_PI_SERVICES, StageAction.INSTALL_SERVICE_MANAGER);
+        ensureStageAfter(sequence, StageAction.START_SMALLPHONE, StageAction.REGISTER_PI_SERVICES);
+        ensureStageAfter(sequence, StageAction.INSTALL_OPENHOUSE_WEB, StageAction.START_SMALLPHONE);
+        ensureStageAfter(sequence, StageAction.INSTALL_UBUNTU, StageAction.INSTALL_OPENHOUSE_WEB);
         ensureStageAfter(sequence, StageAction.UBUNTU_PACKAGES, StageAction.INSTALL_UBUNTU);
         ensureStageAfter(sequence, StageAction.INSTALL_NODE, StageAction.UBUNTU_PACKAGES);
         ensureStageAfter(sequence, StageAction.SYNC_OFFICIAL_DOCS, StageAction.INSTALL_NODE);
-        ensureStageAfter(sequence, StageAction.RUNTIME_COMPONENTS, StageAction.SYNC_OFFICIAL_DOCS);
-        ensureStageAfter(sequence, StageAction.SYNC_OPENHOUSE_REGISTRY, StageAction.RUNTIME_COMPONENTS);
-        ensureStageAfter(sequence, StageAction.START_SMALLPHONE, StageAction.SYNC_OPENHOUSE_REGISTRY);
+        ensureStageAfter(sequence, StageAction.SYNC_OPENHOUSE_REGISTRY, StageAction.SYNC_OFFICIAL_DOCS);
         return sequence;
     }
 
@@ -2721,11 +2873,18 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         switch (stageAction) {
             case PREPARE:
             case TERMUX_PACKAGES:
+            case INSTALL_WUYOU:
+            case INSTALL_TERMUX_NODE:
+            case INSTALL_PI_AGENT:
+            case INSTALL_PI_WEB:
+            case START_PI_WEB_RESCUE:
+            case INSTALL_SERVICE_MANAGER:
+            case REGISTER_PI_SERVICES:
+            case INSTALL_OPENHOUSE_WEB:
             case INSTALL_UBUNTU:
             case SYNC_OFFICIAL_DOCS:
             case UBUNTU_PACKAGES:
             case INSTALL_NODE:
-            case RUNTIME_COMPONENTS:
             case SYNC_OPENHOUSE_REGISTRY:
             case START_SMALLPHONE:
                 return true;
@@ -2769,6 +2928,15 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             new StageAction[] {
                 StageAction.PREPARE,
                 StageAction.TERMUX_PACKAGES,
+                StageAction.INSTALL_WUYOU,
+                StageAction.INSTALL_TERMUX_NODE,
+                StageAction.INSTALL_PI_AGENT,
+                StageAction.INSTALL_PI_WEB,
+                StageAction.START_PI_WEB_RESCUE,
+                StageAction.INSTALL_SERVICE_MANAGER,
+                StageAction.REGISTER_PI_SERVICES,
+                StageAction.START_SMALLPHONE,
+                StageAction.INSTALL_OPENHOUSE_WEB,
                 StageAction.INSTALL_UBUNTU
             }
         ));
@@ -2789,9 +2957,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             getString(R.string.one_click_auto_runtime_title),
             getString(R.string.one_click_auto_runtime_detail),
             new StageAction[] {
-                StageAction.RUNTIME_COMPONENTS,
-                StageAction.SYNC_OPENHOUSE_REGISTRY,
-                StageAction.START_SMALLPHONE
+                StageAction.SYNC_OPENHOUSE_REGISTRY
             }
         ));
         return groups;
@@ -2989,6 +3155,22 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 return getString(R.string.button_configure_entry_ubuntu);
             case INSTALL_NODE:
                 return getString(R.string.button_install_node);
+            case INSTALL_WUYOU:
+                return "安装 wuyou";
+            case INSTALL_TERMUX_NODE:
+                return "安装 Termux Node.js 24 LTS";
+            case INSTALL_PI_AGENT:
+                return "安装 pi-agent";
+            case INSTALL_PI_WEB:
+                return "安装 pi-web";
+            case START_PI_WEB_RESCUE:
+                return "启动紧急 AI 救援（30142）";
+            case INSTALL_SERVICE_MANAGER:
+                return "安装运行中枢";
+            case REGISTER_PI_SERVICES:
+                return "注册 pi 服务";
+            case INSTALL_OPENHOUSE_WEB:
+                return "安装 OpenHouse Web";
             case INSTALL_CODEX:
                 return getString(R.string.button_install_codex);
             case INSTALL_CLAUDE_CODE:
@@ -4263,6 +4445,14 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         Integer prepareExitCode = readLastExitCode(StageAction.PREPARE);
         Integer termuxPackagesExitCode = readLastExitCode(StageAction.TERMUX_PACKAGES);
+        Integer installWuyouExitCode = readLastExitCode(StageAction.INSTALL_WUYOU);
+        Integer installTermuxNodeExitCode = readLastExitCode(StageAction.INSTALL_TERMUX_NODE);
+        Integer installPiAgentExitCode = readLastExitCode(StageAction.INSTALL_PI_AGENT);
+        Integer installPiWebExitCode = readLastExitCode(StageAction.INSTALL_PI_WEB);
+        Integer startPiWebRescueExitCode = readLastExitCode(StageAction.START_PI_WEB_RESCUE);
+        Integer installServiceManagerExitCode = readLastExitCode(StageAction.INSTALL_SERVICE_MANAGER);
+        Integer registerPiServicesExitCode = readLastExitCode(StageAction.REGISTER_PI_SERVICES);
+        Integer installOpenHouseWebExitCode = readLastExitCode(StageAction.INSTALL_OPENHOUSE_WEB);
         Integer installUbuntuExitCode = readLastExitCode(StageAction.INSTALL_UBUNTU);
         Integer syncOfficialDocsExitCode = readLastExitCode(StageAction.SYNC_OFFICIAL_DOCS);
         Integer ubuntuPackagesExitCode = readLastExitCode(StageAction.UBUNTU_PACKAGES);
@@ -4277,7 +4467,16 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
         boolean prepareComplete = isPrepareStageComplete() || isLastExitSuccess(prepareExitCode);
         boolean termuxPackagesComplete = isTermuxPackagesStageComplete() || isLastExitSuccess(termuxPackagesExitCode);
-        boolean ubuntuInstalled = termuxPackagesComplete && (isUbuntuInstalled() || isLastExitSuccess(installUbuntuExitCode));
+        boolean wuyouInstalled = termuxPackagesComplete && (isWuyouInstalled() || isLastExitSuccess(installWuyouExitCode));
+        boolean termuxNodeInstalled = wuyouInstalled && (isTermuxNodeInstalled() || isLastExitSuccess(installTermuxNodeExitCode));
+        boolean piAgentInstalled = termuxNodeInstalled && (isPiAgentInstalled() || isLastExitSuccess(installPiAgentExitCode));
+        boolean piWebInstalled = piAgentInstalled && (isPiWebInstalled() || isLastExitSuccess(installPiWebExitCode));
+        boolean piWebRescueStarted = piWebInstalled && (isPiWebRescueReady() || isLastExitSuccess(startPiWebRescueExitCode));
+        boolean serviceManagerInstalled = piWebRescueStarted && (isServiceManagerReady() || isLastExitSuccess(installServiceManagerExitCode));
+        boolean piServicesRegistered = serviceManagerInstalled && (arePiServicesRegistered() || isLastExitSuccess(registerPiServicesExitCode));
+        boolean smallPhoneStarted = piServicesRegistered && (isManagedPiWebReachable() || isLastExitSuccess(startSmallPhoneExitCode));
+        boolean openHouseWebInstalled = smallPhoneStarted && (isOpenHouseWebInstalled() || isLastExitSuccess(installOpenHouseWebExitCode));
+        boolean ubuntuInstalled = openHouseWebInstalled && (isUbuntuInstalled() || isLastExitSuccess(installUbuntuExitCode));
         boolean ubuntuPackagesComplete = ubuntuInstalled && (isUbuntuPackagesStageComplete() || isLastExitSuccess(ubuntuPackagesExitCode));
         boolean entryUbuntuConfigured = ubuntuPackagesComplete && (isEntryUbuntuConfigured() || isLastExitSuccess(configureEntryUbuntuExitCode));
         boolean nodeInstalled = ubuntuPackagesComplete && (isNodeInstalled() || isLastExitSuccess(installNodeExitCode));
@@ -4286,8 +4485,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean claudeCodeInstalled = nodeInstalled && (isClaudeCodeInstalled() || isLastExitSuccess(installClaudeCodeExitCode));
         boolean claudeCodeUiInstalled = claudeCodeInstalled && (isClaudeCodeUiInstalled() || isLastExitSuccess(installClaudeCodeUiExitCode));
         boolean runtimeComponentsInstalled = officialDocsSynced && (isRuntimeComponentsInstalled() || isLastExitSuccess(runtimeComponentsExitCode));
-        boolean openHouseRegistrySynced = runtimeComponentsInstalled && (isOpenHouseRegistrySynced() || isLastExitSuccess(syncOpenHouseRegistryExitCode));
-        boolean smallPhoneStarted = openHouseRegistrySynced && (isSmallPhoneStackReachable() || isLastExitSuccess(startSmallPhoneExitCode));
+        boolean openHouseRegistrySynced = officialDocsSynced && (isOpenHouseRegistrySynced() || isLastExitSuccess(syncOpenHouseRegistryExitCode));
 
         snapshot.presentations.put(
             StageAction.PREPARE,
@@ -4308,11 +4506,99 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         );
 
         snapshot.presentations.put(
+            StageAction.INSTALL_WUYOU,
+            wuyouInstalled
+                ? StagePresentation.complete(this, "wuyou 已安装并可直接调用。")
+                : (!termuxPackagesComplete
+                    ? StagePresentation.blocked(this, "请先完成 Termux 基础包阶段。")
+                    : failedOrReady(installWuyouExitCode,
+                        "wuyou 安装失败，请查看该阶段日志。",
+                        "准备在 Node.js 之前安装 wuyou。"))
+        );
+
+        snapshot.presentations.put(
+            StageAction.INSTALL_TERMUX_NODE,
+            termuxNodeInstalled
+                ? StagePresentation.complete(this, "Termux native Node.js 24 LTS 与 npm 已可用。")
+                : (!wuyouInstalled
+                    ? StagePresentation.blocked(this, "请先安装 wuyou。")
+                    : failedOrReady(installTermuxNodeExitCode,
+                        "Termux Node.js 安装失败，请查看该阶段日志。",
+                        "准备安装 Termux native Node.js 24 LTS 与 npm。"))
+        );
+
+        snapshot.presentations.put(
+            StageAction.INSTALL_PI_AGENT,
+            piAgentInstalled
+                ? StagePresentation.complete(this, "pi-agent payload 与启动入口已安装。")
+                : (!termuxNodeInstalled
+                    ? StagePresentation.blocked(this, "请先安装 Termux Node.js。")
+                    : failedOrReady(installPiAgentExitCode,
+                        "pi-agent 安装失败，请查看该阶段日志。",
+                        "准备安装不依赖 service-manager 的 pi-agent。"))
+        );
+
+        snapshot.presentations.put(
+            StageAction.INSTALL_PI_WEB,
+            piWebInstalled
+                ? StagePresentation.complete(this, "pi-web standalone runtime 与启动入口已安装。")
+                : (!piAgentInstalled
+                    ? StagePresentation.blocked(this, "请先安装 pi-agent。")
+                    : failedOrReady(installPiWebExitCode,
+                        "pi-web 安装失败，请查看该阶段日志。",
+                        "准备安装不依赖 service-manager 的 pi-web。"))
+        );
+
+        snapshot.presentations.put(
+            StageAction.START_PI_WEB_RESCUE,
+            piWebRescueStarted
+                ? StagePresentation.complete(this, "紧急 AI 救援入口 30142 已准备。")
+                : (!piWebInstalled
+                    ? StagePresentation.blocked(this, "请先安装 pi-web。")
+                    : failedOrReady(startPiWebRescueExitCode,
+                        "紧急 AI 救援入口启动失败，请查看该阶段日志。",
+                        "准备启动并验证 pi-web 30142 紧急救援入口。"))
+        );
+
+        snapshot.presentations.put(
+            StageAction.INSTALL_SERVICE_MANAGER,
+            serviceManagerInstalled
+                ? StagePresentation.complete(this, "service-manager 已安装并通过健康检查。")
+                : (!piWebRescueStarted
+                    ? StagePresentation.blocked(this, "请先准备紧急 AI 救援入口。")
+                    : failedOrReady(installServiceManagerExitCode,
+                        "service-manager 安装或启动失败，请查看该阶段日志。",
+                        "准备安装并启动 Termux native service-manager。"))
+        );
+
+        snapshot.presentations.put(
+            StageAction.REGISTER_PI_SERVICES,
+            piServicesRegistered
+                ? StagePresentation.complete(this, "pi-agent 和 pi-web 已注册到 service-manager。")
+                : (!serviceManagerInstalled
+                    ? StagePresentation.blocked(this, "请先安装并启动 service-manager。")
+                    : failedOrReady(registerPiServicesExitCode,
+                        "pi 服务注册失败，请查看该阶段日志。",
+                        "准备把已安装的 pi-agent、pi-web 注册到 service-manager。"))
+        );
+
+        snapshot.presentations.put(
+            StageAction.INSTALL_OPENHOUSE_WEB,
+            openHouseWebInstalled
+                ? StagePresentation.complete(this, "OpenHouse Web 已安装并完成服务注册。")
+                : (!smallPhoneStarted
+                    ? StagePresentation.blocked(this, "请先启动正式 pi-web 30141。")
+                    : failedOrReady(installOpenHouseWebExitCode,
+                        "OpenHouse Web 安装失败，请查看该阶段日志。",
+                        "准备安装并注册 OpenHouse Web。"))
+        );
+
+        snapshot.presentations.put(
             StageAction.INSTALL_UBUNTU,
             ubuntuInstalled
                 ? StagePresentation.complete(this, getString(R.string.stage_detail_install_ubuntu_complete))
-                : (!termuxPackagesComplete
-                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_install_ubuntu_blocked))
+                : (!openHouseWebInstalled
+                    ? StagePresentation.blocked(this, "请先完成 OpenHouse Web 安装阶段。")
                     : failedOrReady(installUbuntuExitCode,
                         getString(R.string.stage_detail_install_ubuntu_failed),
                         getString(R.string.stage_detail_install_ubuntu_ready)))
@@ -4410,8 +4696,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             StageAction.SYNC_OPENHOUSE_REGISTRY,
             openHouseRegistrySynced
                 ? StagePresentation.complete(this, "OpenHouseAI registry 已同步到 Termux canonical。")
-                : (!runtimeComponentsInstalled
-                    ? StagePresentation.blocked(this, "请先安装 service-manager、pi-agent、pi-web 与 SmallPhone 兼容运行组件。")
+                : (!officialDocsSynced
+                    ? StagePresentation.blocked(this, "请先完成 Ubuntu Node.js 与官方文档同步阶段。")
                     : failedOrReady(syncOpenHouseRegistryExitCode,
                         "OpenHouseAI registry 同步失败，请查看该阶段日志。",
                         "准备同步 components.d、service-manager/services.d 和 AI docs，安装完成后交给 service-manager 管理。"))
@@ -4420,12 +4706,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.START_SMALLPHONE,
             smallPhoneStarted
-                ? StagePresentation.complete(this, getString(R.string.stage_detail_start_smallphone_complete))
-                : (!openHouseRegistrySynced
-                    ? StagePresentation.blocked(this, getString(R.string.stage_detail_start_smallphone_blocked))
+                ? StagePresentation.complete(this, "正式 pi-agent 与 pi-web 30141 已启动。")
+                : (!piServicesRegistered
+                    ? StagePresentation.blocked(this, "请先完成 pi-agent、pi-web 服务注册。")
                     : failedOrReady(startSmallPhoneExitCode,
-                        getString(R.string.stage_detail_start_smallphone_failed),
-                        getString(R.string.stage_detail_start_smallphone_ready)))
+                        "正式 pi-web 30141 启动失败，请查看该阶段日志。",
+                        "准备通过 service-manager 启动正式 pi-agent 与 pi-web 30141。"))
         );
 
         snapshot.presentations.put(
@@ -4485,6 +4771,71 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean isTermuxPackagesStageComplete() {
         return new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "proot-distro").canExecute()
             && new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "curl").canExecute();
+    }
+
+    private boolean isWuyouInstalled() {
+        File home = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+        return new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "wuyou").canExecute()
+            || new File(home, ".local/bin/wuyou").canExecute()
+            || new File(home, "smallphoneai-repos/wuyou/wuyou").canExecute();
+    }
+
+    private boolean isTermuxNodeInstalled() {
+        return runTermuxCommand(
+            "command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && test \"$(node -p 'parseInt(process.versions.node,10)' 2>/dev/null || printf 0)\" -ge 24"
+        ).isSuccess();
+    }
+
+    private boolean isPiAgentInstalled() {
+        File home = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+        return new File(home, ".local/bin/openhouse-pi-agent-sentinel").canExecute()
+            && (new File(home, ".pi").isDirectory()
+                || new File(home, "smallphoneai-repos/pi-agent").isDirectory());
+    }
+
+    private boolean isPiWebInstalled() {
+        File home = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+        return new File(home, ".local/bin/openhouse-pi-web-start").canExecute()
+            && (new File(home, ".local/share/openhouseai/pi-web/server.js").isFile()
+                || new File(home, ".local/share/openhouseai/pi-web-bundle/runtime/pi-web/server.js").isFile());
+    }
+
+    private boolean isPiWebRescueReady() {
+        File marker = new File(TermuxConstants.TERMUX_HOME_DIR_PATH,
+            ".smallphoneai/rescue/pi-web-30142.marker");
+        return marker.isFile()
+            || runTermuxCommand("curl -fsS --max-time 2 http://127.0.0.1:30142/ >/dev/null 2>&1").isSuccess();
+    }
+
+    private boolean isServiceManagerReady() {
+        File home = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+        boolean binaryInstalled = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "service-manager").canExecute()
+            || new File(home, ".local/bin/service-manager").canExecute()
+            || new File(home, "smallphoneai-repos/service-manager/service-manager").canExecute()
+            || new File(home, "smallphoneai-repos/service-manager/target/release/service-manager").canExecute();
+        return binaryInstalled && runTermuxCommand(
+            "curl -fsS --max-time 2 " + shellQuote(serviceManagerBaseUrl() + "/api/v1/health") + " >/dev/null 2>&1"
+        ).isSuccess();
+    }
+
+    private boolean arePiServicesRegistered() {
+        File serviceDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH,
+            ".config/openhouseai/service-manager/services.d");
+        return new File(serviceDir, "pi-agent.json").isFile()
+            && new File(serviceDir, "pi-web.json").isFile();
+    }
+
+    private boolean isManagedPiWebReachable() {
+        return runTermuxCommand(
+            "curl -fsS --max-time 2 " + shellQuote(serviceManagerBaseUrl() + "/api/v1/health") + " >/dev/null 2>&1"
+                + " && curl -fsS --max-time 3 http://127.0.0.1:30141/ >/dev/null 2>&1"
+        ).isSuccess();
+    }
+
+    private boolean isOpenHouseWebInstalled() {
+        File home = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+        return new File(home, ".local/bin/openhouse-web").canExecute()
+            && new File(home, ".local/lib/openhouse-web/src/server.mjs").isFile();
     }
 
     private boolean isUbuntuInstalled() {
@@ -4619,7 +4970,11 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private Integer readLastExitCode(StageAction stageAction) {
-        return readLastExitCode(stageAction.slug);
+        Integer exitCode = readLastExitCode(stageAction.slug);
+        if (exitCode == null && stageAction == StageAction.INSTALL_TERMUX_NODE) {
+            return readLastExitCode("install_termux_node");
+        }
+        return exitCode;
     }
 
     private Integer readLastExitCode(String stageSlug) {
@@ -5504,6 +5859,14 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private enum StageAction {
         PREPARE("prepare", "prepare-product.sh"),
         TERMUX_PACKAGES("termux_packages", "update-termux-packages.sh"),
+        INSTALL_WUYOU("install_wuyou", "install-wuyou.sh"),
+        INSTALL_TERMUX_NODE("termux_node", "install-termux-node.sh"),
+        INSTALL_PI_AGENT("install_pi_agent", "install-pi-agent.sh"),
+        INSTALL_PI_WEB("install_pi_web", "install-pi-web.sh"),
+        START_PI_WEB_RESCUE("start_pi_web_rescue", "start-pi-web-rescue.sh"),
+        INSTALL_SERVICE_MANAGER("install_service_manager", "install-service-manager.sh"),
+        REGISTER_PI_SERVICES("register_pi_services", "register-pi-services.sh"),
+        INSTALL_OPENHOUSE_WEB("install_openhouse_web", "install-openhouse-web.sh"),
         INSTALL_UBUNTU("install_ubuntu", "install-ubuntu.sh"),
         SYNC_OFFICIAL_DOCS("sync_official_docs", "sync-official-docs.sh"),
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh"),
@@ -5542,6 +5905,14 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 || this == INSTALL_CODEX
                 || this == INSTALL_CLAUDE_CODE
                 || this == INSTALL_CLAUDE_CODE_UI
+                || this == INSTALL_WUYOU
+                || this == INSTALL_TERMUX_NODE
+                || this == INSTALL_PI_AGENT
+                || this == INSTALL_PI_WEB
+                || this == START_PI_WEB_RESCUE
+                || this == INSTALL_SERVICE_MANAGER
+                || this == REGISTER_PI_SERVICES
+                || this == INSTALL_OPENHOUSE_WEB
                 || this == RUNTIME_COMPONENTS
                 || this == SYNC_OPENHOUSE_REGISTRY
                 || this == START_SMALLPHONE;
@@ -5552,6 +5923,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         }
 
         static StageAction fromSlug(String slug) {
+            if ("install_termux_node".equals(slug)) {
+                return INSTALL_TERMUX_NODE;
+            }
             for (StageAction stageAction : values()) {
                 if (stageAction.slug.equals(slug)) {
                     return stageAction;

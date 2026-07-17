@@ -19,9 +19,15 @@ public class OpenHouseInstallControllerStageSequenceTest {
         Assert.assertEquals(Arrays.asList(
             "PREPARE",
             "TERMUX_PACKAGES",
+            "INSTALL_WUYOU",
             "INSTALL_TERMUX_NODE",
-            "RUNTIME_COMPONENTS",
+            "INSTALL_PI_AGENT",
+            "INSTALL_PI_WEB",
+            "START_PI_WEB_RESCUE",
+            "INSTALL_SERVICE_MANAGER",
+            "REGISTER_PI_SERVICES",
             "START_SMALLPHONE",
+            "INSTALL_OPENHOUSE_WEB",
             "INSTALL_UBUNTU",
             "UBUNTU_PACKAGES"
         ), stageNames("RUNTIME_ENVIRONMENT_STAGE_SEQUENCE"));
@@ -33,12 +39,13 @@ public class OpenHouseInstallControllerStageSequenceTest {
 
         Assert.assertEquals(Arrays.asList(
             "START_SMALLPHONE",
+            "INSTALL_OPENHOUSE_WEB",
             "INSTALL_NODE",
             "SYNC_OFFICIAL_DOCS",
             "INSTALL_AIONUI",
             "SYNC_OPENHOUSE_REGISTRY"
         ), stages);
-        Assert.assertFalse(stages.contains("RUNTIME_COMPONENTS"));
+        Assert.assertFalse(stages.contains("INSTALL_SERVICE_MANAGER"));
     }
 
     @Test
@@ -46,9 +53,15 @@ public class OpenHouseInstallControllerStageSequenceTest {
         Assert.assertEquals(Arrays.asList(
             "PREPARE",
             "TERMUX_PACKAGES",
+            "INSTALL_WUYOU",
             "INSTALL_TERMUX_NODE",
-            "RUNTIME_COMPONENTS",
+            "INSTALL_PI_AGENT",
+            "INSTALL_PI_WEB",
+            "START_PI_WEB_RESCUE",
+            "INSTALL_SERVICE_MANAGER",
+            "REGISTER_PI_SERVICES",
             "START_SMALLPHONE",
+            "INSTALL_OPENHOUSE_WEB",
             "INSTALL_UBUNTU",
             "UBUNTU_PACKAGES",
             "INSTALL_NODE",
@@ -125,6 +138,36 @@ public class OpenHouseInstallControllerStageSequenceTest {
         Assert.assertFalse(methodSource(
             install, "private boolean startInstallInternal", "private void prepareAndStartInstall")
             .contains("prepareBundledRuntimeAssets()"));
+    }
+
+    @Test
+    public void firstInstallLogExistsBeforeResourcePreparationAndIsNotTruncatedByWrapper() throws Exception {
+        String install = source("app/src/main/java/com/termux/app/openhouse/OpenHouseInstallController.java");
+        String starter = methodSource(
+            install, "private boolean startInstallInternal", "private void prepareAndStartInstall");
+        String worker = methodSource(
+            install, "private void prepareAndStartInstall", "public boolean forceRestartOneClickInstall");
+        String wrapper = methodSource(
+            install, "private String buildWrapperScript", "private void appendRuntimeReport");
+
+        Assert.assertTrue(starter.indexOf("resetManifestLogForNewRun(resolvedTaskScope)")
+            < starter.indexOf("executor.execute(() -> prepareAndStartInstall"));
+        Assert.assertFalse(worker.contains("resetManifestLogForNewRun"));
+        Assert.assertTrue(worker.contains("appendManifestFailure("));
+        Assert.assertTrue(wrapper.contains("touch \\\"$LOG_FILE\\\""));
+        Assert.assertFalse(wrapper.contains(": > \\\"$LOG_FILE\\\""));
+    }
+
+    @Test
+    public void controllerExposesFailureReportAndFastRescueAvailabilityApis() throws Exception {
+        String install = source("app/src/main/java/com/termux/app/openhouse/OpenHouseInstallController.java");
+        Assert.assertTrue(install.contains("public String getFailureReportText()"));
+        Assert.assertTrue(install.contains("public boolean isPiWebRescueAvailable()"));
+        String rescue = methodSource(
+            install, "public boolean isPiWebRescueAvailable()", "private void waitForInstallProcess");
+        Assert.assertFalse(rescue.contains("ProcessBuilder"));
+        Assert.assertFalse(rescue.contains("HttpURLConnection"));
+        Assert.assertFalse(rescue.contains("Thread.sleep"));
     }
 
     @Test

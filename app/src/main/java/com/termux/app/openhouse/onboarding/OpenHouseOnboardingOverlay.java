@@ -77,6 +77,7 @@ public final class OpenHouseOnboardingOverlay {
 
     public interface Callbacks {
         void onOpenDetail();
+        void onOpenAiRescue();
         void onStartTerminalTutorial(boolean restartEntrySession);
         void onEnterTerminal(boolean restartEntrySession);
     }
@@ -172,14 +173,18 @@ public final class OpenHouseOnboardingOverlay {
         titleView.setText("安装 OpenHouse AI");
         bodyView.setText("先允许后台运行，再准备运行环境、安装 AI 功能。每一步都由你手动开始。");
 
+        if (installState.failed) {
+            bodyView.setText("首次安装没有完成。请先发送错误报告，或进入紧急 AI 救援处理后再重试。");
+            renderFailedStatus();
+            return;
+        }
+
         renderBackgroundRunPreflight();
         renderNetworkLineRow();
         renderInstallSteps();
 
         if (isInstallRunning()) {
             renderRunningStatus();
-        } else if (installState.failed) {
-            renderFailedStatus();
         } else if (isAiFeaturesReady()) {
             renderCompleteStatus();
         }
@@ -365,18 +370,78 @@ public final class OpenHouseOnboardingOverlay {
 
     private void renderRunningStatus() {
         addProgressBar(getDisplayedInstallPercent(), getDisplayedInstallDetail());
+        if (runtime.isPiWebRescueAvailable()) {
+            addCompactActionButton("紧急 AI 救援已可用", true, v -> callbacks.onOpenAiRescue());
+        }
         addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
         addActionButton("查看详细日志", true, false, v -> showInstallLogDialog());
     }
 
     private void renderFailedStatus() {
-        addStatusCard("安装没有完成", "可以重试当前步骤，或查看详细日志。");
+        String report = getFailureReportText();
+        addStatusCard("安装没有完成", buildFailureSummary(report));
         addProgressBar(getDisplayedInstallPercent(), "当前步骤没有完成");
-        addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
+        addActionButton("一键复制错误报告", true, true,
+            v -> OpenHouseInstallReportActions.copyReport(activity, getFailureReportText()));
+        addActionButton("导出并发送完整日志", true, false,
+            v -> OpenHouseInstallReportActions.exportAndShare(activity, getFailureReportText()));
+        if (runtime.isPiWebRescueAvailable()) {
+            addActionButton("进入紧急 AI 救援", true, false, v -> callbacks.onOpenAiRescue());
+        }
         addActionButton("查看详细日志", true, false, v -> showInstallLogDialog());
+        addActionButton("查看详细进度", true, false, v -> callbacks.onOpenDetail());
+        addActionButton("重试当前步骤", true, false, v -> retryCurrentStep());
         if (runtime.getNetworkLine() == OpenHouseOnboardingRuntime.NetworkLine.CN) {
             addActionButton("检测并切换标准线路", true, false, v -> beginStandardLineCheck());
         }
+    }
+
+    private void retryCurrentStep() {
+        if (actionBusy || networkCheckBusy || isInstallRunning()) {
+            return;
+        }
+        actionBusy = true;
+        render();
+        runtime.forceRestartCurrentTask(result -> {
+            actionBusy = false;
+            installState = runtime.getInstallState();
+            if (!result.message.isEmpty()) {
+                Toast.makeText(activity, result.message, result.success ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+            }
+            refreshStatus();
+        });
+    }
+
+    private String getFailureReportText() {
+        String fallback = "OpenHouse 首次安装错误报告\n\n"
+            + "错误结论：当前安装步骤没有完成。\n"
+            + "失败阶段：" + (installState.currentStageSlug == null ? "未知" : installState.currentStageSlug) + "\n"
+            + "状态说明：" + (installState.detailText == null ? "未提供" : installState.detailText) + "\n\n"
+            + "===== 当前可见日志 =====\n"
+            + readInstallLogTail();
+        return OpenHouseInstallReportActions.normalizeReport(runtime.getFailureReportText(), fallback);
+    }
+
+    private String buildFailureSummary(String report) {
+        String summary = OpenHouseInstallReportActions.normalizeReport(report, null);
+        String[] fullLogMarkers = {
+            "\n四、完整日志",
+            "\n五、完整原始日志",
+            "\n===== 完整日志",
+            "\n===== 完整原始日志",
+            "\n===== manifest_full.log"
+        };
+        for (String marker : fullLogMarkers) {
+            int markerIndex = summary.indexOf(marker);
+            if (markerIndex > 0) {
+                summary = summary.substring(0, markerIndex).trim();
+                break;
+            }
+        }
+        if (summary.length() > 1800) {
+            summary = summary.substring(0, 1800).trim() + "\n\n…完整内容请复制错误报告或发送日志文件。";
+        }
+        return summary;
     }
 
     private void renderCompleteStatus() {
@@ -851,6 +916,17 @@ public final class OpenHouseOnboardingOverlay {
         MaterialButton button = createButton(text, enabled && !actionBusy && !networkCheckBusy, primary);
         button.setOnClickListener(listener);
         actionsView.addView(button, topMarginParams(actionsView.getChildCount() == 0 ? dp(2) : dp(8), LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
+    }
+
+    private void addCompactActionButton(String text, boolean enabled, View.OnClickListener listener) {
+        MaterialButton button = createButton(text, enabled && !actionBusy && !networkCheckBusy, false);
+        button.setTextSize(12);
+        button.setOnClickListener(listener);
+        actionsView.addView(button, topMarginParams(
+            actionsView.getChildCount() == 0 ? dp(2) : dp(8),
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(36)
+        ));
     }
 
     private MaterialButton createButton(String text, boolean enabled, boolean primary) {
