@@ -51,7 +51,12 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     public static final String EXTRA_SERVICE_CONTROL_SERVICE_NAMES = "openhouse_service_names";
     public static final String EXTRA_SERVICE_CONTROL_SERVICE_REFS = "openhouse_service_refs";
     public static final String EXTRA_SERVICE_CONTROL_TUTORIAL = "openhouse_service_control_tutorial";
+    public static final String EXTRA_SERVICE_CONTROL_TUTORIAL_SERVICE_ID =
+        "openhouse_service_control_tutorial_service_id";
+    public static final String EXTRA_SERVICE_CONTROL_TUTORIAL_COMPLETED =
+        "openhouse_service_control_tutorial_completed";
     public static final String TUTORIAL_CC_CODEX_CONTROL = "cc_codex_control";
+    public static final String TUTORIAL_DESKTOP_APP_CONTROL = "desktop_app_control";
 
     private static final String LOG_TAG = "OpenHouseServiceControl";
     private static final String ACTION_START = "start";
@@ -62,6 +67,8 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private static final int LOG_LIMIT = 80;
     private static final int STATUS_TEXT_LIMIT = 10000;
     private static final long FOREGROUND_MAINTENANCE_INTERVAL_MS = 30_000L;
+    private static final int DESKTOP_TUTORIAL_STATUS_POLL_ATTEMPTS = 20;
+    private static final long DESKTOP_TUTORIAL_STATUS_POLL_DELAY_MS = 500L;
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, ServiceCard> serviceCards = new LinkedHashMap<>();
@@ -84,14 +91,22 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private Button startControlPlaneButton;
     private Button maintenanceButton;
     private GuidedTutorialOverlay ccCodexTutorialOverlay;
+    private GuidedTutorialOverlay desktopAppTutorialOverlay;
     private boolean allMode;
     private boolean ccCodexTutorialStarted;
+    private boolean desktopAppTutorialStarted;
+    private boolean desktopTutorialActionInFlight;
+    private boolean desktopTutorialStopConfirmed;
+    private boolean desktopTutorialFinalStartConfirmed;
+    private boolean desktopTutorialCycleCompleted;
     private boolean foregroundMaintenanceEnabled;
     private boolean foregroundMaintenanceTaskRunning;
     private String componentId = "";
     private String componentTitle = "";
     private String componentUrl = "";
     private String tutorialMode = "";
+    private String tutorialServiceId = "";
+    private String resolvedTutorialServiceId = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -99,6 +114,9 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         controlClient = new ServiceManagerControlClient(this);
         runtimeSupervisor = new OpenHouseRuntimeSupervisor(this);
         parseIntent(getIntent());
+        if (isDesktopAppControlTutorial()) {
+            setResult(RESULT_CANCELED);
+        }
         buildContentView();
         loadInitialServices();
     }
@@ -106,7 +124,9 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        startForegroundMaintenance();
+        if (!isDesktopAppControlTutorial()) {
+            startForegroundMaintenance();
+        }
     }
 
     @Override
@@ -122,6 +142,10 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             ccCodexTutorialOverlay.destroy();
             ccCodexTutorialOverlay = null;
         }
+        if (desktopAppTutorialOverlay != null) {
+            desktopAppTutorialOverlay.destroy();
+            desktopAppTutorialOverlay = null;
+        }
         stopForegroundMaintenance();
         backgroundExecutor.shutdownNow();
     }
@@ -131,11 +155,14 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             allMode = false;
             return;
         }
-        allMode = MODE_ALL.equalsIgnoreCase(safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_MODE)));
         componentId = ServiceManagerClient.sanitizeServiceId(intent.getStringExtra(EXTRA_SERVICE_CONTROL_COMPONENT_ID));
         componentTitle = safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_TITLE));
         componentUrl = normalizeOpenUrl(intent.getStringExtra(EXTRA_SERVICE_CONTROL_URL));
         tutorialMode = safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_TUTORIAL));
+        tutorialServiceId = ServiceManagerClient.sanitizeServiceId(
+            intent.getStringExtra(EXTRA_SERVICE_CONTROL_TUTORIAL_SERVICE_ID));
+        allMode = !isDesktopAppControlTutorial()
+            && MODE_ALL.equalsIgnoreCase(safeTrim(intent.getStringExtra(EXTRA_SERVICE_CONTROL_MODE)));
     }
 
     private void buildContentView() {
@@ -181,7 +208,9 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         controlPlaneStatusView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
         header.addView(controlPlaneStatusView, topMarginParams(10));
 
-        returnMenuButton = actionButton("返回菜单", v -> returnToOpenHouseMenu());
+        returnMenuButton = isDesktopAppControlTutorial()
+            ? actionButton("返回应用", v -> finishDesktopTutorialAndReturn())
+            : actionButton("返回菜单", v -> returnToOpenHouseMenu());
         header.addView(returnMenuButton, topMarginParams(10));
 
         if (isOpenHouseWebService(componentId) || !componentUrl.isEmpty()) {
@@ -247,7 +276,13 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         if (allMode) {
             loadAllServices();
         } else {
-            loadComponentServices(readComponentServiceIds(getIntent()));
+            List<String> serviceIds = readComponentServiceIds(getIntent());
+            if (isDesktopAppControlTutorial() && serviceIds.isEmpty()) {
+                setBusy(false);
+                setStatus("桌面教学目标无效：组件或服务没有正确声明，无法执行服务控制教学。");
+                return;
+            }
+            loadComponentServices(serviceIds);
         }
     }
 
@@ -300,8 +335,35 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             try {
                 List<ServiceManagerService> registeredServices = controlClient.listServices();
                 ServiceManagerServiceResolver.Resolution resolution =
-                    ServiceManagerServiceResolver.resolve(componentId, serviceIds, registeredServices);
+                    ServiceManagerServiceResolver.resolve(
+                        isDesktopAppControlTutorial() ? "" : componentId,
+                        serviceIds,
+                        registeredServices);
                 List<ServiceSnapshot> snapshots = snapshotsFromResolution(resolution);
+                String tutorialTarget = "";
+                if (isDesktopAppControlTutorial()) {
+                    if (resolution.serviceIds.size() == 1) {
+                        tutorialTarget = ServiceManagerClient.sanitizeServiceId(
+                            resolution.serviceIds.get(0));
+                    }
+                    if (tutorialTarget.isEmpty() || isControlPlaneService(tutorialTarget)) {
+                        snapshots.clear();
+                        tutorialTarget = "";
+                    } else if (snapshots.size() > 1) {
+                        ServiceSnapshot targetSnapshot = null;
+                        for (ServiceSnapshot snapshot : snapshots) {
+                            if (snapshot != null && tutorialTarget.equals(snapshot.id)) {
+                                targetSnapshot = snapshot;
+                                break;
+                            }
+                        }
+                        snapshots.clear();
+                        if (targetSnapshot != null) {
+                            snapshots.add(targetSnapshot);
+                        }
+                    }
+                }
+                String resolvedDesktopTutorialTarget = tutorialTarget;
                 runOnUiThread(() -> {
                     if (snapshots.isEmpty()) {
                         setBusy(false);
@@ -313,6 +375,9 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                             + "\n可以打开“全部服务控制”查看当前可用服务，或点击“启动运行中枢”。");
                         showMaintenanceFallback();
                         return;
+                    }
+                    if (isDesktopAppControlTutorial()) {
+                        resolvedTutorialServiceId = resolvedDesktopTutorialTarget;
                     }
                     setControlPlaneStatus("控制中枢：当前组件由 service-manager 控制。"
                         + formatIgnoredServices(resolution.missingServiceIds));
@@ -339,6 +404,16 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         for (String serviceId : ServiceManagerClient.serviceIdsFromRefs(
             readIntentStringList(intent, EXTRA_SERVICE_CONTROL_SERVICE_REFS))) {
             addServiceId(out, serviceId);
+        }
+        if (isDesktopAppControlTutorial()) {
+            List<String> fixedTarget = new ArrayList<>();
+            if (!componentId.isEmpty()
+                && !tutorialServiceId.isEmpty()
+                && !isControlPlaneService(tutorialServiceId)
+                && out.contains(tutorialServiceId)) {
+                fixedTarget.add(tutorialServiceId);
+            }
+            return fixedTarget;
         }
         return out;
     }
@@ -419,18 +494,20 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             cardView.addView(tutorialActionButton, topMarginParams(10));
         }
 
+        Button startButton = actionButton("启动", v -> runSingleAction(snapshot.id, ACTION_START));
+        Button stopButton = actionButton("关闭", v -> runSingleAction(snapshot.id, ACTION_STOP));
         Button refreshButton = actionButton("刷新", v -> refreshServiceStatus(snapshot.id));
 
         ServiceCard card = new ServiceCard(snapshot.id, cardView, titleView, detailView, logView,
-            openButton, tutorialActionButton, refreshButton);
+            openButton, tutorialActionButton, startButton, stopButton, refreshButton);
         updateCard(card, snapshot);
 
         addButtonRow(cardView,
             openButton,
             actionButton("状态", v -> refreshServiceStatus(snapshot.id)));
         addButtonRow(cardView,
-            actionButton("启动", v -> runSingleAction(snapshot.id, ACTION_START)),
-            actionButton("关闭", v -> runSingleAction(snapshot.id, ACTION_STOP)));
+            startButton,
+            stopButton);
         addButtonRow(cardView,
             actionButton("重启", v -> runSingleAction(snapshot.id, ACTION_RESTART)),
             actionButton("修复", v -> runSingleAction(snapshot.id, ACTION_REPAIR)));
@@ -486,6 +563,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
                     setStatus("状态已刷新。");
                 }
                 maybeStartCcCodexControlTutorial();
+                maybeStartDesktopAppControlTutorial();
             });
         });
     }
@@ -760,6 +838,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             return;
         }
         card.titleView.setText(snapshot.displayName);
+        card.state = safeTrim(snapshot.state);
         card.url = firstNonBlank(snapshot.url, card.url);
         updateOpenButton(card.openButton, card.serviceId, card.url);
         updateTutorialActionButton(card, snapshot);
@@ -1158,6 +1237,246 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         return null;
     }
 
+    private void maybeStartDesktopAppControlTutorial() {
+        if (!isDesktopAppControlTutorial() || desktopAppTutorialStarted || isFinishing()) {
+            return;
+        }
+        if (componentId.isEmpty() || tutorialServiceId.isEmpty()
+            || isControlPlaneService(tutorialServiceId)) {
+            setStatus("桌面教学目标无效，不能对控制中枢执行应用启停教学。");
+            return;
+        }
+        ServiceCard card = findDesktopTutorialCard();
+        if (card == null || isControlPlaneService(card.serviceId)) {
+            return;
+        }
+        ViewGroup overlayContainer = findViewById(android.R.id.content);
+        if (overlayContainer == null) {
+            return;
+        }
+
+        desktopAppTutorialStarted = true;
+        boolean initiallyStopped = isStoppedState(card.state);
+        List<GuidedTutorialOverlay.Step> steps = new ArrayList<>();
+        steps.add(GuidedTutorialOverlay.Step.explanation(
+            "应用运行控制",
+            initiallyStopped
+                ? "这里仅控制刚才打开的应用服务。当前服务已经关闭；你将先亲自启动它作为准备，再亲自关闭并完成最后一次启动。"
+                : "这里仅控制刚才打开的应用服务。接下来由你亲自关闭并重新启动，教学不会自动执行任何副作用。"
+        ).build());
+
+        if (initiallyStopped) {
+            steps.add(GuidedTutorialOverlay.Step.sideEffectClick(
+                "先启动应用服务",
+                "当前服务已经关闭。请先点击“启动”，等待 service-manager 确认运行，再继续练习关闭。",
+                this::findDesktopTutorialStartButton
+            ).onTargetClick((overlay, step) -> {
+                runDesktopTutorialAction(overlay, ACTION_START, false);
+                return true;
+            }).build());
+        }
+
+        steps.add(GuidedTutorialOverlay.Step.sideEffectClick(
+            "真实关闭应用服务",
+            "请点击箭头指向的“关闭”。系统会等待 service-manager 确认服务已经停止，确认前不能进入下一步。",
+            this::findDesktopTutorialStopButton
+        ).onTargetClick((overlay, step) -> {
+            runDesktopTutorialAction(overlay, ACTION_STOP, false);
+            return true;
+        }).build());
+
+        steps.add(GuidedTutorialOverlay.Step.sideEffectClick(
+            "最终启动应用服务",
+            "关闭已经确认。请再次点击“启动”，系统确认恢复运行后才算完成启停教学。",
+            this::findDesktopTutorialStartButton
+        ).onTargetClick((overlay, step) -> {
+            runDesktopTutorialAction(overlay, ACTION_START, true);
+            return true;
+        }).build());
+
+        steps.add(GuidedTutorialOverlay.Step.requiredClick(
+            "返回应用",
+            "服务已经重新运行。请点击“返回应用”，回到刚才打开的应用页面。",
+            () -> returnMenuButton
+        ).onTargetClick((overlay, step) -> {
+            Button button = returnMenuButton;
+            if (button == null || !button.isEnabled()) {
+                Toast.makeText(this, "正在处理，请稍后返回应用。", Toast.LENGTH_SHORT).show();
+                overlay.refreshTarget();
+                return true;
+            }
+            button.performClick();
+            return true;
+        }).build());
+
+        desktopAppTutorialOverlay = new GuidedTutorialOverlay(
+            this,
+            overlayContainer,
+            steps,
+            new GuidedTutorialOverlay.SimpleListener() {
+                @Override
+                public void onStepChanged(GuidedTutorialOverlay overlay,
+                                          GuidedTutorialOverlay.Step step,
+                                          int stepIndex) {
+                    scrollTutorialTargetIntoView(overlay, step);
+                }
+
+                @Override
+                public void onSkipped(GuidedTutorialOverlay overlay,
+                                      GuidedTutorialOverlay.Step step) {
+                    desktopAppTutorialOverlay = null;
+                }
+
+                @Override
+                public void onFinished(GuidedTutorialOverlay overlay) {
+                    desktopAppTutorialOverlay = null;
+                }
+            }
+        );
+        desktopAppTutorialOverlay.start();
+    }
+
+    private void runDesktopTutorialAction(GuidedTutorialOverlay overlay, String action,
+                                          boolean finalStart) {
+        String cleanAction = ServiceManagerClient.sanitizeAction(action);
+        ServiceCard card = findDesktopTutorialCard();
+        String serviceId = card == null ? "" : ServiceManagerClient.sanitizeServiceId(card.serviceId);
+        Button actionButton = ACTION_STOP.equals(cleanAction)
+            ? (card == null ? null : card.stopButton)
+            : (card == null ? null : card.startButton);
+        if ((!ACTION_STOP.equals(cleanAction) && !ACTION_START.equals(cleanAction))
+            || serviceId.isEmpty() || isControlPlaneService(serviceId)) {
+            setStatus("桌面教学动作或服务无效。");
+            return;
+        }
+        if (desktopTutorialActionInFlight || actionButton == null || !actionButton.isEnabled()) {
+            Toast.makeText(this, "服务正在处理，请等待状态确认。", Toast.LENGTH_SHORT).show();
+            if (overlay != null) {
+                overlay.refreshTarget();
+            }
+            return;
+        }
+
+        desktopTutorialActionInFlight = true;
+        setBusy(true);
+        setStatus("正在请求 " + serviceId + " " + actionLabel(cleanAction) + "，并等待真实状态确认...");
+        hideMaintenanceFallback();
+        backgroundExecutor.execute(() -> {
+            ServiceManagerActionResult result;
+            try {
+                result = controlClient.runAction(serviceId, cleanAction);
+            } catch (Exception e) {
+                Logger.logStackTraceWithMessage(LOG_TAG,
+                    "Desktop tutorial service action failed: " + serviceId, e);
+                runOnUiThread(() -> finishDesktopTutorialActionWithError(
+                    serviceId + " " + actionLabel(cleanAction) + "失败。\n" + safeErrorMessage(e)));
+                return;
+            }
+            if (!result.success()) {
+                runOnUiThread(() -> finishDesktopTutorialActionWithError(
+                    formatActionResult(serviceId, cleanAction, result)));
+                return;
+            }
+
+            ServiceSnapshot lastSnapshot = null;
+            String lastError = "";
+            boolean confirmed = false;
+            for (int attempt = 0; attempt < DESKTOP_TUTORIAL_STATUS_POLL_ATTEMPTS; attempt++) {
+                try {
+                    lastSnapshot = snapshotFromStatus(serviceId, controlClient.getStatus(serviceId));
+                    if (lastSnapshot.success && desktopTutorialStateMatches(cleanAction, lastSnapshot.state)) {
+                        confirmed = true;
+                        break;
+                    }
+                    lastError = firstNonBlank(lastSnapshot.message,
+                        "当前状态：" + stateLabel(lastSnapshot.state));
+                } catch (Exception e) {
+                    lastError = safeErrorMessage(e);
+                }
+                if (attempt + 1 < DESKTOP_TUTORIAL_STATUS_POLL_ATTEMPTS) {
+                    try {
+                        Thread.sleep(DESKTOP_TUTORIAL_STATUS_POLL_DELAY_MS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        lastError = "等待状态确认时被中断。";
+                        break;
+                    }
+                }
+            }
+
+            ServiceSnapshot finalSnapshot = lastSnapshot;
+            boolean finalConfirmed = confirmed;
+            String finalError = lastError;
+            runOnUiThread(() -> {
+                ServiceCard currentCard = findDesktopTutorialCard();
+                if (currentCard != null && finalSnapshot != null) {
+                    updateCard(currentCard, finalSnapshot);
+                }
+                desktopTutorialActionInFlight = false;
+                setBusy(false);
+                if (!finalConfirmed) {
+                    setStatus(serviceId + " " + actionLabel(cleanAction)
+                        + "已提交，但未在等待时间内确认目标状态。\n"
+                        + firstNonBlank(finalError, "请检查服务状态后重试。"));
+                    return;
+                }
+                setStatus(serviceId + " 已确认" + (ACTION_STOP.equals(cleanAction)
+                    ? "停止。"
+                    : "恢复运行。"));
+                if (ACTION_STOP.equals(cleanAction)) {
+                    desktopTutorialStopConfirmed = true;
+                } else if (ACTION_START.equals(cleanAction) && finalStart) {
+                    desktopTutorialFinalStartConfirmed = true;
+                }
+                desktopTutorialCycleCompleted = desktopTutorialStopConfirmed
+                    && desktopTutorialFinalStartConfirmed;
+                if (desktopAppTutorialOverlay == overlay
+                    && overlay != null && overlay.isShowing()) {
+                    overlay.next();
+                }
+            });
+        });
+    }
+
+    private void finishDesktopTutorialActionWithError(String message) {
+        desktopTutorialActionInFlight = false;
+        setBusy(false);
+        setStatus(message);
+        showMaintenanceFallback();
+    }
+
+    private void finishDesktopTutorialAndReturn() {
+        if (!desktopTutorialStopConfirmed || !desktopTutorialFinalStartConfirmed
+            || !desktopTutorialCycleCompleted) {
+            Toast.makeText(this, "请先完成关闭和启动教学。", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent result = new Intent();
+        result.putExtra(EXTRA_SERVICE_CONTROL_TUTORIAL_COMPLETED, true);
+        setResult(RESULT_OK, result);
+        finish();
+    }
+
+    private boolean desktopTutorialStateMatches(String action, String state) {
+        return ACTION_STOP.equals(action) ? isStoppedState(state) : isRunningState(state);
+    }
+
+    private Button findDesktopTutorialStartButton() {
+        ServiceCard card = findDesktopTutorialCard();
+        return card == null ? null : card.startButton;
+    }
+
+    private Button findDesktopTutorialStopButton() {
+        ServiceCard card = findDesktopTutorialCard();
+        return card == null ? null : card.stopButton;
+    }
+
+    private ServiceCard findDesktopTutorialCard() {
+        String target = ServiceManagerClient.sanitizeServiceId(
+            firstNonBlank(resolvedTutorialServiceId, tutorialServiceId));
+        return target.isEmpty() ? null : serviceCards.get(target);
+    }
+
     private void scrollTutorialTargetIntoView(GuidedTutorialOverlay overlay,
                                               GuidedTutorialOverlay.Step step) {
         if (rootScrollView == null || contentView == null || step == null
@@ -1254,6 +1573,10 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         return TUTORIAL_CC_CODEX_CONTROL.equals(tutorialMode);
     }
 
+    private boolean isDesktopAppControlTutorial() {
+        return TUTORIAL_DESKTOP_APP_CONTROL.equals(tutorialMode);
+    }
+
     private boolean isCcCodexTutorialService(String serviceId) {
         if (!isCcCodexTutorial()) {
             return false;
@@ -1277,6 +1600,13 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             || normalized.equals("up")
             || normalized.equals("healthy")
             || normalized.equals("ready");
+    }
+
+    private boolean isStoppedState(String state) {
+        String normalized = safeTrim(state).toLowerCase(Locale.US);
+        return normalized.equals("stopped")
+            || normalized.equals("inactive")
+            || normalized.equals("down");
     }
 
     private String resultLabel(ServiceManagerActionResult result) {
@@ -1608,11 +1938,15 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         final TextView logView;
         final Button openButton;
         final Button tutorialActionButton;
+        final Button startButton;
+        final Button stopButton;
         final Button refreshButton;
+        String state;
         String url;
 
         ServiceCard(String serviceId, LinearLayout root, TextView titleView, TextView detailView, TextView logView,
-                    Button openButton, Button tutorialActionButton, Button refreshButton) {
+                    Button openButton, Button tutorialActionButton, Button startButton, Button stopButton,
+                    Button refreshButton) {
             this.serviceId = serviceId;
             this.root = root;
             this.titleView = titleView;
@@ -1620,7 +1954,10 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             this.logView = logView;
             this.openButton = openButton;
             this.tutorialActionButton = tutorialActionButton;
+            this.startButton = startButton;
+            this.stopButton = stopButton;
             this.refreshButton = refreshButton;
+            this.state = "";
             this.url = "";
         }
     }

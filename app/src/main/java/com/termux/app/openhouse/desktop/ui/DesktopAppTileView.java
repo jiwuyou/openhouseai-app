@@ -14,6 +14,8 @@ import com.termux.R;
 
 final class DesktopAppTileView extends LinearLayout {
 
+    private static final String ENTRY_TAG_PREFIX = "openhouse_desktop_app:";
+
     interface Callback {
         void onOpen(DesktopUiEntry entry);
         void onEdit(DesktopUiEntry entry);
@@ -84,6 +86,7 @@ final class DesktopAppTileView extends LinearLayout {
         this.absoluteIndex = absoluteIndex;
         this.editMode = editMode;
         this.callback = callback;
+        setTag(entryTag(entry == null ? "" : entry.id));
 
         String iconLabel = entry == null ? "App" : entry.displayIconLabel();
         iconView.setText(iconLabel);
@@ -93,6 +96,10 @@ final class DesktopAppTileView extends LinearLayout {
         setAlpha(entry != null && !entry.enabled ? 0.55f : 1f);
         setScaleX(1f);
         setScaleY(1f);
+    }
+
+    static String entryTag(String entryId) {
+        return ENTRY_TAG_PREFIX + DesktopUiEntry.safeTrim(entryId);
     }
 
     private boolean startTileDrag() {

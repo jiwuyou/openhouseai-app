@@ -71,6 +71,11 @@ import com.termux.app.openhouse.desktop.DesktopLayoutState;
 import com.termux.app.openhouse.desktop.DesktopLayoutStore;
 import com.termux.app.openhouse.desktop.ui.DesktopUiEntry;
 import com.termux.app.openhouse.desktop.ui.OpenHouseDesktopView;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerService;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceResolver;
+import com.termux.app.openhouse.servicecontrol.ServiceManagerTarget;
 import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
 import com.termux.app.operit.OperitHomeIntegration;
 import com.termux.app.smallphone.SmallPhoneFirstLaunchGate;
@@ -150,7 +155,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     public static final String TUTORIAL_START_CORE_SERVICES = "start_core_services";
     public static final String TUTORIAL_CC_CODEX_CONTROL = "cc_codex_control";
     private static final String PREF_USAGE_TUTORIAL_STAGE = "usage_tutorial_stage";
+    private static final String PREF_USAGE_TUTORIAL_APP_ID = "usage_tutorial_app_id";
+    private static final String PREF_USAGE_TUTORIAL_SERVICE_ID = "usage_tutorial_service_id";
     private static final String USAGE_STAGE_START_CORE = TUTORIAL_START_CORE_SERVICES;
+    private static final String USAGE_STAGE_CONTROL_IN_PROGRESS = "desktop_app_control_in_progress";
+    private static final String USAGE_STAGE_RETURN_FROM_CONTROL = "desktop_app_control_return";
+    private static final int REQUEST_DESKTOP_APP_CONTROL_TUTORIAL = 31042;
     private static final String CC_CODEX_SERVICE_NAME = "cloudcli";
     private static final String SMALLPHONE_HOME_TARGET = "messages";
     private static final String MENU_OVERRIDES_RELATIVE_PATH = ".config/openhouseai/menu-overrides.json";
@@ -252,6 +262,16 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private long aiFriendHelpShutdownRequestedAtMs;
     private boolean aiFriendHelpLaunchFailureNotified;
     private String pendingDesktopOpenAppId;
+
+    private static final class DesktopTutorialTarget {
+        final OpenHouseComponent component;
+        final String serviceId;
+
+        DesktopTutorialTarget(OpenHouseComponent component, String serviceId) {
+            this.component = component;
+            this.serviceId = serviceId == null ? "" : serviceId;
+        }
+    }
 
     private static final class DynamicWebPageRecord {
         final String key;
@@ -430,6 +450,24 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (isLauncherOpenIntent(intent)) {
             selectConfiguredHomePage();
         }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_DESKTOP_APP_CONTROL_TUTORIAL) {
+            return;
+        }
+        boolean completed = resultCode == RESULT_OK
+            && data != null
+            && data.getBooleanExtra(
+                OpenHouseServiceControlActivity.EXTRA_SERVICE_CONTROL_TUTORIAL_COMPLETED,
+                false);
+        getOpenHouseHomePrefs().edit()
+            .putString(PREF_USAGE_TUTORIAL_STAGE,
+                completed ? USAGE_STAGE_RETURN_FROM_CONTROL : USAGE_STAGE_CONTROL_IN_PROGRESS)
+            .apply();
+        scheduleResumePendingUsageTutorial();
     }
 
     @Override
@@ -1057,7 +1095,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 break;
             case PAGE_USAGE_TUTORIAL:
                 showScrollContent();
-                setHeader("使用教学", usageCoreServicesMode ? "启动核心服务" : "按箭头认识 OpenHouse");
+                setHeader("使用教学", usageCoreServicesMode ? "启动核心服务" : "从桌面认识应用和运行控制");
                 renderUsageTutorialPage();
                 break;
             case PAGE_PERMISSIONS:
@@ -2835,13 +2873,32 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void openComponentControl(OpenHouseComponent component) {
-        openComponentControl(component, false);
+        openComponentControl(component, "", "");
     }
 
-    private void openComponentControl(OpenHouseComponent component, boolean ccCodexTeaching) {
-        if (component == null || !component.hasControlEntry()) {
+    private void openComponentControl(
+        OpenHouseComponent component,
+        String tutorialMode,
+        String tutorialServiceId
+    ) {
+        Intent intent = buildComponentControlIntent(component, tutorialMode, tutorialServiceId);
+        if (intent == null) {
             openMaintenanceCenter();
             return;
+        }
+        if (drawerLayout != null) {
+            drawerLayout.closeDrawer(GravityCompat.START);
+        }
+        ActivityUtils.startActivity(this, intent);
+    }
+
+    private Intent buildComponentControlIntent(
+        OpenHouseComponent component,
+        String tutorialMode,
+        String tutorialServiceId
+    ) {
+        if (component == null || !component.hasControlEntry()) {
+            return null;
         }
         Intent intent = new Intent(this, OpenHouseServiceControlActivity.class);
         intent.putExtra(EXTRA_SERVICE_CONTROL_MODE, SERVICE_CONTROL_MODE_COMPONENT);
@@ -2850,14 +2907,15 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         intent.putExtra(EXTRA_SERVICE_CONTROL_URL, firstNonBlank(component.url, getCurrentBrowserUrl()));
         intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_NAMES, joinValues(component.serviceNames));
         intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_REFS, joinValues(component.serviceRefs));
-        if (ccCodexTeaching) {
+        if (!isBlank(tutorialMode)) {
             intent.putExtra(OpenHouseServiceControlActivity.EXTRA_SERVICE_CONTROL_TUTORIAL,
-                OpenHouseServiceControlActivity.TUTORIAL_CC_CODEX_CONTROL);
+                tutorialMode);
         }
-        if (drawerLayout != null) {
-            drawerLayout.closeDrawer(GravityCompat.START);
+        if (!isBlank(tutorialServiceId)) {
+            intent.putExtra(OpenHouseServiceControlActivity.EXTRA_SERVICE_CONTROL_TUTORIAL_SERVICE_ID,
+                tutorialServiceId);
         }
-        ActivityUtils.startActivity(this, intent);
+        return intent;
     }
 
     private void openAllServiceControl() {
@@ -2888,136 +2946,100 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         clearPendingUsageTutorialStage();
         usageCoreServicesMode = false;
         destroyUsageTutorialOverlay();
-        selectPage(PAGE_HOME);
-        if (drawerLayout != null) {
-            drawerLayout.post(() -> {
-                drawerLayout.openDrawer(GravityCompat.START);
-                startMenuUsageTutorialOverlay();
-            });
-        } else {
-            startMenuUsageTutorialOverlay();
-        }
+        setTopActionBarCollapsed(false);
+        selectPage(PAGE_DESKTOP);
+        startDesktopUsageTutorialOverlay();
     }
 
-    private void startMenuUsageTutorialOverlay() {
+    private void startDesktopUsageTutorialOverlay() {
         if (isFinishing()) {
             return;
         }
-        if (drawerLayout != null && !drawerLayout.isDrawerOpen(GravityCompat.START)) {
-            drawerLayout.openDrawer(GravityCompat.START);
-        }
-
         View root = findViewById(android.R.id.content);
-        if (!(root instanceof ViewGroup)) {
+        if (!(root instanceof ViewGroup) || desktopView == null) {
             return;
         }
+        List<OpenHouseComponent> candidates = getDesktopTutorialCandidates();
+        if (candidates.isEmpty()) {
+            showDesktopTutorialUnavailable((ViewGroup) root,
+                "当前桌面没有同时具备应用入口和运行控制的应用。");
+            return;
+        }
+        Toast.makeText(this, "正在确认可用的桌面应用和真实服务…", Toast.LENGTH_SHORT).show();
+        backgroundExecutor.execute(() -> {
+            DesktopTutorialTarget target = null;
+            String error = "";
+            try {
+                List<ServiceManagerService> registeredServices =
+                    new ServiceManagerControlClient(this).listServices();
+                target = findDesktopTutorialApp(candidates, registeredServices);
+                if (target == null) {
+                    error = "当前桌面应用没有匹配到 service-manager 中真实注册的可控服务。";
+                }
+            } catch (Exception e) {
+                error = "暂时无法读取 service-manager 的真实服务列表。";
+            }
+            DesktopTutorialTarget resolvedTarget = target;
+            String resolvedError = error;
+            runOnUiThread(() -> {
+                if (isFinishing() || !PAGE_DESKTOP.equals(currentPage) || desktopView == null) {
+                    return;
+                }
+                if (resolvedTarget == null) {
+                    showDesktopTutorialUnavailable((ViewGroup) root, resolvedError);
+                    return;
+                }
+                if (!desktopView.revealEntry(resolvedTarget.component.id,
+                    entryView -> createDesktopUsageTutorialOverlay(
+                        (ViewGroup) root,
+                        resolvedTarget.component,
+                        resolvedTarget.serviceId))) {
+                    showDesktopTutorialUnavailable((ViewGroup) root,
+                        "没有在桌面布局中找到选定应用。");
+                }
+            });
+        });
+    }
 
+    private void createDesktopUsageTutorialOverlay(
+        ViewGroup root,
+        OpenHouseComponent tutorialApp,
+        String tutorialServiceId
+    ) {
+        if (isFinishing() || !PAGE_DESKTOP.equals(currentPage) || desktopView == null
+            || usageTutorialOverlay != null) {
+            return;
+        }
         List<GuidedTutorialOverlay.Step> steps = new ArrayList<>();
         steps.add(GuidedTutorialOverlay.Step
             .explanation(
-                "先认识菜单里的大服务",
-                "这里是 OpenHouse 的主要入口。SmallPhone、pi-agent、cc/codex 是同级服务；应用在前台时会尽量保持核心服务运行。")
+                "从桌面开始",
+                "这里是 OpenHouse 桌面。日常使用时直接点击应用图标；应用的启动、关闭和状态检查统一放在它自己的“控制”页面。")
             .build());
         steps.add(GuidedTutorialOverlay.Step
             .requiredClick(
-                "SmallPhone",
-                "请点击 SmallPhone。它是小手机页面和兼容运行栈入口，后续也会由运行控制统一管理。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonNavSmallPhone))
+                "进入 " + tutorialApp.title,
+                "请点击箭头指向的应用图标，真实进入应用。",
+                () -> desktopView == null ? null : desktopView.findEntryView(tutorialApp.id))
             .onTargetClick((overlay, step) -> {
-                openSmallPhone();
-                return true;
-            })
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .explanation(
-                "SmallPhone 是一个主服务",
-                "这里可以进入小手机侧的页面。普通用户不需要先理解后台服务，OpenHouse 会在前台自动保持核心服务可用。")
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .requiredClick(
-                "回到菜单",
-                "请点击菜单，回到侧边栏继续认识 pi-agent。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonOpenDrawer))
-            .onTargetClick((overlay, step) -> {
-                if (drawerLayout != null) {
-                    drawerLayout.openDrawer(GravityCompat.START);
-                }
-                overlay.refreshTarget();
+                openDesktopApp(tutorialApp);
                 return true;
             })
             .build());
         steps.add(GuidedTutorialOverlay.Step
             .requiredClick(
-                "进入 pi-agent",
-                "请点击 pi-agent。它和 SmallPhone、cc/codex 一样是侧边栏一级服务，也是首次配置助手。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonNavPiAgent))
+                "打开应用控制",
+                "应用页面顶部的“控制”只管理当前应用。请点击它，下一页会练习关闭和重新启动服务。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonOpenCurrentControl))
             .onTargetClick((overlay, step) -> {
-                openPiAgent();
+                beginDesktopAppControlTutorial(tutorialApp, tutorialServiceId);
                 return true;
             })
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .explanation(
-                "pi-agent 是配置起点",
-                "如果 pi-agent 还没有模型配置，先按页面提示配置模型。之后点击“首次使用 OpenHouse”，让它读取 /root/openhouse/docs 并继续引导你。")
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .requiredClick(
-                "回到菜单",
-                "请点击菜单，回到侧边栏继续认识 cc/codex。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonOpenDrawer))
-            .onTargetClick((overlay, step) -> {
-                if (drawerLayout != null) {
-                    drawerLayout.openDrawer(GravityCompat.START);
-                }
-                overlay.refreshTarget();
-                return true;
-            })
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .requiredClick(
-                "cc/codex",
-                "请点击 cc/codex。它是 Claude Code / Codex 这类主力 AI 的统一入口，首次配置通常由 pi-agent 引导完成。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonNavAi))
-            .onTargetClick((overlay, step) -> {
-                openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI);
-                return true;
-            })
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .explanation(
-                "cc/codex 后置配置",
-                "如果这里还不可用，先回到 pi-agent 配置模型并安装 Claude Code、Codex 或 CloudCLI。配置好以后，这里就是常用 AI 入口。")
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .requiredClick(
-                "回到菜单",
-                "请点击菜单，最后认识运行控制和全部退出入口。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonOpenDrawer))
-            .onTargetClick((overlay, step) -> {
-                if (drawerLayout != null) {
-                    drawerLayout.openDrawer(GravityCompat.START);
-                }
-                overlay.refreshTarget();
-                return true;
-            })
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .requiredClick(
-                "运行控制和全部退出",
-                "请点一下运行控制入口。本步只认识入口，不会跳转。以后需要一键修复、关闭服务或全部退出，从这里进入。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonNavServiceControl))
-            .onTargetClick((overlay, step) -> true)
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .explanation(
-                "终端教学是单独入口",
-                "首次教学到这里结束。普通使用不需要进入终端；需要命令行时，可以从菜单里的“终端教学”单独学习。")
             .build());
 
         usageTutorialOverlay = new GuidedTutorialOverlay(
             this,
-            (ViewGroup) root,
+            root,
             steps,
             new GuidedTutorialOverlay.SimpleListener() {
                 @Override
@@ -3033,24 +3055,145 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         usageTutorialOverlay.start();
     }
 
-    private void openCcCodexControlForTeaching() {
-        OpenHouseComponent component = findCcCodexComponent();
-        if (component != null && component.hasControlEntry()) {
-            openComponentControl(component, true);
+    private void showDesktopTutorialUnavailable(ViewGroup root, String reason) {
+        List<GuidedTutorialOverlay.Step> steps = Collections.singletonList(
+            GuidedTutorialOverlay.Step.explanation(
+                "桌面应用尚未准备好",
+                firstNonBlank(reason, "当前没有可用于教学的桌面应用。")
+                    + "你仍可以从桌面打开已有应用，稍后再从菜单重新进入使用教学。")
+                .build());
+        usageTutorialOverlay = new GuidedTutorialOverlay(this, root, steps,
+            new GuidedTutorialOverlay.SimpleListener() {
+                @Override
+                public void onFinished(GuidedTutorialOverlay overlay) {
+                    usageTutorialOverlay = null;
+                }
+            });
+        usageTutorialOverlay.start();
+    }
+
+    private List<OpenHouseComponent> getDesktopTutorialCandidates() {
+        DesktopLayoutState state = desktopLayoutState == null
+            ? getDesktopLayoutStore().load(getDesktopAppsForDisplay())
+            : desktopLayoutState;
+        List<OpenHouseComponent> candidates = new ArrayList<>();
+        for (DesktopLayoutEntry entry : state.entries) {
+            OpenHouseComponent component = entry == null ? null : entry.component;
+            if (isDesktopTutorialCandidate(component)) {
+                candidates.add(component);
+            }
+        }
+        return candidates;
+    }
+
+    private DesktopTutorialTarget findDesktopTutorialApp(
+        List<OpenHouseComponent> candidates,
+        List<ServiceManagerService> registeredServices
+    ) {
+        if (candidates == null || candidates.isEmpty()
+            || registeredServices == null || registeredServices.isEmpty()) {
+            return null;
+        }
+        DesktopTutorialTarget fallback = null;
+        for (OpenHouseComponent component : candidates) {
+            String serviceId = findTutorialServiceId(component, registeredServices);
+            if (isBlank(serviceId)) {
+                continue;
+            }
+            DesktopTutorialTarget target = new DesktopTutorialTarget(component, serviceId);
+            if ("pi-agent".equals(normalizeId(component.id))) {
+                return target;
+            }
+            if (fallback == null) {
+                fallback = target;
+            }
+        }
+        return fallback;
+    }
+
+    private boolean isDesktopTutorialCandidate(OpenHouseComponent component) {
+        if (component == null || !component.isDesktopVisible() || !component.hasEntry()
+            || !component.hasControlEntry()) {
+            return false;
+        }
+        if (component.entryType != OpenHouseComponent.EntryType.WEBVIEW
+            && component.entryType != OpenHouseComponent.EntryType.NATIVE_PAGE) {
+            return false;
+        }
+        if (desktopAppLauncher == null) {
+            desktopAppLauncher = new DesktopAppLauncher(this);
+        }
+        DesktopAppLaunchIntent launchIntent = desktopAppLauncher.buildOpenIntent(component);
+        return launchIntent != null && launchIntent.launchable;
+    }
+
+    private String findTutorialServiceId(
+        OpenHouseComponent component,
+        List<ServiceManagerService> registeredServices
+    ) {
+        if (component == null || registeredServices == null || registeredServices.isEmpty()) {
+            return "";
+        }
+        List<String> requestedServiceIds = new ArrayList<>();
+        if (component.serviceRefs != null) {
+            for (String ref : component.serviceRefs) {
+                ServiceManagerTarget target = ServiceManagerClient.parseServiceManagerRef(ref);
+                if (target.valid && !isBlank(target.serviceId)
+                    && !requestedServiceIds.contains(target.serviceId)) {
+                    requestedServiceIds.add(target.serviceId);
+                }
+            }
+        }
+        if (component.serviceNames != null) {
+            for (String serviceName : component.serviceNames) {
+                String serviceId = ServiceManagerClient.sanitizeServiceId(serviceName);
+                if (!isBlank(serviceId) && !requestedServiceIds.contains(serviceId)) {
+                    requestedServiceIds.add(serviceId);
+                }
+            }
+        }
+        ServiceManagerServiceResolver.Resolution resolution = ServiceManagerServiceResolver.resolve(
+            component.id,
+            requestedServiceIds,
+            registeredServices);
+        for (String serviceId : resolution.serviceIds) {
+            if (!isTutorialControlPlaneService(serviceId)) {
+                return serviceId;
+            }
+        }
+        return "";
+    }
+
+    private boolean isTutorialControlPlaneService(String serviceId) {
+        String normalized = normalizeId(serviceId);
+        return "service-manager".equals(normalized)
+            || normalized.endsWith("-service-manager")
+            || normalized.contains("service-manager");
+    }
+
+    private void beginDesktopAppControlTutorial(OpenHouseComponent component, String serviceId) {
+        if (!isDesktopTutorialCandidate(component) || isBlank(serviceId)) {
+            Toast.makeText(this, "当前应用没有可教学的运行控制。", Toast.LENGTH_SHORT).show();
             return;
         }
-        Intent intent = new Intent(this, OpenHouseServiceControlActivity.class);
-        intent.putExtra(EXTRA_SERVICE_CONTROL_MODE, SERVICE_CONTROL_MODE_COMPONENT);
-        intent.putExtra(EXTRA_SERVICE_CONTROL_COMPONENT_ID, "cc-codex");
-        intent.putExtra(EXTRA_SERVICE_CONTROL_TITLE, getCcCodexTitle());
-        intent.putExtra(EXTRA_SERVICE_CONTROL_URL, getCcCodexUrl());
-        intent.putExtra(EXTRA_SERVICE_CONTROL_SERVICE_NAMES, CC_CODEX_SERVICE_NAME);
-        intent.putExtra(OpenHouseServiceControlActivity.EXTRA_SERVICE_CONTROL_TUTORIAL,
-            OpenHouseServiceControlActivity.TUTORIAL_CC_CODEX_CONTROL);
+        getOpenHouseHomePrefs().edit()
+            .putString(PREF_USAGE_TUTORIAL_STAGE, USAGE_STAGE_CONTROL_IN_PROGRESS)
+            .putString(PREF_USAGE_TUTORIAL_APP_ID, component.id)
+            .putString(PREF_USAGE_TUTORIAL_SERVICE_ID, serviceId)
+            .apply();
+        destroyUsageTutorialOverlay();
+        Intent intent = buildComponentControlIntent(component,
+            OpenHouseServiceControlActivity.TUTORIAL_DESKTOP_APP_CONTROL,
+            serviceId);
+        if (intent == null) {
+            clearPendingUsageTutorialStage();
+            Toast.makeText(this, "无法打开当前应用的运行控制。", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (drawerLayout != null) {
             drawerLayout.closeDrawer(GravityCompat.START);
         }
-        ActivityUtils.startActivity(this, intent);
+        startActivityForResult(intent, REQUEST_DESKTOP_APP_CONTROL_TUTORIAL);
     }
 
     private void scheduleResumePendingUsageTutorial() {
@@ -3070,7 +3213,117 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             startCoreServicesTeachingStage();
             return true;
         }
+        if (USAGE_STAGE_CONTROL_IN_PROGRESS.equals(stage)) {
+            startDesktopControlRetryTutorialStage();
+            return true;
+        }
+        if (USAGE_STAGE_RETURN_FROM_CONTROL.equals(stage)) {
+            startDesktopReturnTutorialStage();
+            return true;
+        }
         return false;
+    }
+
+    private void startDesktopReturnTutorialStage() {
+        destroyUsageTutorialOverlay();
+        setTopActionBarCollapsed(false);
+        String appId = getOpenHouseHomePrefs().getString(PREF_USAGE_TUTORIAL_APP_ID, "");
+        OpenHouseComponent tutorialApp = findDesktopComponentById(appId);
+        if (tutorialApp == null || !isDesktopTutorialCandidate(tutorialApp)) {
+            clearPendingUsageTutorialStage();
+            selectPage(PAGE_DESKTOP);
+            return;
+        }
+        OpenHouseComponent currentComponent = getCurrentControlComponent();
+        if (currentComponent == null || !normalizeId(tutorialApp.id).equals(normalizeId(currentComponent.id))) {
+            openDesktopApp(tutorialApp);
+        }
+        View root = findViewById(android.R.id.content);
+        if (!(root instanceof ViewGroup)) {
+            clearPendingUsageTutorialStage();
+            return;
+        }
+        List<GuidedTutorialOverlay.Step> steps = Collections.singletonList(
+            GuidedTutorialOverlay.Step.requiredClick(
+                "从应用回到桌面",
+                "运行控制教学已经完成。请点击顶部“桌面”，退出当前应用并回到 OpenHouse 桌面。",
+                GuidedTutorialOverlay.targetById(root, R.id.buttonReturnDesktop))
+                .onTargetClick((overlay, step) -> {
+                    clearPendingUsageTutorialStage();
+                    selectPage(PAGE_DESKTOP);
+                    return true;
+                })
+                .build());
+        usageTutorialOverlay = new GuidedTutorialOverlay(
+            this,
+            (ViewGroup) root,
+            steps,
+            new GuidedTutorialOverlay.SimpleListener() {
+                @Override
+                public void onFinished(GuidedTutorialOverlay overlay) {
+                    clearPendingUsageTutorialStage();
+                    usageTutorialOverlay = null;
+                }
+
+                @Override
+                public void onSkipped(GuidedTutorialOverlay overlay, GuidedTutorialOverlay.Step step) {
+                    clearPendingUsageTutorialStage();
+                    usageTutorialOverlay = null;
+                }
+            });
+        usageTutorialOverlay.start();
+    }
+
+    private void startDesktopControlRetryTutorialStage() {
+        destroyUsageTutorialOverlay();
+        setTopActionBarCollapsed(false);
+        String appId = getOpenHouseHomePrefs().getString(PREF_USAGE_TUTORIAL_APP_ID, "");
+        String serviceId = getOpenHouseHomePrefs().getString(PREF_USAGE_TUTORIAL_SERVICE_ID, "");
+        OpenHouseComponent tutorialApp = findDesktopComponentById(appId);
+        if (tutorialApp == null || !isDesktopTutorialCandidate(tutorialApp) || isBlank(serviceId)) {
+            clearPendingUsageTutorialStage();
+            return;
+        }
+        OpenHouseComponent currentComponent = getCurrentControlComponent();
+        if (currentComponent == null || !normalizeId(tutorialApp.id).equals(normalizeId(currentComponent.id))) {
+            openDesktopApp(tutorialApp);
+        }
+        View root = findViewById(android.R.id.content);
+        if (!(root instanceof ViewGroup)) {
+            clearPendingUsageTutorialStage();
+            return;
+        }
+        List<GuidedTutorialOverlay.Step> steps = new ArrayList<>();
+        steps.add(GuidedTutorialOverlay.Step.explanation(
+            "运行控制教学尚未完成",
+            "刚才的控制页没有完成关闭、启动和状态确认。你可以再次进入控制继续，也可以在下一步等待 20 秒后跳过本次教学。")
+            .build());
+        steps.add(GuidedTutorialOverlay.Step.requiredClick(
+            "重新打开应用控制",
+            "请点击顶部“控制”，继续完成当前应用的运行控制教学。",
+            GuidedTutorialOverlay.targetById(root, R.id.buttonOpenCurrentControl))
+            .onTargetClick((overlay, step) -> {
+                beginDesktopAppControlTutorial(tutorialApp, serviceId);
+                return true;
+            })
+            .build());
+        usageTutorialOverlay = new GuidedTutorialOverlay(
+            this,
+            (ViewGroup) root,
+            steps,
+            new GuidedTutorialOverlay.SimpleListener() {
+                @Override
+                public void onFinished(GuidedTutorialOverlay overlay) {
+                    usageTutorialOverlay = null;
+                }
+
+                @Override
+                public void onSkipped(GuidedTutorialOverlay overlay, GuidedTutorialOverlay.Step step) {
+                    clearPendingUsageTutorialStage();
+                    usageTutorialOverlay = null;
+                }
+            });
+        usageTutorialOverlay.start();
     }
 
     private void startCoreServicesTeachingStage() {
@@ -3117,67 +3370,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private void startAfterCoreServicesTutorial() {
         usageCoreServicesMode = false;
         usageCoreServicesFailed = false;
-        selectPage(PAGE_HOME);
-        if (drawerLayout != null) {
-            drawerLayout.post(() -> {
-                drawerLayout.openDrawer(GravityCompat.START);
-                startPiAgentFinalTutorialOverlay();
-            });
-        } else {
-            startPiAgentFinalTutorialOverlay();
-        }
-    }
-
-    private void startPiAgentFinalTutorialOverlay() {
-        if (isFinishing()) {
-            return;
-        }
-        if (drawerLayout != null && !drawerLayout.isDrawerOpen(GravityCompat.START)) {
-            drawerLayout.openDrawer(GravityCompat.START);
-        }
-        View root = findViewById(android.R.id.content);
-        if (!(root instanceof ViewGroup)) {
-            return;
-        }
-
-        List<GuidedTutorialOverlay.Step> steps = new ArrayList<>();
-        steps.add(GuidedTutorialOverlay.Step
-            .requiredClick(
-                "进入 pi-agent",
-                "核心服务已启动。请点击 pi-agent，接下来在 pi-agent 里按页面提示完成首次配置。",
-                GuidedTutorialOverlay.targetById(root, R.id.buttonNavPiAgent))
-            .onTargetClick((overlay, step) -> {
-                openPiAgent();
-                return true;
-            })
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .explanation(
-                "在 pi-agent 里继续",
-                "进入后请按 pi-agent 页面提示操作：点侧边栏三横线，项目选 /root，配置模型，新建会话，选择“首次使用 OpenHouse”。如果要配置 Claude Code，第一次消息把 URL、key/token 和模型 id 发给 AI。")
-            .build());
-        steps.add(GuidedTutorialOverlay.Step
-            .explanation(
-                "配置完成后的检查",
-                "pi-agent 会按 /root/openhouse/docs 的文档引导安装和测通 Codex、Claude Code、CloudCLI 或 Hermes。cc/codex 未安装时会提示先回 pi-agent 完成安装配置。")
-            .build());
-
-        usageTutorialOverlay = new GuidedTutorialOverlay(
-            this,
-            (ViewGroup) root,
-            steps,
-            new GuidedTutorialOverlay.SimpleListener() {
-                @Override
-                public void onFinished(GuidedTutorialOverlay overlay) {
-                    usageTutorialOverlay = null;
-                }
-
-                @Override
-                public void onSkipped(GuidedTutorialOverlay overlay, GuidedTutorialOverlay.Step step) {
-                    usageTutorialOverlay = null;
-                }
-            });
-        usageTutorialOverlay.start();
+        startUsageTeachingFlow();
     }
 
     private void destroyUsageTutorialOverlay() {
@@ -3192,7 +3385,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void clearPendingUsageTutorialStage() {
-        getOpenHouseHomePrefs().edit().remove(PREF_USAGE_TUTORIAL_STAGE).apply();
+        getOpenHouseHomePrefs().edit()
+            .remove(PREF_USAGE_TUTORIAL_STAGE)
+            .remove(PREF_USAGE_TUTORIAL_APP_ID)
+            .remove(PREF_USAGE_TUTORIAL_SERVICE_ID)
+            .apply();
     }
 
     private String resolveNativePage(String page) {
@@ -5074,7 +5271,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 selectPage(PAGE_HOME);
             }));
         } else {
-            addBody(panel, "使用教学会在菜单内带你认识 SmallPhone、pi-agent、cc/codex、运行控制、全部退出和终端教学入口。首次教学不进入终端；需要真实点击的步骤 20 秒后才允许跳过。");
+            addBody(panel, "使用教学会从 OpenHouse 桌面开始，带你真实进入一个应用、打开该应用的运行控制、练习关闭和重新启动服务，再从应用回到桌面。终端教学仍是独立入口；需要真实点击的步骤 20 秒后才允许跳过。");
             Button startButton = button("开始使用教学", v -> startUsageTeachingFlow());
             startButton.setTag(HOME_USAGE_TUTORIAL_TAG);
             panel.addView(startButton);

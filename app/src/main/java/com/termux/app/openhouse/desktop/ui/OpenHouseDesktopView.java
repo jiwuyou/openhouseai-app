@@ -24,6 +24,10 @@ import java.util.Set;
 
 public final class OpenHouseDesktopView extends LinearLayout {
 
+    public interface EntryViewReadyCallback {
+        void onEntryViewReady(View entryView);
+    }
+
     public interface Callbacks {
         default void onOpen(DesktopUiEntry entry) {}
         default void onEdit(DesktopUiEntry entry) {}
@@ -141,6 +145,29 @@ public final class OpenHouseDesktopView extends LinearLayout {
         return pager.getCurrentItem();
     }
 
+    /**
+     * Makes the page containing {@code entryId} visible and reports the laid-out tile view.
+     * Tutorial callers can then use {@link #findEntryView(String)} as a stable target supplier.
+     */
+    public boolean revealEntry(String entryId, EntryViewReadyCallback callback) {
+        String normalizedId = DesktopUiEntry.safeTrim(entryId);
+        DesktopUiEntry entry = findEntry(normalizedId);
+        if (entry == null) {
+            return false;
+        }
+        setCurrentPage(entry.slotIndex / getPageSize(), false);
+        dispatchEntryViewWhenReady(normalizedId, callback);
+        return true;
+    }
+
+    public View findEntryView(String entryId) {
+        String normalizedId = DesktopUiEntry.safeTrim(entryId);
+        if (normalizedId.isEmpty()) {
+            return null;
+        }
+        return findViewWithTag(DesktopAppTileView.entryTag(normalizedId));
+    }
+
     public void setCurrentPage(int page, boolean smoothScroll) {
         int target = Math.max(0, Math.min(page, getPageCount() - 1));
         pager.setCurrentItem(target, smoothScroll);
@@ -234,6 +261,41 @@ public final class OpenHouseDesktopView extends LinearLayout {
             }
         }
         return -1;
+    }
+
+    private DesktopUiEntry findEntry(String id) {
+        int index = findEntryIndex(id);
+        return index < 0 ? null : entries.get(index);
+    }
+
+    private void dispatchEntryViewWhenReady(String entryId, EntryViewReadyCallback callback) {
+        if (callback == null) {
+            return;
+        }
+        pager.post(() -> {
+            View entryView = findEntryView(entryId);
+            if (isReadyTarget(entryView)) {
+                callback.onEntryViewReady(entryView);
+                return;
+            }
+            getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override
+                public void onGlobalLayout() {
+                    View laidOutEntry = findEntryView(entryId);
+                    if (!isReadyTarget(laidOutEntry)) {
+                        return;
+                    }
+                    if (getViewTreeObserver().isAlive()) {
+                        getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                    }
+                    callback.onEntryViewReady(laidOutEntry);
+                }
+            });
+        });
+    }
+
+    private boolean isReadyTarget(View view) {
+        return view != null && view.getWidth() > 0 && view.getHeight() > 0 && view.isShown();
     }
 
     private List<DesktopUiEntry> normalizeEntries(List<DesktopUiEntry> source) {
