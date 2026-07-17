@@ -25,8 +25,9 @@ bash install-from-existing-frontend.sh
 
 这会把 `generic-mini-phone-beta` 的前端代码复制到用户 shell 目录，再通过 `/api/user-content` 注册。用户可以在复制后的目录继续修改，不直接改系统前端目录。
 
-访问：
+访问地址从 runtime endpoint 快照读取：
 
-```text
-http://127.0.0.1:22000/shells/openhouse-custom-shell/
+```bash
+CORE_URL="$(jq -er '.endpoints[] | select(.serviceId == "smallphone-core" and .name == "api") | .url' "$HOME/.config/openhouseai/runtime/endpoints.json")"
+printf '%s\n' "${CORE_URL%/}/shells/openhouse-custom-shell/"
 ```

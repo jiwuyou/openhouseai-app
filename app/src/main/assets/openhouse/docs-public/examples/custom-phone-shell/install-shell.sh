@@ -8,7 +8,8 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 REPOS_ROOT="${OPENHOUSE_REPOS_DIR:-/root/smallphoneai-repos}"
 SMALLPHONE_HOME="${SMALLPHONE_HOME:-$REPOS_ROOT/smallphone-home}"
 SHELL_DIR="$SMALLPHONE_HOME/shells/$SHELL_ID"
-SMALLPHONE_CORE_URL="${SMALLPHONE_CORE_URL:-http://127.0.0.1:22000}"
+SMALLPHONE_CORE_URL="${SMALLPHONE_CORE_URL:-}"
+OPENHOUSE_ENDPOINTS_FILE="${OPENHOUSE_ENDPOINTS_FILE:-/data/data/com.termux/files/home/.config/openhouseai/runtime/endpoints.json}"
 
 log() {
   printf '[custom-shell] %s\n' "$*"
@@ -23,6 +24,12 @@ need_cmd() {
 
 need_cmd curl
 need_cmd python3
+need_cmd jq
+
+if [ -z "$SMALLPHONE_CORE_URL" ]; then
+  SMALLPHONE_CORE_URL="$(jq -er '.endpoints[] | select(.serviceId == "smallphone-core" and .name == "api") | .url' "$OPENHOUSE_ENDPOINTS_FILE")"
+fi
+SMALLPHONE_CORE_URL="${SMALLPHONE_CORE_URL%/}"
 
 if ! curl -fsS --max-time 2 "$SMALLPHONE_CORE_URL/api/health" >/dev/null; then
   printf 'smallphone-core is not reachable at %s\n' "$SMALLPHONE_CORE_URL" >&2

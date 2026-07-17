@@ -371,6 +371,9 @@ required_stage_scripts() {
     install-pi-agent|install-pi-web|install-service-manager|register-pi-services|install-openhouse-web)
       printf '%s\n' 50-install-runtime-components.sh
       ;;
+    install-smallphone|smallphone)
+      printf '%s\n' 50-install-runtime-components.sh
+      ;;
     start-pi-web-rescue)
       printf '%s\n' start-pi-web-rescue.sh
       ;;
@@ -755,6 +758,13 @@ main() {
       ;;
     install-openhouse-web)
       SMALLPHONEAI_COMPONENT_TARGETS=openhouse-web \
+        SMALLPHONEAI_COMPONENT_ACTION=install-register \
+        SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
+        run_stage 50-install-runtime-components.sh
+      return
+      ;;
+    install-smallphone|smallphone)
+      SMALLPHONEAI_COMPONENT_TARGETS=smallphone \
         SMALLPHONEAI_COMPONENT_ACTION=install-register \
         SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
         run_stage 50-install-runtime-components.sh

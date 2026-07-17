@@ -12,9 +12,9 @@
     {
       "id": "service-manager",
       "archive": "service-manager.tar",
-      "sha256": "06501aac6cf0053a99486de7dba17505f371b80896ba539566582696e17e5a2c",
-      "size": 7751680,
-      "binarySha256": "a40df666c56365d15013ca92447047143c60e11800aa44b80da3127cf013ac4c",
+      "sha256": "52be67c9fee783dffb45db48dc677ed817970aef30ca5c8be44fcbef577903d7",
+      "size": 7905280,
+      "binarySha256": "132da5b2c40f856d8937c233d6d6967094ba164128c27f7eeebee6d0010542ae",
       "platform": "termux-arm64",
       "version": "0.3.1",
       "registryApiVersion": 2,
@@ -29,8 +29,8 @@
       "id": "openhouse-web",
       "archive": "openhouse-web.tar",
       "targetDir": "openhouse-web",
-      "sha256": "f3ea81be6aaa5b0c613f48f0170e6dde6117882a273c9fc875594a29bcd4895a",
-      "size": 163840,
+      "sha256": "f405f3d3d9e8fbce436a6ee6f764da881b5bd45741dc1011ca36c9ccd3e8860b",
+      "size": 174080,
       "platform": "termux-android-arm64",
       "version": "1.1.2",
       "requires": {
@@ -47,8 +47,8 @@
     {
       "id": "smallphone",
       "archive": "smallphone.tar",
-      "sha256": "49127f065de25ad48a9e2d7f53de8ec8929aaa0e5098cebb33b353c4967095b5",
-      "size": 1945600
+      "sha256": "36a2481d1d2730e0a55a922228941b696d89c6d4d6827c1c592a55a9a9f68115",
+      "size": 1966080
     },
     {
       "id": "pi-agent",
@@ -118,7 +118,7 @@
     },
     {
       "id": "cc-switch",
-      "archive": "cc-switch-cli-5.9.0-linux-arm64.tar.gz",
+      "archive": "cc-switch-cli-5.9.0-linux-arm64.tgz",
       "sha256": "46ce26be4c1eddfc7a3407eac8820395a2da42db4cb9bf11bf9d4a87b1cfb20e",
       "size": 6693477,
       "platform": "linux-arm64",

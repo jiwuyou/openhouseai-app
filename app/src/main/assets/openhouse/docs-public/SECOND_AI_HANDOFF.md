@@ -130,7 +130,7 @@ latest/
 1. 读取三个交接文件，确认两个 JSON 可解析、`secretsRedacted` 为 `true`、任务状态为 `ready_for_second_ai`。
 2. 对比 `firstStageAgentIdentity` 与自己的真实 identity；相同则停止，请用户换一个 AI。
 3. 独立阅读 OpenHouse 文档并重做关键检查，不能只复述第一阶段结论。
-4. 如果交接任务包含 SmallPhone Front Beta，按 `SMALLPHONE_FRONT_BETA_DEPLOY.md` 完成完整 payload 部署，并验证 22000、22082、`app-registry`、`proot-distro` provider、常驻、WebView 非白屏以及消息/联系人入口为 0。
+4. 如果交接任务包含 SmallPhone Front Beta，按 `SMALLPHONE_FRONT_BETA_DEPLOY.md` 完成完整 payload 部署，从 runtime endpoint 快照读取 `smallphone-core/api` 与 `smallphone-frontend-beta/web` 的实际 URL，并验证 `app-registry`、`proot-distro` provider、常驻、WebView 非白屏以及消息/联系人入口为 0；不得回退固定端口。
 5. 完成 `requiredChecks`、当前任务和 `completionCriteria`。
 6. 只有全部验收通过后，使用自己的真实 identity 完成第二阶段签名。
 7. 将 `task.json.status` 更新为 `completed`，写入第二阶段 identity、完成时间和脱敏摘要。

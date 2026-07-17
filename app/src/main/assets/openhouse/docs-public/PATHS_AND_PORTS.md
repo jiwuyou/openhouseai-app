@@ -97,9 +97,9 @@ OpenHouse registry 和 AI 文档：
 | `21010` | 保留 / 默认 | cc-connect bridge | WebSocket bridge，例如 `ws://127.0.0.1:21010/bridge/ws`。 |
 | `21020` | 保留 / 默认 | cc-connect management | management API。 |
 | `21040` | 保留 / 默认 | cc-connect webclient / callback | SmallPhone runtime 通过它访问项目 agent；不要作为普通 WebView App 端口。 |
-| `22000` | 默认 | SmallPhone Core | SmallPhone API、registry proxy、用户 shell 静态入口，例如 `/api/components`、`/shells/...`。 |
+| `22000` | preferred | SmallPhone Core | 实际端口由 service-manager 分配，以 `smallphone-core + api` 快照条目为准。 |
 | `22080` | 兼容 / historical | SmallPhone stable frontend | stable 前端兼容入口，不参与当前 SmallPhoneAI app-facing readiness。 |
-| `22082` | 默认 | SmallPhone beta frontend | 当前 SmallPhoneAI 默认前端入口。 |
+| `22082` | preferred | SmallPhone beta frontend | 实际端口由 service-manager 分配，以 `smallphone-frontend-beta + web` 快照条目为准。 |
 | `22096` | 可选 / compatibility | SmallPhone OpenCode backend | opencode/bun backend 兼容服务；只有存在对应目录和服务定义时才运行。 |
 | `23001` | 内置 / reserved | smallphone-standalone-diary | Diary standalone app。 |
 | `23002` | 内置 / optional | smallphone-like-girl-source | vocabulary/source-app adapter；源码存在时启用。 |
@@ -145,7 +145,28 @@ openhouse-system check service-control 2>/dev/null || true
 
 需要逐服务核对时，按 `SERVICE_MANAGER.md` 的带 token REST API 模板查询 `/api/v1/services` 和 `/api/v1/services/<service-id>/status`。
 
-注册长期 App 时，component manifest 只写入口 URL、图标、服务引用和 AI 元数据；启动命令、端口环境变量和 health check 写在 service-manager ServiceSpec 里。
+注册长期 App 时，component manifest 保存图标、服务引用、`serviceId + endpointName` 和 AI 元数据；实际 URL 不应持久化。启动命令、preferred 端口、端口环境变量和 health check 写在 service-manager ServiceSpec 里。
+
+## 读取当前运行时 endpoint
+
+所有托管服务的实际运行地址统一读取：
+
+```text
+$HOME/.config/openhouseai/runtime/endpoints.json
+```
+
+例如读取 SmallPhone Core 与 Front Beta：
+
+```bash
+ENDPOINTS_FILE="${OPENHOUSE_ENDPOINTS_FILE:-$HOME/.config/openhouseai/runtime/endpoints.json}"
+jq -e '.schemaVersion == 1 and .state == "ready"' "$ENDPOINTS_FILE" >/dev/null
+CORE_URL="$(jq -er '.endpoints[] | select(.serviceId == "smallphone-core" and .name == "api") | .url' "$ENDPOINTS_FILE")"
+FRONT_URL="$(jq -er '.endpoints[] | select(.serviceId == "smallphone-frontend-beta" and .name == "web") | .url' "$ENDPOINTS_FILE")"
+printf 'core=%s\nfront=%s\n' "$CORE_URL" "$FRONT_URL"
+```
+
+快照缺失、损坏、过期或没有目标条目时，入口应显示不可用；不要回退到 `22000`、`22082`
+或其它 preferred 端口。`ports.json` 是 service-manager 内部状态，不是公共契约。
 
 ## 读取当前 service-manager endpoint
 

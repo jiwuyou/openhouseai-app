@@ -46,7 +46,7 @@
 | OpenHouse 系统检查 | `OPENHOUSE_SYSTEM.md`, `SERVICE_MANAGER.md` | 校验和渲染 subjects，按 subject 检查服务、HTTP、路径与技能，并正确解释 skipped/degraded。 |
 | 自定义前端或 App | `CUSTOM_FRONTEND_AND_APPS.md`, `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 生成真实代码，先按规范选择路径和端口，再注册 component manifest 和 service-manager 服务，并按 AI 更新流程维护。 |
 | 首次配置后创建小型 Web App | `CUSTOM_FRONTEND_AND_APPS.md` | 作为双签完成后的可选任务创建手机优先的小型本地 Web App。 |
-| SmallPhone Front Beta 部署 | `SMALLPHONE_FRONT_BETA_DEPLOY.md`, `SERVICE_MANAGER.md`, `PATHS_AND_PORTS.md` | 第二阶段 Agent（默认 AionUI）从 APK 版本目录读取完整 `smallphone.tar`，通过 Termux service-manager + Ubuntu/proot 部署、注册、启动并验收 22000/22082；禁止五文件增量复制。 |
+| SmallPhone Front Beta 部署 | `SMALLPHONE_FRONT_BETA_DEPLOY.md`, `SERVICE_MANAGER.md`, `PATHS_AND_PORTS.md` | 第二阶段 Agent（默认 AionUI）从 APK 版本目录读取完整 `smallphone.tar`，通过 Termux service-manager + Ubuntu/proot 部署、注册、启动，并按 endpoint 快照验收 `smallphone-core/api` 与 `smallphone-frontend-beta/web`；禁止五文件增量复制和固定端口回退。 |
 | 前台保活 | `openhouse-runtime-policy.md` | 理解 Android 和 service-manager 的分工。 |
 | 停止运行栈 / 全部退出 | `openhouse-exit-all.md` | 明确停止范围、界面行为、保留范围和恢复行为。 |
 | 故障排查 | `TROUBLESHOOTING.md`, `RECOVERY.md` | 按症状选择最小修复步骤。 |

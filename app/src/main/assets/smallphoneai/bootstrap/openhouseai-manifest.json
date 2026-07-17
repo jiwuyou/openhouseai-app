@@ -98,7 +98,7 @@
       {
         "id": "cc-switch",
         "title": "cc-switch provider 配置工具",
-        "apkAssetPath": "openhouse/product-payloads/cc-switch-cli-5.9.0-linux-arm64.tar.gz",
+        "apkAssetPath": "openhouse/product-payloads/cc-switch-cli-5.9.0-linux-arm64.tgz",
         "targetDir": "$HOME/.local/bin",
         "optional": true,
         "service": false

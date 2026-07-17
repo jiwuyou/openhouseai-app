@@ -7,6 +7,7 @@ import com.termux.app.TermuxActivity;
 import com.termux.app.activities.OpenHouseServiceControlActivity;
 import com.termux.app.openhouse.OpenHouseIntents;
 import com.termux.app.openhouse.components.OpenHouseComponent;
+import com.termux.app.openhouse.runtime.OpenHouseEndpointSnapshot;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerActionResult;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
@@ -26,10 +27,24 @@ public final class DesktopAppLauncher {
 
     private final Context appContext;
     private final ServiceManagerControlClient controlClient;
+    private final PublishedEndpointResolver endpointResolver;
 
     public DesktopAppLauncher(Context context) {
+        this(context, null);
+    }
+
+    DesktopAppLauncher(Context context, PublishedEndpointResolver endpointResolver) {
         this.appContext = context == null ? null : context.getApplicationContext();
         this.controlClient = new ServiceManagerControlClient(context);
+        if (endpointResolver == null) {
+            OpenHouseEndpointSnapshot snapshot = new OpenHouseEndpointSnapshot();
+            this.endpointResolver = (serviceId, endpointName) -> {
+                OpenHouseEndpointSnapshot.Resolution endpoint = snapshot.resolve(serviceId, endpointName);
+                return endpoint != null && endpoint.ready ? endpoint.url : "";
+            };
+        } else {
+            this.endpointResolver = endpointResolver;
+        }
     }
 
     public DesktopAppLaunchIntent buildOpenIntent(OpenHouseComponent component) {
@@ -43,13 +58,16 @@ public final class DesktopAppLauncher {
         DesktopAppEntry entry = app.entry == null ? DesktopAppEntry.unknown("") : app.entry;
         switch (entry.type) {
             case WEBVIEW:
-                if (entry.url.isEmpty()) {
-                    return statusPanel(app, "网页入口没有配置 URL。");
+                String webUrl = resolveWebEntryUrl(app, entry);
+                if (webUrl.isEmpty()) {
+                    return statusPanel(app, isSmallPhoneApp(app)
+                        ? "SmallPhone 动态 web endpoint 尚不可用，请先检查 service-manager 和 SmallPhone 服务。"
+                        : "网页入口没有配置 URL。");
                 }
                 return DesktopAppLaunchIntent.builder(DesktopAppLaunchIntent.Kind.WEBVIEW)
                     .app(app)
                     .launchable(true)
-                    .url(entry.url)
+                    .url(webUrl)
                     .message("打开网页应用。")
                     .build();
             case NATIVE_PAGE:
@@ -300,6 +318,41 @@ public final class DesktopAppLauncher {
             .launchable(false)
             .message(message)
             .build();
+    }
+
+    private String resolveWebEntryUrl(DesktopAppDescriptor app, DesktopAppEntry entry) {
+        if (isSmallPhoneApp(app)) {
+            try {
+                return firstNonBlank(endpointResolver.resolve(
+                    "smallphone-frontend-beta",
+                    "web"
+                ), "");
+            } catch (Exception ignored) {
+                // Opening is gated on the published endpoint. Never guess a port.
+            }
+            return "";
+        }
+        return entry == null ? "" : entry.url;
+    }
+
+    private boolean isSmallPhoneApp(DesktopAppDescriptor app) {
+        if (app == null) {
+            return false;
+        }
+        if ("messages".equalsIgnoreCase(app.id) || "smallphone".equalsIgnoreCase(app.id)) {
+            return true;
+        }
+        for (String serviceId : app.serviceIds()) {
+            if ("smallphone-frontend-beta".equalsIgnoreCase(serviceId)
+                || "smallphone-core".equalsIgnoreCase(serviceId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    interface PublishedEndpointResolver {
+        String resolve(String serviceId, String endpointName);
     }
 
     private ServiceManagerResult safeHealthCheck() {

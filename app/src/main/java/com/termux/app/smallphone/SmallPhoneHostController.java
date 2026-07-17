@@ -124,7 +124,9 @@ public final class SmallPhoneHostController {
 
         configureWebView();
         bindActions();
-        browserAddressView.setText(SmallPhoneRuntime.SMALLPHONE_URL);
+        // The SmallPhone web port is allocated by service-manager. Keep the
+        // address empty until the published endpoint has been resolved.
+        browserAddressView.setText("");
         updateBrowserButtons();
     }
 
@@ -204,7 +206,7 @@ public final class SmallPhoneHostController {
         webView.setVisibility(View.GONE);
         hostPanel.setVisibility(View.VISIBLE);
         if (browserAddressView.getText() == null || browserAddressView.getText().toString().trim().isEmpty()) {
-            browserAddressView.setText(SmallPhoneRuntime.SMALLPHONE_URL);
+            browserAddressView.setText(publishedSmallPhoneUrl());
         }
         updateBrowserButtons();
         if (overrideDetail != null && !overrideDetail.trim().isEmpty()) {
@@ -291,7 +293,6 @@ public final class SmallPhoneHostController {
             updateBrowserButtons();
         });
         requireView(R.id.buttonSmallphoneBrowserHome).setOnClickListener(v -> {
-            browserAddressView.setText(SmallPhoneRuntime.SMALLPHONE_URL);
             openWhenHealthy();
         });
         browserGoButton.setOnClickListener(v -> loadAddressBarUrl());
@@ -319,7 +320,7 @@ public final class SmallPhoneHostController {
         primaryButton.setOnClickListener(v -> openWhenHealthy());
         startButton.setOnClickListener(v -> runStartHook());
         repairButton.setOnClickListener(v -> runRepairHook());
-        externalButton.setOnClickListener(v -> openExternal(SmallPhoneRuntime.SMALLPHONE_URL));
+        externalButton.setOnClickListener(v -> openExternal(publishedSmallPhoneUrl()));
         requireView(R.id.buttonSmallphoneMaintenance).setOnClickListener(v -> openMaintenanceCenter());
         requireView(R.id.buttonSmallphoneTerminal).setOnClickListener(v -> openTerminal());
     }
@@ -360,11 +361,16 @@ public final class SmallPhoneHostController {
     }
 
     private void openSmallPhoneWebView(boolean forceReload) {
+        String publishedUrl = publishedSmallPhoneUrl();
+        if (publishedUrl.isEmpty()) {
+            showRecovery("SmallPhone 动态 web endpoint 尚不可用，请先检查 service-manager 和 SmallPhone 服务。");
+            return;
+        }
         hostPanel.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
         String currentUrl = webView.getUrl();
         if (forceReload || currentUrl == null || !isSmallPhoneUrl(currentUrl)) {
-            loadBrowserUrl(SmallPhoneRuntime.SMALLPHONE_URL);
+            loadBrowserUrl(publishedUrl);
         } else {
             browserAddressView.setText(currentUrl);
         }
@@ -379,7 +385,11 @@ public final class SmallPhoneHostController {
 
     private void loadBrowserUrl(String target) {
         if (target == null || target.trim().isEmpty()) {
-            target = SmallPhoneRuntime.SMALLPHONE_URL;
+            target = publishedSmallPhoneUrl();
+        }
+        if (target == null || target.trim().isEmpty()) {
+            showRecovery("SmallPhone 动态 web endpoint 尚不可用，请先检查 service-manager 和 SmallPhone 服务。");
+            return;
         }
         browserAddressView.setText(target);
         hideSoftKeyboard();
@@ -395,7 +405,7 @@ public final class SmallPhoneHostController {
     private String normalizeBrowserTarget(String rawTarget) {
         String target = rawTarget == null ? "" : rawTarget.trim();
         if (target.isEmpty()) {
-            return SmallPhoneRuntime.SMALLPHONE_URL;
+            return publishedSmallPhoneUrl();
         }
 
         String lowerTarget = target.toLowerCase(Locale.US);
@@ -442,7 +452,17 @@ public final class SmallPhoneHostController {
     }
 
     private boolean isSmallPhoneUrl(String url) {
-        return url != null && url.startsWith(SmallPhoneRuntime.SMALLPHONE_URL);
+        String publishedUrl = publishedSmallPhoneUrl();
+        return !publishedUrl.isEmpty() && url != null && url.startsWith(publishedUrl);
+    }
+
+    private String publishedSmallPhoneUrl() {
+        SmallPhoneRuntime.Status status = lastStatus;
+        if (status == null || status.smallPhone == null || !status.smallPhone.reachable) {
+            return "";
+        }
+        String url = status.smallPhone.url == null ? "" : status.smallPhone.url.trim();
+        return url;
     }
 
     private void hideSoftKeyboard() {
@@ -598,9 +618,13 @@ public final class SmallPhoneHostController {
 
         @Override
         public boolean openExternal(String url) {
-            String target = url == null || url.trim().isEmpty()
-                ? SmallPhoneRuntime.SMALLPHONE_URL
-                : url;
+            String target = url == null ? "" : url.trim();
+            if (target.isEmpty()) {
+                Toast.makeText(activity,
+                    "SmallPhone 动态 web endpoint 尚不可用，请先检查 service-manager。",
+                    Toast.LENGTH_LONG).show();
+                return true;
+            }
             try {
                 activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(target)));
             } catch (ActivityNotFoundException e) {

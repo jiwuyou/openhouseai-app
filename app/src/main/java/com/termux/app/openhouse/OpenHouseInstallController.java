@@ -69,11 +69,10 @@ public final class OpenHouseInstallController {
         Stage.UBUNTU_PACKAGES
     };
     private static final Stage[] AI_FEATURES_STAGE_SEQUENCE = new Stage[] {
-        Stage.START_SMALLPHONE,
-        Stage.INSTALL_OPENHOUSE_WEB,
         Stage.INSTALL_NODE,
         Stage.SYNC_OFFICIAL_DOCS,
         Stage.INSTALL_AIONUI,
+        Stage.INSTALL_SMALLPHONE,
         Stage.SYNC_OPENHOUSE_REGISTRY,
     };
     private static final Stage[] FULL_STAGE_SEQUENCE = new Stage[] {
@@ -93,6 +92,7 @@ public final class OpenHouseInstallController {
         Stage.INSTALL_NODE,
         Stage.SYNC_OFFICIAL_DOCS,
         Stage.INSTALL_AIONUI,
+        Stage.INSTALL_SMALLPHONE,
         Stage.SYNC_OPENHOUSE_REGISTRY,
     };
 
@@ -2442,6 +2442,7 @@ public final class OpenHouseInstallController {
         START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动正式 pi-web", "正在通过 Termux native service-manager 启动正式 pi-agent 和 pi-web 30141；紧急救援 30142 保持可用。"),
         INSTALL_OPENHOUSE_WEB("install_openhouse_web", "install-openhouse-web.sh", "安装 OpenHouse Web", "正在安装并注册 Termux native OpenHouse Web 服务。"),
         INSTALL_AIONUI("install_aionui", "install-aionui.sh", "安装 AI 工作台", "正在从 APK 内置离线包安装 AionUi 工作台，并检查本机入口。"),
+        INSTALL_SMALLPHONE("install_smallphone", "install-smallphone.sh", "安装 SmallPhone", "正在使用版本化 payload 安装、注册并启动 SmallPhone 动态 endpoint；AionUi 不作为该步骤的前置依赖。"),
         INSTALL_CODEX("install_codex", "install-codex.sh", "安装 AI 工具：Codex", "正在安装 Codex CLI。"),
         INSTALL_CLAUDE_CODE("install_claude_code", "install-claude-code.sh", "安装 AI 工具：Claude Code", "正在安装 Claude Code。"),
         INSTALL_CLAUDE_CODE_UI("install_claude_code_ui", "install-claude-code-ui.sh", "安装 AI 工具：ClaudeCodeUI", "正在安装 ClaudeCodeUI / CloudCLI，并固定端口 23083。");

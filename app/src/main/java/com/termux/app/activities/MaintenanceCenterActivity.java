@@ -4916,12 +4916,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     }
 
     private boolean isSmallPhoneStackReachable() {
-        String serviceManagerBaseUrl = serviceManagerBaseUrl();
-        return runTermuxCommand(
-            "curl -fsS --max-time 2 " + shellQuote(serviceManagerBaseUrl + "/api/v1/health") + " >/dev/null 2>&1"
-                + " && curl -fsS --max-time 2 http://127.0.0.1:22082/ >/dev/null 2>&1"
-                + " && curl -fsS --max-time 2 http://127.0.0.1:22000/ >/dev/null 2>&1"
-        ).isSuccess();
+        return new com.termux.app.smallphone.SmallPhoneRuntime(this).loadStatus().isHealthy();
     }
 
     private boolean isEntryUbuntuConfigured() {

@@ -8,8 +8,8 @@
 Termux native service-manager
   -> proot-distro provider
   -> Ubuntu /root/smallphoneai-repos/smallphone-active
-  -> smallphone-core :22000
-  -> SmallPhone Front Beta :22082
+  -> smallphone-core / api（运行端口来自 endpoint 快照）
+  -> smallphone-frontend-beta / web（运行端口来自 endpoint 快照）
 ```
 
 用户数据目录 `/root/smallphoneai-repos/smallphone-home` 必须保留。不要删除、覆盖或用 payload 中的示例数据替换它。
@@ -94,14 +94,27 @@ done
 最终必须同时通过：
 
 - `smallphone-core` 和 `smallphone-frontend-beta` 状态为运行中，provider 为 `proot-distro`，常驻为 `true`。
-- `curl -fsS http://127.0.0.1:22000/health` 成功。
-- `curl -fsS http://127.0.0.1:22082/ >/dev/null` 成功。
-- `curl -fsS http://127.0.0.1:22000/api/app-registry | jq -e . >/dev/null` 成功，且返回的小 App 列表非空。
-- 普通浏览器和 Android WebView 打开 `22082` 都能看到应用图标，不是白屏。
+- `$HOME/.config/openhouseai/runtime/endpoints.json` 为 `schemaVersion=1`、`state=ready`，且没有过期。
+- `smallphone-core + api` 与 `smallphone-frontend-beta + web` 均存在，不允许回退到 preferred 端口。
+- 使用快照中的 Core URL 请求 `/health` 和 `/api/app-registry` 成功，且返回的小 App 列表非空。
+- 普通浏览器和 Android WebView 打开快照中的 Front URL 都能看到应用图标，不是白屏。
 - 当前 Beta 的消息、联系人可见入口数量为 `0`；后端历史数据可以保留，但桌面、Dock、Tab 和设置中不应出现入口。
 - `/root/smallphoneai-repos/smallphone-home` 仍存在，用户数据未被覆盖。
 
 如果页面白屏，优先确认完整 payload 是否部署，以及 `generic-mini-phone-beta/apps/workflows/api.js` 等依赖是否来自同一份 `smallphone.tar`；不要再次进行少量文件增量覆盖。
+
+动态地址验收命令：
+
+```bash
+ENDPOINTS_FILE="$HOME/.config/openhouseai/runtime/endpoints.json"
+jq -e '.schemaVersion == 1 and .state == "ready"' "$ENDPOINTS_FILE" >/dev/null
+CORE_URL="$(jq -er '.endpoints[] | select(.serviceId == "smallphone-core" and .name == "api") | .url' "$ENDPOINTS_FILE")"
+FRONT_URL="$(jq -er '.endpoints[] | select(.serviceId == "smallphone-frontend-beta" and .name == "web") | .url' "$ENDPOINTS_FILE")"
+curl -fsS "${CORE_URL%/}/health"
+curl -fsS "${CORE_URL%/}/api/app-registry" | jq -e . >/dev/null
+curl -fsS "$FRONT_URL" >/dev/null
+printf 'core=%s\nfront=%s\n' "$CORE_URL" "$FRONT_URL"
+```
 
 ## 4. 完成 APK 更新标记
 
@@ -126,5 +139,5 @@ rm -f -- "$pending_marker"
 ## 给第二阶段 Agent 的话
 
 ```text
-请作为 OpenHouse 第二阶段 Agent（默认 AionUI，除非用户明确改用其它 Agent），阅读 /root/openhouse/docs/SMALLPHONE_FRONT_BETA_DEPLOY.md，优先从 Termux 的 PENDING_APK_RESOURCES.json 读取绝对 resourceDir，使用其中完整 smallphone.tar 和官方 bootstrap 组件流程部署 SmallPhone Front Beta，保留 /root/smallphoneai-repos/smallphone-home，完成 22000、22082、app-registry、proot-distro provider、常驻状态、WebView 非白屏以及消息/联系人入口为 0 的验收；仅当 reason=apk_update 且全部通过时删除待处理标记。
+请作为 OpenHouse 第二阶段 Agent（默认 AionUI，除非用户明确改用其它 Agent），阅读 /root/openhouse/docs/SMALLPHONE_FRONT_BETA_DEPLOY.md，优先从 Termux 的 PENDING_APK_RESOURCES.json 读取绝对 resourceDir，使用其中完整 smallphone.tar 和官方 bootstrap 组件流程部署 SmallPhone Front Beta，保留 /root/smallphoneai-repos/smallphone-home；从 ~/.config/openhouseai/runtime/endpoints.json 读取 smallphone-core/api 与 smallphone-frontend-beta/web 的实际 URL，完成 app-registry、proot-distro provider、常驻状态、WebView 非白屏以及消息/联系人入口为 0 的验收，不得回退固定端口；仅当 reason=apk_update 且全部通过时删除待处理标记。
 ```

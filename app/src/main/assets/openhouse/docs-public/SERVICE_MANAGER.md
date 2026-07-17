@@ -261,6 +261,29 @@ $HOME/.config/service-manager/config.json
 $HOME/.smallphoneai/logs/service-manager.log
 ```
 
+## 运行时 endpoint 快照
+
+service-manager 是运行地址的唯一发布者。它会把本轮已经通过 health 与进程/端口 ownership
+检查的入口原子写入：
+
+```text
+$HOME/.config/openhouseai/runtime/endpoints.json
+```
+
+Android、OpenHouse Web、SmallPhone 等消费者使用稳定的 `serviceId + endpointName` 查询该文件，
+不得读取内部 `ports.json`、猜测 preferred 端口或在快照缺失时自动回退 endpoint REST。
+快照 `state` 必须是 `ready` 且 `expiresAt` 尚未到期；条目缺失就表示当前入口不可消费。
+启动、停止、常驻、日志和详细失败原因仍按需使用 REST API。
+
+```bash
+ENDPOINTS_FILE="${OPENHOUSE_ENDPOINTS_FILE:-$HOME/.config/openhouseai/runtime/endpoints.json}"
+jq -e '.schemaVersion == 1 and .state == "ready"' "$ENDPOINTS_FILE"
+jq -r '.endpoints[] | [.serviceId, .name, .url] | @tsv' "$ENDPOINTS_FILE"
+```
+
+快照每 30 秒集中重验证，TTL 为 120 秒。service-manager 启动时先发布空的
+`initializing` 快照，完成重验证后才切换为 `ready`；停止或重新分配端口时会立即撤销旧条目。
+
 ## 状态检查
 
 优先使用 bootstrap 状态，因为它会同时检查 service-manager、pi-web、pi-agent、cc-connect 和端口：
@@ -447,8 +470,8 @@ OpenHouse Web 是独立的本地桌面与服务控制服务，不负责聊天。
 
 ```text
 服务 ID：openhouse-web
-页面：http://127.0.0.1:22110/
-健康检查：http://127.0.0.1:22110/health
+入口名：web
+首选端口：22110
 安装目录：$HOME/.local/lib/openhouse-web
 数据目录：$HOME/.local/share/openhouseai/openhouse-web
 启动器：$PREFIX/bin/openhouse-web
@@ -474,12 +497,13 @@ bash "$resource_dir/bootstrap/scripts/50-install-runtime-components.sh"
 ```bash
 test -f "$HOME/.local/lib/openhouse-web/src/server.mjs"
 test -x "$PREFIX/bin/openhouse-web"
-curl -fsS --max-time 5 http://127.0.0.1:22110/health
+OPENHOUSE_WEB_URL="$(jq -er '.endpoints[] | select(.serviceId == "openhouse-web" and .name == "web") | .url' "$HOME/.config/openhouseai/runtime/endpoints.json")"
+curl -fsS --max-time 5 "${OPENHOUSE_WEB_URL%/}/health"
 curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg "$SM_URL/api/v1/services/openhouse-web/status"
 openhouse-system check service-control
 ```
 
-正式 ServiceSpec 使用 Termux native Node、固定服务 ID `openhouse-web`、端口 `22110`、HTTP health 和 `residentByDefault: true`。component 的 `entry` 指向 `22110`，`controlEntry.serviceRefs` 必须包含 `service-manager://services/openhouse-web`。
+正式 ServiceSpec 使用 Termux native Node、固定服务 ID `openhouse-web`、首选端口 `22110`、HTTP health 和 `residentByDefault: true`。消费者通过 `openhouse-web + web` 解析运行地址；component 的 `controlEntry.serviceRefs` 必须包含 `service-manager://services/openhouse-web`。
 
 首次启动会在数据目录以明文创建默认密码 `123456`；文件权限应为 `0600`，用户可在已登录页面修改。Android 通过一次性 bootstrap ticket 建立 Web 会话，浏览器不应获得 service-manager bearer token。
 

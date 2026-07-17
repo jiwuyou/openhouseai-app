@@ -470,10 +470,11 @@ bash install-shell.sh
 /root/smallphoneai-repos/smallphone-home/shells/openhouse-custom-shell
 ```
 
-访问：
+访问地址由 `smallphone-core/api` 快照条目决定：
 
-```text
-http://127.0.0.1:22000/shells/openhouse-custom-shell/
+```bash
+CORE_URL="$(jq -er '.endpoints[] | select(.serviceId == "smallphone-core" and .name == "api") | .url' "$HOME/.config/openhouseai/runtime/endpoints.json")"
+printf '%s\n' "${CORE_URL%/}/shells/openhouse-custom-shell/"
 ```
 
 它通过 smallphone-core 公开 API 获取 App 列表：
@@ -546,9 +547,10 @@ curl -fsS -H "Authorization: Bearer $TOKEN" \
 检查 SmallPhone Core：
 
 ```bash
-curl -fsS http://127.0.0.1:22000/api/app-registry
-curl -fsS http://127.0.0.1:22000/api/components
-curl -fsS http://127.0.0.1:22000/api/ai-capabilities
+CORE_URL="$(jq -er '.endpoints[] | select(.serviceId == "smallphone-core" and .name == "api") | .url' "$HOME/.config/openhouseai/runtime/endpoints.json")"
+curl -fsS "${CORE_URL%/}/api/app-registry"
+curl -fsS "${CORE_URL%/}/api/components"
+curl -fsS "${CORE_URL%/}/api/ai-capabilities"
 ```
 
 检查 App：

@@ -75,7 +75,7 @@ scripts/sync-runtime-docs.sh
 9. `PATHS_AND_PORTS.md`
    - 需要确认安装路径、服务端口、端口冲突或自定义 App 选端口时阅读。
 10. `SMALLPHONE_FRONT_BETA_DEPLOY.md`
-   - 需要由第二阶段 Agent（默认 AionUI）部署 APK 携带的完整 SmallPhone Front Beta 资源时阅读；包含 Termux service-manager、Ubuntu/proot、22000/22082 和白屏验收。
+   - 需要由第二阶段 Agent（默认 AionUI）部署 APK 携带的完整 SmallPhone Front Beta 资源时阅读；包含 Termux service-manager、Ubuntu/proot、runtime endpoint 快照和白屏验收。
 
 普通用户不需要先学习终端。终端教学在 `terminal-guide.md`，需要时再看。
 

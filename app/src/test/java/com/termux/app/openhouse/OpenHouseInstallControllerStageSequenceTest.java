@@ -38,11 +38,10 @@ public class OpenHouseInstallControllerStageSequenceTest {
         List<String> stages = stageNames("AI_FEATURES_STAGE_SEQUENCE");
 
         Assert.assertEquals(Arrays.asList(
-            "START_SMALLPHONE",
-            "INSTALL_OPENHOUSE_WEB",
             "INSTALL_NODE",
             "SYNC_OFFICIAL_DOCS",
             "INSTALL_AIONUI",
+            "INSTALL_SMALLPHONE",
             "SYNC_OPENHOUSE_REGISTRY"
         ), stages);
         Assert.assertFalse(stages.contains("INSTALL_SERVICE_MANAGER"));
@@ -67,6 +66,7 @@ public class OpenHouseInstallControllerStageSequenceTest {
             "INSTALL_NODE",
             "SYNC_OFFICIAL_DOCS",
             "INSTALL_AIONUI",
+            "INSTALL_SMALLPHONE",
             "SYNC_OPENHOUSE_REGISTRY"
         ), stageNames("FULL_STAGE_SEQUENCE"));
     }

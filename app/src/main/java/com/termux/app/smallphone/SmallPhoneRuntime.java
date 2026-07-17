@@ -3,6 +3,7 @@ package com.termux.app.smallphone;
 import android.content.Context;
 
 import com.termux.app.openhouse.OpenHouseMaintainerRunner;
+import com.termux.app.openhouse.runtime.OpenHouseEndpointSnapshot;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
@@ -14,9 +15,6 @@ import java.net.URL;
 
 public final class SmallPhoneRuntime {
 
-    public static final String SMALLPHONE_URL = "http://127.0.0.1:22082/";
-    public static final String SMALLPHONE_CORE_URL = "http://127.0.0.1:22000/";
-    public static final String SMALLPHONE_CORE_HEALTH_URL = SMALLPHONE_CORE_URL + "health";
     public static final String CC_CONNECT_URL = "http://127.0.0.1:21040/";
     public static final String CC_CONNECT_HEALTH_URL = CC_CONNECT_URL + "healthz";
 
@@ -25,22 +23,70 @@ public final class SmallPhoneRuntime {
     private static final int READ_TIMEOUT_MS = 1800;
 
     private final Context context;
+    private final OpenHouseEndpointSnapshot endpointSnapshot;
 
     public SmallPhoneRuntime(Context context) {
+        this(context, new OpenHouseEndpointSnapshot());
+    }
+
+    SmallPhoneRuntime(Context context, OpenHouseEndpointSnapshot endpointSnapshot) {
         this.context = context.getApplicationContext();
+        this.endpointSnapshot = endpointSnapshot == null ? new OpenHouseEndpointSnapshot() : endpointSnapshot;
     }
 
     public Status loadStatus() {
         String serviceManagerUrl = ServiceManagerClient.resolveConfiguredBaseUrl();
         Endpoint serviceManager = probe("service-manager", serviceManagerUrl + "/api/v1/health", serviceManagerUrl + "/health");
-        Endpoint smallPhone = probe("SmallPhone", SMALLPHONE_URL);
-        Endpoint smallPhoneCore = probe("SmallPhone core", SMALLPHONE_CORE_HEALTH_URL);
+        Endpoint smallPhone = probePublishedEndpoint(
+            "SmallPhone",
+            "smallphone-frontend-beta",
+            "web",
+            false
+        );
+        Endpoint smallPhoneCore = probePublishedEndpoint(
+            "SmallPhone core",
+            "smallphone-core",
+            "api",
+            true
+        );
         boolean ccDisabled = isCcConnectDisabled();
         Endpoint ccConnect = ccDisabled
             ? Endpoint.disabled("cc-connect", CC_CONNECT_URL)
             : probe("cc-connect", CC_CONNECT_HEALTH_URL);
 
         return new Status(serviceManager, smallPhone, smallPhoneCore, ccConnect, ccDisabled);
+    }
+
+    private Endpoint probePublishedEndpoint(
+        String label,
+        String serviceId,
+        String endpointName,
+        boolean healthPath
+    ) {
+        OpenHouseEndpointSnapshot.Resolution published = endpointSnapshot.resolve(serviceId, endpointName);
+        if (published == null || !published.ready || published.url.isEmpty()) {
+            String detail = published == null || published.message.isEmpty()
+                ? "动态 endpoint 不可用"
+                : published.message;
+            return Endpoint.down(label, "", detail);
+        }
+        String target = healthPath ? appendPath(published.url, "health") : published.url;
+        return probe(label, target);
+    }
+
+    static String appendPath(String baseUrl, String path) {
+        String base = baseUrl == null ? "" : baseUrl.trim();
+        String suffix = path == null ? "" : path.trim();
+        if (base.isEmpty() || suffix.isEmpty()) {
+            return "";
+        }
+        if (!base.endsWith("/")) {
+            base += "/";
+        }
+        while (suffix.startsWith("/")) {
+            suffix = suffix.substring(1);
+        }
+        return base + suffix;
     }
 
     public OpenHouseMaintainerRunner.Result startStack() {

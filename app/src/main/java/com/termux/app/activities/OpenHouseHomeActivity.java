@@ -71,6 +71,7 @@ import com.termux.app.openhouse.desktop.DesktopLayoutState;
 import com.termux.app.openhouse.desktop.DesktopLayoutStore;
 import com.termux.app.openhouse.desktop.ui.DesktopUiEntry;
 import com.termux.app.openhouse.desktop.ui.OpenHouseDesktopView;
+import com.termux.app.openhouse.runtime.OpenHouseEndpointSnapshot;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerService;
@@ -211,6 +212,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private List<OpenHouseComponent> desktopComponents = Collections.emptyList();
     private OpenHouseComponentRegistry.LoadResult dynamicRegistryResult;
     private DesktopAppLauncher desktopAppLauncher;
+    private OpenHouseEndpointSnapshot endpointSnapshot;
     private DesktopLayoutStore desktopLayoutStore;
     private DesktopLayoutState desktopLayoutState;
     private OpenHouseDesktopView desktopView;
@@ -315,6 +317,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         refreshCurrentButton = findViewById(R.id.buttonRefreshCurrent);
         pageTitleView = findViewById(R.id.openhousePageTitle);
         pageSubtitleView = findViewById(R.id.openhousePageSubtitle);
+        endpointSnapshot = new OpenHouseEndpointSnapshot();
         desktopAppLauncher = new DesktopAppLauncher(this);
         desktopLayoutStore = new DesktopLayoutStore(this);
         shizukuManager = new OpenHouseShizukuManager(this, this::onShizukuStateChanged);
@@ -401,11 +404,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (PAGE_PERMISSIONS.equals(currentPage)) {
             renderPage();
         }
-        if (PAGE_SMALLPHONE.equals(currentPage)
-            && isCurrentDynamicWebComponent(findSmallPhoneComponent())
-            && dynamicWebView != null) {
-            resumeActiveDynamicWebPage();
-        } else if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
+        if (PAGE_SMALLPHONE.equals(currentPage) && smallPhoneController != null) {
             smallPhoneController.onResume(false);
         } else if (PAGE_PI_WEB.equals(currentPage) && piWebView != null) {
             piWebView.onResume();
@@ -538,8 +537,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         findViewById(R.id.buttonNavAi).setOnClickListener(
             v -> openBuiltinComponentOrFallback(findCcCodexComponent(), PAGE_AI));
         findViewById(R.id.buttonNavAiControl).setOnClickListener(v -> openCcCodexControlOrToggle());
-        findViewById(R.id.buttonNavSmallPhone).setOnClickListener(
-            v -> openBuiltinComponentOrFallback(findSmallPhoneComponent(), PAGE_SMALLPHONE));
+        findViewById(R.id.buttonNavSmallPhone).setOnClickListener(v -> selectPage(PAGE_SMALLPHONE));
         findViewById(R.id.buttonNavSmallPhoneControl).setOnClickListener(v -> openComponentControl(findSmallPhoneComponent()));
         findViewById(R.id.buttonNavPiAgent).setOnClickListener(v -> openPiAgent());
         findViewById(R.id.buttonNavPiAgentControl).setOnClickListener(v -> openPiWebControlOrAll());
@@ -1233,10 +1231,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return;
         }
         if (PAGE_SMALLPHONE.equals(currentPage)) {
-            OpenHouseComponent smallPhoneComponent = findSmallPhoneComponent();
-            if (smallPhoneComponent != null && smallPhoneComponent.entryType == OpenHouseComponent.EntryType.WEBVIEW) {
-                reloadDynamicWebView();
-            } else if (smallPhoneController != null) {
+            if (smallPhoneController != null) {
                 smallPhoneController.onResume(true);
             } else {
                 renderPage();
@@ -1272,13 +1267,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             return getAiRescueUrl();
         }
         if (PAGE_SMALLPHONE.equals(currentPage)) {
-            OpenHouseComponent component = findSmallPhoneComponent();
-            if (component != null
-                && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
-                && !isBlank(component.url)) {
-                return component.url;
-            }
-            return null;
+            return getSmallPhoneUrl();
         }
         if (PAGE_CONTROLLED_BROWSER.equals(currentPage)) {
             OpenHouseComponent component = findControlledBrowserComponent();
@@ -1376,13 +1365,6 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private void renderSmallPhonePage() {
-        OpenHouseComponent component = findSmallPhoneComponent();
-        if (component != null
-            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
-            && !isBlank(component.url)) {
-            renderDynamicWebViewPage(component);
-            return;
-        }
         showEmbeddedContent();
         if (embeddedContentView == null) {
             return;
@@ -2842,6 +2824,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (component == null || !component.hasEntry()) {
             return false;
         }
+        if (isSmallPhoneComponent(component)) {
+            selectPage(PAGE_SMALLPHONE);
+            return true;
+        }
         if (component.entryType == OpenHouseComponent.EntryType.WEBVIEW) {
             if (isBlank(component.url)) {
                 return false;
@@ -3664,13 +3650,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     }
 
     private String getSmallPhoneUrl() {
-        OpenHouseComponent component = findSmallPhoneComponent();
-        if (component != null
-            && component.entryType == OpenHouseComponent.EntryType.WEBVIEW
-            && !isBlank(component.url)) {
-            return component.url;
-        }
-        return "http://127.0.0.1:22082/";
+        OpenHouseEndpointSnapshot.Resolution endpoint = endpointSnapshot == null
+            ? null
+            : endpointSnapshot.resolve("smallphone-frontend-beta", "web");
+        return endpoint != null && endpoint.ready ? endpoint.url : null;
     }
 
     private String getPiWebTitle() {
@@ -4855,6 +4838,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             switch (launchIntent.kind) {
                 case WEBVIEW:
                     pendingDesktopOpenAppId = app.id;
+                    if (isSmallPhoneComponent(app)) {
+                        selectPage(PAGE_SMALLPHONE);
+                        return;
+                    }
                     openComponent(app);
                     return;
                 case NATIVE_PAGE:

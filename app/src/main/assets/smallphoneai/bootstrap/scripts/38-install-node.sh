@@ -55,7 +55,18 @@ fi
 
 log "正在 Ubuntu 内安装或检查 Node.js 24 LTS。"
 run_ubuntu_logged bash -lc 'set -euo pipefail
-export PATH="$HOME/.local/node/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+export HOME=/root
+NODE_ROOT=/root/.local/node
+NPM_GLOBAL_ROOT=/root/.npm-global
+GUEST_PATH="$NODE_ROOT/bin:$NPM_GLOBAL_ROOT/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+INHERITED_NODE="$(command -v node 2>/dev/null || true)"
+case "$INHERITED_NODE" in
+  /data/data/com.termux/*)
+    echo "忽略从 Termux 继承的 Node.js：$INHERITED_NODE"
+    ;;
+esac
+unset PREFIX LD_LIBRARY_PATH LD_PRELOAD
+export PATH="$GUEST_PATH"
 
 download_with_retry() {
   local url="$1"
@@ -78,26 +89,28 @@ download_with_retry() {
   return 1
 }
 
-node_major() {
-  node -p "process.versions.node.split(\".\")[0]" 2>/dev/null || printf 0
+valid_ubuntu_node() {
+  local node_path major platform_arch
+  node_path="$(command -v node 2>/dev/null || true)"
+  [ "$node_path" = "$NODE_ROOT/bin/node" ] || return 1
+  [ -x "$NODE_ROOT/bin/node" ] || return 1
+  command -v npm >/dev/null 2>&1 || return 1
+  major="$(node -p "process.versions.node.split(\".\")[0]" 2>/dev/null || printf 0)"
+  platform_arch="$(node -p "process.platform+\"/\"+process.arch" 2>/dev/null || true)"
+  [ "${major:-0}" -ge 24 ] && [ "$platform_arch" = "linux/arm64" ]
 }
 
-if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-  major="$(node_major)"
-  if [ "${major:-0}" -ge 24 ]; then
-    echo "Node.js 已满足要求：$(node -v)"
-    echo "npm：$(npm -v)"
-    mkdir -p "$HOME/.npm-global/bin"
-    npm config set prefix "$HOME/.npm-global"
-    exit 0
-  fi
-  echo "当前 Node.js 版本过旧：$(node -v)，将安装 Node.js 24 LTS。"
+if valid_ubuntu_node; then
+  echo "Ubuntu Node.js 已满足要求：$NODE_ROOT/bin/node $(node -v) ($(node -p "process.platform+\"/\"+process.arch"))"
+  echo "npm：$(npm -v)"
+  mkdir -p "$NPM_GLOBAL_ROOT/bin"
+  npm config set prefix "$NPM_GLOBAL_ROOT"
+  exit 0
 fi
 
-NODE_DIST_BASE="${SMALLPHONEAI_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v24.x}"
-NODE_ROOT="$HOME/.local/node"
-NODE_TMP="$HOME/.local/node-download"
-mkdir -p "$NODE_TMP" "$HOME/.local"
+NODE_DIST_BASE="${SMALLPHONEAI_NODE_DIST_BASE:-${OPENHOUSEAI_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v24.x}}"
+NODE_TMP=/root/.local/node-download
+mkdir -p "$NODE_TMP" /root/.local
 
 echo "正在安装 Node.js 24 LTS 到 $NODE_ROOT"
 NODE_SHASUMS="$NODE_TMP/SHASUMS256.txt"
@@ -118,15 +131,19 @@ mkdir -p "$NODE_ROOT"
 tar -xzf "$NODE_TMP/$NODE_TARBALL" -C "$NODE_ROOT" --strip-components=1
 rm -f "$NODE_TMP/$NODE_TARBALL"
 
-export PATH="$NODE_ROOT/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
-mkdir -p "$HOME/.npm-global/bin"
-npm config set prefix "$HOME/.npm-global"
+export PATH="$GUEST_PATH"
+mkdir -p "$NPM_GLOBAL_ROOT/bin"
+npm config set prefix "$NPM_GLOBAL_ROOT"
 npm config set registry "${NPM_REGISTRY:-https://registry.npmjs.org/}"
-node -v
-npm -v
+if ! valid_ubuntu_node; then
+  echo "Ubuntu Node.js 安装校验失败；要求 $NODE_ROOT/bin/node 且运行时为 linux/arm64。" >&2
+  exit 6
+fi
+echo "Ubuntu Node.js 安装完成：$(command -v node) $(node -v) ($(node -p "process.platform+\"/\"+process.arch"))"
+echo "npm：$(npm -v)"
 
-PATH_LINE="export PATH=\"\$HOME/.local/node/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:/usr/local/bin:\$PATH\""
-for PROFILE_FILE in "$HOME/.profile" "$HOME/.bashrc"; do
+PATH_LINE="export PATH=\"/root/.local/node/bin:/root/.npm-global/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\""
+for PROFILE_FILE in /root/.profile /root/.bashrc; do
   touch "$PROFILE_FILE"
   if ! grep -Fq "$PATH_LINE" "$PROFILE_FILE"; then
     {

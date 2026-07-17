@@ -35,7 +35,6 @@ public final class OpenHouseComponentRegistry {
     private static final String CONTROL_ENTRY_TYPE_SERVICE_CONTROL = "service-control";
     private static final String DEFAULT_PI_AGENT_URL = "http://127.0.0.1:30141/";
     private static final String DEFAULT_CLOUDCLI_URL = "http://127.0.0.1:23083/";
-    private static final String DEFAULT_SMALLPHONE_URL = "http://127.0.0.1:22082/";
     private static final String DEFAULT_AIONUI_URL = "http://127.0.0.1:25808/";
     private static final String DEFAULT_HOME_TARGET = "pi-web";
     private static final String AIONUI_COMPONENT_ID = "aionui-web";
@@ -427,9 +426,9 @@ public final class OpenHouseComponentRegistry {
             "小手机页面和运行栈修复",
             "smallphone",
             30,
-            OpenHouseComponent.EntryType.WEBVIEW,
-            DEFAULT_SMALLPHONE_URL,
+            OpenHouseComponent.EntryType.NATIVE_PAGE,
             null,
+            "smallphone",
             "控制",
             true,
             true,

@@ -9,7 +9,8 @@ REPOS_ROOT="${OPENHOUSE_REPOS_DIR:-/root/smallphoneai-repos}"
 SMALLPHONE_ACTIVE="${SMALLPHONE_ACTIVE:-$REPOS_ROOT/smallphone-active}"
 SMALLPHONE_HOME="${SMALLPHONE_HOME:-$REPOS_ROOT/smallphone-home}"
 SHELL_DIR="$SMALLPHONE_HOME/shells/$SHELL_ID"
-SMALLPHONE_CORE_URL="${SMALLPHONE_CORE_URL:-http://127.0.0.1:22000}"
+SMALLPHONE_CORE_URL="${SMALLPHONE_CORE_URL:-}"
+OPENHOUSE_ENDPOINTS_FILE="${OPENHOUSE_ENDPOINTS_FILE:-/data/data/com.termux/files/home/.config/openhouseai/runtime/endpoints.json}"
 FRONTEND_SOURCE="${SMALLPHONE_FRONTEND_SOURCE:-}"
 
 log() {
@@ -54,6 +55,12 @@ copy_item() {
 
 need_cmd curl
 need_cmd python3
+need_cmd jq
+
+if [ -z "$SMALLPHONE_CORE_URL" ]; then
+  SMALLPHONE_CORE_URL="$(jq -er '.endpoints[] | select(.serviceId == "smallphone-core" and .name == "api") | .url' "$OPENHOUSE_ENDPOINTS_FILE")"
+fi
+SMALLPHONE_CORE_URL="${SMALLPHONE_CORE_URL%/}"
 
 SOURCE_DIR="$(resolve_frontend_source || true)"
 if [ -z "$SOURCE_DIR" ]; then

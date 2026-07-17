@@ -33,7 +33,7 @@ fi
 
 is_current_ubuntu || die "cc-switch 应安装到 Ubuntu /root/.local/bin；请在 Ubuntu 中运行或从 Termux 通过 proot-distro 调用。"
 
-archive_name="cc-switch-cli-5.9.0-linux-arm64.tar.gz"
+archive_name="cc-switch-cli-5.9.0-linux-arm64.tgz"
 expected_sha="46ce26be4c1eddfc7a3407eac8820395a2da42db4cb9bf11bf9d4a87b1cfb20e"
 expected_size="6693477"
 expected_binary_sha="5c59e8ea224d263c58f5665b64e54c9c334380e9e81210f3ee84708643d98cad"
