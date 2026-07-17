@@ -46,6 +46,7 @@
 | OpenHouse 系统检查 | `OPENHOUSE_SYSTEM.md`, `SERVICE_MANAGER.md` | 校验和渲染 subjects，按 subject 检查服务、HTTP、路径与技能，并正确解释 skipped/degraded。 |
 | 自定义前端或 App | `CUSTOM_FRONTEND_AND_APPS.md`, `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 生成真实代码，先按规范选择路径和端口，再注册 component manifest 和 service-manager 服务，并按 AI 更新流程维护。 |
 | 首次配置后创建小型 Web App | `CUSTOM_FRONTEND_AND_APPS.md` | 作为双签完成后的可选任务创建手机优先的小型本地 Web App。 |
+| SmallPhone Front Beta 部署 | `SMALLPHONE_FRONT_BETA_DEPLOY.md`, `SERVICE_MANAGER.md`, `PATHS_AND_PORTS.md` | 第二阶段 Agent（默认 AionUI）从 APK 版本目录读取完整 `smallphone.tar`，通过 Termux service-manager + Ubuntu/proot 部署、注册、启动并验收 22000/22082；禁止五文件增量复制。 |
 | 前台保活 | `openhouse-runtime-policy.md` | 理解 Android 和 service-manager 的分工。 |
 | 停止运行栈 / 全部退出 | `openhouse-exit-all.md` | 明确停止范围、界面行为、保留范围和恢复行为。 |
 | 故障排查 | `TROUBLESHOOTING.md`, `RECOVERY.md` | 按症状选择最小修复步骤。 |
@@ -63,6 +64,7 @@
 - 新增本地长期 App 前必须先按 `PATHS_AND_PORTS.md` 选择未占用端口，不要占用控制平面、桥接或 SmallPhone 平台端口。
 - App 前台默认保持 `service-manager`、`smallphone`、`pi-agent`、`cloudcli` 可用。
 - `pi-agent` 是首次配置助手，不是唯一主工作台。
+- APK 更新后的 SmallPhone Front Beta 由第二阶段 Agent 实际部署；优先读取 `PENDING_APK_RESOURCES.json` 的绝对 `resourceDir` 并验证 `.complete`，回退时才按 `apk-*` 目录排序。
 - Agent identity 使用 `pi-web`、`codex`、`claude-code`、`aionui` 等 Agent 应用或工作台名称，不使用模型名称。
 - 内测默认由 pi-web 第一阶段和 AionUI 第二阶段完成双签；Claude Code、Codex、小型 Web App 和跳过是完成后的非阻断选项。
 - `cc-switch` 是配置工具箱，不是长期服务。

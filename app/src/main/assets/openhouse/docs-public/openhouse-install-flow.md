@@ -109,12 +109,11 @@ safe_error_message
 | 5 | `start_smallphone` | `start-smallphone.sh` | Termux | 通过 Termux native service-manager 启动 OpenHouse Web、pi-agent 和 pi-web，让系统入口和首次配置入口先可用。 |
 | 6 | `install_ubuntu` | `install-ubuntu.sh` | Termux | 安装 Ubuntu rootfs，并注入 Ubuntu 侧环境探测命令和 `openhouse-termux` 桥接 CLI。 |
 | 7 | `ubuntu_packages` | `update-ubuntu-packages.sh` | Ubuntu | 更新 Ubuntu apt 索引，安装基础运行包、`openssh-client`、`git`、`gh`、`ripgrep` 和 `jq`。 |
-| 8 | `install_node` | `install-node.sh` | Ubuntu | 安装 Ubuntu Node.js 24 LTS 和 npm 基础配置，供 AionUI、工作台和 AI CLI 工具使用。 |
-| 9 | `sync_official_docs` | `sync-official-docs.sh` | Ubuntu | 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。 |
-| 10 | `install_aionui` | `install-aionui.sh` | Ubuntu | 从 APK 内置离线包安装 AionUi 工作台，并检查本机入口。 |
-| 11 | `sync_openhouse_registry` | `sync-openhouse-registry.sh` | Termux + Ubuntu | 同步 OpenHouse registry、service-manager 服务定义和侧边栏入口，避免同名随机服务。 |
-
-新装完成后，Termux 交互 shell 默认停留在 Termux native。`entry_ubuntu` 不再属于首次安装状态机；需要自动进入 Ubuntu 的用户可以显式执行 `bash bootstrap.sh entry-ubuntu`，该手动动作继续使用 `configure-entry-ubuntu.sh`。
+| 8 | `entry_ubuntu` | `configure-entry-ubuntu.sh` | Termux | 配置进入 Ubuntu 的入口和模式文件。 |
+| 9 | `install_node` | `install-node.sh` | Ubuntu | 安装 Ubuntu Node.js 24 LTS 和 npm 基础配置，供 AionUI、工作台和 AI CLI 工具使用。 |
+| 10 | `sync_official_docs` | `sync-official-docs.sh` | Ubuntu | 同步 `/root/openhouse/docs` 和 `/root/openhouse/scripts`。 |
+| 11 | `install_aionui` | `install-aionui.sh` | Ubuntu | 从 APK 内置离线包安装 AionUi 工作台，并检查本机入口。 |
+| 12 | `sync_openhouse_registry` | `sync-openhouse-registry.sh` | Termux + Ubuntu | 同步 OpenHouse registry、service-manager 服务定义和侧边栏入口，避免同名随机服务。 |
 
 核心长期服务目标：
 
@@ -138,6 +137,7 @@ safe_error_message
 | `start_smallphone` | service-manager API 可访问；`openhouse-web`、`pi-agent`、`pi-web` 至少进入 running 或 configured-waiting 状态；`22110/health` 可访问。 | service-manager 不可达；核心服务端口不可达；启动命令失败。 | 5min | `logs/start-smallphone.log` | 重启 service-manager 并按稳定 ID 拉起核心服务。 | 同常规重试。 |
 | `install_ubuntu` | `proot-distro login ubuntu -- true` 成功；`~/bin/smallphoneai-env-probe` 在 Ubuntu 内可执行；`openhouse-termux` 可安装。 | rootfs 下载失败；解包失败；proot-distro 安装失败；Ubuntu 登录失败。 | 60min | `logs/install-ubuntu.log` | 按 canonical 四源顺序解析并锁定本次运行的 rootfs 来源，复用断点缓存。 | 使用同一有序故障转移策略，只增加网络重试强度，不固定 USTC 或其它单源。 |
 | `ubuntu_packages` | Ubuntu 内 `apt-get update` 成功；Ubuntu base source 只由 `openhouseai-ubuntu.sources` 提供；`openssh-client`、`git`、`gh`、`ripgrep`、`jq` 和基础包可执行或 apt 确认安装。 | apt 源不可达；出现多个 Ubuntu base source；包冲突；磁盘空间不足。 | 30min | `logs/ubuntu-packages.log` | 复用本次运行 lock，原子写入 canonical source 后重试。 | 使用同一 lock 和有序故障转移策略，只增加 transient failure 的重试强度。 |
+| `entry_ubuntu` | Termux 入口文件存在；模式文件存在；从 Termux 能进入 Ubuntu。 | shell rc 文件不可写；proot-distro login 失败。 | 60s | `logs/entry-ubuntu.log` | 重写 OpenHouse 管理的入口片段。 | 同常规重试。 |
 | `install_node` | Ubuntu 内 `node --version` 和 `npm --version` 成功；版本符合固定版本范围；npm global bin 在 PATH。 | Node 下载失败；解包失败；PATH 未生效；版本不符合。 | 30min | `logs/install-node.log` | 使用默认 Node payload 或默认源重试。 | 使用国内固定 Node mirror 或内置 payload 重试，并校验 sha256。 |
 | `sync_official_docs` | `/root/openhouse/docs` 存在；P0 文档可读；`/root/openhouse/scripts/check-ai-tools.sh` 可执行。 | 文档目录缺失；脚本未同步；权限错误。 | 120s | `logs/sync-official-docs.log` | 重新同步 docs/scripts，不删除用户自有文件。 | 同常规重试。 |
 | `install_aionui` | AionUi 离线包完整；本机入口可打开；不污染 Termux native pi-agent/pi-web。 | 离线包缺失；解包失败；入口不可达；配置混用 service-manager token。 | 20min | `logs/install-aionui.log` | 重新解包并检查入口，不删除用户项目。 | 同常规重试。 |

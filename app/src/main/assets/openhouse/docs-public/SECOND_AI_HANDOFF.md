@@ -6,6 +6,8 @@ pi-web 是推荐的第一阶段 Agent 工作台，通过它执行任务时可以
 
 当前内测默认由 pi-web 完成第一阶段，再由已真实测通的 AionUI 完成第二阶段独立复核与签名。其它 Agent 组合保留为高级或备用路径。
 
+如果本次 APK 更新包含 SmallPhone Front Beta，SmallPhone 部署属于第二阶段任务，不由 Android 自动完成。第二阶段 Agent 应先阅读 `SMALLPHONE_FRONT_BETA_DEPLOY.md`，从 `PENDING_APK_RESOURCES.json` 读取并校验绝对 `resourceDir`，使用完整 `smallphone.tar` 和官方 bootstrap 组件流程完成部署、注册、启动与验收；不得用几个前端文件做增量覆盖。默认由 AionUI 执行，用户明确指定其它 Agent 时再替换。
+
 ## 唯一交接目录
 
 交接目录只保存在 Termux native：
@@ -128,10 +130,13 @@ latest/
 1. 读取三个交接文件，确认两个 JSON 可解析、`secretsRedacted` 为 `true`、任务状态为 `ready_for_second_ai`。
 2. 对比 `firstStageAgentIdentity` 与自己的真实 identity；相同则停止，请用户换一个 AI。
 3. 独立阅读 OpenHouse 文档并重做关键检查，不能只复述第一阶段结论。
-4. 完成 `requiredChecks`、当前任务和 `completionCriteria`。
-5. 只有全部验收通过后，使用自己的真实 identity 完成第二阶段签名。
-6. 将 `task.json.status` 更新为 `completed`，写入第二阶段 identity、完成时间和脱敏摘要。
-7. 再次检查 bootstrap 状态，确认双阶段 signer 均存在且不同。
+4. 如果交接任务包含 SmallPhone Front Beta，按 `SMALLPHONE_FRONT_BETA_DEPLOY.md` 完成完整 payload 部署，并验证 22000、22082、`app-registry`、`proot-distro` provider、常驻、WebView 非白屏以及消息/联系人入口为 0。
+5. 完成 `requiredChecks`、当前任务和 `completionCriteria`。
+6. 只有全部验收通过后，使用自己的真实 identity 完成第二阶段签名。
+7. 将 `task.json.status` 更新为 `completed`，写入第二阶段 identity、完成时间和脱敏摘要。
+8. 再次检查 bootstrap 状态，确认双阶段 signer 均存在且不同。
+
+`PENDING_APK_RESOURCES.json` 只有在 `reason=apk_update` 且所有验收通过时才可删除；`reason=first_install` 必须保留给 Android 首装流程处理。
 
 ## 完成后的可选任务
 

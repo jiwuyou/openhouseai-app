@@ -477,7 +477,7 @@ admin
 
 ## 配置检查
 
-新装重新打开 Termux 默认停留在 Termux native。请先打开 Ubuntu 终端，或执行 `proot-distro login ubuntu`，再检查：
+重新打开 Termux 后会默认进入 Ubuntu。进入后检查：
 
 ```bash
 command -v codex
