@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-15",
+  "generatedAt": "2026-07-17",
   "description": "OpenHouseAI runtime packages bundled inside the APK. pi-web first install uses the bundled complete runtime package and does not run npm install for pi-web; Node.js, Codex, Claude Code, CloudCLI and other stages may still require network access.",
   "registryApiVersion": 2,
   "compatibility": {
@@ -54,8 +54,8 @@
       "id": "smallphone",
       "archive": "smallphone.tar",
       "targetDir": "smallphone-active",
-      "sha256": "d82d5e644f8286e42dca5a27233e489f8f484a8253b953235f063fc9a9f56b7d",
-      "size": 1925120
+      "sha256": "49127f065de25ad48a9e2d7f53de8ec8929aaa0e5098cebb33b353c4967095b5",
+      "size": 1945600
     },
     {
       "id": "pi-agent",
