@@ -370,7 +370,7 @@ SmallPhone 读取 `smallphoneApp` 创建桌面 App；Android shell 读取 `shell
 SM_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}"
 SM_ADDR="$(sed -n 's/.*"\(listen_addr\|listenAddr\|base_url\|baseUrl\|baseURL\|url\)"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\2/p' "$SM_CONFIG" 2>/dev/null | head -n 1)"
 SM_URL="${SERVICE_MANAGER_URL:-${SM_ADDR:-http://127.0.0.1:20087}}"
-TOKEN="$(service-manager token show | head -n1)"
+TOKEN="$(service-manager token show --config "$SM_CONFIG" | head -n1)"
 curl -fsS \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -539,7 +539,7 @@ case "$SM_URL" in
   0.0.0.0:*) SM_URL="http://127.0.0.1:${SM_URL#0.0.0.0:}" ;;
 esac
 curl -fsS "${SM_URL%/}/api/v1/health"
-TOKEN="$(service-manager token show | head -n1)"
+TOKEN="$(service-manager token show --config "$SM_CONFIG" | head -n1)"
 curl -fsS -H "Authorization: Bearer $TOKEN" \
   "${SM_URL%/}/api/v1/services/memo-openhouse/status"
 ```

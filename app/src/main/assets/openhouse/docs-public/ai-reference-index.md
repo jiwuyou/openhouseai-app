@@ -42,7 +42,7 @@
 | Claude Code / CloudCLI | `CLOUDCLI_CLAUDE_CODE.md`, `MODEL_API_SETUP.md` | 安装、配置并测通 CloudCLI 中的 Claude Code。 |
 | Codex | `codex-setup.md`, `MODEL_API_SETUP.md` | 配置并实测 Codex。 |
 | GitHub 本地授权和 gh 配置 | `GITHUB_CONFIG_HELPER.md`, `GITHUB_NETWORK_MIRRORS.md` | 复用 GitHub CLI 官方 OAuth 流程，不注册 OAuth App，配置 `gh auth login` 和 `gh auth setup-git`，让同一 Ubuntu 用户和同一 `$HOME` 下的 Codex / Claude Code 直接调用 `git` 和 `gh`。 |
-| service-manager | `SERVICE_MANAGER.md` | 注册、启动、停止、修复长期服务。 |
+| service-manager | `SERVICE_MANAGER.md` | 注册、启动、停止、修复长期服务；daemon 与 token 命令只能显式使用 OpenHouse canonical config，禁止裸 `serve` / `token show`。 |
 | OpenHouse 系统检查 | `OPENHOUSE_SYSTEM.md`, `SERVICE_MANAGER.md` | 校验和渲染 subjects，按 subject 检查服务、HTTP、路径与技能，并正确解释 skipped/degraded。 |
 | 自定义前端或 App | `CUSTOM_FRONTEND_AND_APPS.md`, `PATHS_AND_PORTS.md`, `SERVICE_MANAGER.md` | 生成真实代码，先按规范选择路径和端口，再注册 component manifest 和 service-manager 服务，并按 AI 更新流程维护。 |
 | 首次配置后创建小型 Web App | `CUSTOM_FRONTEND_AND_APPS.md` | 作为双签完成后的可选任务创建手机优先的小型本地 Web App。 |

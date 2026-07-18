@@ -12,11 +12,11 @@
     {
       "id": "service-manager",
       "archive": "service-manager.tar",
-      "sha256": "52be67c9fee783dffb45db48dc677ed817970aef30ca5c8be44fcbef577903d7",
+      "sha256": "3c96b49d7c4150acef854166b482bb8081445131b0d7ed7e8fa7c5410db93dc4",
       "size": 7905280,
-      "binarySha256": "132da5b2c40f856d8937c233d6d6967094ba164128c27f7eeebee6d0010542ae",
+      "binarySha256": "e865da469768e894ef60a85df197d95d41da7caba4ad5c4de1309852404d483d",
       "platform": "termux-arm64",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "registryApiVersion": 2,
       "provides": {
         "registryApiVersion": 2,

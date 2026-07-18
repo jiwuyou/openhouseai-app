@@ -14,6 +14,7 @@ SMALLPHONE_HOME="${SMALLPHONE_HOME:-$REPOS_ROOT/smallphone-home}"
 INSTALL_DIR="${OPENHOUSE_APP_DIR:-$SMALLPHONE_HOME/apps/$APP_ID}"
 DATA_DIR="$INSTALL_DIR/data"
 SM_URL="${SERVICE_MANAGER_URL:-http://127.0.0.1:20087}"
+SM_CONFIG="${SMALLPHONEAI_OPENHOUSE_SERVICE_MANAGER_CONFIG:-$HOME/.config/openhouseai/service-manager/config.json}"
 
 log() {
   printf '[memo-openhouse] %s\n' "$*"
@@ -38,7 +39,7 @@ resolve_token() {
     return
   fi
   if command -v service-manager >/dev/null 2>&1; then
-    service-manager token show 2>/dev/null | head -n1 | tr -d '\r\n'
+    service-manager token show --config "$SM_CONFIG" 2>/dev/null | head -n1 | tr -d '\r\n'
   fi
 }
 
@@ -63,7 +64,7 @@ esac
 
 TOKEN="$(resolve_token || true)"
 if [ -z "$TOKEN" ]; then
-  printf 'service-manager token not found. Run: service-manager token show\n' >&2
+  printf 'service-manager token not found in OpenHouse canonical config: %s\n' "$SM_CONFIG" >&2
   exit 1
 fi
 

@@ -169,7 +169,7 @@ find_termux_service_manager_binary() {
   local candidate
   if command -v service-manager >/dev/null 2>&1; then
     candidate="$(command -v service-manager)"
-    if [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]; then
+    if [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -180,7 +180,7 @@ find_termux_service_manager_binary() {
     "$HOME/smallphoneai-repos/service-manager/target/release/service-manager" \
     "$HOME/smallphoneai-repos/service-manager/target/debug/service-manager"; do
     if [ -x "$candidate" ] \
-      && [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]; then
+      && [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -573,7 +573,7 @@ find_service_manager() {
   local candidate
   if command -v service-manager >/dev/null 2>&1; then
     candidate="$(command -v service-manager)"
-    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]; then
+    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -583,7 +583,7 @@ find_service_manager() {
     "$service_manager_dir/target/release/service-manager" \
     "$service_manager_dir/target/debug/service-manager"; do
     [ -x "$candidate" ] || continue
-    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.1" ]; then
+    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -804,7 +804,7 @@ if ! is_service_manager_ready; then
 fi
 
 resolve_start_service_manager_token() {
-  local token
+  local token cfg
   token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
   if [ -n "$token" ]; then
     printf '%s\n' "$token"
@@ -814,10 +814,11 @@ resolve_start_service_manager_token() {
     resolve_termux_service_manager_token || true
     return 0
   fi
+  cfg="${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-${SERVICE_MANAGER_CONFIG_PATH:-$HOME/.config/openhouseai/service-manager/config.json}}"
   if [ -n "${service_manager_bin:-}" ]; then
-    "$service_manager_bin" token show 2>/dev/null | tr -d '\r\n' || true
+    "$service_manager_bin" token show --config "$cfg" 2>/dev/null | tr -d '\r\n' || true
   elif command -v service-manager >/dev/null 2>&1; then
-    service-manager token show 2>/dev/null | tr -d '\r\n' || true
+    service-manager token show --config "$cfg" 2>/dev/null | tr -d '\r\n' || true
   fi
 }
 
