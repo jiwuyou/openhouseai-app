@@ -57,12 +57,11 @@ export async function GET(req: Request) {
   try {
     const agentDir = getAgentDir();
     const services = await createAgentSessionServices({ cwd, agentDir });
-    const registry = services.modelRegistry;
-    const available = registry.getAvailable();
+    const available = [...await services.modelRuntime.getAvailable()];
     const settings: SettingsManager = services.settingsManager;
     const enabledModels = settings.getEnabledModels();
     const visible = filterByExactEnabledModels(available, enabledModels);
-    modelList = visible.map((m: { id: string; name: string; provider: string }) => ({
+    modelList = visible.map((m) => ({
       id: m.id,
       name: m.name,
       provider: m.provider,

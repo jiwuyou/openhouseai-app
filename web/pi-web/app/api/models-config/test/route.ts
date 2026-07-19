@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { completeSimple, type AssistantMessage } from "@earendil-works/pi-ai/compat";
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { providerAllowsMissingApiKey } from "@/lib/model-provider-presets";
 
 export const dynamic = "force-dynamic";
@@ -137,20 +137,23 @@ export async function POST(req: Request) {
       },
     }, null, 2), "utf8");
 
-    const registry = ModelRegistry.create(AuthStorage.create(), modelsPath);
-    const loadError = registry.getError();
+    const runtime = await ModelRuntime.create({
+      authPath: join(tempDir, "auth.json"),
+      modelsPath,
+      allowModelNetwork: false,
+    });
+    const loadError = runtime.getError();
     if (loadError) return failureResponse({ ok: false, error: loadError }, undefined, providerForTest);
 
-    const model = registry.find(providerName, modelId);
+    const model = runtime.getModel(providerName, modelId);
     if (!model) return failureResponse({ ok: false, error: `Model not found: ${providerName}/${modelId}` }, undefined, providerForTest);
 
-    const auth = await registry.getApiKeyAndHeaders(model);
-    if (!auth.ok) return failureResponse({ ok: false, error: auth.error }, undefined, providerForTest);
-    if (!auth.apiKey) return failureResponse({ ok: false, error: `No API key found for "${providerName}"` }, undefined, providerForTest);
+    const auth = await runtime.getAuth(model);
+    if (!auth) return failureResponse({ ok: false, error: `No API key found for "${providerName}"` }, undefined, providerForTest);
     redactionProvider = {
       ...providerForTest,
-      apiKey: auth.apiKey,
-      headers: auth.headers,
+      apiKey: auth.auth.apiKey,
+      headers: auth.auth.headers,
     };
 
     const controller = new AbortController();
@@ -159,15 +162,13 @@ export async function POST(req: Request) {
     const startedAt = Date.now();
 
     try {
-      const message = await completeSimple(model, {
+      const message = await runtime.completeSimple(model, {
         messages: [{
           role: "user",
           content: "Reply with OK only.",
           timestamp: Date.now(),
         }],
       }, {
-        apiKey: auth.apiKey,
-        headers: auth.headers,
         maxTokens: 16,
         timeoutMs: TEST_TIMEOUT_MS,
         maxRetries: 0,

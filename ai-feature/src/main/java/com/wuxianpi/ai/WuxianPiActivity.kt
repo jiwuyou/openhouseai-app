@@ -33,8 +33,7 @@ open class WuxianPiActivity : ComponentActivity() {
 
     private fun Intent.toFeatureConfig(): AiFeatureConfig = when (getStringExtra(EXTRA_MODE)) {
         MODE_BUNDLED -> AiFeatureConfig.bundledTermux(
-            adminUrl = requireNotNull(getStringExtra(EXTRA_ADMIN_URL)) { "adminUrl is required" },
-            token = requireNotNull(getStringExtra(EXTRA_TOKEN)) { "token is required" },
+            serviceUrl = requireNotNull(getStringExtra(EXTRA_ADMIN_URL)) { "serviceUrl is required" },
             clientId = requireNotNull(getStringExtra(EXTRA_CLIENT_ID)) { "clientId is required" },
         )
         else -> AiFeatureConfig.externalTermux()
@@ -53,6 +52,20 @@ open class WuxianPiActivity : ComponentActivity() {
             Intent(context, WuxianPiActivity::class.java)
                 .putExtra(EXTRA_MODE, MODE_EXTERNAL)
 
+        @JvmStatic
+        fun createBundledIntent(
+            context: Context,
+            serviceUrl: String,
+            clientId: String,
+        ): Intent {
+            AiFeatureConfig.bundledTermux(serviceUrl, clientId)
+            return Intent(context, WuxianPiActivity::class.java)
+                .putExtra(EXTRA_MODE, MODE_BUNDLED)
+                .putExtra(EXTRA_ADMIN_URL, serviceUrl)
+                .putExtra(EXTRA_CLIENT_ID, clientId)
+        }
+
+        /** Backward-compatible overload for already integrated hosts; token is no longer used. */
         @JvmStatic
         fun createBundledIntent(
             context: Context,

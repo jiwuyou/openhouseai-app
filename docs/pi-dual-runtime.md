@@ -1,87 +1,115 @@
-# OpenHouseAI / WuxianPi 双运行时架构
+# WuxianPi dual-edition runtime
 
-## 产品版本
+WuxianPi is built from one repository as two APKs with one OpenHouse desktop,
+Apps surface, Compose AI UI, Web UI, transport contract, Pi SDK runtime and Pi
+JSONL session format.
 
-| Edition | applicationId | Pi 位置 | 与官方 Termux 共存 |
-| --- | --- | --- | --- |
-| All-in-One | `com.termux` | APK 内置 Termux native runtime | 否 |
-| WuxianPi Native | `com.wuxianpi` | 用户现有的官方 Termux | 是 |
+| Edition | Application id | Runtime location |
+| --- | --- | --- |
+| Native | `com.wuxianpi` | An existing official Termux installation |
+| All-in-One | `com.termux` | The Termux environment bundled by this APK |
 
-两个版本共享 OpenHouse 桌面、Apps、Compose AI UI、Web UI、Android 工具桥和 Pi 原始会话格式。Android 主进程不加载 Pi 或 QuickJS；Pi Rust 只在 Termux 子进程中运行。
+The active Agent implementation is `@earendil-works/pi-coding-agent@0.80.10`
+running inside `wuxianpi-node`. The repository does not start `pi --mode rpc`,
+does not ship a Rust gateway, and does not implement an Android Agent loop.
 
-## Agent 数据通道
+## Runtime boundary
 
 ```text
 Compose UI / pi-web
-        ⇅ WebSocket（一帧一条原始 Pi JSON）
-openhouse-pi-runtime
-        ⇅ stdin/stdout JSONL
-pi --mode rpc
+        |
+        | wuxianpi-sdk-v1 WebSocket
+        v
+127.0.0.1:8765/v1/ws
+        |
+        v
+wuxianpi-node
+        |
+        | direct TypeScript calls
+        v
+Pi AgentSessionRuntime / tools / providers / extensions / JSONL
 ```
 
-`openhouse-pi-runtime` 只负责进程、租约、认证、透明转发和恢复，不实现 Agent 循环、工具轮数、自动续跑、提示词或工具失败策略。工具失败作为 Pi ToolResult 返回，只有 Pi 的 `agent_end` 才结束一轮。
+`wuxianpi-node` owns transport and SDK lifecycle only. Pi owns model calls,
+tool execution, retries, compaction, queued continuation and session writes.
+The host never adds continuation prompts or tool-iteration limits.
 
-Web 浏览器不能为 WebSocket 设置 Authorization Header。因此 pi-web 使用同源 `/ws/pi` 代理：浏览器与代理之间、代理与网关之间都原样传输 Pi JSON；Node 代理仅从本机 token 文件读取 Bearer Token并在连接网关时注入。长期 token 不进入查询参数、浏览器 JavaScript 或 localStorage。
+HTTP health is available at `/health` and `/admin/v1/health`. The WebSocket
+request envelope is:
 
-## 会话并行与控制权
-
-- 每个活动对话对应一个独立 `pi --mode rpc` 进程。
-- 不同对话可以并行执行模型和普通工具，不共享 QuickJS Runtime 或 executor。
-- 同一对话只有一个控制租约。另一个客户端收到 HTTP 409，必须由用户显式 takeover。
-- 浏览器获得租约的顺序为 `POST /admin/v1/sessions`、`POST /admin/v1/leases`、连接 `/ws/rpc/{leaseId}`。
-- 断线后网关保留短暂恢复窗口；客户端重连后发送 `get_state` 和 `get_messages`，不重新发送用户消息。
-- 无客户端且空闲超时后，网关回收对应 Pi 进程；JSONL 会话不受影响。
-
-## Android 工具
-
-`runtime/extensions/openhouse-tools/` 是 Pi 扩展，网关用 `--extension` 加载。扩展通过 localhost 调用 Android Bridge：
-
-```text
-POST http://127.0.0.1:<bridge-port>/v1/tools/<toolName>
-Authorization: Bearer <bridge-token>
+```json
+{"id":"request-id","type":"session.prompt","sessionId":"pi-session-id","payload":{"message":"hello"}}
 ```
 
-Bridge 返回结构化工具结果；非零退出、权限拒绝和环境缺失均返回错误结果而不是终止对话。截图、无障碍和系统弹窗等共享手机状态的操作由 Bridge 串行，其余不同会话工具可并行。
+Responses are `{id,ok,result}` or `{id,ok:false,error}`. SDK events are emitted
+as `{type:"agent.event",sessionId,sessionPath,sequence,payload}`. Only the Pi
+`agent_settled` event means that retries, compaction retries and queued
+continuations are all finished. `agent_end` must not clear the UI running state
+or trigger Runtime reclamation.
 
-## WuxianPi Native 首次部署
+## Sessions
 
-Native APK 启动只绑定 localhost 的一次性安装服务，并显示一行 Termux 命令。命令从 APK 服务下载 `wuxianpi-native-install.tar`，校验其中 `pi-runtime.tar` 后运行安装器。最终文件位于：
+The registry lazily creates one `AgentSessionRuntime` per active Pi session.
+Canonical session paths are deduplicated so two clients cannot create two SDK
+runtimes that write the same JSONL file. Commands for one session are ordered;
+different sessions may run concurrently.
 
-```text
-$HOME/.local/share/openhouseai/runtime/
-$HOME/.local/bin/openhouse-pi
-$HOME/.local/bin/openhouse-pi-runtime-start
-$HOME/.config/openhouseai/
-```
+Listing and reading history uses `SessionManager` and the original JSONL files
+without creating an active Runtime. Opening or sending a message loads the
+Runtime. New, switch, fork and import operations replace the SDK session and
+must atomically update registry keys, event subscriptions and extension
+bindings.
 
-安装器不覆盖用户的 `pi` 命令、shell rc 或其他 Termux 项目。All-in-One 使用同一个 `pi-runtime.tar`，但由 APK bootstrap 自动安装，无需手工命令。
+The canonical data remains under `$HOME/.pi/agent`. Installation, repair and
+upgrade scripts must never delete or replace `$HOME/.pi`. Copying the Pi JSONL
+files allows conversation migration between Termux, the All-in-One edition and
+desktop Pi installations.
 
-Native APK 内实际嵌入的EXTERNAL资产是 `native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz`。使用 `.tgz` 是为了避免 AAPT 对 `.gz` 资产强制解压和改名。解包根必须包含可执行 `install.sh`，并同时包含 ARM64 `pi`、`openhouse-pi-runtime`、OpenHouse tools扩展、脚本和校验metadata。当前版本只支持 `arm64-v8a`；其他ABI必须明确显示 unsupported，不能伪装成下载404。
+## Extensions and tools
 
-## 构建
+`DefaultResourceLoader` discovers Pi extensions, skills, prompts, themes and
+packages from the normal Pi directories. `bindExtensions()` is called for every
+new or replacement session. Interactive extension UI requests are forwarded
+through the same WebSocket and answered by the client.
 
-Pi Rust 源固定为 commit `ad719ad3d42173be9293a020492b7d10f85c95fe`。ARM64 Android 二进制默认在 SSH 主机 `phonetermux` 上原生编译：
+Phase one intentionally has no Android tool bridge. Built-in Pi tools and
+extension tools execute in Termux and return their normal structured results.
+A missing executable or failed tool remains a tool error visible to Pi; it does
+not close the WebSocket or terminate the Android activity.
+
+## Installation
+
+The runtime payload contains the Node service, its exact npm lockfile,
+production dependencies, install/check/register/start scripts and metadata.
+Installation stages into a temporary directory and then replaces runtime code
+without touching user Pi state. Re-running the installer repairs an interrupted
+or partially extracted runtime.
+
+Native embeds the same runtime archive under
+`native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz` and exposes a
+one-line Termux deployment flow. All-in-One installs the equivalent payload
+from APK assets and registers it through service-manager.
+
+## Verification
 
 ```bash
-./scripts/build-runtime.sh
-./scripts/build-all-in-one.sh
-./scripts/build-native.sh
-```
+cd runtime/wuxianpi-node
+npm ci --ignore-scripts
+npm run typecheck
+npm test
 
-构建机必须能访问 `/root/projects/pi_agent_rust` 和 `runtime/extensions/openhouse-tools/`。可用 `PI_RUST_BUILD_SSH` 更换 ARM64 Termux 构建主机。CI 已提供经过验证的二进制时，可设置 `PI_RUST_BINARY` 和 `PI_GATEWAY_BINARY`，脚本仍会检查 ARM64 ELF、生成校验和并更新 manifests；脚本不会接受占位二进制。
-
-Web UI 源在 `web/pi-web/`。其 Agent 通道为 `PiWebSocketTransport`；旧 `/api/agent` 路由只返回 410，不再创建 TypeScript AgentSession。
-
-## 发布验证
-
-```bash
-bash -n scripts/build-pi-rust-payload.sh scripts/build-runtime.sh \
-  scripts/build-all-in-one.sh scripts/build-native.sh
-./scripts/validate-openhouse-payloads.sh
-cd web/pi-web
-npm ci
+cd ../../web/pi-web
+node_modules/.bin/tsc --noEmit
 npm run lint
-npx tsc --noEmit
+
+cd ../..
+./gradlew :pi-client:test :ai-feature:test
+bash scripts/build-pi-node-payload.sh
+bash scripts/validate-openhouse-payloads.sh
+bash scripts/build-native.sh
+bash scripts/build-all-in-one.sh
 ```
 
-正式发布还必须替换仓库当前公开测试签名，并分别在无官方 Termux和已安装官方 Termux的真机上验证安装、进程回收、租约冲突、API 欠费错误、工具错误和断线恢复。
+Device acceptance covers preserved `$HOME/.pi`, repair of a partial install,
+history-only browsing, provider and tool failures, reconnect, long tool calls,
+two concurrent sessions, fork/switch and extension loading.

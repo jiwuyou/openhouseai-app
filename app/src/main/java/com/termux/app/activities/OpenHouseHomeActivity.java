@@ -4645,7 +4645,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 true,
                 false,
                 true,
-                "pi-rust",
+                "pi-sdk",
                 Collections.emptyList(),
                 Collections.emptyList());
         } catch (Exception e) {
@@ -5065,7 +5065,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             addBody(panel, leadingMessage);
         }
         addStatusRow(panel, "状态", getAiFriendHelpStateLabel(state));
-        addBody(panel, "原生界面通过 localhost 连接 Termux 中的 Pi Rust；Agent 编排和会话均由 Pi 自身负责。");
+        addBody(panel, "原生界面通过 localhost 连接 Termux 中的 WuxianPi Node 服务；Agent 编排、工具和会话均由官方 Pi SDK 负责。");
         final AlertDialog[] dialogHolder = new AlertDialog[1];
         addButtonRow(panel,
             compactButton(getAiFriendHelpOpenActionLabel(state), v -> {

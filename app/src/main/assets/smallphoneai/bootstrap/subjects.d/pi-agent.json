@@ -1,8 +1,8 @@
 {
   "id": "pi-agent",
-  "title": "Pi Rust Runtime",
+  "title": "WuxianPi Node Runtime",
   "kind": "runtime-http",
-  "summary": "Pi Rust JSONL RPC runtime plus the human-facing pi-web entry.",
+  "summary": "Node service embedding the official Pi SDK, with native Pi JSONL sessions and a WebSocket UI protocol.",
   "serviceRefs": [
     {
       "id": "pi-agent",
@@ -11,8 +11,8 @@
       "home": "/data/data/com.termux/files/home",
       "workingDirectory": "$HOME/workspace",
       "workdir": "$HOME/workspace",
-      "command": "openhouse-pi-runtime-start",
-      "entryCommand": "openhouse-pi-runtime-start"
+      "command": "wuxianpi-node-start",
+      "entryCommand": "wuxianpi-node-start"
     },
     {
       "id": "pi-web",
@@ -26,51 +26,34 @@
     }
   ],
   "entries": [
-    {
-      "type": "api",
-      "label": "Pi Rust Runtime API",
-      "url": "http://127.0.0.1:8765/"
-    },
-    {
-      "type": "web",
-      "label": "Pi Agent Web",
-      "url": "http://127.0.0.1:30141/"
-    }
+    { "type": "api", "label": "WuxianPi SDK API", "url": "http://127.0.0.1:8765/" },
+    { "type": "web", "label": "Pi Agent Web", "url": "http://127.0.0.1:30141/" }
   ],
   "locations": [
     {
       "runtime": "termux",
       "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime",
-      "purpose": "APK-bundled Pi Rust runtime payload install source"
+      "purpose": "APK-bundled WuxianPi Node payload install source"
     },
     {
       "runtime": "termux",
       "path": "/data/data/com.termux/files/home/.local/share/openhouseai/runtime",
-      "purpose": "Installed Pi Rust binaries, extensions, runtime state, and access token"
+      "purpose": "Installed WuxianPi Node service and bundled Pi SDK"
+    },
+    {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/home/.pi",
+      "purpose": "Pi conversations, settings, extensions, skills, and package state preserved across upgrades"
     },
     {
       "runtime": "termux",
       "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-web",
       "purpose": "Termux native pi-web payload install source"
-    },
-    {
-      "runtime": "termux",
-      "path": "/data/data/com.termux/files/home/.pi",
-      "purpose": "Termux native Pi Agent data, extensions, and runtime state"
-    },
-    {
-      "runtime": "ubuntu",
-      "user": "root",
-      "home": "/root",
-      "path": "$HOME/smallphoneai-repos/smallphone-active",
-      "workingDirectory": "$HOME/smallphoneai-repos/smallphone-active",
-      "workdir": "$HOME/smallphoneai-repos/smallphone-active",
-      "purpose": "Ubuntu AI workbench and compatibility/fallback repo; root is only the first-install default user, not the meaning of runtime=ubuntu"
     }
   ],
   "ai": {
-    "description": "The stable pi-agent service ID runs the Pi Rust runtime on 127.0.0.1:8765. pi-web connects to it and also provides the standalone Termux global command `pi-web --port 30141`.",
-    "whenUnavailable": "Inspect service-manager status and logs for pi-agent, then verify openhouse-pi-runtime-start, the runtime token, and port 8765 before checking pi-web."
+    "description": "The stable pi-agent service ID starts wuxianpi-node-start on 127.0.0.1:8765. The service embeds @earendil-works/pi-coding-agent 0.80.10 directly.",
+    "whenUnavailable": "Inspect service-manager logs for pi-agent, verify Node >=22.19, wuxianpi-node-start, and GET /health on port 8765, then rerun bootstrap repair."
   },
   "checks": {
     "serviceTimeoutSeconds": 5,
@@ -78,19 +61,19 @@
       {
         "type": "pathExists",
         "runtime": "termux",
-        "path": "/data/data/com.termux/files/home/.local/bin/openhouse-pi-runtime-start",
+        "path": "/data/data/com.termux/files/home/.local/bin/wuxianpi-node-start",
         "timeoutSeconds": 4
       },
       {
         "type": "pathExists",
         "runtime": "termux",
-        "path": "/data/data/com.termux/files/home/.local/share/openhouseai/runtime/state/token",
+        "path": "/data/data/com.termux/files/home/.local/share/openhouseai/runtime/node/dist/index.js",
         "timeoutSeconds": 4
       },
       {
         "type": "pathExists",
         "runtime": "termux",
-        "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-web",
+        "path": "/data/data/com.termux/files/home/.pi/agent/sessions",
         "timeoutSeconds": 4
       }
     ]

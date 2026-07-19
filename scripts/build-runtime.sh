@@ -17,8 +17,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ "${SKIP_PI_RUST_PAYLOAD:-0}" != "1" ]]; then
-  "$repo_dir/scripts/build-pi-rust-payload.sh"
+if [[ "${SKIP_PI_NODE_PAYLOAD:-0}" != "1" ]]; then
+  "$repo_dir/scripts/build-pi-node-payload.sh"
 fi
 
 [[ -f "$web_source/package-lock.json" ]] || { printf 'missing web/pi-web source\n' >&2; exit 1; }
@@ -56,13 +56,12 @@ cat > "$stage/bin/openhouse-pi-web-start" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/sh
 set -eu
 : "${HOME:?HOME is required}"
-export PI_CODING_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi}"
+export PI_CODING_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 export PI_WEB_DEFAULT_CWD="${PI_WEB_DEFAULT_CWD:-$HOME}"
 export PI_WEB_HOST="${PI_WEB_HOST:-127.0.0.1}"
 export HOSTNAME="${HOSTNAME:-$PI_WEB_HOST}"
 export PORT="${PORT:-${PI_WEB_PORT:-30141}}"
 export OPENHOUSE_PI_RUNTIME_ORIGIN="${OPENHOUSE_PI_RUNTIME_ORIGIN:-http://127.0.0.1:8765}"
-export OPENHOUSE_PI_RUNTIME_TOKEN_FILE="${OPENHOUSE_PI_RUNTIME_TOKEN_FILE:-$HOME/.local/share/openhouseai/runtime/state/token}"
 runtime="${OPENHOUSE_PI_WEB_RUNTIME_DIR:-$HOME/.local/share/openhouseai/pi-web}"
 cd "$runtime"
 exec node openhouse-server.mjs
@@ -129,7 +128,7 @@ tmp=$(mktemp "${TMPDIR:-$PREFIX/tmp}/pi-web.json.XXXXXX")
 cat > "$tmp" <<JSON
 {
   "name": "pi-web",
-  "description": "Web UI using transparent Pi Rust JSON RPC",
+  "description": "Web UI using the WuxianPi Node SDK WebSocket service",
   "provider": "termux-process",
   "command": ["sh", "-lc", "pi-web --host 127.0.0.1 --port 30141 & child=\$!; trap 'kill -TERM \$child 2>/dev/null; wait \$child 2>/dev/null || true' TERM INT HUP; wait \$child"],
   "working_dir": "$HOME",
@@ -139,8 +138,7 @@ cat > "$tmp" <<JSON
     "PI_WEB_HOST": "127.0.0.1",
     "HOSTNAME": "127.0.0.1",
     "PI_WEB_DEFAULT_CWD": "$HOME",
-    "OPENHOUSE_PI_RUNTIME_ORIGIN": "http://127.0.0.1:8765",
-    "OPENHOUSE_PI_RUNTIME_TOKEN_FILE": "$HOME/.local/share/openhouseai/runtime/state/token"
+    "OPENHOUSE_PI_RUNTIME_ORIGIN": "http://127.0.0.1:8765"
   },
   "runtime": {"strategy": "termux-process", "runtime": "termux", "platform": "android-arm64"},
   "restart": {"mode": "on-failure", "max_retries": 5},
@@ -174,7 +172,7 @@ for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloa
         "archive": archive.name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
         "sourceRepo": "https://github.com/jiwuyou/openhouseai-app.git",
         "sourceBranch": branch, "sourceCommit": commit, "sourceTreeSha256": tree_sha,
-        "transport": "pi-jsonl-rpc-v1",
+        "transport": "wuxianpi-sdk-v1",
     })
     path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY

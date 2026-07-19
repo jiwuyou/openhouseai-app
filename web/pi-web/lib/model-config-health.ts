@@ -2,11 +2,9 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { getDefaultCwd } from "./runtime-paths";
 import {
-  AuthStorage,
   getAgentDir,
-  ModelRegistry,
+  ModelRuntime,
   SettingsManager,
-  type AuthStatus,
 } from "@earendil-works/pi-coding-agent";
 import {
   getModelProviderPreset,
@@ -63,6 +61,12 @@ export interface SafeProviderStatus {
   issues: ModelConfigMissingReason[];
 }
 
+type AuthStatus = {
+  configured: boolean;
+  source?: "stored" | "runtime" | "environment" | "fallback" | "models_json_key" | "models_json_command";
+  label?: string;
+};
+
 interface ModelsConfigFile {
   providers?: Record<string, ProviderConfigFile>;
 }
@@ -99,19 +103,22 @@ export async function getModelConfigHealth(options: { cwd?: string } = {}): Prom
   const agentDir = getAgentDir();
   const modelsPath = join(agentDir, "models.json");
   const { config, exists, parseError } = readModelsConfig(modelsPath);
-  const authStorage = AuthStorage.create();
-  const registry = ModelRegistry.create(authStorage, modelsPath);
+  const runtime = await ModelRuntime.create({
+    authPath: join(agentDir, "auth.json"),
+    modelsPath,
+    allowModelNetwork: false,
+  });
   const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 
-  const allModels = registry.getAll().map(toModelSummary);
-  const availableModels = registry.getAvailable().map(toModelSummary);
-  const loadError = registry.getError() ?? parseError;
+  const allModels = runtime.getModels().map(toModelSummary);
+  const availableModels = [...await runtime.getAvailable()].map(toModelSummary);
+  const loadError = runtime.getError() ?? parseError;
   const providerEntries = Object.entries(config.providers ?? {});
   const providerIds = collectProviderIds(providerEntries, allModels, availableModels, settingsManager.getDefaultProvider());
   const providers = providerIds.map((providerId) => buildProviderStatus({
     providerId,
     providerConfig: config.providers?.[providerId],
-    authStatus: registry.getProviderAuthStatus(providerId),
+    authStatus: runtime.getProviderAuthStatus(providerId),
     allModels,
     availableModels,
   }));

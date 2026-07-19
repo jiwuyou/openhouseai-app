@@ -4,7 +4,7 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ "${SKIP_RUNTIME_BUILD:-0}" == "1" ]] || "$repo_dir/scripts/build-runtime.sh"
 asset="$repo_dir/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz"
 [[ -s "$asset" ]] || { printf 'Missing Native ARM64 runtime asset: %s\n' "$asset" >&2; exit 1; }
-for required in ./install.sh ./bin/pi ./bin/openhouse-pi-runtime ./extensions/openhouse-tools/extension.json ./metadata/build.json; do
+for required in ./install.sh ./bin/wuxianpi ./bin/wuxianpi-node ./bin/wuxianpi-node-start ./node/dist/index.js ./metadata/build.json; do
   tar -tzf "$asset" | awk -v required="$required" '$0 == required { found = 1 } END { exit found ? 0 : 1 }' \
     || { printf 'Native runtime asset is missing %s\n' "$required" >&2; exit 1; }
 done

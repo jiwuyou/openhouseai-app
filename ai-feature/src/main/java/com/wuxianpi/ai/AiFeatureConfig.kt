@@ -6,15 +6,13 @@ enum class RuntimeMode {
 }
 
 data class BundledRuntimeCredentials(
-    val adminUrl: String,
-    val token: String,
+    val serviceUrl: String,
     val clientId: String,
 ) {
     init {
-        require(adminUrl.startsWith("http://127.0.0.1:") || adminUrl.startsWith("http://localhost:")) {
-            "Bundled runtime must expose a loopback admin URL"
+        require(serviceUrl.startsWith("http://127.0.0.1:") || serviceUrl.startsWith("http://localhost:")) {
+            "Bundled runtime must expose a loopback service URL"
         }
-        require(token.length >= 24) { "Bundled runtime token is too short" }
         require(clientId.isNotBlank()) { "Bundled runtime clientId is required" }
     }
 }
@@ -34,7 +32,12 @@ data class AiFeatureConfig(
 
         fun bundledTermux(adminUrl: String, token: String, clientId: String) = AiFeatureConfig(
             RuntimeMode.BUNDLED_TERMUX,
-            BundledRuntimeCredentials(adminUrl, token, clientId),
+            BundledRuntimeCredentials(adminUrl, clientId),
+        )
+
+        fun bundledTermux(serviceUrl: String, clientId: String) = AiFeatureConfig(
+            RuntimeMode.BUNDLED_TERMUX,
+            BundledRuntimeCredentials(serviceUrl, clientId),
         )
     }
 }

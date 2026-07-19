@@ -482,7 +482,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, []);
 
   const loadTools = useCallback(async (sid: string) => {
-    // Pi Rust owns the complete tool registry. The Web UI never creates or
+    // Pi SDK owns the complete tool registry. The Web UI never creates or
     // filters tools, which keeps Android/Termux extension behavior identical
     // across Native and All-in-One editions.
     void sid;
@@ -697,7 +697,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   // Reconcile client streaming state with Pi itself. When WebSocket events are
   // missed (network drop, mobile tab backgrounded, half-open connection),
-  // agent_end never arrives and the UI stays in streaming state forever.
+  // agent_settled never arrives and the UI stays in streaming state forever.
   // If the server reports idle while we still think it's running, finish
   // through the same path as prompt_done.
   const reconcileAgentState = useCallback(async (sid: string) => {
@@ -765,8 +765,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         dispatch({ type: "start" });
         break;
       case "agent_end":
-        // A late agent_end can arrive over SSE after reconcileAgentState
-        // already finished this run — don't re-trigger completion.
+        // A low-level run may still auto-retry, compact, or deliver queued
+        // follow-ups. Only agent_settled is the final idle boundary.
+        if (event.error) addNotice({ type: "error", message: String(event.error) });
+        break;
+      case "agent_settled":
+        // A late settled event can arrive after reconciliation already
+        // finished this run — don't re-trigger completion.
         if (!agentRunningRef.current) break;
         agentRunningRef.current = false;
         setAgentRunning(false);
@@ -787,7 +792,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             })
             .catch(() => {});
         }
-        if (event.error) addNotice({ type: "error", message: String(event.error) });
         onAgentEnd?.();
         break;
       case "prompt_done":

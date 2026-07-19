@@ -907,7 +907,7 @@ install_default_subjects() {
   fi
 
   install_default_subject_file "pi-agent.json" <<'JSON'
-{"id":"pi-agent","title":"Pi Agent","kind":"runtime-http","summary":"Pi Rust JSONL RPC runtime and OpenHouse AI entry.","serviceRefs":[{"id":"pi-agent","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/workspace","workdir":"$HOME/workspace","command":"openhouse-pi-runtime-start","entryCommand":"openhouse-pi-runtime-start"},{"id":"pi-web","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-web","workdir":"$HOME/smallphoneai-repos/pi-web","command":"openhouse-pi-web-start","entryCommand":"openhouse-pi-web-start"}],"entries":[{"type":"runtime","label":"Pi Rust RPC","url":"http://127.0.0.1:8765/"},{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","purpose":"APK-managed Pi Rust runtime payload source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-web","purpose":"Termux native pi-web payload install source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Pi conversation data, extensions, and session state"}],"ai":{"description":"Pi Rust is the OpenHouse AI engine. service-manager keeps the public pi-agent service id and starts openhouse-pi-runtime-start on port 8765.","whenUnavailable":"Inspect service-manager status and logs for pi-agent, then rerun bootstrap.sh repair to refresh the APK-managed pi-runtime payload."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/openhouseai/runtime/state/token","timeoutSeconds":4}]}}
+{"id":"pi-agent","title":"WuxianPi Node Runtime","kind":"runtime-http","summary":"Node service embedding the official Pi SDK and preserving native Pi JSONL sessions.","serviceRefs":[{"id":"pi-agent","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/workspace","workdir":"$HOME/workspace","command":"wuxianpi-node-start","entryCommand":"wuxianpi-node-start"},{"id":"pi-web","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-web","workdir":"$HOME/smallphoneai-repos/pi-web","command":"openhouse-pi-web-start","entryCommand":"openhouse-pi-web-start"}],"entries":[{"type":"runtime","label":"WuxianPi SDK API","url":"http://127.0.0.1:8765/"},{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","purpose":"APK-managed WuxianPi Node payload source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/openhouseai/runtime","purpose":"Installed Node service and Pi SDK"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Pi conversation data, extensions, skills, and settings"}],"ai":{"description":"The pi-agent service starts wuxianpi-node-start on port 8765 and embeds @earendil-works/pi-coding-agent directly.","whenUnavailable":"Inspect pi-agent logs, verify Node >=22.19 and rerun bootstrap repair."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/bin/wuxianpi-node-start","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.pi/agent/sessions","timeoutSeconds":4}]}}
 JSON
   install_default_subject_file "file-inbox.json" <<'JSON'
 {"id":"file-inbox","title":"File Inbox","kind":"file","summary":"Shared staging area for files opened with or shared to OpenHouse.","serviceRefs":[],"entries":[{"type":"file","label":"Android inbox","path":"/storage/emulated/0/OpenHouse/Inbox"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","purpose":"user-visible Android storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse/Inbox","purpose":"Termux-native inbox projection"},{"runtime":"ubuntu","path":"/root/OpenHouse/Inbox","purpose":"Ubuntu/proot inbox projection"}],"ai":{"description":"Files from Android share/open-with flows should be staged here before AI processing.","whenUnavailable":"Check storage permission and projected inbox directories."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","timeoutSeconds":3}]}}
@@ -1213,7 +1213,7 @@ payload_dir_contains_executable() {
       component_binary_current_env_executable "$payload_name" "$source/wuyou"
       ;;
     pi-agent)
-      [ -x "$source/bin/pi" ] && [ -x "$source/bin/openhouse-pi-runtime" ]
+      [ -x "$source/bin/wuxianpi-node" ] && [ -x "$source/bin/wuxianpi-node-start" ]
       ;;
     *)
       return 1
@@ -1313,13 +1313,14 @@ payload_dir_needs_refresh() {
         || return 0
       ;;
     pi-agent)
-      [ -x "$source/bin/pi" ] \
-        && [ -x "$source/bin/openhouse-pi-runtime" ] \
-        && [ -x "$source/bin/openhouse-pi-runtime-start" ] \
+      [ -x "$source/bin/wuxianpi" ] \
+        && [ -x "$source/bin/wuxianpi-node" ] \
+        && [ -x "$source/bin/wuxianpi-node-start" ] \
+        && [ -f "$source/node/dist/index.js" ] \
         && [ -f "$source/scripts/install.sh" ] \
         && [ -f "$source/scripts/check.sh" ] \
         && [ -f "$source/scripts/register-service.sh" ] \
-        && grep -Fq 'openhouse-pi-runtime-start' "$source/scripts/register-service.sh" \
+        && grep -Fq 'wuxianpi-node-start' "$source/scripts/register-service.sh" \
         && grep -Fq '127.0.0.1:8765' "$source/scripts/register-service.sh" \
         || return 0
       ;;
@@ -1460,13 +1461,14 @@ validate_payload_source() {
       return 0
     fi
     if [ "$payload_name" = "pi-agent" ]; then
-      if [ ! -x "$source/bin/pi" ] \
-        || [ ! -x "$source/bin/openhouse-pi-runtime" ] \
-        || [ ! -x "$source/bin/openhouse-pi-runtime-start" ] \
+      if [ ! -x "$source/bin/wuxianpi" ] \
+        || [ ! -x "$source/bin/wuxianpi-node" ] \
+        || [ ! -x "$source/bin/wuxianpi-node-start" ] \
+        || [ ! -f "$source/node/dist/index.js" ] \
         || [ ! -f "$source/scripts/install.sh" ] \
         || [ ! -f "$source/scripts/check.sh" ] \
         || [ ! -f "$source/scripts/register-service.sh" ]; then
-        warn "$name: Pi Rust payload directory must contain executable bin/pi, bin/openhouse-pi-runtime, bin/openhouse-pi-runtime-start and install/check/register scripts: $source"
+        warn "$name: WuxianPi Node payload must contain bin/wuxianpi, bin/wuxianpi-node, bin/wuxianpi-node-start, node/dist/index.js and install/check/register scripts: $source"
         return 1
       fi
       return 0
@@ -1503,13 +1505,14 @@ validate_payload_source() {
       return 0
     fi
     if [ "$payload_name" = "pi-agent" ]; then
-      if ! payload_archive_contains_executable "$source" '^bin/pi$' \
-        || ! payload_archive_contains_executable "$source" '^bin/openhouse-pi-runtime$' \
-        || ! payload_archive_contains_executable "$source" '^bin/openhouse-pi-runtime-start$' \
+      if ! payload_archive_contains_executable "$source" '^bin/wuxianpi$' \
+        || ! payload_archive_contains_executable "$source" '^bin/wuxianpi-node$' \
+        || ! payload_archive_contains_executable "$source" '^bin/wuxianpi-node-start$' \
+        || ! payload_archive_contains "$source" '(^|/)node/dist/index\.js$' \
         || ! payload_archive_contains "$source" '(^|/)scripts/install\.sh$' \
         || ! payload_archive_contains "$source" '(^|/)scripts/check\.sh$' \
         || ! payload_archive_contains "$source" '(^|/)scripts/register-service\.sh$'; then
-        warn "$name: Pi Rust payload archive must contain executable bin/pi, bin/openhouse-pi-runtime, bin/openhouse-pi-runtime-start and install/check/register scripts: $source"
+        warn "$name: WuxianPi Node payload archive must contain Node launchers, node/dist/index.js and install/check/register scripts: $source"
         return 1
       fi
       return 0
@@ -1979,7 +1982,7 @@ service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-
 openhouse_web_dir="${OPENHOUSE_WEB_DIR:-${SMALLPHONEAI_OPENHOUSE_WEB_DIR:-$(default_path openhouse-web)}}"
 pi_agent_target_dir="$(payload_target_dir pi-agent || true)"
 if [ -z "$pi_agent_target_dir" ]; then
-  warn "pi-agent: APK payload manifest 缺少 targetDir，使用固定 Pi Rust 目录 pi-runtime 以便报告后续 payload 错误。"
+  warn "pi-agent: APK payload manifest 缺少 targetDir，使用固定 WuxianPi Node 目录 pi-runtime 以便报告后续 payload 错误。"
   pi_agent_target_dir="pi-runtime"
 fi
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path "$pi_agent_target_dir")}}"

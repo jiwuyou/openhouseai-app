@@ -7,9 +7,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,7 +17,7 @@ import java.util.Collections
 
 class PiTransportInternalsTest {
     @Test
-    fun `ordered queue survives pressure within its explicit capacity without loss`() = runBlocking {
+    fun `ordered queue survives pressure within capacity without loss`() = runBlocking {
         val received = Collections.synchronizedList(mutableListOf<Int>())
         val done = CompletableDeferred<Unit>()
         val queue = OrderedQueue<Int>(
@@ -35,7 +35,7 @@ class PiTransportInternalsTest {
     }
 
     @Test
-    fun `bounded queue explicitly reports overflow so transport can reconnect`() = runBlocking {
+    fun `bounded queue reports overflow`() = runBlocking {
         val consumerStarted = CompletableDeferred<Unit>()
         val releaseConsumer = CompletableDeferred<Unit>()
         val queue = OrderedQueue<Int>(
@@ -54,92 +54,67 @@ class PiTransportInternalsTest {
     }
 
     @Test
-    fun `recovery completes out of order and restores streaming state`() {
-        val tracker = RecoveryTracker(7, "state", "messages")
-        val messages = tracker.accept(response("messages", "get_messages", JSONObject()))
-        assertFalse(messages.complete)
-        val state = tracker.accept(
-            response("state", "get_state", JSONObject().put("isStreaming", true)),
-        )
-        assertTrue(state.complete)
-        assertEquals(true, state.isStreaming)
-        assertFalse(state.failed)
-    }
-
-    @Test
-    fun `prompt gate blocks concurrent prompt until agent end or idle recovery`() {
+    fun `prompt gate remains occupied through agent end and opens only on settled`() {
         val gate = PromptGate()
         assertTrue(gate.tryBegin(connected = true, isStreaming = false))
         assertFalse(gate.tryBegin(connected = true, isStreaming = false))
         gate.onAgentStart()
         assertFalse(gate.tryBegin(connected = true, isStreaming = true))
-        gate.onAgentEnd()
-        assertTrue(gate.tryBegin(connected = true, isStreaming = false))
-        gate.onRecovered(isStreaming = false)
+        // There is deliberately no agent-end transition on the gate.
+        assertFalse(gate.tryBegin(connected = true, isStreaming = false))
+        gate.onAgentSettled()
         assertTrue(gate.tryBegin(connected = true, isStreaming = false))
     }
 
     @Test
-    fun `websocket bearer cannot leave trusted loopback origin`() {
-        val base = "http://127.0.0.1:8765/".toHttpUrl()
+    fun `prompt handled by extension releases submission gate without agent settled`() {
+        val gate = PromptGate()
+        assertTrue(gate.tryBegin(connected = true, isStreaming = false))
+        gate.onPromptCompletedWithoutAgent()
+        assertTrue(gate.tryBegin(connected = true, isStreaming = false))
+    }
+
+    @Test
+    fun `prompt acceptance has no arbitrary timeout`() {
+        assertNull(PROMPT_ACCEPT_TIMEOUT_MILLIS)
+    }
+
+    @Test
+    fun `foreign session events are rejected while unscoped events remain visible`() {
+        assertTrue(eventBelongsToActiveSession("session-a", "session-a", activationInFlight = false))
+        assertFalse(eventBelongsToActiveSession("session-a", "session-b", activationInFlight = false))
+        assertTrue(eventBelongsToActiveSession("session-a", null, activationInFlight = false))
+        assertFalse(eventBelongsToActiveSession(null, "session-b", activationInFlight = false))
+        assertTrue(eventBelongsToActiveSession("session-a", "session-b", activationInFlight = true))
+    }
+
+    @Test
+    fun `service and websocket remain fixed to loopback`() {
+        val base = "http://127.0.0.1:8765/legacy/path?x=1".toHttpUrl()
         assertEquals(
-            "http://127.0.0.1:8765/ws/rpc/lease",
-            resolveTrustedWebSocketUrl(base, "/ws/rpc/lease").toString(),
+            "http://127.0.0.1:8765/v1/ws",
+            resolveServiceWebSocketUrl(base).toString(),
         )
         assertThrows(IllegalArgumentException::class.java) {
-            resolveTrustedWebSocketUrl(base, "ws://example.com:8765/ws/rpc/lease")
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            resolveTrustedWebSocketUrl(base, "//example.com/ws/rpc/lease")
+            requireLoopbackService("https://example.com/".toHttpUrl())
         }
     }
 
     @Test
-    fun `superseded socket generation can never become current again`() {
+    fun `superseded socket generation cannot become current`() {
         val gate = SocketGenerationGate()
         val first = gate.next()
         assertTrue(gate.isCurrent(first))
         gate.invalidate()
         assertFalse(gate.isCurrent(first))
-        val replacement = gate.next()
-        assertFalse(gate.isCurrent(first))
-        assertTrue(gate.isCurrent(replacement))
+        assertTrue(gate.isCurrent(gate.next()))
     }
 
     @Test
-    fun `invalid or revoked lease bypasses stale websocket retries`() {
-        assertTrue(LeaseRecoveryPolicy.leaseIsInvalid(responseCode = 404))
-        assertTrue(LeaseRecoveryPolicy.leaseIsInvalid(responseCode = 409))
-        assertTrue(LeaseRecoveryPolicy.leaseIsInvalid(responseCode = 410))
-        assertTrue(LeaseRecoveryPolicy.leaseIsInvalid(closeCode = 4001))
-        assertFalse(LeaseRecoveryPolicy.leaseIsInvalid(responseCode = 503))
+    fun `reconnect retries are bounded with capped backoff`() {
+        assertEquals(8, ReconnectPolicy.MAX_ATTEMPTS)
+        assertEquals(250L, ReconnectPolicy.delayMillis(1))
+        assertEquals(8_000L, ReconnectPolicy.delayMillis(8))
+        assertEquals(8_000L, ReconnectPolicy.delayMillis(20))
     }
-
-    @Test
-    fun `authentication rejection is terminal while network failures remain recoverable`() {
-        assertTrue(LeaseRecoveryPolicy.isTerminalHandshakeFailure(401))
-        assertTrue(LeaseRecoveryPolicy.isTerminalHandshakeFailure(403))
-        assertFalse(LeaseRecoveryPolicy.isTerminalHandshakeFailure(404))
-        assertFalse(LeaseRecoveryPolicy.isTerminalHandshakeFailure(503))
-        assertFalse(LeaseRecoveryPolicy.isTerminalHandshakeFailure(null))
-    }
-
-    @Test
-    fun `reconnect and lease acquisition retries are explicitly bounded`() {
-        assertEquals(4, LeaseRecoveryPolicy.MAX_SOCKET_RECONNECT_ATTEMPTS)
-        assertEquals(3, LeaseRecoveryPolicy.MAX_LEASE_ACQUIRE_ATTEMPTS)
-        assertEquals(2, LeaseRecoveryPolicy.MAX_LEASE_REACQUIRE_CYCLES)
-        assertEquals(500L, LeaseRecoveryPolicy.reconnectDelayMillis(1))
-        assertEquals(4_000L, LeaseRecoveryPolicy.reconnectDelayMillis(4))
-        assertEquals(2_000L, LeaseRecoveryPolicy.leaseAcquireDelayMillis(4))
-    }
-
-    private fun response(id: String, command: String, data: JSONObject) = PiResponse(
-        id = id,
-        command = command,
-        success = true,
-        data = data,
-        error = null,
-        rawJson = "{}",
-    )
 }

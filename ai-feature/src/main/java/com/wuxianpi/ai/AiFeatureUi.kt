@@ -141,7 +141,7 @@ private fun PairingScreen(model: WuxianPiViewModel) {
         }
         Spacer(Modifier.height(20.dp))
         Text(
-            "The installer is bound to 127.0.0.1, uses a single-use token, and closes when this screen closes.",
+            "The installer is bound to 127.0.0.1, uses a single-use installer token, and closes with this screen.",
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF65675F),
         )
@@ -225,11 +225,9 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
                 ErrorBanner(
                     text = it,
                     action = when (connection) {
-                        is PiConnectionState.LeaseConflict -> "Take over"
                         else -> "Retry"
                     },
                     onAction = when (connection) {
-                        is PiConnectionState.LeaseConflict -> model::takeOver
                         else -> model::retryConnection
                     },
                 )
@@ -239,7 +237,7 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("What should we build?", style = MaterialTheme.typography.headlineSmall)
                         Spacer(Modifier.height(8.dp))
-                        Text("Pi can use Termux and Android tools while you watch each step.")
+                        Text("Pi can use its Termux tools while you watch each step.")
                     }
                 }
             } else {
@@ -268,10 +266,9 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
 private fun ConnectionLabel(state: PiConnectionState) {
     val (label, color) = when (state) {
         is PiConnectionState.Connected -> "Connected" to Color(0xFF47722E)
-        is PiConnectionState.Connecting, is PiConnectionState.AcquiringLease -> "Connecting" to Color(0xFF8A6D1F)
+        PiConnectionState.Connecting -> "Connecting" to Color(0xFF8A6D1F)
         is PiConnectionState.Recovering -> "Restoring session" to Color(0xFF8A6D1F)
         is PiConnectionState.Reconnecting -> "Reconnecting" to Color(0xFF8A6D1F)
-        is PiConnectionState.LeaseConflict -> "Open elsewhere" to Color(0xFFA33A2B)
         is PiConnectionState.Failed -> "Connection error" to Color(0xFFA33A2B)
         PiConnectionState.Disconnected -> "Disconnected" to Color.Gray
     }

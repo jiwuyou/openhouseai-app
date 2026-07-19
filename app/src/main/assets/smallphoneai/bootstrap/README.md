@@ -110,11 +110,11 @@ binary. `50-install-runtime-components.sh` defaults to
 clones from GitHub. It is not an air-gapped install: apt, npm, pip, model
 providers, and ordinary network checks may still be used when a stage needs
 operating-system or package dependencies. The stable `pi-agent` component ID
-installs the Rust payload from `pi-runtime.tar`; its binaries and state are
-installed under `$HOME/.local/share/openhouseai/runtime`, its service listens on
-`127.0.0.1:8765`, and its token is stored at
-`$HOME/.local/share/openhouseai/runtime/state/token`. It does not depend on
-Node/npm. pi-web and wuyou also use APK-bundled payloads first; pi-web is shipped
+installs the Node/Pi SDK payload from `pi-runtime.tar`; runtime code is
+installed under `$HOME/.local/share/openhouseai/runtime`, Pi conversations and
+extensions remain under `$HOME/.pi`, and the tokenless service listens on
+`127.0.0.1:8765` using `wuxianpi-sdk-v1`. It requires Termux Node.js 22.19 or
+newer. pi-web and wuyou also use APK-bundled payloads first; pi-web is shipped
 as a complete runtime and should not run `npm install` during first-run setup.
 The `pi-web` and `wuyou` commands are installed as Termux global commands and
 can be run without service-manager.
@@ -141,7 +141,7 @@ Default readiness ports:
 
 | Component | Endpoint |
 | --- | --- |
-| Pi Rust runtime (`pi-agent` service ID) | `http://127.0.0.1:8765/` |
+| WuxianPi Node/Pi SDK runtime (`pi-agent` service ID) | `http://127.0.0.1:8765/health` |
 | pi-web main agent UI | `http://127.0.0.1:30141/` |
 | cc-connect bridge | `tcp://127.0.0.1:21010` |
 | cc-connect management | `tcp://127.0.0.1:21020` |

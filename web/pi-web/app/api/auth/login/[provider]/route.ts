@@ -1,4 +1,5 @@
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
+import { getWebModelRuntime } from "@/lib/model-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -51,16 +52,15 @@ export async function GET(
     controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
   };
 
-  // AbortController propagates client disconnect into authStorage.login()
+  // AbortController propagates client disconnect into ModelRuntime.login().
   const abort = new AbortController();
   req.signal.addEventListener("abort", () => abort.abort());
 
   const stream = new ReadableStream({
     async start(controller) {
-      const authStorage = AuthStorage.create();
-      const providers = authStorage.getOAuthProviders();
-      const providerInfo = providers.find((p) => p.id === provider);
-      if (!providerInfo) {
+      const runtime = await getWebModelRuntime();
+      const providerInfo = runtime.getProvider(provider);
+      if (!providerInfo?.auth.oauth) {
         send(controller, { type: "error", message: `Unknown provider: ${provider}` });
         controller.close();
         return;
@@ -117,57 +117,61 @@ export async function GET(
       abort.signal.addEventListener("abort", cleanup);
 
       try {
-        await authStorage.login(provider, {
-          onAuth: (info: { url: string; instructions?: string }) => {
-            const request = getManualInputRequest();
-            send(controller, {
-              type: "auth",
+        await runtime.login(provider, "oauth", {
+          signal: abort.signal,
+          notify: (event: AuthEvent) => {
+            if (event.type === "auth_url") {
+              const info = event;
+              const request = getManualInputRequest();
+              send(controller, {
+                type: "auth",
               url: info.url,
               instructions: info.instructions ?? null,
-              token: request.token,
-            });
-          },
-          onDeviceCode: (info: {
-            userCode: string;
-            verificationUri: string;
-            intervalSeconds?: number;
-            expiresInSeconds?: number;
-          }) => {
-            send(controller, {
-              type: "device_code",
+                token: request.token,
+              });
+              return;
+            }
+            if (event.type === "device_code") {
+              const info = event;
+              send(controller, {
+                type: "device_code",
               userCode: info.userCode,
               verificationUri: info.verificationUri,
               intervalSeconds: info.intervalSeconds ?? null,
-              expiresInSeconds: info.expiresInSeconds ?? null,
-            });
-          },
-          onPrompt: async (prompt: { message: string; placeholder?: string }) => {
-            const request = getManualInputRequest();
-            send(controller, {
-              type: "prompt_request",
-              message: prompt.message,
-              placeholder: prompt.placeholder ?? null,
-              token: request.token,
-            });
-            const value = await request.promise;
-            return value;
-          },
-          onProgress: (message: string) => {
+                expiresInSeconds: info.expiresInSeconds ?? null,
+              });
+              return;
+            }
+            const message = event.type === "progress"
+              ? event.message
+              : [event.message, ...(event.links ?? []).map((link) => `${link.label ?? "Open"}: ${link.url}`)].join("\n");
             send(controller, { type: "progress", message });
           },
-          onSelect: async (prompt: { message: string; options: { id: string; label: string }[] }) => {
-            const request = createClientInputRequest();
-            send(controller, {
-              type: "select_request",
-              message: prompt.message,
-              options: prompt.options,
-              token: request.token,
-            });
-            const value = await request.promise;
-            return value || undefined;
+          prompt: async (prompt: AuthPrompt) => {
+            const request = prompt.type === "manual_code" ? getManualInputRequest() : createClientInputRequest();
+            const abortPrompt = () => registry.get(request.token)?.reject(new Error("Login cancelled"));
+            prompt.signal?.addEventListener("abort", abortPrompt, { once: true });
+            try {
+              if (prompt.type === "select") {
+                send(controller, {
+                  type: "select_request",
+                  message: prompt.message,
+                  options: [...prompt.options],
+                  token: request.token,
+                });
+              } else {
+                send(controller, {
+                  type: "prompt_request",
+                  message: prompt.message,
+                  placeholder: prompt.placeholder ?? null,
+                  token: request.token,
+                });
+              }
+              return await request.promise;
+            } finally {
+              prompt.signal?.removeEventListener("abort", abortPrompt);
+            }
           },
-          onManualCodeInput: () => getManualInputRequest().promise,
-          signal: abort.signal,
         });
 
         send(controller, { type: "success" });

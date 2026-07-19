@@ -1,19 +1,10 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
 import next from "next";
 import { WebSocket, WebSocketServer } from "ws";
 
 const hostname = process.env.HOSTNAME || process.env.PI_WEB_HOST || "127.0.0.1";
 const port = Number(process.env.PORT || process.env.PI_WEB_PORT || 30141);
 const runtimeOrigin = (process.env.OPENHOUSE_PI_RUNTIME_ORIGIN || "http://127.0.0.1:8765").replace(/\/$/, "");
-
-async function runtimeToken() {
-  const inline = process.env.OPENHOUSE_PI_RUNTIME_TOKEN?.trim();
-  if (inline) return inline;
-  const tokenFile = process.env.OPENHOUSE_PI_RUNTIME_TOKEN_FILE?.trim();
-  if (!tokenFile) return "";
-  try { return (await readFile(tokenFile, "utf8")).trim(); } catch { return ""; }
-}
 
 const app = next({ dev: false, hostname, port });
 await app.prepare();
@@ -27,18 +18,12 @@ server.on("upgrade", async (request, socket, head) => {
     socket.destroy();
     return;
   }
-  const leaseId = url.searchParams.get("leaseId");
-  if (!leaseId) {
-    socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
-    return;
-  }
-  const token = await runtimeToken();
   const target = new URL(runtimeOrigin.replace(/^http:/, "ws:").replace(/^https:/, "wss:"));
-  target.pathname = `/ws/rpc/${encodeURIComponent(leaseId)}`;
+  target.pathname = "/v1/ws";
   target.search = "";
 
   browserWs.handleUpgrade(request, socket, head, (client) => {
-    const upstream = new WebSocket(target, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const upstream = new WebSocket(target);
     const queued = [];
     client.on("message", (data, isBinary) => {
       if (isBinary) return;

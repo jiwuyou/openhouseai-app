@@ -21,7 +21,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "WuxianPiNative"
-include ":ai-feature", ":pi-client", ":android-tool-bridge"
+include ":ai-feature", ":pi-client"
 project(":ai-feature").projectDir = file("../ai-feature")
 project(":pi-client").projectDir = file("../pi-client")
-project(":android-tool-bridge").projectDir = file("../android-tool-bridge")

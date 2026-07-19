@@ -31,7 +31,7 @@ public final class OpenHouseStatusRepository {
     private static final String KEY_OVERLAY_STEP = "step";
     private static final String KEY_OVERLAY_BATTERY_SKIPPED = "battery_skipped";
     private static final String KEY_OVERLAY_GUIDE_DISMISSED = "guide_dismissed";
-    private static final String PI_RUNTIME_HEALTH_URL = "http://127.0.0.1:8765/admin/v1/health";
+    private static final String PI_RUNTIME_HEALTH_URL = "http://127.0.0.1:8765/health";
     private static final String AIONUI_DEFAULT_URL = "http://127.0.0.1:25808/";
 
     private final Context context;
@@ -331,19 +331,14 @@ public final class OpenHouseStatusRepository {
     private boolean isTermuxPiAgentInstalled() {
         return runTermuxCommand(
             "test -d \"$HOME/smallphoneai-repos/pi-runtime\" "
-                + "&& test -x \"$HOME/.local/share/openhouseai/runtime/bin/pi\" "
-                + "&& test -x \"$HOME/.local/share/openhouseai/runtime/bin/openhouse-pi-runtime\" "
-                + "&& test -x \"$HOME/.local/bin/openhouse-pi-runtime-start\"",
+                + "&& test -f \"$HOME/.local/share/openhouseai/runtime/node/dist/index.js\" "
+                + "&& test -x \"$HOME/.local/bin/wuxianpi-node-start\"",
             12).isSuccess();
     }
 
     private boolean isPiRuntimeReachable() {
         return runTermuxCommand(
-            "token_file=\"$HOME/.local/share/openhouseai/runtime/state/token\"; "
-                + "test -s \"$token_file\" && token=\"$(tr -d '\\r\\n' < \"$token_file\")\" "
-                + "&& test -n \"$token\" "
-                + "&& curl -fsS --max-time 3 -H \"Authorization: Bearer $token\" "
-                + shellQuote(PI_RUNTIME_HEALTH_URL) + " >/dev/null 2>&1",
+            "curl -fsS --max-time 3 " + shellQuote(PI_RUNTIME_HEALTH_URL) + " >/dev/null 2>&1",
             6).isSuccess();
     }
 

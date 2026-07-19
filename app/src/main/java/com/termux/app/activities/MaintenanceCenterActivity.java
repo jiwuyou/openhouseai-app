@@ -4530,12 +4530,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.INSTALL_PI_AGENT,
             piAgentInstalled
-                ? StagePresentation.complete(this, "Pi Rust runtime payload 与启动入口已安装。")
+                ? StagePresentation.complete(this, "WuxianPi Node/Pi SDK runtime payload 与启动入口已安装。")
                 : (!termuxPackagesComplete
                     ? StagePresentation.blocked(this, "请先完成 Termux 基础包阶段。")
                     : failedOrReady(installPiAgentExitCode,
-                        "Pi Rust runtime 安装失败，请查看该阶段日志。",
-                        "准备安装不依赖 Node/npm 或 service-manager 的 Pi Rust runtime。"))
+                        "WuxianPi Node/Pi SDK runtime 安装失败，请查看该阶段日志。",
+                        "准备安装 APK 内置的 WuxianPi Node/Pi SDK runtime。"))
         );
 
         snapshot.presentations.put(
@@ -4706,12 +4706,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.START_SMALLPHONE,
             smallPhoneStarted
-                ? StagePresentation.complete(this, "Pi Rust runtime 8765 与 pi-web 30141 已启动。")
+                ? StagePresentation.complete(this, "WuxianPi Node runtime 8765 与 pi-web 30141 已启动。")
                 : (!piServicesRegistered
                     ? StagePresentation.blocked(this, "请先完成 pi-agent、pi-web 服务注册。")
                     : failedOrReady(startSmallPhoneExitCode,
-                        "Pi Rust runtime 8765 或 pi-web 30141 启动失败，请查看该阶段日志。",
-                        "准备通过 service-manager 启动 Pi Rust runtime 8765 与 pi-web 30141。"))
+                        "WuxianPi Node runtime 8765 或 pi-web 30141 启动失败，请查看该阶段日志。",
+                        "准备通过 service-manager 启动 WuxianPi Node runtime 8765 与 pi-web 30141。"))
         );
 
         snapshot.presentations.put(
@@ -4789,9 +4789,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean isPiAgentInstalled() {
         File home = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
         return new File(home, "smallphoneai-repos/pi-runtime").isDirectory()
-            && new File(home, ".local/share/openhouseai/runtime/bin/pi").canExecute()
-            && new File(home, ".local/share/openhouseai/runtime/bin/openhouse-pi-runtime").canExecute()
-            && new File(home, ".local/bin/openhouse-pi-runtime-start").canExecute();
+            && new File(home, ".local/share/openhouseai/runtime/node/dist/index.js").isFile()
+            && new File(home, ".local/bin/wuxianpi-node-start").canExecute();
     }
 
     private boolean isPiWebInstalled() {
@@ -4829,9 +4828,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean isManagedPiWebReachable() {
         return runTermuxCommand(
             "curl -fsS --max-time 2 " + shellQuote(serviceManagerBaseUrl() + "/api/v1/health") + " >/dev/null 2>&1"
-                + " && token_file=\"$HOME/.local/share/openhouseai/runtime/state/token\""
-                + " && test -s \"$token_file\" && token=\"$(tr -d '\\r\\n' < \"$token_file\")\""
-                + " && curl -fsS --max-time 3 -H \"Authorization: Bearer $token\" http://127.0.0.1:8765/admin/v1/health >/dev/null 2>&1"
+                + " && curl -fsS --max-time 3 http://127.0.0.1:8765/health >/dev/null 2>&1"
                 + " && curl -fsS --max-time 3 http://127.0.0.1:30141/ >/dev/null 2>&1"
         ).isSuccess();
     }
@@ -4889,7 +4886,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private boolean isRuntimeComponentsInstalled() {
         return runTermuxCommand(
-            "test -d \"$HOME/smallphoneai-repos/pi-runtime\" && test -x \"$HOME/.local/share/openhouseai/runtime/bin/openhouse-pi-runtime\" && test -d \"$HOME/smallphoneai-repos/pi-web\""
+            "test -d \"$HOME/smallphoneai-repos/pi-runtime\" && test -f \"$HOME/.local/share/openhouseai/runtime/node/dist/index.js\" && test -x \"$HOME/.local/bin/wuxianpi-node-start\" && test -d \"$HOME/smallphoneai-repos/pi-web\""
                 + " && proot-distro login ubuntu -- bash -lc '{ test -x \"$HOME/smallphoneai-repos/service-manager/service-manager\" || test -x \"$HOME/smallphoneai-repos/service-manager/target/release/service-manager\"; } && test -d \"$HOME/smallphoneai-repos/smallphone-active\"'"
         ).isSuccess();
     }

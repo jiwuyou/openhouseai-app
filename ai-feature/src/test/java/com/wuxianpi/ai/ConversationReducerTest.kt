@@ -14,15 +14,21 @@ class ConversationReducerTest {
     fun `failed tool does not stop agent`() {
         var state = ConversationReducer.reduce(
             ConversationState(),
-            PiEvent.AgentStart("s", "{}"),
+            PiEvent.AgentStart(sessionId = "s", rawJson = "{}"),
         )
         state = ConversationReducer.reduce(
             state,
-            PiEvent.ToolStart("t", "code_runner", JSONObject(), "{}"),
+            PiEvent.ToolStart(callId = "t", name = "code_runner", arguments = JSONObject(), rawJson = "{}"),
         )
         state = ConversationReducer.reduce(
             state,
-            PiEvent.ToolEnd("t", "code_runner", JSONObject(), true, "{}"),
+            PiEvent.ToolEnd(
+                callId = "t",
+                name = "code_runner",
+                result = JSONObject(),
+                isError = true,
+                rawJson = "{}",
+            ),
         )
         assertTrue(state.isAgentRunning)
         assertTrue(state.messages.single().tools.single().status == ToolStatus.FAILED)
@@ -32,26 +38,84 @@ class ConversationReducerTest {
     fun `extension error does not stop agent`() {
         val running = ConversationReducer.reduce(
             ConversationState(),
-            PiEvent.AgentStart("s", "{}"),
+            PiEvent.AgentStart(sessionId = "s", rawJson = "{}"),
         )
         val afterError = ConversationReducer.reduce(
             running,
-            PiEvent.ExtensionError(null, "tool", "failed", "{}"),
+            PiEvent.ExtensionError(extensionId = null, event = "tool", error = "failed", rawJson = "{}"),
         )
         assertTrue(afterError.isAgentRunning)
     }
 
     @Test
-    fun `only agent end clears running`() {
+    fun `fire and forget extension notification never opens response dialog`() {
+        val state = ConversationReducer.reduce(
+            ConversationState(),
+            PiEvent.ExtensionUiRequest(
+                requestId = "notification-1",
+                method = "notify",
+                payload = JSONObject()
+                    .put("message", "Package installed")
+                    .put("notifyType", "info"),
+                sessionId = "s",
+                rawJson = "{}",
+            ),
+        )
+        assertEquals(null, state.extensionRequest)
+        assertEquals("Package installed", state.messages.single().text)
+    }
+
+    @Test
+    fun `interactive extension request opens dialog`() {
+        val request = PiEvent.ExtensionUiRequest(
+            requestId = "confirm-1",
+            method = "confirm",
+            payload = JSONObject().put("title", "Continue?"),
+            sessionId = "s",
+            rawJson = "{}",
+        )
+        val state = ConversationReducer.reduce(ConversationState(), request)
+        assertEquals(request, state.extensionRequest)
+    }
+
+    @Test
+    fun `agent end stays running until agent settled`() {
         val running = ConversationReducer.reduce(
             ConversationState(),
-            PiEvent.AgentStart("s", "{}"),
+            PiEvent.AgentStart(sessionId = "s", rawJson = "{}"),
         )
-        val ended = ConversationReducer.reduce(
+        val lowLevelEnded = ConversationReducer.reduce(
             running,
-            PiEvent.AgentEnd("s", null, null, "{}"),
+            PiEvent.AgentEnd(sessionId = "s", willRetry = true, messages = null, rawJson = "{}"),
         )
-        assertFalse(ended.isAgentRunning)
+        assertTrue(lowLevelEnded.isAgentRunning)
+        val settled = ConversationReducer.reduce(
+            lowLevelEnded,
+            PiEvent.AgentSettled(sessionId = "s", rawJson = "{}"),
+        )
+        assertFalse(settled.isAgentRunning)
+    }
+
+    @Test
+    fun `provider error is inline and does not settle conversation`() {
+        val running = ConversationReducer.reduce(
+            ConversationState(),
+            PiEvent.AgentStart(sessionId = "s", rawJson = "{}"),
+        )
+        val failed = ConversationReducer.reduce(
+            running,
+            PiEvent.RuntimeError(
+                phase = "provider",
+                commandType = "session.prompt",
+                message = "insufficient quota",
+                recoverable = true,
+                sessionId = "s",
+                rawJson = "{}",
+            ),
+        )
+        assertTrue(failed.isAgentRunning)
+        assertTrue(failed.messages.last().isError)
+        assertTrue(failed.messages.last().text.contains("insufficient quota"))
     }
 
     @Test
@@ -70,7 +134,7 @@ class ConversationReducerTest {
             ),
         )
         val restored = ConversationReducer.restore(
-            PiResponse("r", "get_messages", true, data, null, "{}"),
+            PiResponse("r", "session.history", true, data, null, "{}"),
             ConversationState(),
         )
         assertEquals("reasoning", restored.messages.single().thinking)

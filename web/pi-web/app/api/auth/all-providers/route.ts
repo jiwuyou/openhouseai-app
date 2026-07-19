@@ -1,4 +1,4 @@
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { getWebModelRuntime } from "@/lib/model-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -6,9 +6,8 @@ export const dynamic = "force-dynamic";
 const OAUTH_PROVIDER_IDS = new Set(["anthropic", "github-copilot", "openai-codex"]);
 
 export async function GET() {
-  const authStorage = AuthStorage.create();
-  const registry = ModelRegistry.create(authStorage);
-  const all = registry.getAll();
+  const runtime = await getWebModelRuntime();
+  const all = [...runtime.getModels()];
 
   // Deduplicate by provider, skip OAuth-only providers and custom providers (source=models_json_key)
   const seen = new Set<string>();
@@ -24,10 +23,10 @@ export async function GET() {
     if (seen.has(m.provider)) continue;
     seen.add(m.provider);
     if (OAUTH_PROVIDER_IDS.has(m.provider)) continue;
-    const status = registry.getProviderAuthStatus(m.provider);
+    const status = runtime.getProviderAuthStatus(m.provider);
     // Skip providers whose key comes from models.json (those are custom providers)
     if (status.source === "models_json_key") continue;
-    const displayName = registry.getProviderDisplayName(m.provider);
+    const displayName = runtime.getProvider(m.provider)?.name ?? m.provider;
     const modelCount = all.filter((x) => x.provider === m.provider).length;
     result.push({
       id: m.provider,

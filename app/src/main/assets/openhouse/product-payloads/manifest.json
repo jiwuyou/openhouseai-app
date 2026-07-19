@@ -60,24 +60,23 @@
     {
       "id": "pi-agent",
       "archive": "pi-runtime.tar",
-      "sha256": "4d212681e12b5033a4d42dbc01b5c2a09367e01e7ba2983a9e8dca12735e7103",
-      "size": 42506240,
+      "sha256": "aa26b779ca00ba8dadb2b9e36f478042aced67bae0fdf72afccb4f1f9dade172",
+      "size": 159354880,
       "platform": "termux-android-arm64",
-      "version": "0.1.20+ad719ad3d421",
-      "sourceRepo": "https://github.com/Dicklesworthstone/pi_agent_rust.git",
-      "sourceCommit": "ad719ad3d42173be9293a020492b7d10f85c95fe",
-      "binarySha256": "30ea917948bf99f43743b769174d146b8d2e593f9de87689cd35a7eb5fb0a44e",
-      "binarySize": 32349064,
-      "gatewaySha256": "3ae412bddd9e7e93b99bbae53b43c3d0fd5b22670273b1f5a627b323f62883ed",
-      "gatewaySize": 10126880,
+      "version": "0.1.0+pi.0.80.10",
+      "sourceRepo": "https://github.com/earendil-works/pi.git",
+      "sdkPackage": "@earendil-works/pi-coding-agent",
+      "sdkVersion": "0.80.10",
+      "nodeVersion": ">=22.19.0",
+      "transport": "wuxianpi-sdk-v1",
       "registrationRequires": {
         "serviceManager": ">=0.3.1",
         "registryApiVersion": 2
       },
       "provides": {
-        "piJsonlRpc": true,
-        "webSocketGateway": true,
-        "multiSessionLeases": true
+        "piSdkEmbedded": true,
+        "webSocket": true,
+        "nativeJsonlSessions": true
       },
       "targetDir": "pi-runtime"
     },
@@ -85,15 +84,15 @@
       "id": "pi-web",
       "archive": "pi-web.tar",
       "targetDir": "pi-web",
-      "sha256": "29a39080572f78e89d3e83135356cc0c616afd5ddaea1c20af81a2a7bfb32273",
-      "size": 91525120,
+      "sha256": "32624822b6b3ffd75bce6f44f76b15a2ffefed7950b310c98b92f09ae88ceb80",
+      "size": 80506880,
       "platform": "termux-android-arm64",
       "buildPlatform": "android-arm64",
       "version": "0.7.12",
       "sourceRepo": "https://github.com/jiwuyou/openhouseai-app.git",
       "sourceBranch": "feature/pi-dual-runtime",
-      "sourceCommit": "2fa4c621b1f5b356e06918cae94868f4deae17f7",
-      "sourceTreeSha256": "20cfe04a70ace41d8a22139cbb28142532d7171f9d1262e3260dd6dfbb5b7367",
+      "sourceCommit": "d0a03f1b617d1495c68e7e7359d9356b85ebf2a3",
+      "sourceTreeSha256": "291ceac6b5bd98f4f61c968d80131700f73c37abf88521a9e113e206ee1b88c6",
       "requires": {
         "termuxNode": ">=24"
       },
@@ -101,7 +100,7 @@
         "serviceManager": ">=0.3.1",
         "registryApiVersion": 2
       },
-      "transport": "pi-jsonl-rpc-v1"
+      "transport": "wuxianpi-sdk-v1"
     },
     {
       "id": "wuyou",
@@ -156,14 +155,14 @@
   "nativeInstallBundle": {
     "id": "wuxianpi-native-install",
     "archive": "wuxianpi-native-install.tar",
-    "sha256": "0e7361b7d7a0e43ea00aac7cde580fc73bbbf1db97876540454ec70e80cd8de2",
-    "size": 42516480,
+    "sha256": "52585bd38c0fa5b10c33edaff427b4a725c692dd9a7598c9099033d202659aa6",
+    "size": 159365120,
     "applicationId": "com.wuxianpi"
   },
   "nativeRuntimeAsset": {
     "archive": "runtime-aarch64.tgz",
-    "sha256": "ae83a0bb9b52bb725dd3992b4598a4e3c6dfa8b3949f0707eaa8139d1ab33f1c",
-    "size": 14584263,
+    "sha256": "c9228edef888522cc39aca3110b6320c904e8dd88ba6495d56844d2206fb6588",
+    "size": 28695884,
     "abi": "arm64-v8a",
     "applicationId": "com.wuxianpi"
   }

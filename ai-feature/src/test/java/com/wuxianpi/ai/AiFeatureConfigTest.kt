@@ -25,6 +25,16 @@ class AiFeatureConfigTest {
     }
 
     @Test
+    fun `bundled mode uses only loopback service coordinates`() {
+        val config = AiFeatureConfig.bundledTermux(
+            "http://127.0.0.1:8765/",
+            "all-in-one-host",
+        )
+        assertEquals("all-in-one-host", config.bundledRuntime?.clientId)
+        assertEquals("http://127.0.0.1:8765/", config.bundledRuntime?.serviceUrl)
+    }
+
+    @Test
     fun `bundled mode rejects a remote gateway`() {
         assertThrows(IllegalArgumentException::class.java) {
             AiFeatureConfig.bundledTermux(

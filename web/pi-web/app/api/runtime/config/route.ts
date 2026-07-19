@@ -5,9 +5,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   return NextResponse.json(
     {
-      adminBaseUrl: "/api/runtime",
       wsUrl: "/ws/pi",
-      protocol: "pi-jsonl-rpc-v1",
+      protocol: "wuxianpi-sdk-v1",
     },
     {
       headers: {

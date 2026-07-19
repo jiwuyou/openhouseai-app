@@ -74,23 +74,40 @@ object ConversationReducer {
                     isError = true,
                 )
             } ?: state.messages
-            state.copy(messages = withError, isAgentRunning = false)
+            // agent_end is only one low-level run. Retry, compaction, or queued follow-up may follow.
+            state.copy(messages = withError)
         }
-        is PiEvent.ExtensionUiRequest -> state.copy(extensionRequest = event)
+        is PiEvent.AgentSettled -> state.copy(isAgentRunning = false)
+        is PiEvent.ExtensionUiRequest -> when (event.method) {
+            "select", "confirm", "input", "editor" -> state.copy(extensionRequest = event)
+            "notify" -> {
+                val text = event.payload.optString("message")
+                if (text.isBlank()) state else state.copy(
+                    messages = state.messages + ChatMessageState(
+                        role = MessageRole.NOTICE,
+                        text = text,
+                        isError = event.payload.optString("notifyType") == "error",
+                    ),
+                )
+            }
+            // Status, title, widget and editor setters are fire-and-forget host UI hints.
+            else -> state
+        }
         is PiEvent.ExtensionError -> state.copy(
             messages = state.messages + ChatMessageState(
                 role = MessageRole.NOTICE,
                 text = "Extension error: ${event.error}",
                 isError = true,
             ),
-            // Deliberately preserve isAgentRunning. Only agent_end may end the turn.
+            // Deliberately preserve isAgentRunning. Only agent_settled may end the turn.
+        )
+        is PiEvent.RuntimeError -> state.copy(
+            messages = state.messages.appendUniqueError(
+                "${event.phase.replaceFirstChar { it.uppercase() }} error: ${event.message}",
+            ),
         )
         is PiEvent.CommandError -> state.copy(
-            messages = state.messages + ChatMessageState(
-                role = MessageRole.NOTICE,
-                text = event.response.error ?: "Pi command failed",
-                isError = true,
-            ),
+            messages = state.messages.appendUniqueError(event.response.error ?: "Pi command failed"),
         )
         is PiEvent.SessionRecovered -> restore(event.response, state)
         else -> state
@@ -103,7 +120,7 @@ object ConversationReducer {
     fun clearExtension(state: ConversationState): ConversationState = state.copy(extensionRequest = null)
 
     fun restore(response: PiResponse, current: ConversationState): ConversationState {
-        if (!response.success || response.command != "get_messages") return current
+        if (!response.success || response.command !in setOf("get_messages", "session.history")) return current
         val data = response.data as? JSONObject ?: return current
         val messages = data.optJSONArray("messages") ?: return current
         return current.copy(messages = parseHistory(messages))
@@ -205,5 +222,10 @@ object ConversationReducer {
     ): List<ChatMessageState> = map { message ->
         if (message.tools.none { it.id == callId }) message
         else message.copy(tools = message.tools.map { if (it.id == callId) transform(it) else it })
+    }
+
+    private fun List<ChatMessageState>.appendUniqueError(text: String): List<ChatMessageState> {
+        if (lastOrNull()?.let { it.isError && it.text == text } == true) return this
+        return this + ChatMessageState(role = MessageRole.NOTICE, text = text, isError = true)
     }
 }

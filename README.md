@@ -30,16 +30,16 @@ APK 内的 `app/src/main/assets/openhouse/docs-public/` 是该仓库 `docs/` 的
 - 桌面不显示顶部控制栏；进入 App 后显示 `左侧栏 / 桌面 / 当前 App 名 / 刷新 / 收起 / 右侧控制栏`，控制栏可收起为可拖动、吸附并持久化位置的白黑渐变悬浮球。
 - 桌面只保存入口元数据和布局，不预创建多个 WebView，也不要求多个 WebView 常驻。
 - Termux 宿主层、终端底座、Ubuntu 启停和救援控制面。
-- Termux native runtime，承载 Pi Rust、`openhouse-pi-runtime`、`pi-web` 和 service-manager。
+- Termux native runtime，承载 WuxianPi Node/Pi SDK 服务、`pi-web` 和 service-manager。
 - Ubuntu proot runtime，承载 Codex、Claude Code、CloudCLI、MCP、AionUi、用户项目和开发工具链。
 - service-manager 作为安装完成后的控制平面。
-- `pi_agent_rust` 作为唯一 Agent、工具循环和原始会话实现，通过 `pi --mode rpc` 接入原生/Web UI。
+- `@earendil-works/pi-coding-agent` 作为唯一 Agent、工具循环和原始会话实现，由 Node 服务直接嵌入 SDK 并通过 `wuxianpi-sdk-v1` 接入原生/Web UI。
 - pi-web 作为默认主 UI，默认本地入口是 `http://127.0.0.1:30141/`。
 - 默认搜索插件 `multi-platform-search.ts` 通过 pi 插件目录加载。
 - cc-switch 作为后置 provider 配置执行器，随 APK 内置 arm64 payload，但不作为长期服务或一级入口。
 - 原生 AI UI 位于共享 `:ai-feature`：All-in-One (`com.termux`) 与 WuxianPi Native (`com.wuxianpi`) 使用同一套 UI、Pi RPC 客户端和 Android Tool Bridge。
 
-Pi Rust、runtime gateway 和 pi-web 的安装包随 APK 提供，其中 pi-web 首装使用 APK 内置完整 runtime，不需要通过 npm registry 安装 pi-web。Node.js、Ubuntu 基础包和后置 AI 工具仍可能需要网络；首次安装不应被描述为完全离线流程。
+WuxianPi Node runtime 和 pi-web 的安装包随 APK 提供，其中 pi-web 首装使用 APK 内置完整 runtime，不需要在线安装 pi-web。Node.js、Ubuntu 基础包和后置 AI 工具仍可能需要网络；首次安装不应被描述为完全离线流程。
 
 旧 `operit-host`、Android Agent循环、`maxToolIterations` 和 Android 主进程 QuickJS 已退出生产构建。OpenCode、Reasonix、Hermes 等仍按可选外部或后置能力处理。
 

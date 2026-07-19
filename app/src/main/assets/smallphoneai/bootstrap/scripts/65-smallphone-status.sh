@@ -942,9 +942,10 @@ likegirl_reachable="$(probe_url "$likegirl_url")"
 likegirl_clone_reachable="$(probe_url "$likegirl_clone_url")"
 pi_agent_satisfied=0
 if [ -d "$pi_agent_dir" ] \
-  && [ -x "$pi_agent_dir/bin/pi" ] \
-  && [ -x "$pi_agent_dir/bin/openhouse-pi-runtime" ] \
-  && [ -x "$pi_agent_dir/bin/openhouse-pi-runtime-start" ] \
+  && [ -x "$pi_agent_dir/bin/wuxianpi" ] \
+  && [ -x "$pi_agent_dir/bin/wuxianpi-node" ] \
+  && [ -x "$pi_agent_dir/bin/wuxianpi-node-start" ] \
+  && [ -f "$pi_agent_dir/node/dist/index.js" ] \
   && [ -f "$pi_agent_dir/scripts/install.sh" ] \
   && [ -f "$pi_agent_dir/scripts/check.sh" ] \
   && [ -f "$pi_agent_dir/scripts/register-service.sh" ]; then
@@ -980,7 +981,7 @@ json_string "$health_signature_status"
 printf ',"readiness":{"ready":%s,"requirements":[' "$(bool "$ready")"
 readiness_object "service-manager" "service-manager API" "$sm_url" "$sm_reachable" "1" "0"
 printf ','
-readiness_object "pi-agent" "Pi Rust runtime" "$pi_runtime_url" "$pi_runtime_reachable" "1" "0"
+readiness_object "pi-agent" "WuxianPi Node runtime" "$pi_runtime_url" "$pi_runtime_reachable" "1" "0"
 printf ','
 readiness_object "pi-web" "Pi Web main agent UI" "$pi_web_url" "$pi_web_reachable" "1" "0"
 printf ','

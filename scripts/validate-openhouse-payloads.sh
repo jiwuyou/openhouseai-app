@@ -15,7 +15,7 @@ python3 - \
   "$REPO_DIR/app/src/main/assets/openhouse/pi-prompts" \
   "${PI_WEB_REQUIRED_BRANCH:-openhouse}" \
   "${PI_WEB_REQUIRED_COMMIT:-19a4496149bf8198be1362e31d81d79b5d250051}" \
-  "${PI_RUST_REQUIRED_COMMIT:-ad719ad3d42173be9293a020492b7d10f85c95fe}" \
+  "${PI_SDK_REQUIRED_VERSION:-0.80.10}" \
   "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/subjects.d/service-control.json" \
   "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/openhouseai-manifest.json" \
   "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/subjects.d/pi-agent.json" \
@@ -36,7 +36,7 @@ payload_dir = os.path.abspath(sys.argv[1])
 prompt_assets_dir = os.path.abspath(sys.argv[2])
 required_pi_web_branch = sys.argv[3]
 required_pi_web_commit = sys.argv[4].lower()
-required_pi_rust_commit = sys.argv[5].lower()
+required_pi_sdk_version = sys.argv[5]
 service_control_path = os.path.abspath(sys.argv[6])
 bootstrap_manifest_path = os.path.abspath(sys.argv[7])
 pi_agent_subject_path = os.path.abspath(sys.argv[8])
@@ -58,12 +58,12 @@ warnings = []
 digest_cache = {}
 
 if os.path.exists(os.path.join(payload_dir, "pi-agent.tar")):
-    errors.append("legacy Node pi-agent.tar must be removed; pi-runtime.tar is the only Pi payload")
+    errors.append("legacy pi-agent.tar must be removed; pi-runtime.tar is the stable Pi payload")
 
 if not re.fullmatch(r"[0-9a-f]{40}", required_pi_web_commit):
     raise SystemExit("PI_WEB_REQUIRED_COMMIT must be a full 40-character lowercase Git commit")
-if not re.fullmatch(r"[0-9a-f]{40}", required_pi_rust_commit):
-    raise SystemExit("PI_RUST_REQUIRED_COMMIT must be a full 40-character lowercase Git commit")
+if required_pi_sdk_version != "0.80.10":
+    raise SystemExit("PI_SDK_REQUIRED_VERSION must remain pinned to 0.80.10")
 
 
 def fail(message):
@@ -109,12 +109,12 @@ def validate_release_upgrade_contract():
         return
     code_match = re.search(r"^\s*versionCode\s+(\d+)\s*$", build_gradle, re.MULTILINE)
     name_match = re.search(r'^\s*versionName\s+"([^"]+)"\s*$', build_gradle, re.MULTILINE)
-    if not code_match or int(code_match.group(1)) < 125:
-        fail("All-in-One versionCode must be at least 125 so the repaired APK stages fresh assets")
+    if not code_match or int(code_match.group(1)) < 126:
+        fail("All-in-One versionCode must be at least 126 so the Node SDK APK stages fresh assets")
     if not name_match or name_match.group(1) == "0.118.106":
         fail("All-in-One versionName must not remain 0.118.106 after the first-install repair")
-    elif name_match.group(1) != "0.118.107":
-        fail(f"All-in-One repair release versionName must be 0.118.107, got {name_match.group(1)!r}")
+    elif name_match.group(1) != "0.118.108":
+        fail(f"All-in-One Node SDK release versionName must be 0.118.108, got {name_match.group(1)!r}")
 
 
 def validate_pi_dynamic_registration_contract():
@@ -282,23 +282,26 @@ def validate_bootstrap_pi_contract(product_manifest):
     if not isinstance(pi_service, dict):
         fail("Pi subject must preserve service id pi-agent")
     else:
-        if pi_service.get("command") != "openhouse-pi-runtime-start":
-            fail("Pi subject pi-agent service must launch openhouse-pi-runtime-start")
+        if pi_service.get("command") != "wuxianpi-node-start":
+            fail("Pi subject pi-agent service must launch wuxianpi-node-start")
         if pi_service.get("workingDirectory") != "$HOME/workspace":
             fail("Pi subject pi-agent service workingDirectory must be $HOME/workspace")
     subject_text = json.dumps(subject, ensure_ascii=False, separators=(",", ":"))
     for required in (
         "127.0.0.1:8765",
-        "/.local/share/openhouseai/runtime/state/token",
+        "/.local/share/openhouseai/runtime",
+        "/.pi",
         "/smallphoneai-repos/pi-runtime",
     ):
         if required not in subject_text:
-            fail(f"Pi subject is missing Rust runtime contract: {required}")
+            fail(f"Pi subject is missing WuxianPi Node runtime contract: {required}")
 
     forbidden_literals = (
         "pi-agent.tar",
         "smallphoneai-repos/pi-agent",
         "openhouse-pi-agent-sentinel",
+        "openhouse-" + "pi-runtime",
+        "Pi " + "Rust",
     )
     source_paths = [bootstrap_manifest_path, pi_agent_subject_path]
     for root, _, files in os.walk(bootstrap_root):
@@ -315,16 +318,7 @@ def validate_bootstrap_pi_contract(product_manifest):
         relative = os.path.relpath(source_path, bootstrap_root)
         for forbidden in forbidden_literals:
             if forbidden in source:
-                fail(f"bootstrap source {relative} contains legacy Node Pi fragment: {forbidden}")
-        legacy_node_pi_patterns = (
-            r"\bnpm\s+(?:install|i|exec|run)\b[^\n]{0,200}(?:pi-agent|pi-coding-agent)",
-            r"(?:@[^\s'\"]+/)?pi-coding-agent",
-            r"\.npm-global/bin[^\n]{0,200}command\s+-v\s+pi\b",
-        )
-        for pattern in legacy_node_pi_patterns:
-            if re.search(pattern, source, re.IGNORECASE):
-                fail(f"bootstrap source {relative} contains legacy Node/npm Pi install or status logic")
-                break
+                fail(f"bootstrap source {relative} contains removed Pi runtime fragment: {forbidden}")
 
 
 def load_json(path):
@@ -407,8 +401,10 @@ def compare_entries(left, right, component_id):
         "size",
         "binarySha256",
         "binarySize",
-        "gatewaySha256",
-        "gatewaySize",
+        "sdkPackage",
+        "sdkVersion",
+        "nodeVersion",
+        "transport",
         "version",
         "platform",
         "registryApiVersion",
@@ -563,87 +559,6 @@ def check_unquoted_heredocs(script_text):
         index += 1
 
 
-def validate_pi_agent_payload(pi_agent_entry):
-    archive_path = os.path.join(payload_dir, pi_agent_entry["archive"])
-    if os.path.basename(archive_path) != "pi-runtime.tar":
-        fail("pi-agent must reference pi-runtime.tar, not the legacy Node payload")
-    if pi_agent_entry.get("sourceCommit") != required_pi_rust_commit:
-        fail(f"pi-agent sourceCommit must be pinned to {required_pi_rust_commit}")
-    expected_pi_sha = str(pi_agent_entry.get("binarySha256") or "").lower()
-    expected_gateway_sha = str(pi_agent_entry.get("gatewaySha256") or "").lower()
-    with tarfile.open(archive_path, "r:*") as tar:
-        members = {member.name.lstrip("./"): member for member in tar.getmembers()}
-        for member_name, expected_sha, label in (
-            ("bin/pi", expected_pi_sha, "Pi Rust"),
-            ("bin/openhouse-pi-runtime", expected_gateway_sha, "OpenHouse Pi runtime"),
-        ):
-            member = members.get(member_name)
-            if member is None or not member.isfile() or member.size <= 0:
-                fail(f"pi-runtime.tar is missing non-empty {member_name}")
-                continue
-            extracted = tar.extractfile(member)
-            data = extracted.read() if extracted is not None else b""
-            actual_sha = hashlib.sha256(data).hexdigest()
-            if not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
-                fail(f"pi-agent {label} checksum metadata is invalid")
-            elif actual_sha != expected_sha:
-                fail(f"pi-agent {label} checksum mismatch: expected {expected_sha}, actual {actual_sha}")
-            is_arm64_elf = (
-                len(data) >= 20 and data[:4] == b"\x7fELF" and data[4] == 2
-                and data[5] == 1 and int.from_bytes(data[18:20], "little") == 183
-            )
-            if not is_arm64_elf:
-                fail(f"pi-agent {label} must be a little-endian ELF64 AArch64 executable")
-        extension_members = [
-            member for name, member in members.items()
-            if name.startswith("extensions/") and member.isfile() and member.size > 0
-            and name.rsplit(".", 1)[-1] in ("js", "mjs", "ts")
-        ]
-        if not extension_members:
-            fail("pi-runtime.tar must contain at least one OpenHouse Pi extension")
-        for required in (
-            "extensions/openhouse-tools/extension.json",
-            "extensions/openhouse-tools/index.ts",
-            "extensions/openhouse-tools/android-bridge-request.sh",
-        ):
-            member = members.get(required)
-            if member is None or not member.isfile() or member.size <= 0:
-                fail(f"pi-runtime.tar is missing non-empty {required}")
-        helper = members.get("extensions/openhouse-tools/android-bridge-request.sh")
-        if helper is not None and helper.mode & 0o111 == 0:
-            fail("android-bridge-request.sh must retain executable permissions")
-        for required in ("scripts/install.sh", "scripts/check.sh", "scripts/register-service.sh", "metadata/build.json"):
-            member = members.get(required)
-            if member is None or not member.isfile() or member.size <= 0:
-                fail(f"pi-runtime.tar is missing non-empty {required}")
-        for member in members.values():
-            name = member.name.lstrip("./")
-            if member.isfile() and member.size == 0 and (
-                name.endswith("/services.d/pi-agent.json")
-                or name in ("services.d/pi-agent.json",)
-            ):
-                fail(f"pi-runtime.tar contains a zero-byte generated spec candidate: {name}")
-
-    register_script = read_tar_member(archive_path, ["scripts/register-service.sh"])
-    install_script = read_tar_member(archive_path, ["scripts/install.sh"])
-    check_script = read_tar_member(archive_path, ["scripts/check.sh"])
-    for forbidden in ("npm install", "termuxNode", "Node >=", "openhouse-pi-agent-sentinel"):
-        if forbidden in register_script + install_script + check_script:
-            fail(f"Pi Rust payload contains legacy Node runtime fragment: {forbidden}")
-    if not register_script:
-        return
-    if '"provider": "termux-process"' not in register_script:
-        fail("pi-agent register-service.sh must register provider termux-process")
-    if '"strategy": "termux-process"' not in register_script:
-        fail("pi-agent register-service.sh must declare runtime strategy termux-process")
-    if "child=\\$!" not in register_script:
-        fail("pi-agent register-service.sh must track a stable shell supervisor child pid")
-    if "openhouse-pi-runtime-start" not in register_script:
-        fail("pi-agent register-service.sh must launch openhouse-pi-runtime-start")
-    if "mv \"$tmp\" \"$spec\"" not in register_script:
-        fail("pi-agent register-service.sh must validate and atomically move the generated service spec")
-
-
 def validate_native_install_bundle(manifest, payload_manifest):
     left = manifest.get("nativeInstallBundle")
     right = payload_manifest.get("nativeInstallBundle")
@@ -672,40 +587,6 @@ def validate_native_install_bundle(manifest, payload_manifest):
             member = members.get(required)
             if member is None or not member.isfile() or member.size <= 0:
                 fail(f"native install bundle is missing non-empty {required}")
-
-
-def validate_native_runtime_asset(manifest, payload_manifest):
-    left = manifest.get("nativeRuntimeAsset")
-    right = payload_manifest.get("nativeRuntimeAsset")
-    if not isinstance(left, dict) or not isinstance(right, dict):
-        fail("both manifests must declare nativeRuntimeAsset")
-        return
-    if left != right:
-        fail("nativeRuntimeAsset differs between manifest.json and payload-manifest.json")
-        return
-    if left.get("abi") != "arm64-v8a" or left.get("applicationId") != "com.wuxianpi":
-        fail("nativeRuntimeAsset must target arm64-v8a and com.wuxianpi")
-    if not os.path.isfile(native_runtime_asset_path):
-        fail(f"Native APK runtime asset is missing: {native_runtime_asset_path}")
-        return
-    actual_size, actual_sha = file_digest(native_runtime_asset_path)
-    if left.get("size") != actual_size or left.get("sha256") != actual_sha:
-        fail("nativeRuntimeAsset checksum or size mismatch")
-    with tarfile.open(native_runtime_asset_path, "r:gz") as tar:
-        members = {member.name.lstrip("./"): member for member in tar.getmembers()}
-        for required in (
-            "install.sh", "bin/pi", "bin/openhouse-pi-runtime", "scripts/install.sh",
-            "scripts/register-service.sh", "metadata/build.json",
-            "extensions/openhouse-tools/extension.json", "extensions/openhouse-tools/index.ts",
-            "extensions/openhouse-tools/android-bridge-request.sh",
-        ):
-            member = members.get(required)
-            if member is None or not member.isfile() or member.size <= 0:
-                fail(f"Native APK runtime asset is missing non-empty {required}")
-        for executable in ("install.sh", "bin/pi", "bin/openhouse-pi-runtime", "extensions/openhouse-tools/android-bridge-request.sh"):
-            member = members.get(executable)
-            if member is not None and member.mode & 0o111 == 0:
-                fail(f"Native APK runtime asset executable bit is missing: {executable}")
 
 
 def validate_pi_web_payload(pi_web_entry):
@@ -833,9 +714,9 @@ def validate_pi_web_payload(pi_web_entry):
     start_script = read_tar_member(archive_path, ["bin/openhouse-pi-web-start"])
     if "PI_WEB_DEFAULT_CWD" not in start_script:
         fail("pi-web launcher must expose the generic PI_WEB_DEFAULT_CWD")
-    for required in ("openhouse-server.mjs", "OPENHOUSE_PI_RUNTIME_ORIGIN", "OPENHOUSE_PI_RUNTIME_TOKEN_FILE"):
+    for required in ("openhouse-server.mjs", "OPENHOUSE_PI_RUNTIME_ORIGIN"):
         if required not in start_script:
-            fail(f"pi-web launcher is missing Pi Rust transport contract: {required}")
+            fail(f"pi-web launcher is missing WuxianPi Node transport contract: {required}")
     for legacy_name in (
         "OPENHOUSE_PI_WEB_DEFAULT_CWD",
         "OPENHOUSE_DOCS_DIR",
@@ -858,8 +739,6 @@ def validate_pi_web_payload(pi_web_entry):
         fail("pi-web register-service.sh must set PI_WEB_HOST and HOSTNAME for the service environment")
     if "PI_WEB_DEFAULT_CWD" not in register_script:
         fail("pi-web register-service.sh must set generic PI_WEB_DEFAULT_CWD")
-    if "OPENHOUSE_PI_RUNTIME_TOKEN_FILE" not in register_script:
-        fail("pi-web register-service.sh must pass the local Pi runtime token file to the same-origin WebSocket proxy")
     for legacy_name in (
         "OPENHOUSE_PI_WEB_DEFAULT_CWD",
         "OPENHOUSE_DOCS_DIR",
@@ -1034,6 +913,83 @@ def validate_wuyou_payload(entry):
                 actual = hashlib.sha256(extracted.read()).hexdigest()
                 if actual != expected_binary_sha:
                     fail(f"wuyou binarySha256 mismatch: expected {expected_binary_sha}, actual {actual}")
+
+
+# Final Pi implementation contract: the stable pi-agent payload is a Node service
+# embedding the official SDK. These definitions intentionally replace the removed
+# Rust/gateway validators above while retaining the rest of the product checks.
+def validate_pi_agent_payload(pi_agent_entry):
+    archive_path = os.path.join(payload_dir, pi_agent_entry["archive"])
+    if os.path.basename(archive_path) != "pi-runtime.tar":
+        fail("pi-agent must use the stable pi-runtime.tar archive")
+    if pi_agent_entry.get("sdkPackage") != "@earendil-works/pi-coding-agent":
+        fail("pi-agent sdkPackage must be @earendil-works/pi-coding-agent")
+    if pi_agent_entry.get("sdkVersion") != required_pi_sdk_version:
+        fail(f"pi-agent SDK must be pinned to {required_pi_sdk_version}")
+    if pi_agent_entry.get("transport") != "wuxianpi-sdk-v1":
+        fail("pi-agent transport must be wuxianpi-sdk-v1")
+    with tarfile.open(archive_path, "r:*") as tar:
+        members = {member.name.lstrip("./"): member for member in tar.getmembers()}
+        required = (
+            "install.sh", "bin/wuxianpi", "bin/wuxianpi-node", "bin/wuxianpi-node-start",
+            "node/dist/index.js", "node/package-lock.json",
+            "node/node_modules/@earendil-works/pi-coding-agent/package.json",
+            "scripts/install.sh", "scripts/check.sh", "scripts/register-service.sh", "metadata/build.json",
+        )
+        for name in required:
+            member = members.get(name)
+            if member is None or not member.isfile() or member.size <= 0:
+                fail(f"pi-runtime.tar is missing non-empty {name}")
+        for name in ("install.sh", "bin/wuxianpi", "bin/wuxianpi-node", "bin/wuxianpi-node-start",
+                     "scripts/install.sh", "scripts/check.sh", "scripts/register-service.sh"):
+            member = members.get(name)
+            if member is not None and member.mode & 0o111 == 0:
+                fail(f"pi-runtime.tar executable bit is missing: {name}")
+        package = members.get("node/node_modules/@earendil-works/pi-coding-agent/package.json")
+        if package is not None:
+            extracted = tar.extractfile(package)
+            doc = json.loads(extracted.read().decode("utf-8")) if extracted is not None else {}
+            if doc.get("version") != required_pi_sdk_version:
+                fail(f"bundled Pi SDK version must be {required_pi_sdk_version}")
+        forbidden = ("bin/" + "pi", "bin/openhouse-" + "pi-runtime", "openhouse-tools/android-bridge-" + "request.sh")
+        for name in forbidden:
+            if name in members:
+                fail(f"pi-runtime.tar contains removed runtime member: {name}")
+    register_script = read_tar_member(archive_path, ["scripts/register-service.sh"])
+    install_script = read_tar_member(archive_path, ["scripts/install.sh"])
+    if "wuxianpi-node-start" not in register_script:
+        fail("pi-agent service must launch wuxianpi-node-start")
+    if '"provider": "termux-process"' not in register_script:
+        fail("pi-agent service must use termux-process")
+    if "mv \"$tmp\" \"$spec\"" not in register_script:
+        fail("pi-agent service spec must be atomically installed")
+    if "$HOME/.pi/agent/sessions" not in install_script:
+        fail("pi-agent install must preserve/use Pi native $HOME/.pi sessions")
+    if re.search(r"rm\s+-rf\s+[^\n]*\$HOME/\.pi", install_script):
+        fail("pi-agent install must never remove $HOME/.pi")
+
+
+def validate_native_runtime_asset(manifest, payload_manifest):
+    left = manifest.get("nativeRuntimeAsset")
+    right = payload_manifest.get("nativeRuntimeAsset")
+    if not isinstance(left, dict) or not isinstance(right, dict) or left != right:
+        fail("nativeRuntimeAsset must exist and match in both manifests")
+        return
+    if left.get("abi") != "arm64-v8a" or left.get("applicationId") != "com.wuxianpi":
+        fail("nativeRuntimeAsset must target arm64-v8a and com.wuxianpi")
+    if not os.path.isfile(native_runtime_asset_path):
+        fail(f"Native runtime asset is missing: {native_runtime_asset_path}")
+        return
+    actual_size, actual_sha = file_digest(native_runtime_asset_path)
+    if left.get("size") != actual_size or left.get("sha256") != actual_sha:
+        fail("nativeRuntimeAsset checksum or size mismatch")
+    with tarfile.open(native_runtime_asset_path, "r:gz") as tar:
+        members = {member.name.lstrip("./"): member for member in tar.getmembers()}
+        for name in ("install.sh", "bin/wuxianpi", "bin/wuxianpi-node", "bin/wuxianpi-node-start",
+                     "node/dist/index.js", "scripts/install.sh", "scripts/register-service.sh", "metadata/build.json"):
+            member = members.get(name)
+            if member is None or not member.isfile() or member.size <= 0:
+                fail(f"Native runtime asset is missing non-empty {name}")
 
 
 manifest = load_json(manifest_path)

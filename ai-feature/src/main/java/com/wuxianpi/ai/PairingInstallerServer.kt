@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** One-shot loopback installer used only while the pairing screen is visible. */
 class PairingInstallerServer(
     context: Context,
-    private val onPaired: (GatewayCredentials) -> Unit,
+    private val onPaired: (PiServiceCredentials) -> Unit,
 ) : AutoCloseable {
     private val assets = context.applicationContext.assets
     private val oneTimeToken = ByteArray(24).also(SecureRandom()::nextBytes)
@@ -29,12 +29,12 @@ class PairingInstallerServer(
     private var socket: ServerSocket? = null
 
     val port: Int get() = socket?.localPort ?: 0
-    val command: String get() = "curl -fsSL http://127.0.0.1:$port/i/$oneTimeToken | bash"
+    val command: String get() = pairingInstallerCommand(port, oneTimeToken)
 
     @Synchronized
     fun start(): Int {
         if (running.get()) return port
-        val server = ServerSocket(0, 8, InetAddress.getLoopbackAddress())
+        val server = ServerSocket(0, 8, pairingInstallerBindAddress())
         socket = server
         running.set(true)
         executor.execute {
@@ -92,18 +92,16 @@ class PairingInstallerServer(
                     }
                     val json = runCatching { JSONObject(String(body, StandardCharsets.UTF_8)) }.getOrNull()
                         ?: return respond(output, 400, "text/plain", "Invalid JSON")
-                    val gatewayPort = json.optInt("port")
-                    val gatewayToken = json.optString("token")
-                    if (gatewayPort !in 1..65535 || gatewayToken.length < 24) {
-                        return respond(output, 400, "text/plain", "Invalid gateway credentials")
+                    val servicePort = json.optInt("port")
+                    if (servicePort !in 1..65535) {
+                        return respond(output, 400, "text/plain", "Invalid service port")
                     }
                     if (!consumed.compareAndSet(false, true)) {
                         return respond(output, 409, "text/plain", "Already paired")
                     }
                     onPaired(
-                        GatewayCredentials(
-                            adminUrl = "http://127.0.0.1:$gatewayPort/",
-                            token = gatewayToken,
+                        PiServiceCredentials(
+                            serviceUrl = "http://127.0.0.1:$servicePort/",
                             clientId = json.optString("clientId").ifBlank { "wuxianpi-${System.nanoTime()}" },
                         ),
                     )
@@ -122,22 +120,21 @@ ROOT="${'$'}HOME/.local/share/openhouseai"
 BIN="${'$'}HOME/.local/bin"
 mkdir -p "${'$'}ROOT" "${'$'}BIN" "${'$'}HOME/.config/openhouseai"
 ${arm64InstallerGuard()}
+${nodeBootstrapScript()}
+${serviceCompatibilityScript()}
 TMP="${'$'}(mktemp -d)"
 trap 'rm -rf "${'$'}TMP"' EXIT
 curl -fsSL "${'$'}BASE/payload/${'$'}PAIR/$ARM64_RUNTIME_ASSET" -o "${'$'}TMP/runtime.tar.gz"
-tar -xzf "${'$'}TMP/runtime.tar.gz" -C "${'$'}ROOT"
-"${'$'}ROOT/install.sh" "${'$'}ROOT" "${'$'}BIN"
-TOKEN_FILE="${'$'}HOME/.config/openhouseai/runtime.token"
-if [ ! -s "${'$'}TOKEN_FILE" ]; then
-  (umask 077; head -c 32 /dev/urandom | base64 | tr -d '\n' > "${'$'}TOKEN_FILE")
+${nativePayloadInstallCommands()}
+PORT=$WUXIANPI_NODE_PORT
+if ! service_is_compatible; then
+  pkill -f 'openhouse-pi-runtime|pi-gateway' >/dev/null 2>&1 || true
+  nohup "${'$'}BIN/wuxianpi-node" --listen "127.0.0.1:${'$'}PORT" >"${'$'}ROOT/runtime.log" 2>&1 &
 fi
-PORT="${'$'}(shuf -i 18000-28000 -n 1)"
-nohup "${'$'}BIN/openhouse-pi-runtime" --listen "127.0.0.1:${'$'}PORT" --token-file "${'$'}TOKEN_FILE" >"${'$'}ROOT/runtime.log" 2>&1 &
 for _ in ${'$'}(seq 1 50); do
-  TOKEN="${'$'}(cat "${'$'}TOKEN_FILE")"
-  if curl -fsS -H "Authorization: Bearer ${'$'}TOKEN" "http://127.0.0.1:${'$'}PORT/admin/v1/health" >/dev/null 2>&1; then
+  if service_is_compatible; then
     curl -fsS -X POST -H 'Content-Type: application/json' \
-      --data "{\"port\":${'$'}PORT,\"token\":\"${'$'}TOKEN\"}" \
+      --data "{\"port\":${'$'}PORT,\"clientId\":\"wuxianpi-native\"}" \
       "${'$'}BASE/paired/${'$'}PAIR"
     echo
     echo 'WuxianPi runtime installed and paired.'
@@ -185,8 +182,43 @@ exit 1
 }
 
 internal const val ARM64_RUNTIME_ASSET = "runtime-aarch64.tgz"
+internal const val WUXIANPI_NODE_PORT = 8765
+internal const val PAIRING_INSTALLER_HOST = "127.0.0.1"
+
+internal fun pairingInstallerBindAddress(): InetAddress = InetAddress.getByName(PAIRING_INSTALLER_HOST)
+
+internal fun pairingInstallerCommand(port: Int, token: String): String =
+    "curl -fsSL http://$PAIRING_INSTALLER_HOST:$port/i/$token | bash"
 
 internal fun arm64InstallerGuard(): String = """case "${'$'}(uname -m)" in
   aarch64|arm64) ;;
   *) echo '当前版本仅支持 ARM64' >&2; exit 2 ;;
 esac"""
+
+internal fun nodeBootstrapScript(): String = """node_is_compatible() {
+  command -v node >/dev/null 2>&1 || return 1
+  node -e 'const [major,minor]=process.versions.node.split(".").map(Number); process.exit(major>22||(major===22&&minor>=19)?0:1)'
+}
+if ! node_is_compatible; then
+  pkg install -y nodejs-lts || true
+fi
+if ! node_is_compatible; then
+  pkg install -y nodejs
+fi
+if ! node_is_compatible; then
+  echo 'WuxianPi requires Node.js >= 22.19' >&2
+  exit 3
+fi"""
+
+internal fun serviceCompatibilityScript(): String = """service_is_compatible() {
+  curl -fsS --max-time 2 "http://127.0.0.1:$WUXIANPI_NODE_PORT/admin/v1/health" 2>/dev/null | node -e '
+let input="";
+process.stdin.on("data", chunk => input += chunk);
+process.stdin.on("end", () => {
+  try { process.exit(JSON.parse(input).protocol === "wuxianpi-sdk-v1" ? 0 : 1); }
+  catch (_) { process.exit(1); }
+});'
+}"""
+
+internal fun nativePayloadInstallCommands(): String = """tar -xzf "${'$'}TMP/runtime.tar.gz" -C "${'$'}TMP"
+"${'$'}TMP/install.sh""""
