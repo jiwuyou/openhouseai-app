@@ -1,0 +1,67 @@
+{
+  "name": "@agegr/pi-web",
+  "version": "0.7.12",
+  "description": "Web UI for the pi coding agent",
+  "homepage": "https://github.com/agegr/pi-web#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agegr/pi-web.git"
+  },
+  "bugs": {
+    "url": "https://github.com/agegr/pi-web/issues"
+  },
+  "license": "MIT",
+  "bin": {
+    "pi-web": "bin/pi-web.js"
+  },
+  "files": [
+    "bin",
+    ".next",
+    "!.next/cache",
+    "!.next/dev",
+    "!.next/**/*.js.map",
+    "public",
+    "next.config.mjs",
+    "package.json"
+  ],
+  "scripts": {
+    "dev": "next dev -p 30141",
+    "build": "next build --webpack",
+    "start": "next start -p 30141",
+    "lint": "eslint .",
+    "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "^0.80.7",
+    "@earendil-works/pi-coding-agent": "^0.80.7",
+    "@lobehub/icons": "^5.6.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "katex": "^0.16.47",
+    "mammoth": "^1.12.0",
+    "mermaid": "^11.14.0",
+    "next": "16.2.9",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "rehype-katex": "^7.0.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/node": "^25",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "jiti": "^2.7.0",
+    "postcss": "^8",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5"
+  }
+}

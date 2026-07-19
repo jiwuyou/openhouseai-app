@@ -1,0 +1,79 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.wuxianpi"
+    compileSdkVersion 36
+
+    defaultConfig {
+        applicationId "com.wuxianpi"
+        minSdkVersion 26
+        targetSdkVersion 28
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+
+    packagingOptions {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+
+    // The pairing server serves this exact filename and compressed byte stream from APK assets.
+    androidResources {
+        noCompress += ["tgz"]
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+tasks.register("verifyDebugRuntimeAsset") {
+    group = "verification"
+    description = "Verify the ARM64 runtime keeps its exact .tgz APK asset path and bytes."
+    dependsOn("assembleDebug")
+    doLast {
+        def apk = fileTree("${buildDir}/outputs/apk/debug").matching { include("*.apk") }.singleFile
+        def source = file("src/main/assets/openhouse-runtime/runtime-aarch64.tgz")
+        def expectedPath = "assets/openhouse-runtime/runtime-aarch64.tgz"
+        def archive = new java.util.zip.ZipFile(apk)
+        try {
+            def entry = archive.getEntry(expectedPath)
+            if (entry == null) throw new GradleException("Missing exact APK asset ${expectedPath}")
+            if (archive.getEntry("assets/openhouse-runtime/runtime-aarch64.tar") != null ||
+                archive.getEntry("assets/openhouse-runtime/runtime-aarch64.tar.gz") != null) {
+                throw new GradleException("APK contains a legacy expanded runtime asset name")
+            }
+            def digest = { stream ->
+                def sha = java.security.MessageDigest.getInstance("SHA-256")
+                stream.withCloseable { input ->
+                    def buffer = new byte[8192]
+                    for (int read = input.read(buffer); read >= 0; read = input.read(buffer)) {
+                        if (read > 0) sha.update(buffer, 0, read)
+                    }
+                }
+                sha.digest().encodeHex().toString()
+            }
+            def sourceSha = digest(source.newInputStream())
+            def apkSha = digest(archive.getInputStream(entry))
+            if (sourceSha != apkSha) {
+                throw new GradleException("Runtime asset SHA-256 mismatch: source=${sourceSha}, apk=${apkSha}")
+            }
+        } finally {
+            archive.close()
+        }
+    }
+}
+
+dependencies {
+    implementation project(":ai-feature")
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.json:json:20240303"
+}

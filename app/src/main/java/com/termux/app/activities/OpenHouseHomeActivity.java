@@ -4626,11 +4626,11 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             constructor.setAccessible(true);
             return constructor.newInstance(
                 OPERIT_DESKTOP_APP_ID,
-                "AI朋友 Help",
-                "Operit",
+                "WuxianPi",
+                "WuxianPi",
                 "AI",
                 45,
-                "operit",
+                "wuxianpi",
                 "AI",
                 45,
                 false,
@@ -4645,7 +4645,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
                 true,
                 false,
                 true,
-                "withOperit",
+                "pi-rust",
                 Collections.emptyList(),
                 Collections.emptyList());
         } catch (Exception e) {
@@ -5060,12 +5060,12 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(18), dp(14), dp(18), dp(6));
-        addTitle(panel, "AI朋友 Help", 20);
+        addTitle(panel, "WuxianPi", 20);
         if (!isBlank(leadingMessage)) {
             addBody(panel, leadingMessage);
         }
         addStatusRow(panel, "状态", getAiFriendHelpStateLabel(state));
-        addBody(panel, "这是 withOperit 构建中的 Android 侧完整 Operit 入口；withoutOperit 构建不会显示。");
+        addBody(panel, "原生界面通过 localhost 连接 Termux 中的 Pi Rust；Agent 编排和会话均由 Pi 自身负责。");
         final AlertDialog[] dialogHolder = new AlertDialog[1];
         addButtonRow(panel,
             compactButton(getAiFriendHelpOpenActionLabel(state), v -> {
@@ -5738,7 +5738,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         aiFriendHelpLaunchRequestedAtMs = 0L;
         if (!aiFriendHelpLaunchFailureNotified) {
             aiFriendHelpLaunchFailureNotified = true;
-            Toast.makeText(this, "AI朋友 Help 没有成功启动，已回到主菜单。请查看崩溃日志。", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "WuxianPi 没有成功启动，已回到主菜单。请查看运行时日志。", Toast.LENGTH_LONG).show();
         }
         return OperitHomeIntegration.DisplayState.NOT_RUNNING;
     }
@@ -5757,7 +5757,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (statusView == null || openButton == null || closeButton == null) {
             return;
         }
-        statusView.setText("AI朋友 Help（状态：" + getAiFriendHelpStateLabel(displayState) + "）");
+        statusView.setText("WuxianPi（状态：" + getAiFriendHelpStateLabel(displayState) + "）");
 
         boolean starting = displayState == OperitHomeIntegration.DisplayState.STARTING;
         boolean stopping = displayState == OperitHomeIntegration.DisplayState.STOPPING;
@@ -5803,16 +5803,16 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         clearAiFriendHelpLaunchPending();
         if (!OperitHomeIntegration.isBackground(getApplicationContext())) {
             refreshAiFriendHelpEntryState();
-            Toast.makeText(this, "AI朋友 Help 当前不是后台运行状态", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "WuxianPi 当前不是后台运行状态", Toast.LENGTH_SHORT).show();
             return;
         }
 
         aiFriendHelpShutdownRequestedAtMs = System.currentTimeMillis();
         if (OperitHomeIntegration.requestShutdown(getApplicationContext())) {
-            Toast.makeText(this, "已请求关闭 AI朋友 Help 后台运行", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "已请求关闭 WuxianPi 后台运行", Toast.LENGTH_SHORT).show();
         } else {
             aiFriendHelpShutdownRequestedAtMs = 0L;
-            Toast.makeText(this, "关闭 AI朋友 Help 请求失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "关闭 WuxianPi 请求失败", Toast.LENGTH_SHORT).show();
         }
         refreshAiFriendHelpEntryState();
         scheduleAiFriendHelpStateRefresh();

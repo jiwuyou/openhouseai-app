@@ -81,18 +81,6 @@ android {
         }
     }
 
-    flavorDimensions "operit"
-
-    productFlavors {
-        withOperit {
-            dimension "operit"
-        }
-
-        withoutOperit {
-            dimension "operit"
-        }
-    }
-
     signingConfigs {
         debug {
             storeFile file('testkey_untrusted.jks')
@@ -176,9 +164,7 @@ dependencies {
     testImplementation "org.robolectric:robolectric:4.10"
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
 
-    withOperitImplementation(project(":operit-feature")) {
-        exclude group: "org.bouncycastle", module: "bcprov-jdk18on"
-    }
+    implementation project(":ai-feature")
 }
 
 task versionName {

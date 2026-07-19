@@ -11,7 +11,8 @@ OpenHouseAI 文档：
 - [原生桌面壳](docs/OPENHOUSE_DESKTOP.md)
 - [运行分层](docs/RUNTIME_LAYERING.md)
 - [pi agent 与插件体系](docs/PI_AGENT_PLUGIN_SYSTEM.md)
-- [Operit 可选 Android 构建说明](docs/OPERIT_ROLE.md)
+- [WuxianPi 双运行时架构](docs/pi-dual-runtime.md)
+- [Pi 对话迁移与同步](docs/pi-conversation-migration.md)
 - [APK 内置用户与 AI 文档](app/src/main/assets/openhouse/docs-public/START_HERE.md)
 - [开源说明](docs/OPENHOUSEAI_OPEN_SOURCE.md)
 - [安全说明](SECURITY_OPENHOUSEAI.md)
@@ -29,28 +30,28 @@ APK 内的 `app/src/main/assets/openhouse/docs-public/` 是该仓库 `docs/` 的
 - 桌面不显示顶部控制栏；进入 App 后显示 `左侧栏 / 桌面 / 当前 App 名 / 刷新 / 收起 / 右侧控制栏`，控制栏可收起为可拖动、吸附并持久化位置的白黑渐变悬浮球。
 - 桌面只保存入口元数据和布局，不预创建多个 WebView，也不要求多个 WebView 常驻。
 - Termux 宿主层、终端底座、Ubuntu 启停和救援控制面。
-- Termux native runtime，承载 `pi-agent`、`pi-web`、service-manager 和 Android-adjacent host control。
+- Termux native runtime，承载 Pi Rust、`openhouse-pi-runtime`、`pi-web` 和 service-manager。
 - Ubuntu proot runtime，承载 Codex、Claude Code、CloudCLI、MCP、AionUi、用户项目和开发工具链。
 - service-manager 作为安装完成后的控制平面。
-- pi 作为默认主 agent 和插件体系。
+- `pi_agent_rust` 作为唯一 Agent、工具循环和原始会话实现，通过 `pi --mode rpc` 接入原生/Web UI。
 - pi-web 作为默认主 UI，默认本地入口是 `http://127.0.0.1:30141/`。
 - 默认搜索插件 `multi-platform-search.ts` 通过 pi 插件目录加载。
 - cc-switch 作为后置 provider 配置执行器，随 APK 内置 arm64 payload，但不作为长期服务或一级入口。
-- Operit 是 Android 侧可选完整构建能力：`withOperit` flavor 包含完整 Operit feature/module 和宿主桥接，`withoutOperit` flavor 不依赖、不暴露 Operit 入口。
+- 原生 AI UI 位于共享 `:ai-feature`：All-in-One (`com.termux`) 与 WuxianPi Native (`com.wuxianpi`) 使用同一套 UI、Pi RPC 客户端和 Android Tool Bridge。
 
-pi-agent 和 pi-web 的安装包随 APK 提供，其中 pi-web 首装使用 APK 内置完整 runtime，不需要通过 npm registry 安装 pi-web。pi-agent/npm 依赖、Node.js、Ubuntu 基础包和后置 AI 工具仍可能需要网络；首次安装不应被描述为完全离线流程。
+Pi Rust、runtime gateway 和 pi-web 的安装包随 APK 提供，其中 pi-web 首装使用 APK 内置完整 runtime，不需要通过 npm registry 安装 pi-web。Node.js、Ubuntu 基础包和后置 AI 工具仍可能需要网络；首次安装不应被描述为完全离线流程。
 
-Operit 不属于默认核心运行时，不是 Ubuntu payload，也不替代 OpenHouse/Pi/AionUi。OpenCode、Reasonix、Hermes 等仍按可选外部或后置能力处理。
+旧 `operit-host`、Android Agent循环、`maxToolIterations` 和 Android 主进程 QuickJS 已退出生产构建。OpenCode、Reasonix、Hermes 等仍按可选外部或后置能力处理。
 
-`withOperit` 和 `withoutOperit` 的 Android 包名都保持 `com.termux`，不设置 `applicationIdSuffix`。同包名 APK 不能共存，只能在同签名且 `versionCode` 单调递增的前提下互相升级或替换。
+All-in-One 使用 `com.termux`，不能与官方 Termux 共存；WuxianPi Native 使用 `com.wuxianpi`，通过官方 Termux 中的一行安装命令部署同一 Pi Runtime。
 
 OpenHouseAI 的文档和安装链路应区分“当前默认核心”和“可选构建/外部工具”，避免把可选能力误写成首次安装必需项。
 
 ## Quick Build
 
 ```bash
-./gradlew :app:assembleWithOperitDebug -Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
-./gradlew :app:assembleWithoutOperitDebug -Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
+./scripts/build-all-in-one.sh
+./scripts/build-native.sh
 ```
 
 Debug APK output can be located with:

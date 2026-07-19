@@ -1,0 +1,13 @@
+{
+  "schema": "pi.ext.manifest.v1",
+  "extension_id": "openhouse.tools",
+  "name": "OpenHouse Tools",
+  "version": "0.1.0",
+  "api_version": "1.0",
+  "runtime": "js",
+  "entrypoint": "index.ts",
+  "capabilities": [
+    "exec"
+  ],
+  "description": "Independent process runners and the loopback WuxianPi Android tool bridge"
+}
