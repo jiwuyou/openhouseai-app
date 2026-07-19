@@ -832,6 +832,7 @@ fi
 
 repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
 payload_root="${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}}"
+payload_manifest="$payload_root/manifest.json"
 component_source_mode="${SMALLPHONEAI_COMPONENT_SOURCE_MODE:-bundle}"
 allow_git_update="${SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE:-${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}}"
 strict="${SMALLPHONEAI_COMPONENTS_STRICT:-1}"
@@ -906,7 +907,7 @@ install_default_subjects() {
   fi
 
   install_default_subject_file "pi-agent.json" <<'JSON'
-{"id":"pi-agent","title":"Pi Agent","kind":"runtime-http","summary":"OpenHouse main AI workbench and human-facing web entry.","serviceRefs":[{"id":"pi-agent","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-agent","workdir":"$HOME/smallphoneai-repos/pi-agent","command":"openhouse-pi-agent-sentinel","entryCommand":"openhouse-pi-agent-sentinel"},{"id":"pi-web","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-web","workdir":"$HOME/smallphoneai-repos/pi-web","command":"openhouse-pi-web-start","entryCommand":"openhouse-pi-web-start"}],"entries":[{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-agent","purpose":"Termux native pi-agent payload and npm package install source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-web","purpose":"Termux native pi-web payload install source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Termux native Pi Agent data, extensions, and runtime state"},{"runtime":"ubuntu","user":"root","home":"/root","path":"$HOME/smallphoneai-repos/smallphone-active","workingDirectory":"$HOME/smallphoneai-repos/smallphone-active","workdir":"$HOME/smallphoneai-repos/smallphone-active","purpose":"Ubuntu AI workbench and compatibility/fallback repo; root is only the first-install default user, not the meaning of runtime=ubuntu"}],"ai":{"description":"Pi Agent is the primary OpenHouse AI workbench. Its service state is controlled by service-manager through the pi-web service id.","whenUnavailable":"First inspect service-manager status and logs for pi-agent/pi-web. If the services are running, run openhouse-system check pi-agent."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:30141/","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-agent","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-web","timeoutSeconds":4}]}}
+{"id":"pi-agent","title":"Pi Agent","kind":"runtime-http","summary":"Pi Rust JSONL RPC runtime and OpenHouse AI entry.","serviceRefs":[{"id":"pi-agent","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/workspace","workdir":"$HOME/workspace","command":"openhouse-pi-runtime-start","entryCommand":"openhouse-pi-runtime-start"},{"id":"pi-web","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-web","workdir":"$HOME/smallphoneai-repos/pi-web","command":"openhouse-pi-web-start","entryCommand":"openhouse-pi-web-start"}],"entries":[{"type":"runtime","label":"Pi Rust RPC","url":"http://127.0.0.1:8765/"},{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","purpose":"APK-managed Pi Rust runtime payload source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-web","purpose":"Termux native pi-web payload install source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Pi conversation data, extensions, and session state"}],"ai":{"description":"Pi Rust is the OpenHouse AI engine. service-manager keeps the public pi-agent service id and starts openhouse-pi-runtime-start on port 8765.","whenUnavailable":"Inspect service-manager status and logs for pi-agent, then rerun bootstrap.sh repair to refresh the APK-managed pi-runtime payload."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/openhouseai/runtime/state/token","timeoutSeconds":4}]}}
 JSON
   install_default_subject_file "file-inbox.json" <<'JSON'
 {"id":"file-inbox","title":"File Inbox","kind":"file","summary":"Shared staging area for files opened with or shared to OpenHouse.","serviceRefs":[],"entries":[{"type":"file","label":"Android inbox","path":"/storage/emulated/0/OpenHouse/Inbox"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","purpose":"user-visible Android storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse/Inbox","purpose":"Termux-native inbox projection"},{"runtime":"ubuntu","path":"/root/OpenHouse/Inbox","purpose":"Ubuntu/proot inbox projection"}],"ai":{"description":"Files from Android share/open-with flows should be staged here before AI processing.","whenUnavailable":"Check storage permission and projected inbox directories."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","timeoutSeconds":3}]}}
@@ -1126,6 +1127,31 @@ default_path() {
   printf '%s/%s\n' "$repo_root" "$repo_name"
 }
 
+payload_manifest_component_value() {
+  local component_id="$1"
+  local field="$2"
+
+  [ -f "$payload_manifest" ] || return 1
+  if ! command -v jq >/dev/null 2>&1; then
+    warn "APK payload manifest 存在，但 jq 不可用，无法按组件 ID 解析：$payload_manifest"
+    return 1
+  fi
+  jq -er --arg id "$component_id" --arg field "$field" '
+    first(.components[] | select(.id == $id) | .[$field])
+    | select(type == "string" and length > 0)
+  ' "$payload_manifest" 2>/dev/null
+}
+
+payload_target_dir() {
+  local payload_name="$1"
+
+  if [ "$payload_name" = "pi-agent" ] && [ -f "$payload_manifest" ]; then
+    payload_manifest_component_value "$payload_name" targetDir
+    return $?
+  fi
+  printf '%s\n' "$payload_name"
+}
+
 payload_archive_contains() {
   local archive="$1"
   local pattern="$2"
@@ -1185,6 +1211,9 @@ payload_dir_contains_executable() {
       ;;
     wuyou)
       component_binary_current_env_executable "$payload_name" "$source/wuyou"
+      ;;
+    pi-agent)
+      [ -x "$source/bin/pi" ] && [ -x "$source/bin/openhouse-pi-runtime" ]
       ;;
     *)
       return 1
@@ -1284,26 +1313,15 @@ payload_dir_needs_refresh() {
         || return 0
       ;;
     pi-agent)
-      [ -f "$source/scripts/register-service.sh" ] || return 0
-      grep -Fq '"provider": "termux-process"' "$source/scripts/register-service.sh" \
-        && grep -Fq '"strategy": "termux-process"' "$source/scripts/register-service.sh" \
-        && grep -Fq 'atomic_install_json' "$source/scripts/register-service.sh" \
-        && grep -Fq 'make_tmp_dir' "$source/scripts/register-service.sh" \
-        && grep -Fq 'fallback_upsert_service' "$source/scripts/register-service.sh" \
-        && grep -Fq '/api/v1/services/$SERVICE_NAME/register' "$source/scripts/register-service.sh" \
-        && grep -Fq 'refused to create random id' "$source/scripts/register-service.sh" \
-        && ! grep -Fq 'POST "/api/v1/services" "$SPEC_PATH"' "$source/scripts/register-service.sh" \
-        && grep -Fq 'child=\$!' "$source/scripts/register-service.sh" \
-        && ! grep -Fq '${TMPDIR:-/tmp}' "$source/scripts/register-service.sh" \
+      [ -x "$source/bin/pi" ] \
+        && [ -x "$source/bin/openhouse-pi-runtime" ] \
+        && [ -x "$source/bin/openhouse-pi-runtime-start" ] \
+        && [ -f "$source/scripts/install.sh" ] \
+        && [ -f "$source/scripts/check.sh" ] \
+        && [ -f "$source/scripts/register-service.sh" ] \
+        && grep -Fq 'openhouse-pi-runtime-start' "$source/scripts/register-service.sh" \
+        && grep -Fq '127.0.0.1:8765' "$source/scripts/register-service.sh" \
         || return 0
-      if [ "$(openhouse_pi_runtime)" = "termux" ] && is_termux; then
-        [ -f "$source/scripts/install.sh" ] \
-          && grep -Fq 'patch_termux_node_entrypoints()' "$source/scripts/install.sh" \
-          || return 0
-        [ -f "$source/bin/openhouse-pi-agent-sentinel" ] \
-          && sed -n '1p' "$source/bin/openhouse-pi-agent-sentinel" | grep -Fq '/data/data/com.termux/files/usr/bin/env sh' \
-          || return 0
-      fi
       ;;
     pi-web)
       [ -f "$source/scripts/register-service.sh" ] || return 0
@@ -1359,41 +1377,6 @@ patch_termux_script_shebang() {
   esac
 }
 
-patch_termux_pi_agent_install_script() {
-  local file="$1"
-  local tmp
-
-  [ -f "$file" ] || return 0
-  if ! grep -Fq 'patch_termux_node_entrypoints()' "$file"; then
-    tmp="$file.tmp.$$"
-    awk '
-      /^main\(\) \{/ && inserted == 0 {
-        print ""
-        print "patch_termux_node_entrypoints() {"
-        print "  termux_env=\"${PREFIX:-/data/data/com.termux/files/usr}/bin/env\""
-        print "  [ -x \"$termux_env\" ] || return 0"
-        print "  for entry in \"$GLOBAL_PREFIX/bin/pi\" \"$GLOBAL_PREFIX/bin/pi-ai\"; do"
-        print "    [ -e \"$entry\" ] || continue"
-        print "    target=\"$(readlink -f \"$entry\" 2>/dev/null || true)\""
-        print "    [ -n \"$target\" ] || target=\"$entry\""
-        print "    [ -f \"$target\" ] || continue"
-        print "    sed -n \"1p\" \"$target\" | grep -Eq \"^#!/usr/bin/env node|^#!.* node\" || continue"
-        print "    sed -i \"1s|^#!.*|#!$termux_env node|\" \"$target\" || true"
-        print "  done"
-        print "}"
-        print ""
-        inserted = 1
-      }
-      { print }
-    ' "$file" > "$tmp" && mv "$tmp" "$file"
-    chmod +x "$file" || true
-  fi
-
-  if ! grep -Eq '^[[:space:]]*patch_termux_node_entrypoints[[:space:]]*$' "$file"; then
-    sed -i '/^[[:space:]]*install_pi_cli[[:space:]]*$/a\  patch_termux_node_entrypoints' "$file" || true
-  fi
-}
-
 patch_pi_payload_for_termux() {
   local payload_name="$1"
   local dir="$2"
@@ -1401,13 +1384,7 @@ patch_pi_payload_for_termux() {
 
   [ "$(openhouse_pi_runtime)" = "termux" ] || return 0
   is_termux || return 0
-  case "$payload_name" in
-    pi-agent|pi-web)
-      ;;
-    *)
-      return 0
-      ;;
-  esac
+  [ "$payload_name" = "pi-web" ] || return 0
 
   termux_home="${OPENHOUSEAI_TERMUX_HOME:-$HOME}"
   termux_prefix="${OPENHOUSEAI_TERMUX_PREFIX:-${PREFIX:-/data/data/com.termux/files/usr}}"
@@ -1418,7 +1395,6 @@ patch_pi_payload_for_termux() {
     "$dir/scripts/install.sh" \
     "$dir/scripts/check.sh" \
     "$dir/scripts/register-service.sh" \
-    "$dir/bin/openhouse-pi-agent-sentinel" \
     "$dir/bin/openhouse-pi-web-start" \
     "$dir/bin/pi-web"; do
     [ -f "$file" ] || continue
@@ -1437,17 +1413,14 @@ patch_pi_payload_for_termux() {
     patch_termux_script_shebang "$file" "$interpreter" "$termux_prefix"
   done
 
-  if [ "$payload_name" = "pi-agent" ]; then
-    patch_termux_pi_agent_install_script "$dir/scripts/install.sh"
-  fi
 }
 
-ensure_termux_node_for_pi() {
+ensure_termux_node_for_web() {
   local major
   [ "$(openhouse_pi_runtime)" = "termux" ] || return 0
   is_termux || return 0
   if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    warn "pi-agent/pi-web 默认运行在 Termux native，但 node/npm 不可用；请先运行：bash bootstrap.sh termux-node"
+    warn "pi-web/OpenHouse Web 运行在 Termux native，但 node/npm 不可用；请先运行：bash bootstrap.sh termux-node"
     return 1
   fi
   major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf 0)"
@@ -1457,7 +1430,7 @@ ensure_termux_node_for_pi() {
       ;;
   esac
   if [ "$major" -lt 24 ]; then
-    warn "pi-agent/pi-web 需要 Termux Node.js 24 LTS（major >= 24），当前为 $(node -v 2>/dev/null || printf unknown)；请先运行：bash bootstrap.sh termux-node"
+    warn "pi-web/OpenHouse Web 需要 Termux Node.js 24 LTS（major >= 24），当前为 $(node -v 2>/dev/null || printf unknown)；请先运行：bash bootstrap.sh termux-node"
     return 1
   fi
 }
@@ -1482,6 +1455,18 @@ validate_payload_source() {
         || [ ! -f "$source/openhouse/check.sh" ] \
         || [ ! -f "$source/openhouse/register-service.sh" ]; then
         warn "$name: APK payload directory is missing openhouse/install.sh, openhouse/check.sh, or openhouse/register-service.sh: $source"
+        return 1
+      fi
+      return 0
+    fi
+    if [ "$payload_name" = "pi-agent" ]; then
+      if [ ! -x "$source/bin/pi" ] \
+        || [ ! -x "$source/bin/openhouse-pi-runtime" ] \
+        || [ ! -x "$source/bin/openhouse-pi-runtime-start" ] \
+        || [ ! -f "$source/scripts/install.sh" ] \
+        || [ ! -f "$source/scripts/check.sh" ] \
+        || [ ! -f "$source/scripts/register-service.sh" ]; then
+        warn "$name: Pi Rust payload directory must contain executable bin/pi, bin/openhouse-pi-runtime, bin/openhouse-pi-runtime-start and install/check/register scripts: $source"
         return 1
       fi
       return 0
@@ -1517,6 +1502,18 @@ validate_payload_source() {
       fi
       return 0
     fi
+    if [ "$payload_name" = "pi-agent" ]; then
+      if ! payload_archive_contains_executable "$source" '^bin/pi$' \
+        || ! payload_archive_contains_executable "$source" '^bin/openhouse-pi-runtime$' \
+        || ! payload_archive_contains_executable "$source" '^bin/openhouse-pi-runtime-start$' \
+        || ! payload_archive_contains "$source" '(^|/)scripts/install\.sh$' \
+        || ! payload_archive_contains "$source" '(^|/)scripts/check\.sh$' \
+        || ! payload_archive_contains "$source" '(^|/)scripts/register-service\.sh$'; then
+        warn "$name: Pi Rust payload archive must contain executable bin/pi, bin/openhouse-pi-runtime, bin/openhouse-pi-runtime-start and install/check/register scripts: $source"
+        return 1
+      fi
+      return 0
+    fi
     if ! payload_archive_contains "$source" '(^|/)scripts/install\.sh$' \
       || ! payload_archive_contains "$source" '(^|/)scripts/check\.sh$'; then
       warn "$name: APK payload archive must contain scripts/install.sh and scripts/check.sh: $source"
@@ -1539,7 +1536,19 @@ validate_payload_source() {
 
 find_payload_source() {
   local payload_name="$1"
+  local archive
   local candidate
+
+  if [ "$payload_name" = "pi-agent" ] && [ -f "$payload_manifest" ]; then
+    archive="$(payload_manifest_component_value "$payload_name" archive || true)"
+    if [ -z "$archive" ]; then
+      warn "pi-agent: APK payload manifest 缺少 id=pi-agent 的 archive：$payload_manifest"
+      printf '%s\n' "$payload_root/.manifest-missing-pi-agent-archive"
+      return 1
+    fi
+    printf '%s/%s\n' "$payload_root" "$archive"
+    return 0
+  fi
 
   for candidate in \
     "$payload_root/$payload_name.tar.gz" \
@@ -1623,11 +1632,23 @@ install_payload_if_needed() {
   fi
 
   log "$name: 从 APK-bundled payload 安装到 $dir（source: $source）"
+  if [ "$payload_name" = "pi-agent" ]; then
+    case "$dir" in
+      ""|/|"$HOME")
+        warn "$name: 拒绝刷新不安全的 Pi runtime 目标目录：$dir"
+        return 1
+        ;;
+    esac
+    # Pi 会话和运行状态位于 $HOME/.pi 与 $HOME/.local/share/openhouseai，
+    # 这里只替换 APK 管理的 payload 源目录，以兼容 31% 失败留下的半安装状态。
+    rm -rf "$dir"
+  fi
   if [ -d "$source" ]; then
     copy_payload_dir "$source" "$dir"
   else
     extract_payload_archive "$source" "$dir"
   fi
+  validate_payload_source "$name" "$dir" "$payload_name"
 }
 
 prepare_component_from_git_update() {
@@ -1744,6 +1765,61 @@ validate_bundle_local_install_source() {
   log "$name: bundle/local 安装将使用 payload 内可执行文件：$local_binary"
 }
 
+dynamic_register_pi_service() (
+  local service_id="$1"
+  local token="$2"
+  local sm_url="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}"
+  local config_dir="${OPENHOUSEAI_CONFIG_DIR:-$HOME/.config/openhouseai}"
+  local spec="$config_dir/service-manager/services.d/$service_id.json"
+  local work_dir apply_payload curl_cfg escaped_token
+
+  [ "$service_id" = "pi-agent" ] || [ "$service_id" = "pi-web" ] || {
+    warn "拒绝动态注册非 Pi 稳定服务 ID：$service_id"
+    return 1
+  }
+  [ -n "$token" ] || {
+    warn "$service_id: service-manager token 不可用，无法动态注册。"
+    return 1
+  }
+  [ -f "$spec" ] || {
+    warn "$service_id: register-service.sh 未生成服务定义：$spec"
+    return 1
+  }
+  command -v jq >/dev/null 2>&1 || {
+    warn "$service_id: jq 不可用，无法生成稳定 ID registry apply 请求。"
+    return 1
+  }
+  command -v curl >/dev/null 2>&1 || {
+    warn "$service_id: curl 不可用，无法调用 service-manager 动态注册。"
+    return 1
+  }
+
+  umask 077
+  work_dir="$(mktemp -d "$TMPDIR/smallphoneai-pi-register.XXXXXX")" || return 1
+  trap 'rm -rf "$work_dir" >/dev/null 2>&1 || true' EXIT INT HUP TERM
+  apply_payload="$work_dir/registry-apply.json"
+  curl_cfg="$work_dir/curl.cfg"
+  jq -n --arg id "$service_id" --slurpfile spec "$spec" \
+    '{services: [{schemaVersion: 1, id: $id, service: $spec[0]}]}' > "$apply_payload"
+  escaped_token="$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" > "$curl_cfg"
+  chmod 600 "$curl_cfg"
+
+  log "$service_id: 正在将稳定 ID 服务定义动态应用到运行中的 service-manager。"
+  curl -q -fsS --max-time 10 -K "$curl_cfg" \
+    -H 'Content-Type: application/json' -X POST --data-binary "@$apply_payload" \
+    "$sm_url/api/v1/registry/apply" >/dev/null || {
+      warn "$service_id: service-manager registry apply 失败。"
+      return 1
+    }
+  log "$service_id: 正在调用 provider 注册：/api/v1/services/$service_id/register"
+  curl -q -fsS --max-time 10 -K "$curl_cfg" -X POST \
+    "$sm_url/api/v1/services/$service_id/register" >/dev/null || {
+      warn "$service_id: service-manager provider 注册失败。"
+      return 1
+    }
+)
+
 run_repo_script_command() {
   local payload_name="$1"
   local dir="$2"
@@ -1797,14 +1873,15 @@ run_repo_script_command() {
         SMALLPHONEAI_LOCAL_INSTALL=1 \
         bash "./$script"
       ;;
-    bundle:pi-agent:scripts/register-service.sh|bundle:pi-web:scripts/register-service.sh)
+    *:pi-agent:scripts/register-service.sh|*:pi-web:scripts/register-service.sh)
       sm_token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
       if [ -z "$sm_token" ] && is_termux; then
         sm_token="$(resolve_termux_service_manager_token || true)"
       fi
       run_with_service_manager_auth "$sm_token" run_logged env \
         SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}" \
-        bash "./$script"
+        bash "./$script" \
+        && dynamic_register_pi_service "$payload_name" "$sm_token"
       ;;
     *)
       run_logged bash "./$script"
@@ -1887,13 +1964,25 @@ run_component() {
   run_repo_script "$name" "$dir" "scripts/install.sh" "$required" "$payload_name"
   run_repo_script "$name" "$dir" "scripts/check.sh" "$required" "$payload_name"
   if [ "$component_action" != "install-check" ]; then
-    run_repo_script "$name" "$dir" "scripts/register-service.sh" "0" "$payload_name"
+    case "$payload_name" in
+      pi-agent|pi-web)
+        run_repo_script "$name" "$dir" "scripts/register-service.sh" "1" "$payload_name"
+        ;;
+      *)
+        run_repo_script "$name" "$dir" "scripts/register-service.sh" "0" "$payload_name"
+        ;;
+    esac
   fi
 }
 
 service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path service-manager)}"
 openhouse_web_dir="${OPENHOUSE_WEB_DIR:-${SMALLPHONEAI_OPENHOUSE_WEB_DIR:-$(default_path openhouse-web)}}"
-pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path pi-agent)}}"
+pi_agent_target_dir="$(payload_target_dir pi-agent || true)"
+if [ -z "$pi_agent_target_dir" ]; then
+  warn "pi-agent: APK payload manifest 缺少 targetDir，使用固定 Pi Rust 目录 pi-runtime 以便报告后续 payload 错误。"
+  pi_agent_target_dir="pi-runtime"
+fi
+pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path "$pi_agent_target_dir")}}"
 pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path pi-web)}}"
 wuyou_dir="${OPENHOUSE_WUYOU_DIR:-${SMALLPHONEAI_WUYOU_DIR:-$(default_path wuyou)}}"
 github_config_helper_dir="${OPENHOUSE_GITHUB_CONFIG_HELPER_DIR:-${SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR:-$(default_path github-config-helper)}}"
@@ -1932,14 +2021,10 @@ if should_run_component "service-manager"; then
   run_component "service-manager" "$service_manager_dir" "${SMALLPHONEAI_SERVICE_MANAGER_GIT_URL:-https://github.com/jiwuyou/service-manager.git}" "1" "service-manager"
 fi
 if should_run_component "pi-agent"; then
-  if ensure_termux_node_for_pi; then
-    run_component "pi-agent" "$pi_agent_dir" "${OPENHOUSE_PI_AGENT_GIT_URL:-}" "1" "pi-agent"
-  else
-    failures=$((failures + 1))
-  fi
+  run_component "pi-agent" "$pi_agent_dir" "${OPENHOUSE_PI_AGENT_GIT_URL:-}" "1" "pi-agent"
 fi
 if should_run_component "pi-web"; then
-  if ensure_termux_node_for_pi; then
+  if ensure_termux_node_for_web; then
     run_component "pi-web" "$pi_web_dir" "${OPENHOUSE_PI_WEB_GIT_URL:-}" "1" "pi-web"
   else
     failures=$((failures + 1))
@@ -1958,7 +2043,7 @@ if should_run_component "hermes"; then
   run_component "Hermes" "$hermes_dir" "${SMALLPHONEAI_HERMES_GIT_URL:-}" "1" "hermes"
 fi
 if should_run_component "openhouse-web"; then
-  if ensure_termux_node_for_pi; then
+  if ensure_termux_node_for_web; then
     run_component "OpenHouse Web" "$openhouse_web_dir" "${OPENHOUSE_WEB_GIT_URL:-}" "1" "openhouse-web"
   else
     failures=$((failures + 1))

@@ -4469,8 +4469,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean termuxPackagesComplete = isTermuxPackagesStageComplete() || isLastExitSuccess(termuxPackagesExitCode);
         boolean wuyouInstalled = termuxPackagesComplete && (isWuyouInstalled() || isLastExitSuccess(installWuyouExitCode));
         boolean termuxNodeInstalled = wuyouInstalled && (isTermuxNodeInstalled() || isLastExitSuccess(installTermuxNodeExitCode));
-        boolean piAgentInstalled = termuxNodeInstalled && (isPiAgentInstalled() || isLastExitSuccess(installPiAgentExitCode));
-        boolean piWebInstalled = piAgentInstalled && (isPiWebInstalled() || isLastExitSuccess(installPiWebExitCode));
+        boolean piAgentInstalled = termuxPackagesComplete && (isPiAgentInstalled() || isLastExitSuccess(installPiAgentExitCode));
+        boolean piWebInstalled = termuxNodeInstalled && piAgentInstalled && (isPiWebInstalled() || isLastExitSuccess(installPiWebExitCode));
         boolean piWebRescueStarted = piWebInstalled && (isPiWebRescueReady() || isLastExitSuccess(startPiWebRescueExitCode));
         boolean serviceManagerInstalled = piWebRescueStarted && (isServiceManagerReady() || isLastExitSuccess(installServiceManagerExitCode));
         boolean piServicesRegistered = serviceManagerInstalled && (arePiServicesRegistered() || isLastExitSuccess(registerPiServicesExitCode));
@@ -4530,12 +4530,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.INSTALL_PI_AGENT,
             piAgentInstalled
-                ? StagePresentation.complete(this, "pi-agent payload 与启动入口已安装。")
-                : (!termuxNodeInstalled
-                    ? StagePresentation.blocked(this, "请先安装 Termux Node.js。")
+                ? StagePresentation.complete(this, "Pi Rust runtime payload 与启动入口已安装。")
+                : (!termuxPackagesComplete
+                    ? StagePresentation.blocked(this, "请先完成 Termux 基础包阶段。")
                     : failedOrReady(installPiAgentExitCode,
-                        "pi-agent 安装失败，请查看该阶段日志。",
-                        "准备安装不依赖 service-manager 的 pi-agent。"))
+                        "Pi Rust runtime 安装失败，请查看该阶段日志。",
+                        "准备安装不依赖 Node/npm 或 service-manager 的 Pi Rust runtime。"))
         );
 
         snapshot.presentations.put(
@@ -4706,12 +4706,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.START_SMALLPHONE,
             smallPhoneStarted
-                ? StagePresentation.complete(this, "正式 pi-agent 与 pi-web 30141 已启动。")
+                ? StagePresentation.complete(this, "Pi Rust runtime 8765 与 pi-web 30141 已启动。")
                 : (!piServicesRegistered
                     ? StagePresentation.blocked(this, "请先完成 pi-agent、pi-web 服务注册。")
                     : failedOrReady(startSmallPhoneExitCode,
-                        "正式 pi-web 30141 启动失败，请查看该阶段日志。",
-                        "准备通过 service-manager 启动正式 pi-agent 与 pi-web 30141。"))
+                        "Pi Rust runtime 8765 或 pi-web 30141 启动失败，请查看该阶段日志。",
+                        "准备通过 service-manager 启动 Pi Rust runtime 8765 与 pi-web 30141。"))
         );
 
         snapshot.presentations.put(
@@ -4788,9 +4788,10 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private boolean isPiAgentInstalled() {
         File home = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
-        return new File(home, ".local/bin/openhouse-pi-agent-sentinel").canExecute()
-            && (new File(home, ".pi").isDirectory()
-                || new File(home, "smallphoneai-repos/pi-agent").isDirectory());
+        return new File(home, "smallphoneai-repos/pi-runtime").isDirectory()
+            && new File(home, ".local/share/openhouseai/runtime/bin/pi").canExecute()
+            && new File(home, ".local/share/openhouseai/runtime/bin/openhouse-pi-runtime").canExecute()
+            && new File(home, ".local/bin/openhouse-pi-runtime-start").canExecute();
     }
 
     private boolean isPiWebInstalled() {
@@ -4828,6 +4829,9 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean isManagedPiWebReachable() {
         return runTermuxCommand(
             "curl -fsS --max-time 2 " + shellQuote(serviceManagerBaseUrl() + "/api/v1/health") + " >/dev/null 2>&1"
+                + " && token_file=\"$HOME/.local/share/openhouseai/runtime/state/token\""
+                + " && test -s \"$token_file\" && token=\"$(tr -d '\\r\\n' < \"$token_file\")\""
+                + " && curl -fsS --max-time 3 -H \"Authorization: Bearer $token\" http://127.0.0.1:8765/admin/v1/health >/dev/null 2>&1"
                 + " && curl -fsS --max-time 3 http://127.0.0.1:30141/ >/dev/null 2>&1"
         ).isSuccess();
     }
@@ -4885,7 +4889,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
 
     private boolean isRuntimeComponentsInstalled() {
         return runTermuxCommand(
-            "proot-distro login ubuntu -- bash -lc '{ test -x \"$HOME/smallphoneai-repos/service-manager/service-manager\" || test -x \"$HOME/smallphoneai-repos/service-manager/target/release/service-manager\"; } && test -d \"$HOME/smallphoneai-repos/pi-agent\" && test -d \"$HOME/smallphoneai-repos/pi-web\" && test -d \"$HOME/smallphoneai-repos/smallphone-active\"'"
+            "test -d \"$HOME/smallphoneai-repos/pi-runtime\" && test -x \"$HOME/.local/share/openhouseai/runtime/bin/openhouse-pi-runtime\" && test -d \"$HOME/smallphoneai-repos/pi-web\""
+                + " && proot-distro login ubuntu -- bash -lc '{ test -x \"$HOME/smallphoneai-repos/service-manager/service-manager\" || test -x \"$HOME/smallphoneai-repos/service-manager/target/release/service-manager\"; } && test -d \"$HOME/smallphoneai-repos/smallphone-active\"'"
         ).isSuccess();
     }
 

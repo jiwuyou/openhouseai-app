@@ -94,7 +94,7 @@ The required APK asset archives are:
 | service-manager | `openhouse/product-payloads/service-manager.tar` | `$HOME/smallphoneai-repos/service-manager` |
 | cc-connect/openhouse-connect | `openhouse/product-payloads/openhouse-connect.tar` | `$HOME/smallphoneai-repos/openhouse-connect` |
 | SmallPhone | `openhouse/product-payloads/smallphone.tar` | `$HOME/smallphoneai-repos/smallphone-active` |
-| pi-agent | `openhouse/product-payloads/pi-agent.tar` | `$HOME/smallphoneai-repos/pi-agent` |
+| pi-agent (stable service ID) | `openhouse/product-payloads/pi-runtime.tar` | `$HOME/smallphoneai-repos/pi-runtime` |
 | pi-web | `openhouse/product-payloads/pi-web.tar` | `$HOME/smallphoneai-repos/pi-web` |
 | wuyou | `openhouse/product-payloads/wuyou.tar` | `$HOME/smallphoneai-repos/wuyou`; installs `$PREFIX/bin/wuyou` |
 
@@ -109,10 +109,15 @@ binary. `50-install-runtime-components.sh` defaults to
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle`; this prevents first-run source
 clones from GitHub. It is not an air-gapped install: apt, npm, pip, model
 providers, and ordinary network checks may still be used when a stage needs
-operating-system or package dependencies. Pi Agent, pi-web, and wuyou use
-APK-bundled payloads first; pi-web is shipped as a complete runtime and should
-not run `npm install` during first-run setup. The `pi-web` and `wuyou` commands
-are installed as Termux global commands and can be run without service-manager.
+operating-system or package dependencies. The stable `pi-agent` component ID
+installs the Rust payload from `pi-runtime.tar`; its binaries and state are
+installed under `$HOME/.local/share/openhouseai/runtime`, its service listens on
+`127.0.0.1:8765`, and its token is stored at
+`$HOME/.local/share/openhouseai/runtime/state/token`. It does not depend on
+Node/npm. pi-web and wuyou also use APK-bundled payloads first; pi-web is shipped
+as a complete runtime and should not run `npm install` during first-run setup.
+The `pi-web` and `wuyou` commands are installed as Termux global commands and
+can be run without service-manager.
 
 GitHub source updates are a separate path through
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=git-update` and
@@ -136,6 +141,7 @@ Default readiness ports:
 
 | Component | Endpoint |
 | --- | --- |
+| Pi Rust runtime (`pi-agent` service ID) | `http://127.0.0.1:8765/` |
 | pi-web main agent UI | `http://127.0.0.1:30141/` |
 | cc-connect bridge | `tcp://127.0.0.1:21010` |
 | cc-connect management | `tcp://127.0.0.1:21020` |

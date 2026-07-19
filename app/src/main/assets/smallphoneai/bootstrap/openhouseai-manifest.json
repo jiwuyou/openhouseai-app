@@ -45,7 +45,7 @@
   "runtimePayloads": {
     "firstRunSource": "apk_bundled_packages",
     "networkRole": "required_for_termux_node_and_ubuntu_ai_workbench_packages",
-    "description": "APK 内置运行组件包；pi-agent、pi-web 和 wuyou 默认解包到 Termux native。pi-web/wuyou 提供不依赖 service-manager 的全局命令入口，Ubuntu 仅作为 AI 工作台和显式 fallback。",
+    "description": "APK 内置运行组件包；稳定组件 ID pi-agent 映射到 Pi Rust runtime，pi-web 和 wuyou 默认解包到 Termux native。pi-web/wuyou 提供不依赖 service-manager 的全局命令入口，Ubuntu 仅作为 AI 工作台和显式 fallback。",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
     "installRoot": "$HOME/smallphoneai-repos",
@@ -71,9 +71,9 @@
       },
       {
         "id": "pi-agent",
-        "title": "Pi Agent runtime",
-        "apkAssetPath": "openhouse/product-payloads/pi-agent.tar",
-        "targetDir": "$HOME/smallphoneai-repos/pi-agent"
+        "title": "Pi Rust runtime",
+        "apkAssetPath": "openhouse/product-payloads/pi-runtime.tar",
+        "targetDir": "$HOME/smallphoneai-repos/pi-runtime"
       },
       {
         "id": "pi-web",
@@ -108,12 +108,12 @@
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "先准备 Termux 和 wuyou，再安装 Node、pi-agent、pi-web 并开放 30142 紧急救援；随后安装 service-manager、注册并启动正式 30141，再继续 OpenHouse Web、Ubuntu 和基础依赖。",
+      "description": "先准备 Termux 和 wuyou，再安装 Pi Rust runtime、为 pi-web 准备 Node 并开放 30142 紧急救援；随后安装 service-manager、注册并启动 8765 runtime 与正式 30141 Web 入口，再继续 OpenHouse Web、Ubuntu 和基础依赖。",
       "stages": ["env_check", "prepare", "termux_packages", "install_wuyou", "termux_node", "install_pi_agent", "install_pi_web", "start_pi_web_rescue", "install_service_manager", "register_pi_services", "start_smallphone", "install_openhouse_web", "install_ubuntu", "ubuntu_packages"]
     },
     {
       "title": "准备 Ubuntu AI 工作台依赖",
-      "description": "安装 Ubuntu Node.js 并同步 OpenHouse 文档；Termux Node/npm 专用于 pi-agent/pi-web 常驻层。",
+      "description": "安装 Ubuntu Node.js 并同步 OpenHouse 文档；Termux Node/npm 仅用于 pi-web，Pi Rust runtime 不依赖 Node。",
       "stages": ["install_node", "sync_official_docs"]
     },
     {
@@ -268,8 +268,8 @@
     },
     {
       "id": "install_pi_agent",
-      "title": "安装 pi-agent",
-      "description": "安装并检查 Termux native pi-agent；暂不依赖 service-manager，不执行服务注册。",
+      "title": "安装 Pi Rust runtime",
+      "description": "使用稳定组件 ID pi-agent 安装并检查 Termux native Pi Rust runtime；目标目录为 pi-runtime，不依赖 Node/npm，暂不执行服务注册。",
       "action": { "type": "bootstrap", "args": ["install-pi-agent"] }
     },
     {

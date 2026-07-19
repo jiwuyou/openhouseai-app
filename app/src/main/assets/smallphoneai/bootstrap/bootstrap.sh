@@ -601,10 +601,10 @@ run_full_install() {
   SMALLPHONEAI_COMPONENT_TARGETS=wuyou \
     SMALLPHONEAI_COMPONENT_ACTION=install-check \
     run_stage 50-install-runtime-components.sh
-  run_stage 13-install-termux-node.sh
   SMALLPHONEAI_COMPONENT_TARGETS=pi-agent \
     SMALLPHONEAI_COMPONENT_ACTION=install-check \
     run_stage 50-install-runtime-components.sh
+  run_stage 13-install-termux-node.sh
   SMALLPHONEAI_COMPONENT_TARGETS=pi-web \
     SMALLPHONEAI_COMPONENT_ACTION=install-check \
     run_stage 50-install-runtime-components.sh

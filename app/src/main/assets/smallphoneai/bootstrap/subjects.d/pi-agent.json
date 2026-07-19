@@ -1,18 +1,18 @@
 {
   "id": "pi-agent",
-  "title": "Pi Agent",
+  "title": "Pi Rust Runtime",
   "kind": "runtime-http",
-  "summary": "OpenHouse main AI workbench and human-facing web entry.",
+  "summary": "Pi Rust JSONL RPC runtime plus the human-facing pi-web entry.",
   "serviceRefs": [
     {
       "id": "pi-agent",
       "runtime": "termux",
       "manager": "service-manager",
       "home": "/data/data/com.termux/files/home",
-      "workingDirectory": "$HOME/smallphoneai-repos/pi-agent",
-      "workdir": "$HOME/smallphoneai-repos/pi-agent",
-      "command": "openhouse-pi-agent-sentinel",
-      "entryCommand": "openhouse-pi-agent-sentinel"
+      "workingDirectory": "$HOME/workspace",
+      "workdir": "$HOME/workspace",
+      "command": "openhouse-pi-runtime-start",
+      "entryCommand": "openhouse-pi-runtime-start"
     },
     {
       "id": "pi-web",
@@ -27,6 +27,11 @@
   ],
   "entries": [
     {
+      "type": "api",
+      "label": "Pi Rust Runtime API",
+      "url": "http://127.0.0.1:8765/"
+    },
+    {
       "type": "web",
       "label": "Pi Agent Web",
       "url": "http://127.0.0.1:30141/"
@@ -35,8 +40,13 @@
   "locations": [
     {
       "runtime": "termux",
-      "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-agent",
-      "purpose": "Termux native pi-agent payload and npm package install source"
+      "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime",
+      "purpose": "APK-bundled Pi Rust runtime payload install source"
+    },
+    {
+      "runtime": "termux",
+      "path": "/data/data/com.termux/files/home/.local/share/openhouseai/runtime",
+      "purpose": "Installed Pi Rust binaries, extensions, runtime state, and access token"
     },
     {
       "runtime": "termux",
@@ -59,21 +69,22 @@
     }
   ],
   "ai": {
-    "description": "Pi Agent is the primary OpenHouse AI workbench. pi-web also provides the standalone Termux global command `pi-web --port 30141`; service-manager controls the default long-running pi-web service.",
-    "whenUnavailable": "First inspect service-manager status and logs for pi-agent/pi-web. If the services are running, run openhouse-system check pi-agent to probe the web endpoint and declared paths."
+    "description": "The stable pi-agent service ID runs the Pi Rust runtime on 127.0.0.1:8765. pi-web connects to it and also provides the standalone Termux global command `pi-web --port 30141`.",
+    "whenUnavailable": "Inspect service-manager status and logs for pi-agent, then verify openhouse-pi-runtime-start, the runtime token, and port 8765 before checking pi-web."
   },
   "checks": {
     "serviceTimeoutSeconds": 5,
     "afterServiceOk": [
       {
-        "type": "http",
-        "url": "http://127.0.0.1:30141/",
+        "type": "pathExists",
+        "runtime": "termux",
+        "path": "/data/data/com.termux/files/home/.local/bin/openhouse-pi-runtime-start",
         "timeoutSeconds": 4
       },
       {
         "type": "pathExists",
         "runtime": "termux",
-        "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-agent",
+        "path": "/data/data/com.termux/files/home/.local/share/openhouseai/runtime/state/token",
         "timeoutSeconds": 4
       },
       {

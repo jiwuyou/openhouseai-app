@@ -31,7 +31,7 @@ public final class OpenHouseStatusRepository {
     private static final String KEY_OVERLAY_STEP = "step";
     private static final String KEY_OVERLAY_BATTERY_SKIPPED = "battery_skipped";
     private static final String KEY_OVERLAY_GUIDE_DISMISSED = "guide_dismissed";
-    private static final String PI_WEB_DEFAULT_URL = "http://127.0.0.1:30141/";
+    private static final String PI_RUNTIME_HEALTH_URL = "http://127.0.0.1:8765/admin/v1/health";
     private static final String AIONUI_DEFAULT_URL = "http://127.0.0.1:25808/";
 
     private final Context context;
@@ -59,9 +59,6 @@ public final class OpenHouseStatusRepository {
         boolean cloudCliInstalled = ubuntuInstalled && runUbuntuCheck("command -v cloudcli >/dev/null 2>&1 && test -s \"$HOME/.config/openhouseai/claude-code-ui-port\" && test -s \"$HOME/.config/openhouseai/claude-code-ui-url\"", 12);
         boolean serviceManagerInstalled = termuxReady && runTermuxCommand("{ command -v service-manager >/dev/null 2>&1 && service-manager --version >/dev/null 2>&1; } || { test -x \"$PREFIX/bin/service-manager\" && \"$PREFIX/bin/service-manager\" --version >/dev/null 2>&1; } || { test -x \"$HOME/.local/bin/service-manager\" && \"$HOME/.local/bin/service-manager\" --version >/dev/null 2>&1; }", 8).isSuccess();
         boolean piAgentInstalled = termuxReady && isTermuxPiAgentInstalled();
-        if (!piAgentInstalled && ubuntuInstalled) {
-            piAgentInstalled = isUbuntuPiAgentInstalled();
-        }
         boolean piWebInstalled = termuxReady && isTermuxPiWebInstalled();
         if (!piWebInstalled && ubuntuInstalled) {
             piWebInstalled = isUbuntuPiWebInstalled();
@@ -73,7 +70,7 @@ public final class OpenHouseStatusRepository {
 
         SmallPhoneRuntime.Status runtimeStatus = new SmallPhoneRuntime(context).loadStatus();
         boolean serviceManagerReachable = runtimeStatus.serviceManager.reachable;
-        boolean piWebReachable = probeUrl(PI_WEB_DEFAULT_URL);
+        boolean piWebReachable = termuxReady && isPiRuntimeReachable();
         boolean openhouseConnectReachable = runtimeStatus.ccConnect.reachable || runtimeStatus.ccConnectDisabled;
         boolean smallPhoneReachable = runtimeStatus.smallPhone.reachable && runtimeStatus.smallPhoneCore.reachable;
         String aionUiUrl = resolveAionUiUrl(ubuntuInstalled);
@@ -143,7 +140,7 @@ public final class OpenHouseStatusRepository {
     }
 
     public boolean isPiWebReachable() {
-        return probeUrl(PI_WEB_DEFAULT_URL);
+        return isTermuxReady() && isPiRuntimeReachable();
     }
 
     public OpenHouseOnboardingState loadOnboardingState() {
@@ -333,22 +330,21 @@ public final class OpenHouseStatusRepository {
 
     private boolean isTermuxPiAgentInstalled() {
         return runTermuxCommand(
-            "{ test -d \"$HOME/smallphoneai-repos/pi-agent\" "
-                + "&& { test -f \"$HOME/smallphoneai-repos/pi-agent/scripts/register-service.sh\" "
-                + "|| test -x \"$HOME/smallphoneai-repos/pi-agent/bin/openhouse-pi-agent-sentinel\" "
-                + "|| test -f \"$HOME/smallphoneai-repos/pi-agent/package.json\"; }; } "
-                + "|| command -v pi >/dev/null 2>&1",
+            "test -d \"$HOME/smallphoneai-repos/pi-runtime\" "
+                + "&& test -x \"$HOME/.local/share/openhouseai/runtime/bin/pi\" "
+                + "&& test -x \"$HOME/.local/share/openhouseai/runtime/bin/openhouse-pi-runtime\" "
+                + "&& test -x \"$HOME/.local/bin/openhouse-pi-runtime-start\"",
             12).isSuccess();
     }
 
-    private boolean isUbuntuPiAgentInstalled() {
-        return runUbuntuCheck(
-            "{ test -d \"$HOME/smallphoneai-repos/pi-agent\" "
-                + "&& { test -f \"$HOME/smallphoneai-repos/pi-agent/scripts/register-service.sh\" "
-                + "|| test -x \"$HOME/smallphoneai-repos/pi-agent/bin/openhouse-pi-agent-sentinel\" "
-                + "|| test -f \"$HOME/smallphoneai-repos/pi-agent/package.json\"; }; } "
-                + "|| command -v pi >/dev/null 2>&1",
-            12);
+    private boolean isPiRuntimeReachable() {
+        return runTermuxCommand(
+            "token_file=\"$HOME/.local/share/openhouseai/runtime/state/token\"; "
+                + "test -s \"$token_file\" && token=\"$(tr -d '\\r\\n' < \"$token_file\")\" "
+                + "&& test -n \"$token\" "
+                + "&& curl -fsS --max-time 3 -H \"Authorization: Bearer $token\" "
+                + shellQuote(PI_RUNTIME_HEALTH_URL) + " >/dev/null 2>&1",
+            6).isSuccess();
     }
 
     private boolean isTermuxPiWebInstalled() {

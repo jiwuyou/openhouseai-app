@@ -17,7 +17,12 @@ python3 - \
   "${PI_WEB_REQUIRED_COMMIT:-19a4496149bf8198be1362e31d81d79b5d250051}" \
   "${PI_RUST_REQUIRED_COMMIT:-ad719ad3d42173be9293a020492b7d10f85c95fe}" \
   "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/subjects.d/service-control.json" \
+  "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/openhouseai-manifest.json" \
+  "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/subjects.d/pi-agent.json" \
+  "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap" \
   "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/scripts/50-install-runtime-components.sh" \
+  "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/scripts/60-start-smallphone.sh" \
+  "$REPO_DIR/app/build.gradle" \
   "$REPO_DIR/app/src/main/assets/maintainer/update-termux-packages.sh" \
   "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/scripts/12-update-termux-packages.sh" <<'PY'
 import hashlib
@@ -33,9 +38,14 @@ required_pi_web_branch = sys.argv[3]
 required_pi_web_commit = sys.argv[4].lower()
 required_pi_rust_commit = sys.argv[5].lower()
 service_control_path = os.path.abspath(sys.argv[6])
-component_installer_path = os.path.abspath(sys.argv[7])
-termux_package_delegate_path = os.path.abspath(sys.argv[8])
-termux_package_bootstrap_path = os.path.abspath(sys.argv[9])
+bootstrap_manifest_path = os.path.abspath(sys.argv[7])
+pi_agent_subject_path = os.path.abspath(sys.argv[8])
+bootstrap_root = os.path.abspath(sys.argv[9])
+component_installer_path = os.path.abspath(sys.argv[10])
+service_starter_path = os.path.abspath(sys.argv[11])
+app_build_gradle_path = os.path.abspath(sys.argv[12])
+termux_package_delegate_path = os.path.abspath(sys.argv[13])
+termux_package_bootstrap_path = os.path.abspath(sys.argv[14])
 manifest_path = os.path.join(payload_dir, "manifest.json")
 payload_manifest_path = os.path.join(payload_dir, "payload-manifest.json")
 native_runtime_asset_path = os.path.join(
@@ -88,6 +98,74 @@ def validate_service_control_contract():
     marker = '"serviceRefs":' + json.dumps(expected, separators=(",", ":"))
     if marker not in installer:
         fail("embedded service-control template does not contain the exact required serviceRefs")
+
+
+def validate_release_upgrade_contract():
+    try:
+        with open(app_build_gradle_path, "r", encoding="utf-8") as handle:
+            build_gradle = handle.read()
+    except Exception as exc:
+        fail(f"cannot read app release version contract: {exc}")
+        return
+    code_match = re.search(r"^\s*versionCode\s+(\d+)\s*$", build_gradle, re.MULTILINE)
+    name_match = re.search(r'^\s*versionName\s+"([^"]+)"\s*$', build_gradle, re.MULTILINE)
+    if not code_match or int(code_match.group(1)) < 125:
+        fail("All-in-One versionCode must be at least 125 so the repaired APK stages fresh assets")
+    if not name_match or name_match.group(1) == "0.118.106":
+        fail("All-in-One versionName must not remain 0.118.106 after the first-install repair")
+    elif name_match.group(1) != "0.118.107":
+        fail(f"All-in-One repair release versionName must be 0.118.107, got {name_match.group(1)!r}")
+
+
+def validate_pi_dynamic_registration_contract():
+    sources = {}
+    for label, path in (
+        ("50-install-runtime-components.sh", component_installer_path),
+        ("60-start-smallphone.sh", service_starter_path),
+    ):
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                sources[label] = handle.read()
+        except Exception as exc:
+            fail(f"cannot read Pi dynamic registration source {label}: {exc}")
+            sources[label] = ""
+
+    for label, source in sources.items():
+        for required in (
+            "dynamic_register_pi_service",
+            "/api/v1/registry/apply",
+            "/api/v1/services/$service_id/register",
+            '[ "$service_id" = "pi-agent" ]',
+            '[ "$service_id" = "pi-web" ]',
+        ):
+            if required not in source:
+                fail(f"{label} is missing stable Pi dynamic registration contract: {required}")
+
+    installer = sources["50-install-runtime-components.sh"]
+    for required in (
+        "*:pi-agent:scripts/register-service.sh|*:pi-web:scripts/register-service.sh",
+        "run_with_service_manager_auth",
+        "SERVICE_MANAGER_URL=",
+        '&& dynamic_register_pi_service "$payload_name" "$sm_token"',
+        'run_repo_script "$name" "$dir" "scripts/register-service.sh" "1" "$payload_name"',
+    ):
+        if required not in installer:
+            fail(f"50-install-runtime-components.sh is missing Pi dynamic registration orchestration: {required}")
+
+    starter = sources["60-start-smallphone.sh"]
+    for component_id in ("pi-agent", "pi-web"):
+        marker = f'run_register_if_present "{component_id}"'
+        if marker not in starter:
+            fail(f"60-start-smallphone.sh must dynamically register stable service {component_id}: {marker}")
+    for required in (
+        "run_with_service_manager_auth",
+        'SERVICE_MANAGER_URL="$sm_url"',
+        'dynamic_register_pi_service "$name"',
+        'run_register_if_present "pi-agent" "$pi_agent_dir" || exit 1',
+        'run_register_if_present "pi-web" "$pi_web_dir" || exit 1',
+    ):
+        if required not in starter:
+            fail(f"60-start-smallphone.sh is missing authenticated dynamic registration orchestration: {required}")
 
 
 def validate_termux_package_contract():
@@ -145,6 +223,108 @@ def validate_termux_package_contract():
     final_jq_block = bootstrap[final_jq_check:]
     if "exit 1" not in final_jq_block:
         fail("canonical Termux package bootstrap final jq check must fail the stage when jq is unavailable")
+
+
+def validate_bootstrap_pi_contract(product_manifest):
+    bootstrap_manifest = load_json(bootstrap_manifest_path)
+    product_components = by_id(
+        component_array(product_manifest, "components"),
+        "manifest.json",
+    )
+    pi_product = product_components.get("pi-agent")
+    if not isinstance(pi_product, dict):
+        fail("manifest.json must preserve the stable pi-agent component id")
+        return
+
+    runtime_payloads = bootstrap_manifest.get("runtimePayloads")
+    if not isinstance(runtime_payloads, dict):
+        fail("bootstrap manifest runtimePayloads must be an object")
+        return
+    bootstrap_payloads = by_id(
+        component_array(runtime_payloads, "payloads"),
+        "bootstrap runtimePayloads.payloads",
+    )
+    pi_bootstrap = bootstrap_payloads.get("pi-agent")
+    if not isinstance(pi_bootstrap, dict):
+        fail("bootstrap manifest must preserve the stable pi-agent payload id")
+        return
+
+    archive = os.path.basename(str(pi_bootstrap.get("apkAssetPath") or ""))
+    target_dir = os.path.basename(str(pi_bootstrap.get("targetDir") or "").rstrip("/"))
+    expected_archive = str(pi_product.get("archive") or "")
+    expected_target = str(pi_product.get("targetDir") or "")
+    if archive != expected_archive:
+        fail(
+            "bootstrap/product pi-agent archive mismatch: "
+            f"bootstrap={archive!r}, product={expected_archive!r}"
+        )
+    if target_dir != expected_target:
+        fail(
+            "bootstrap/product pi-agent targetDir mismatch: "
+            f"bootstrap={target_dir!r}, product={expected_target!r}"
+        )
+    if archive != "pi-runtime.tar" or target_dir != "pi-runtime":
+        fail("stable pi-agent id must map exactly to pi-runtime.tar and targetDir pi-runtime")
+    if archive and not os.path.isfile(os.path.join(payload_dir, archive)):
+        fail(f"bootstrap pi-agent archive does not exist in product payloads: {archive}")
+
+    subject = load_json(pi_agent_subject_path)
+    if subject.get("id") != "pi-agent":
+        fail("Pi subject must preserve id pi-agent")
+    service_refs = subject.get("serviceRefs")
+    if not isinstance(service_refs, list):
+        fail("Pi subject serviceRefs must be an array")
+        service_refs = []
+    pi_service = next(
+        (entry for entry in service_refs if isinstance(entry, dict) and entry.get("id") == "pi-agent"),
+        None,
+    )
+    if not isinstance(pi_service, dict):
+        fail("Pi subject must preserve service id pi-agent")
+    else:
+        if pi_service.get("command") != "openhouse-pi-runtime-start":
+            fail("Pi subject pi-agent service must launch openhouse-pi-runtime-start")
+        if pi_service.get("workingDirectory") != "$HOME/workspace":
+            fail("Pi subject pi-agent service workingDirectory must be $HOME/workspace")
+    subject_text = json.dumps(subject, ensure_ascii=False, separators=(",", ":"))
+    for required in (
+        "127.0.0.1:8765",
+        "/.local/share/openhouseai/runtime/state/token",
+        "/smallphoneai-repos/pi-runtime",
+    ):
+        if required not in subject_text:
+            fail(f"Pi subject is missing Rust runtime contract: {required}")
+
+    forbidden_literals = (
+        "pi-agent.tar",
+        "smallphoneai-repos/pi-agent",
+        "openhouse-pi-agent-sentinel",
+    )
+    source_paths = [bootstrap_manifest_path, pi_agent_subject_path]
+    for root, _, files in os.walk(bootstrap_root):
+        for name in files:
+            if name == "bootstrap.sh" or name.endswith(".sh"):
+                source_paths.append(os.path.join(root, name))
+    for source_path in sorted(set(source_paths)):
+        try:
+            with open(source_path, "r", encoding="utf-8") as handle:
+                source = handle.read()
+        except Exception as exc:
+            fail(f"cannot read bootstrap Pi contract source {source_path}: {exc}")
+            continue
+        relative = os.path.relpath(source_path, bootstrap_root)
+        for forbidden in forbidden_literals:
+            if forbidden in source:
+                fail(f"bootstrap source {relative} contains legacy Node Pi fragment: {forbidden}")
+        legacy_node_pi_patterns = (
+            r"\bnpm\s+(?:install|i|exec|run)\b[^\n]{0,200}(?:pi-agent|pi-coding-agent)",
+            r"(?:@[^\s'\"]+/)?pi-coding-agent",
+            r"\.npm-global/bin[^\n]{0,200}command\s+-v\s+pi\b",
+        )
+        for pattern in legacy_node_pi_patterns:
+            if re.search(pattern, source, re.IGNORECASE):
+                fail(f"bootstrap source {relative} contains legacy Node/npm Pi install or status logic")
+                break
 
 
 def load_json(path):
@@ -858,6 +1038,9 @@ def validate_wuyou_payload(entry):
 
 manifest = load_json(manifest_path)
 payload_manifest = load_json(payload_manifest_path)
+validate_release_upgrade_contract()
+validate_pi_dynamic_registration_contract()
+validate_bootstrap_pi_contract(manifest)
 
 components = by_id(component_array(manifest, "components"), "manifest.json")
 payloads = by_id(component_array(payload_manifest, "payloads"), "payload-manifest.json")

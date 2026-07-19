@@ -553,7 +553,7 @@ component_dir_from_env() {
 service_manager_dir="$(component_dir_from_env "${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" service-manager /root/projects/service-manager)"
 cc_connect_dir="$(component_dir_from_env "${SMALLPHONEAI_CC_CONNECT_DIR:-}" openhouse-connect /root/openhouse-connect-fresh /root/cc-connect-fresh)"
 smallphone_dir="$(component_dir_from_env "${SMALLPHONEAI_SMALLPHONE_DIR:-}" smallphone-active /root/projects/smallphone/smallphone-active)"
-pi_agent_dir="$(component_dir_from_env "${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-}}" pi-agent /root/projects/pi)"
+pi_agent_dir="$(component_dir_from_env "${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-}}" pi-runtime /root/projects/pi)"
 pi_web_dir="$(component_dir_from_env "${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-}}" pi-web /root/projects/pi-web)"
 bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
 sm_url="${SERVICE_MANAGER_URL:-http://$bind}"
@@ -564,6 +564,8 @@ cc_url="bridge=${cc_host}:${cc_bridge_port}, management=${cc_host}:${cc_manageme
 smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
 pi_web_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
+pi_runtime_host="${OPENHOUSE_PI_RUNTIME_HOST:-127.0.0.1}"
+pi_runtime_port="${OPENHOUSE_PI_RUNTIME_PORT:-8765}"
 log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
 
 export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$HOME/.npm-global/bin:$PATH"
@@ -703,6 +705,9 @@ is_final_readiness_ready() {
   if ! is_service_manager_ready; then
     append_readiness_missing "service-manager($sm_url)"
   fi
+  if start_target_requested "pi-agent" && ! probe_tcp "$pi_runtime_host" "$pi_runtime_port"; then
+    append_readiness_missing "pi-agent(${pi_runtime_host}:${pi_runtime_port})"
+  fi
   if start_target_requested "pi-web" && ! probe_url "$pi_web_url"; then
     append_readiness_missing "pi-web($pi_web_url)"
   fi
@@ -828,6 +833,52 @@ if [ -z "$sm_token" ]; then
   exit 1
 fi
 
+dynamic_register_pi_service() (
+  local service_id="$1"
+  local config_dir="${OPENHOUSEAI_CONFIG_DIR:-$HOME/.config/openhouseai}"
+  local spec="$config_dir/service-manager/services.d/$service_id.json"
+  local work_dir apply_payload curl_cfg escaped_token
+
+  [ "$service_id" = "pi-agent" ] || [ "$service_id" = "pi-web" ] || return 1
+  [ -f "$spec" ] || {
+    warn "$service_id: register-service.sh 未生成服务定义：$spec"
+    return 1
+  }
+  command -v jq >/dev/null 2>&1 || {
+    warn "$service_id: jq 不可用，无法生成稳定 ID registry apply 请求。"
+    return 1
+  }
+  command -v curl >/dev/null 2>&1 || {
+    warn "$service_id: curl 不可用，无法调用 service-manager 动态注册。"
+    return 1
+  }
+
+  umask 077
+  work_dir="$(mktemp -d "$TMPDIR/smallphoneai-pi-register.XXXXXX")" || return 1
+  trap 'rm -rf "$work_dir" >/dev/null 2>&1 || true' EXIT INT HUP TERM
+  apply_payload="$work_dir/registry-apply.json"
+  curl_cfg="$work_dir/curl.cfg"
+  jq -n --arg id "$service_id" --slurpfile spec "$spec" \
+    '{services: [{schemaVersion: 1, id: $id, service: $spec[0]}]}' > "$apply_payload"
+  escaped_token="$(printf '%s' "$sm_token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" > "$curl_cfg"
+  chmod 600 "$curl_cfg"
+
+  log "$service_id: 正在将稳定 ID 服务定义动态应用到运行中的 service-manager。"
+  curl -q -fsS --max-time 10 -K "$curl_cfg" \
+    -H 'Content-Type: application/json' -X POST --data-binary "@$apply_payload" \
+    "$sm_url/api/v1/registry/apply" >/dev/null || {
+      warn "$service_id: service-manager registry apply 失败。"
+      return 1
+    }
+  log "$service_id: 正在调用 provider 注册：/api/v1/services/$service_id/register"
+  curl -q -fsS --max-time 10 -K "$curl_cfg" -X POST \
+    "$sm_url/api/v1/services/$service_id/register" >/dev/null || {
+      warn "$service_id: service-manager provider 注册失败。"
+      return 1
+    }
+)
+
 run_register_if_present() {
   local name="$1"
   local dir="$2"
@@ -835,18 +886,45 @@ run_register_if_present() {
   if [ -f "$path" ]; then
     chmod +x "$path"
     log "$name: 刷新 service-manager 注册。"
-    (cd "$dir" && run_with_service_manager_auth "$sm_token" run_logged env \
-      SERVICE_MANAGER_URL="$sm_url" \
-      bash "./scripts/register-service.sh") || warn "$name: register-service.sh 执行失败，继续尝试启动已注册服务。"
+    if (cd "$dir" \
+      && run_with_service_manager_auth "$sm_token" run_logged env \
+        SERVICE_MANAGER_URL="$sm_url" \
+        bash "./scripts/register-service.sh" \
+      && { case "$name" in pi-agent|pi-web) dynamic_register_pi_service "$name" ;; *) true ;; esac; }); then
+      return 0
+    fi
+    case "$name" in
+      pi-agent|pi-web)
+        warn "$name: 动态注册失败，拒绝继续启动该服务。"
+        return 1
+        ;;
+      *)
+        warn "$name: register-service.sh 执行失败，继续尝试启动已注册服务。"
+        return 0
+        ;;
+    esac
   else
-    warn "$name: 缺少注册入口，跳过：$path"
+    case "$name" in
+      pi-agent|pi-web)
+        warn "$name: 缺少必要注册入口：$path"
+        return 1
+        ;;
+      *)
+        warn "$name: 缺少注册入口，跳过：$path"
+        return 0
+        ;;
+    esac
   fi
 }
 
 start_target_requested "cc-connect" && run_register_if_present "cc-connect/openhouse-connect" "$cc_connect_dir"
 start_target_requested "smallphone" && run_register_if_present "SmallPhone" "$smallphone_dir"
-start_target_requested "pi-agent" && run_register_if_present "pi-agent" "$pi_agent_dir"
-start_target_requested "pi-web" && run_register_if_present "pi-web" "$pi_web_dir"
+if start_target_requested "pi-agent"; then
+  run_register_if_present "pi-agent" "$pi_agent_dir" || exit 1
+fi
+if start_target_requested "pi-web"; then
+  run_register_if_present "pi-web" "$pi_web_dir" || exit 1
+fi
 
 if ! command -v curl >/dev/null 2>&1; then
   warn "缺少 curl，无法调用 service-manager 启动 local-stack。"
@@ -901,9 +979,9 @@ if ! wait_for_final_readiness; then
 fi
 
 if [ "$cc_connect_disabled" = "1" ]; then
-  log "入口：service-manager=$sm_url, pi-web=$pi_web_url, SmallPhone(兼容)=$smallphone_url, SmallPhone core(兼容)=$smallphone_core_url, cc-connect=disabled"
+  log "入口：service-manager=$sm_url, pi-agent=${pi_runtime_host}:${pi_runtime_port}, pi-web=$pi_web_url, SmallPhone(兼容)=$smallphone_url, SmallPhone core(兼容)=$smallphone_core_url, cc-connect=disabled"
 else
-  log "入口：service-manager=$sm_url, pi-web=$pi_web_url, SmallPhone(兼容)=$smallphone_url, SmallPhone core(兼容)=$smallphone_core_url, cc-connect=$cc_url"
+  log "入口：service-manager=$sm_url, pi-agent=${pi_runtime_host}:${pi_runtime_port}, pi-web=$pi_web_url, SmallPhone(兼容)=$smallphone_url, SmallPhone core(兼容)=$smallphone_core_url, cc-connect=$cc_url"
 fi
 
 if [ "${SMALLPHONEAI_UBUNTU_RUNTIME_KEEPALIVE:-0}" = "1" ]; then

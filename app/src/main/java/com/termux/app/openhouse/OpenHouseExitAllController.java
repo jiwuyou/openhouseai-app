@@ -205,7 +205,7 @@ public final class OpenHouseExitAllController {
         script.append("    [ \"$pid\" = \"$self_pid\" ] && continue\n");
         script.append("    [ -n \"$parent_pid\" ] && [ \"$pid\" = \"$parent_pid\" ] && continue\n");
         script.append("    case \" $args \" in\n");
-        script.append("      *service-manager-proot-launcher*|*service-manager*' serve '*|*service-manager*' serve --bind '*|*openhouse-pi-agent-sentinel*|*openhouse-pi-web-start*|*cloudcli*' start '*|*dist-server/server/index.js*|*/smallphone-active/*|*smallphone-frontend*|*smallphone-core*|*/openhouse-connect/*|*openhouse-connect*' serve '*|*cc-connect*' serve '*)\n");
+        script.append("      *service-manager-proot-launcher*|*service-manager*' serve '*|*service-manager*' serve --bind '*|*openhouse-pi-runtime*|*openhouse-pi-web-start*|*cloudcli*' start '*|*dist-server/server/index.js*|*/smallphone-active/*|*smallphone-frontend*|*smallphone-core*|*/openhouse-connect/*|*openhouse-connect*' serve '*|*cc-connect*' serve '*)\n");
         script.append("        kill \"$pid\" >/dev/null 2>&1 && log \"stopped pid=$pid\" ;;\n");
         script.append("    esac\n");
         script.append("  done\n");
@@ -222,7 +222,7 @@ public final class OpenHouseExitAllController {
         script.append("  [ \"$pid\" = \"$self_pid\" ] && continue\n");
         script.append("  [ -n \"$parent_pid\" ] && [ \"$pid\" = \"$parent_pid\" ] && continue\n");
         script.append("  case \" $args \" in\n");
-        script.append("    *service-manager*' serve '*|*service-manager*' serve --bind '*|*openhouse-pi-agent-sentinel*|*openhouse-pi-web-start*|*cloudcli*' start '*|*/smallphone-active/*|*smallphone-frontend*|*smallphone-core*|*/openhouse-connect/*|*openhouse-connect*' serve '*|*cc-connect*' serve '*) kill \"$pid\" >/dev/null 2>&1 || true ;;\n");
+        script.append("    *service-manager*' serve '*|*service-manager*' serve --bind '*|*openhouse-pi-runtime*|*openhouse-pi-web-start*|*cloudcli*' start '*|*/smallphone-active/*|*smallphone-frontend*|*smallphone-core*|*/openhouse-connect/*|*openhouse-connect*' serve '*|*cc-connect*' serve '*) kill \"$pid\" >/dev/null 2>&1 || true ;;\n");
         script.append("  esac\n");
         script.append("done\n");
         script.append("' >/dev/null 2>&1 || true\n");
