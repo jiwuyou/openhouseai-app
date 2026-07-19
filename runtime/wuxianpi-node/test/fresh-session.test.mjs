@@ -23,3 +23,19 @@ test("fresh unsaved session supports history, list, and reconnect open", async (
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("active sessions share one service-level ModelRuntime", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wuxianpi-model-runtime-"));
+  const registry = new SessionRegistry(() => {}, { agentDir: join(root, "agent"), idleTimeoutMs: 0 });
+  try {
+    const first = await registry.create(root);
+    const second = await registry.create(root);
+    const firstSlot = await registry.getOrOpen(first.sessionId);
+    const secondSlot = await registry.getOrOpen(second.sessionId);
+    assert.equal(firstSlot.runtime.services.modelRuntime, secondSlot.runtime.services.modelRuntime);
+    assert.equal(firstSlot.runtime.services.modelRuntime, await registry.models());
+  } finally {
+    await registry.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});

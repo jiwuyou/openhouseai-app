@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
   type AgentSession, type AgentSessionEvent, type AgentSessionRuntime,
   type CreateAgentSessionRuntimeFactory, createAgentSessionFromServices,
-  createAgentSessionRuntime, createAgentSessionServices, getAgentDir, SessionManager,
+  createAgentSessionRuntime, createAgentSessionServices, getAgentDir, ModelRuntime,
+  SessionManager, SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { ExtensionUiBridge } from "./extension-ui.js";
 import { type AgentEventEnvelope, RequestError } from "./protocol.js";
@@ -46,16 +47,62 @@ export class SessionRegistry {
   private readonly slots = new Set<RuntimeSlot>();
   private readonly idleTimeoutMs: number;
   private readonly agentDir: string;
+  private readonly sharedModelRuntime: Promise<ModelRuntime>;
+  private readonly modelSettings: SettingsManager;
 
-  constructor(private readonly emitEvent: EventSink, options: { idleTimeoutMs?: number; agentDir?: string } = {}) {
+  constructor(private readonly emitEvent: EventSink, options: {
+    idleTimeoutMs?: number;
+    agentDir?: string;
+    modelRuntime?: ModelRuntime;
+    settingsManager?: SettingsManager;
+  } = {}) {
     this.idleTimeoutMs = options.idleTimeoutMs ?? 5 * 60_000;
     this.agentDir = options.agentDir ?? getAgentDir();
+    this.sharedModelRuntime = options.modelRuntime
+      ? Promise.resolve(options.modelRuntime)
+      : ModelRuntime.create({
+          authPath: join(this.agentDir, "auth.json"),
+          modelsPath: join(this.agentDir, "models.json"),
+        });
+    this.modelSettings = options.settingsManager ?? SettingsManager.create(process.cwd(), this.agentDir);
   }
 
   get size(): number { return this.slots.size; }
 
   status() {
     return { protocol: "wuxianpi-sdk-v1" as const, activeSessions: [...this.slots].map((slot) => this.identity(slot)) };
+  }
+
+  models(): Promise<ModelRuntime> { return this.sharedModelRuntime; }
+  settings(): SettingsManager { return this.modelSettings; }
+
+  async reloadModelConfiguration(): Promise<void> {
+    const modelRuntime = await this.sharedModelRuntime;
+    await modelRuntime.reloadConfig();
+    await this.modelSettings.reload();
+    await Promise.all([...this.slots].map((slot) => slot.runtime.services.settingsManager.reload()));
+  }
+
+  async setDefaultModel(provider: string, modelId: string, sessionId?: string) {
+    const modelRuntime = await this.sharedModelRuntime;
+    const model = modelRuntime.getModel(provider, modelId);
+    if (!model) throw new RequestError("model_not_found", `Model not found: ${provider}/${modelId}`);
+    const persist = async () => {
+      this.modelSettings.setDefaultModelAndProvider(provider, modelId);
+      await this.modelSettings.flush();
+    };
+    if (!sessionId) {
+      await persist();
+      return { provider, modelId, appliedSessionIds: [] as string[] };
+    }
+    return this.run(sessionId, async (slot) => {
+      requireIdle(slot, "model.setDefault");
+      await persist();
+      const session = slot.runtime.session;
+      await session.setModel(model);
+      await session.settingsManager.flush();
+      return { provider, modelId, appliedSessionIds: [session.sessionId] };
+    });
   }
 
   async list(options: { cwd?: string; all?: boolean; offset: number; limit: number }) {
@@ -198,7 +245,11 @@ export class SessionRegistry {
 
   private async createSlot(manager: SessionManager): Promise<RuntimeSlot> {
     const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
-      const services = await createAgentSessionServices({ cwd, agentDir: this.agentDir });
+      const services = await createAgentSessionServices({
+        cwd,
+        agentDir: this.agentDir,
+        modelRuntime: await this.sharedModelRuntime,
+      });
       return { ...(await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent })),
         services, diagnostics: services.diagnostics };
     };

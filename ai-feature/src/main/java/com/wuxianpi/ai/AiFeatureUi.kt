@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -51,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wuxianpi.pi.PiConnectionState
@@ -154,6 +156,7 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
     val conversation by model.conversation.collectAsState()
     val connection by model.connection.collectAsState()
     val status by model.statusMessage.collectAsState()
+    val modelConfig by model.modelConfig.collectAsState()
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
 
@@ -171,6 +174,22 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
         )
     }
 
+    if (modelConfig.isOpen) {
+        ModelConfigDialog(
+            state = modelConfig,
+            agentRunning = conversation.isAgentRunning,
+            onDismiss = model::dismissModelConfig,
+            onSelectProvider = model::selectModelProvider,
+            onSelectModel = model::selectModel,
+            onApiKeyChange = model::updateModelApiKey,
+            onLogin = model::loginModelProvider,
+            onTest = model::testSelectedModel,
+            onSetDefault = model::setDefaultModel,
+            onLogout = model::logoutModelProvider,
+            onReload = { model.refreshModelConfig(reload = true) },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -181,6 +200,7 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
                     }
                 },
                 actions = {
+                    TextButton(onClick = model::openModelConfig) { Text("Models") }
                     if (allowDisconnect) {
                         TextButton(onClick = model::forgetRuntime) { Text("Disconnect") }
                     }
@@ -260,6 +280,164 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
             }
         }
     }
+}
+
+@Composable
+private fun ModelConfigDialog(
+    state: ModelConfigState,
+    agentRunning: Boolean,
+    onDismiss: () -> Unit,
+    onSelectProvider: (String) -> Unit,
+    onSelectModel: (String) -> Unit,
+    onApiKeyChange: (String) -> Unit,
+    onLogin: () -> Unit,
+    onTest: () -> Unit,
+    onSetDefault: () -> Unit,
+    onLogout: () -> Unit,
+    onReload: () -> Unit,
+) {
+    val provider = state.selectedProviderStatus
+    val selectedModel = state.selectedModel
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (state.promptRequired) "Configure a model to continue" else "Models") },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (state.phase == ModelConfigPhase.LOADING || state.phase == ModelConfigPhase.RELOADING) {
+                    item("loading") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text("Loading SDK models…", Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+                state.availabilityError?.let { value ->
+                    item("availability-error") { Text(value, color = Color(0xFFA33A2B)) }
+                }
+                state.error?.let { value ->
+                    item("model-error") { Text(value, color = Color(0xFFA33A2B)) }
+                }
+                state.message?.let { value ->
+                    item("model-message") { Text(value, color = Color(0xFF47722E)) }
+                }
+                item("provider-label") { Text("Provider", fontWeight = FontWeight.SemiBold) }
+                if (state.providers.isEmpty() && !state.isBusy) {
+                    item("no-providers") { Text("No providers were returned by the Pi SDK.") }
+                }
+                items(state.providers, key = { "provider-${it.id}" }) { item ->
+                    OutlinedButton(
+                        onClick = { onSelectProvider(item.id) },
+                        enabled = !state.isBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        val marker = if (item.id == state.selectedProvider) "● " else ""
+                        val auth = if (item.authenticated) "connected" else "not connected"
+                        Text("$marker${item.name} · $auth")
+                    }
+                }
+                provider?.let { selectedProvider ->
+                    item("auth-status") {
+                        Column {
+                            Text(
+                                if (selectedProvider.authenticated) {
+                                    selectedProvider.authLabel ?: "Provider authenticated"
+                                } else {
+                                    "Enter an API key for ${selectedProvider.name}"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            selectedProvider.authSource?.let {
+                                Text("Source: $it", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                    item("api-key") {
+                        OutlinedTextField(
+                            value = state.apiKey,
+                            onValueChange = onApiKeyChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("API key") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            enabled = !state.isBusy,
+                        )
+                    }
+                    item("login") {
+                        Button(
+                            onClick = onLogin,
+                            enabled = state.apiKey.isNotBlank() && !state.isBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(if (selectedProvider.authenticated) "Update API key" else "Save API key") }
+                    }
+                }
+                item("model-label") { Text("Model", fontWeight = FontWeight.SemiBold) }
+                if (state.selectedModels.isEmpty() && provider != null) {
+                    item("no-models") { Text("This provider returned no models.") }
+                }
+                items(state.selectedModels, key = { "model-${it.provider}-${it.id}" }) { item ->
+                    OutlinedButton(
+                        onClick = { onSelectModel(item.id) },
+                        enabled = item.available && !state.isBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        val marker = if (item.id == state.selectedModelId) "● " else ""
+                        val details = buildList {
+                            if (item.reasoning) add("reasoning")
+                            if (item.input.isNotEmpty()) add(item.input.joinToString("/"))
+                            if (!item.available) add("unavailable")
+                        }.joinToString(" · ")
+                        Text("$marker${item.name}${if (details.isBlank()) "" else " · $details"}")
+                    }
+                }
+                if (state.defaultModel != null) {
+                    item("default") {
+                        Text(
+                            "Default: ${state.defaultModel.provider}/${state.defaultModel.modelId}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                if (agentRunning) {
+                    item("running-warning") {
+                        Text("Model switching is disabled while Pi is working.", color = Color(0xFF8A6D1F))
+                    }
+                }
+                item("test") {
+                    OutlinedButton(
+                        onClick = onTest,
+                        enabled = provider?.authenticated == true && selectedModel?.available == true && !state.isBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Test selected model") }
+                }
+                item("save-default") {
+                    Button(
+                        onClick = onSetDefault,
+                        enabled = provider?.authenticated == true && selectedModel?.available == true &&
+                            !state.isBusy && !agentRunning,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Set as default") }
+                }
+                if (provider?.authenticated == true) {
+                    item("logout") {
+                        OutlinedButton(
+                            onClick = onLogout,
+                            enabled = !state.isBusy && !agentRunning,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Log out provider") }
+                    }
+                }
+                item("reload") {
+                    TextButton(onClick = onReload, enabled = !state.isBusy) { Text("Reload SDK models") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, enabled = !state.promptRequired && !state.isBusy) { Text("Close") }
+        },
+    )
 }
 
 @Composable

@@ -32,6 +32,7 @@ class WuxianPiViewModel(
     private val _conversation = MutableStateFlow(ConversationState())
     private val _statusMessage = MutableStateFlow<String?>(null)
     private val _connection = MutableStateFlow<PiConnectionState>(PiConnectionState.Disconnected)
+    private val _modelConfig = MutableStateFlow(ModelConfigState())
     private var client: WuxianPiClient? = null
     private var observerJob: Job? = null
     private var connectJob: Job? = null
@@ -41,6 +42,7 @@ class WuxianPiViewModel(
     val conversation: StateFlow<ConversationState> = _conversation.asStateFlow()
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
     val connection: StateFlow<PiConnectionState> = _connection.asStateFlow()
+    val modelConfig: StateFlow<ModelConfigState> = _modelConfig.asStateFlow()
 
     init {
         _credentials.value?.let(::connect)
@@ -63,6 +65,10 @@ class WuxianPiViewModel(
     fun send(text: String) {
         val trimmed = text.trim()
         val sdk = client ?: return
+        if (!_modelConfig.value.hasLoaded || !_modelConfig.value.hasUsableDefault) {
+            openModelConfig()
+            return
+        }
         if (trimmed.isEmpty() ||
             _connection.value !is PiConnectionState.Connected ||
             _conversation.value.isAgentRunning ||
@@ -75,6 +81,117 @@ class WuxianPiViewModel(
                     _conversation.update { ConversationReducer.addUser(it, trimmed) }
                 }
             }.onFailure(::showInlineClientError)
+        }
+    }
+
+    fun openModelConfig() {
+        _modelConfig.update { it.copy(isOpen = true) }
+        if (!_modelConfig.value.hasLoaded) refreshModelConfig()
+    }
+
+    fun dismissModelConfig() {
+        _modelConfig.update { state ->
+            if (state.promptRequired || state.isBusy) state else state.copy(isOpen = false)
+        }
+    }
+
+    fun selectModelProvider(provider: String) {
+        if (_modelConfig.value.isBusy) return
+        _modelConfig.update { it.selectProvider(provider) }
+    }
+
+    fun selectModel(modelId: String) {
+        if (_modelConfig.value.isBusy) return
+        _modelConfig.update { it.selectModel(modelId) }
+    }
+
+    fun updateModelApiKey(value: String) {
+        _modelConfig.update { it.copy(apiKey = value, error = null, message = null) }
+    }
+
+    fun refreshModelConfig(reload: Boolean = false) {
+        val sdk = client ?: return
+        if (_modelConfig.value.isBusy) return
+        viewModelScope.launch {
+            _modelConfig.update { it.begin(if (reload) ModelConfigPhase.RELOADING else ModelConfigPhase.LOADING) }
+            runCatching { if (reload) sdk.reloadModels() else sdk.modelStatus() }
+                .onSuccess { status -> _modelConfig.update { it.withStatus(status) } }
+                .onFailure { error -> _modelConfig.update { it.fail(error.message ?: "Could not load models") } }
+        }
+    }
+
+    fun loginModelProvider() {
+        val sdk = client ?: return
+        val state = _modelConfig.value
+        val provider = state.selectedProvider ?: return
+        val apiKey = state.apiKey
+        if (apiKey.isBlank() || state.isBusy) return
+        viewModelScope.launch {
+            _modelConfig.update { it.begin(ModelConfigPhase.LOGGING_IN) }
+            val login = runCatching { sdk.loginModelProvider(provider, apiKey) }
+            if (login.isFailure) {
+                val error = login.exceptionOrNull()
+                _modelConfig.update { it.fail(error?.message ?: "Provider login failed") }
+                return@launch
+            }
+            // The secret has been accepted by the service; never retain it while refreshing status.
+            _modelConfig.update { it.complete("Provider connected", clearSecret = true) }
+            runCatching { sdk.modelStatus() }
+                .onSuccess { status ->
+                    _modelConfig.update { it.withStatus(status).complete("Provider connected", clearSecret = true) }
+                }
+                .onFailure { error ->
+                    _modelConfig.update { it.fail(error.message ?: "Provider connected, but status refresh failed") }
+                }
+        }
+    }
+
+    fun testSelectedModel() {
+        val sdk = client ?: return
+        val state = _modelConfig.value
+        val provider = state.selectedProvider ?: return
+        val modelId = state.selectedModelId ?: return
+        if (state.isBusy) return
+        viewModelScope.launch {
+            _modelConfig.update { it.begin(ModelConfigPhase.TESTING) }
+            runCatching { sdk.testModel(provider, modelId) }
+                .onSuccess { result ->
+                    _modelConfig.update { it.complete("Model responded in ${result.latencyMs} ms") }
+                }
+                .onFailure { error -> _modelConfig.update { it.fail(error.message ?: "Model test failed") } }
+        }
+    }
+
+    fun setDefaultModel() {
+        val sdk = client ?: return
+        val state = _modelConfig.value
+        val provider = state.selectedProvider ?: return
+        val modelId = state.selectedModelId ?: return
+        if (state.isBusy || _conversation.value.isAgentRunning) return
+        viewModelScope.launch {
+            _modelConfig.update { it.begin(ModelConfigPhase.SAVING_DEFAULT) }
+            runCatching {
+                sdk.setDefaultModel(provider, modelId)
+                sdk.modelStatus()
+            }.onSuccess { status ->
+                _modelConfig.update { it.withStatus(status).complete("Default model updated", clearSecret = true) }
+            }.onFailure { error -> _modelConfig.update { it.fail(error.message ?: "Could not set default model") } }
+        }
+    }
+
+    fun logoutModelProvider() {
+        val sdk = client ?: return
+        val state = _modelConfig.value
+        val provider = state.selectedProvider ?: return
+        if (state.isBusy || _conversation.value.isAgentRunning) return
+        viewModelScope.launch {
+            _modelConfig.update { it.begin(ModelConfigPhase.LOGGING_OUT) }
+            runCatching {
+                sdk.logoutModelProvider(provider)
+                sdk.modelStatus()
+            }.onSuccess { status ->
+                _modelConfig.update { it.withStatus(status, openIfMissing = true).complete("Provider logged out", true) }
+            }.onFailure { error -> _modelConfig.update { it.fail(error.message ?: "Provider logout failed") } }
         }
     }
 
@@ -156,6 +273,7 @@ class WuxianPiViewModel(
         _conversation.value = ConversationState()
         _connection.value = PiConnectionState.Disconnected
         _statusMessage.value = null
+        _modelConfig.value = ModelConfigState()
     }
 
     private fun connect(credentials: PiServiceCredentials) {
@@ -212,6 +330,16 @@ class WuxianPiViewModel(
                 sdk.history(opened.sessionPath).also { history ->
                     _conversation.update { ConversationReducer.restore(history, it) }
                 }
+                runCatching { sdk.modelStatus() }
+                    .onSuccess { status ->
+                        _modelConfig.update { it.withStatus(status, openIfMissing = true) }
+                    }
+                    .onFailure { error ->
+                        _modelConfig.update {
+                            it.copy(isOpen = true, hasLoaded = true)
+                                .fail(error.message ?: "Could not load model configuration")
+                        }
+                    }
                 _statusMessage.value = null
             }.onFailure { error ->
                 _statusMessage.value = error.message ?: "WuxianPi service is unavailable"

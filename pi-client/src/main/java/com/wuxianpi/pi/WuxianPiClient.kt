@@ -112,6 +112,76 @@ class WuxianPiClient(
 
     suspend fun runtimeStatus(): PiResponse = command("runtime.status", includeSession = false)
 
+    suspend fun modelStatus(provider: String? = null): PiModelStatus {
+        val response = command(
+            "model.status",
+            JSONObject().apply { if (!provider.isNullOrBlank()) put("provider", provider) },
+            includeSession = false,
+        )
+        return PiModelStatus.from(response.requireSuccess())
+    }
+
+    suspend fun loginModelProvider(provider: String, apiKey: String): PiModelLoginResult {
+        require(provider.isNotBlank()) { "Provider is required" }
+        require(apiKey.isNotBlank()) { "API key is required" }
+        val response = command(
+            "model.login",
+            JSONObject()
+                .put("provider", provider)
+                .put("method", "api_key")
+                .put("apiKey", apiKey),
+            timeoutMillis = 60_000,
+            includeSession = false,
+        )
+        return PiModelLoginResult.from(response.requireSuccess())
+    }
+
+    suspend fun logoutModelProvider(provider: String): PiModelLoginResult {
+        require(provider.isNotBlank()) { "Provider is required" }
+        val response = command(
+            "model.logout",
+            JSONObject().put("provider", provider),
+            includeSession = false,
+        )
+        return PiModelLoginResult.from(response.requireSuccess())
+    }
+
+    suspend fun testModel(provider: String, modelId: String, timeoutMillis: Long = 30_000): PiModelTestResult {
+        require(provider.isNotBlank()) { "Provider is required" }
+        require(modelId.isNotBlank()) { "Model is required" }
+        val response = command(
+            "model.test",
+            JSONObject()
+                .put("provider", provider)
+                .put("modelId", modelId)
+                .put("timeoutMs", timeoutMillis),
+            timeoutMillis = timeoutMillis + 5_000,
+            includeSession = false,
+        )
+        return PiModelTestResult.from(response.requireSuccess())
+    }
+
+    suspend fun reloadModels(): PiModelStatus {
+        val response = command("model.reload", includeSession = false, timeoutMillis = 60_000)
+        return PiModelStatus.from(response.requireSuccess())
+    }
+
+    suspend fun setDefaultModel(provider: String, modelId: String): PiSetDefaultResult {
+        require(provider.isNotBlank()) { "Provider is required" }
+        require(modelId.isNotBlank()) { "Model is required" }
+        check(!_agentActive.value) { "Wait for the active Pi turn to finish before switching models" }
+        val response = executeCommand(
+            type = "model.setDefault",
+            payload = JSONObject().put("provider", provider).put("modelId", modelId),
+            timeoutMillis = 60_000,
+            includeSession = false,
+            isPrompt = false,
+            onQueued = null,
+            sessionIdOverride = activeSession?.sessionId,
+        )
+        return PiSetDefaultResult.from(response.requireSuccess())
+    }
+
     suspend fun listSessions(
         cwd: String? = null,
         all: Boolean = true,
