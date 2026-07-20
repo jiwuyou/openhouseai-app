@@ -16,6 +16,7 @@ android {
     }
 
     compileOptions {
+        coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
@@ -23,6 +24,7 @@ android {
 
     packagingOptions {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        resources.excludes += ["/LICENSE-EDL-1.0.txt", "/LICENSE-EPL-1.0.txt"]
     }
 
     // The pairing server serves this exact filename and compressed byte stream from APK assets.
@@ -73,7 +75,8 @@ tasks.register("verifyDebugRuntimeAsset") {
 }
 
 dependencies {
-    implementation project(":ai-feature")
+    implementation project(":operit-feature")
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.json:json:20240303"
 }

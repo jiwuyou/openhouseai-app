@@ -1,6 +1,7 @@
 package com.wuxianpi.ai
 
 import android.app.Application
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,8 +56,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.FileProvider
 import com.wuxianpi.pi.PiConnectionState
 import org.json.JSONArray
+import java.io.File
 
 @Composable
 fun WuxianPiFeature(config: AiFeatureConfig, modifier: Modifier = Modifier) {
@@ -157,6 +160,8 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
     val connection by model.connection.collectAsState()
     val status by model.statusMessage.collectAsState()
     val modelConfig by model.modelConfig.collectAsState()
+    val diagnostics by model.diagnosticsState.collectAsState()
+    val context = LocalContext.current
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
 
@@ -190,6 +195,30 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
         )
     }
 
+    if (diagnostics.isOpen) {
+        DiagnosticsDialog(
+            state = diagnostics,
+            onDismiss = model::dismissDiagnostics,
+            onRefresh = model::refreshDiagnostics,
+            onToggleDetail = model::toggleDetailedDiagnostics,
+            onExport = model::exportDiagnostics,
+        )
+    }
+
+    LaunchedEffect(diagnostics.exportPath) {
+        val path = diagnostics.exportPath ?: return@LaunchedEffect
+        runCatching {
+            val file = File(path)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.wuxianpi.files", file)
+            val share = Intent(Intent.ACTION_SEND)
+                .setType("application/zip")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(Intent.createChooser(share, "Share WuxianPi diagnostics"))
+        }
+        model.clearDiagnosticsExport()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -201,6 +230,7 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
                 },
                 actions = {
                     TextButton(onClick = model::openModelConfig) { Text("Models") }
+                    TextButton(onClick = model::openDiagnostics) { Text("Diagnostics") }
                     if (allowDisconnect) {
                         TextButton(onClick = model::forgetRuntime) { Text("Disconnect") }
                     }
@@ -280,6 +310,61 @@ private fun ChatScreen(model: WuxianPiViewModel, allowDisconnect: Boolean) {
             }
         }
     }
+}
+
+@Composable
+private fun DiagnosticsDialog(
+    state: DiagnosticsState,
+    onDismiss: () -> Unit,
+    onRefresh: () -> Unit,
+    onToggleDetail: () -> Unit,
+    onExport: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Diagnostics") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.isLoading || state.isExporting) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text(
+                            if (state.isExporting) "Exporting…" else "Loading…",
+                            Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+                Text("Connection: ${state.connectionId ?: "not reported"}")
+                Text("Event ACK: ${if (state.eventAckAvailable) "available" else "unavailable"}")
+                Text(
+                    "Persistent Node diagnostics: " +
+                        if (state.persistentNodeDiagnostics) "available" else "unavailable",
+                )
+                Text("Android dropped entries: ${state.androidDroppedEntries}")
+                state.nodeSize?.let { Text("Node log size: $it bytes") }
+                state.message?.let { Text(it, color = Color(0xFF47722E)) }
+                state.error?.let { Text(it, color = Color(0xFFA33A2B)) }
+                OutlinedButton(
+                    onClick = onToggleDetail,
+                    enabled = !state.isLoading && !state.isExporting,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (state.detailedModeActive) "Disable detailed mode" else "Enable detailed mode for 2 minutes")
+                }
+                Button(
+                    onClick = onExport,
+                    enabled = !state.isExporting,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Export and share ZIP") }
+                TextButton(onClick = onRefresh, enabled = !state.isLoading && !state.isExporting) {
+                    Text("Refresh status")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, enabled = !state.isExporting) { Text("Close") }
+        },
+    )
 }
 
 @Composable

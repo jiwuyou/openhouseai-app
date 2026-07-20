@@ -11,6 +11,7 @@ import com.wuxianpi.pi.PiResponse
 import com.wuxianpi.pi.PiServiceConfig
 import com.wuxianpi.pi.PiSessionRef
 import com.wuxianpi.pi.WuxianPiClient
+import com.wuxianpi.pi.MAX_DIAGNOSTIC_DETAIL_MS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,11 +29,13 @@ class WuxianPiViewModel(
     private val serviceStore = PiServiceStore(application)
     private val recentSessions = RecentSessionStore(application)
     private val http = OkHttpClient()
+    private val diagnostics = WuxianPiDiagnostics.get(application)
     private val _credentials = MutableStateFlow(initialCredentials())
     private val _conversation = MutableStateFlow(ConversationState())
     private val _statusMessage = MutableStateFlow<String?>(null)
     private val _connection = MutableStateFlow<PiConnectionState>(PiConnectionState.Disconnected)
     private val _modelConfig = MutableStateFlow(ModelConfigState())
+    private val _diagnosticsState = MutableStateFlow(DiagnosticsState())
     private var client: WuxianPiClient? = null
     private var observerJob: Job? = null
     private var connectJob: Job? = null
@@ -43,6 +46,7 @@ class WuxianPiViewModel(
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
     val connection: StateFlow<PiConnectionState> = _connection.asStateFlow()
     val modelConfig: StateFlow<ModelConfigState> = _modelConfig.asStateFlow()
+    val diagnosticsState: StateFlow<DiagnosticsState> = _diagnosticsState.asStateFlow()
 
     init {
         _credentials.value?.let(::connect)
@@ -60,6 +64,110 @@ class WuxianPiViewModel(
 
     fun retryConnection() {
         _credentials.value?.let(::connect)
+    }
+
+    fun openDiagnostics() {
+        _diagnosticsState.update { it.copy(isOpen = true) }
+        refreshDiagnostics()
+    }
+
+    fun dismissDiagnostics() {
+        _diagnosticsState.update { if (it.isExporting) it else it.copy(isOpen = false) }
+    }
+
+    fun refreshDiagnostics() {
+        val sdk = client ?: return
+        if (_diagnosticsState.value.isLoading) return
+        viewModelScope.launch {
+            _diagnosticsState.update { it.copy(isLoading = true, error = null, message = null) }
+            val ready = sdk.runtimeReady.value
+            val status = runCatching { sdk.diagnosticsStatus() }
+            _diagnosticsState.update { state ->
+                status.fold(
+                    onSuccess = { node ->
+                        state.copy(
+                            isLoading = false,
+                            connectionId = ready?.connectionId,
+                            eventAckAvailable = ready?.capabilities?.eventAck == true,
+                            persistentNodeDiagnostics = ready?.capabilities?.persistentDiagnostics == true,
+                            detailedUntilMillis = maxOf(diagnostics.detailedUntilMillis(), node.detailUntil ?: 0),
+                            androidDroppedEntries = diagnostics.droppedEntries(),
+                            nodeSize = node.size,
+                        )
+                    },
+                    onFailure = { error -> state.copy(isLoading = false, error = error.message) },
+                )
+            }
+        }
+    }
+
+    fun toggleDetailedDiagnostics() {
+        val sdk = client ?: return
+        if (_diagnosticsState.value.isLoading) return
+        viewModelScope.launch {
+            val enable = !_diagnosticsState.value.detailedModeActive
+            _diagnosticsState.update { it.copy(isLoading = true, error = null, message = null) }
+            runCatching { sdk.setDiagnosticsDetail(enable, MAX_DIAGNOSTIC_DETAIL_MS) }
+                .onSuccess { node ->
+                    _diagnosticsState.update {
+                        it.copy(
+                            isLoading = false,
+                            detailedUntilMillis = if (enable) {
+                                maxOf(diagnostics.detailedUntilMillis(), node.detailUntil ?: 0)
+                            } else 0,
+                            message = if (enable) {
+                                "Detailed diagnostics enabled for two minutes"
+                            } else {
+                                "Detailed diagnostics disabled"
+                            },
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _diagnosticsState.update { it.copy(isLoading = false, error = error.message) }
+                }
+        }
+    }
+
+    fun exportDiagnostics() {
+        val sdk = client ?: return
+        if (_diagnosticsState.value.isExporting) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _diagnosticsState.update { it.copy(isExporting = true, error = null, exportPath = null) }
+            val ready = sdk.runtimeReady.value
+            val status = runCatching { sdk.diagnosticsStatus() }.getOrNull()
+            val nodeResult = runCatching { sdk.exportNodeDiagnostics() }
+            val file = runCatching {
+                WuxianPiDiagnostics.exportZip(
+                    context = getApplication(),
+                    node = nodeResult.getOrNull(),
+                    nodeStatus = status,
+                    ready = ready,
+                    nodeError = nodeResult.exceptionOrNull()?.message,
+                )
+            }
+            _diagnosticsState.update { state ->
+                file.fold(
+                    onSuccess = {
+                        state.copy(
+                            isExporting = false,
+                            exportPath = it.absolutePath,
+                            message = if (nodeResult.isSuccess) {
+                                "Diagnostics exported"
+                            } else {
+                                "Android diagnostics exported; Node export failed"
+                            },
+                            error = null,
+                        )
+                    },
+                    onFailure = { error -> state.copy(isExporting = false, error = error.message) },
+                )
+            }
+        }
+    }
+
+    fun clearDiagnosticsExport() {
+        _diagnosticsState.update { it.copy(exportPath = null) }
     }
 
     fun send(text: String) {
@@ -274,6 +382,7 @@ class WuxianPiViewModel(
         _connection.value = PiConnectionState.Disconnected
         _statusMessage.value = null
         _modelConfig.value = ModelConfigState()
+        _diagnosticsState.value = DiagnosticsState()
     }
 
     private fun connect(credentials: PiServiceCredentials) {
@@ -286,6 +395,7 @@ class WuxianPiViewModel(
             config = PiServiceConfig(credentials.serviceUrl.toHttpUrl()),
             http = http,
             parentScope = viewModelScope,
+            diagnostics = diagnostics,
         )
         client = sdk
         observerJob = viewModelScope.launch {

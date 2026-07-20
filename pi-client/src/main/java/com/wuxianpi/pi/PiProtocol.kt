@@ -18,8 +18,10 @@ data class PiResponse(
 data class PiSessionRef(
     val sessionId: String,
     val sessionPath: String,
+    val eventStreamId: String? = null,
     val cwd: String? = null,
     val isRunning: Boolean? = null,
+    val isIdle: Boolean? = null,
 ) {
     companion object {
         fun from(value: Any?): PiSessionRef {
@@ -32,8 +34,10 @@ data class PiSessionRef(
             return PiSessionRef(
                 sessionId = sessionId,
                 sessionPath = sessionPath,
+                eventStreamId = json.optNullableString("eventStreamId"),
                 cwd = json.optNullableString("cwd"),
                 isRunning = if (json.has("isRunning")) json.optBoolean("isRunning") else null,
+                isIdle = if (json.has("isIdle")) json.optBoolean("isIdle") else null,
             )
         }
     }

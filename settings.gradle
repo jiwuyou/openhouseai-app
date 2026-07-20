@@ -20,3 +20,6 @@ dependencyResolutionManagement {
 
 include ':app', ':termux-shared', ':terminal-emulator', ':terminal-view'
 include ':pi-client', ':ai-feature', ':native-app'
+include ':operit-feature'
+include ':operit-dragonbones', ':operit-mnn', ':operit-llama', ':operit-mmd'
+include ':operit-fbx', ':operit-quickjs', ':operit-showerclient'

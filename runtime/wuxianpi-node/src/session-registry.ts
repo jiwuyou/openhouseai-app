@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -7,7 +8,8 @@ import {
   SessionManager, SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { ExtensionUiBridge } from "./extension-ui.js";
-import { type AgentEventEnvelope, RequestError } from "./protocol.js";
+import type { PersistentDiagnostics } from "./diagnostics.js";
+import { RequestError, type RuntimeAgentEventEnvelope } from "./protocol.js";
 
 export class SerialExecutor {
   private tail: Promise<void> = Promise.resolve();
@@ -29,16 +31,16 @@ export function runDetached(operation: Promise<unknown>, onError: (error: unknow
 }
 
 export interface RuntimeIdentity {
-  sessionId: string; sessionPath?: string; cwd: string; isRunning: boolean; isIdle: boolean;
+  sessionId: string; sessionPath?: string; eventStreamId: string; cwd: string; isRunning: boolean; isIdle: boolean;
 }
 
 export type RuntimeSlot = {
-  runtime: AgentSessionRuntime; serial: SerialExecutor; sequence: number; isRunning: boolean;
+  runtime: AgentSessionRuntime; serial: SerialExecutor; eventStreamId: string; sequence: number; isRunning: boolean;
   agentStartCount: number; createdAt: Date; closeAfterSettled: boolean; unsubscribe?: () => void;
   ui?: ExtensionUiBridge; reclaimTimer?: NodeJS.Timeout;
 };
 
-export type EventSink = (event: AgentEventEnvelope) => void;
+export type EventSink = (event: RuntimeAgentEventEnvelope) => void;
 
 export class SessionRegistry {
   private readonly byId = new Map<string, RuntimeSlot>();
@@ -55,6 +57,7 @@ export class SessionRegistry {
     agentDir?: string;
     modelRuntime?: ModelRuntime;
     settingsManager?: SettingsManager;
+    diagnostics?: PersistentDiagnostics;
   } = {}) {
     this.idleTimeoutMs = options.idleTimeoutMs ?? 5 * 60_000;
     this.agentDir = options.agentDir ?? getAgentDir();
@@ -65,7 +68,10 @@ export class SessionRegistry {
           modelsPath: join(this.agentDir, "models.json"),
         });
     this.modelSettings = options.settingsManager ?? SettingsManager.create(process.cwd(), this.agentDir);
+    this.diagnostics = options.diagnostics;
   }
+
+  private readonly diagnostics?: PersistentDiagnostics;
 
   get size(): number { return this.slots.size; }
 
@@ -191,6 +197,12 @@ export class SessionRegistry {
   runtime(slot: RuntimeSlot): AgentSessionRuntime { return slot.runtime; }
   agentStartCount(slot: RuntimeSlot): number { return slot.agentStartCount; }
   emitPromptCompleted(slot: RuntimeSlot): void {
+    this.diagnostics?.flushStreamSummaries("prompt_completed", { sessionId: slot.runtime.session.sessionId });
+    this.diagnostics?.record("session.prompt_completed", {
+      sessionId: slot.runtime.session.sessionId,
+      isRunning: false,
+      handledWithoutAgent: true,
+    });
     this.emit(slot, { type: "prompt_completed", handledWithoutAgent: true, isRunning: false });
     this.scheduleReclaim(slot);
   }
@@ -230,7 +242,11 @@ export class SessionRegistry {
     return { closed: true, deferred: false };
   }
 
-  async dispose(): Promise<void> { await Promise.all([...this.slots].map((slot) => this.disposeSlot(slot))); }
+  async dispose(): Promise<void> {
+    this.diagnostics?.record("registry.dispose.start", { activeSessions: this.slots.size });
+    await Promise.all([...this.slots].map((slot) => this.disposeSlot(slot)));
+    this.diagnostics?.record("registry.dispose.end", { activeSessions: this.slots.size });
+  }
 
   private async resolveSessionPath(reference: string): Promise<string> {
     const candidate = resolve(reference);
@@ -256,8 +272,14 @@ export class SessionRegistry {
     const runtime = await createAgentSessionRuntime(createRuntime, {
       cwd: manager.getCwd(), agentDir: this.agentDir, sessionManager: manager,
     });
-    const slot: RuntimeSlot = { runtime, serial: new SerialExecutor(), sequence: 0, isRunning: false,
+    const slot: RuntimeSlot = { runtime, serial: new SerialExecutor(), eventStreamId: randomUUID(), sequence: 0, isRunning: false,
       agentStartCount: 0, createdAt: new Date(), closeAfterSettled: false };
+    this.diagnostics?.record("session.slot.created", {
+      sessionId: runtime.session.sessionId,
+      eventStreamId: slot.eventStreamId,
+      hasSessionPath: runtime.session.sessionFile !== undefined,
+      cwd: runtime.cwd,
+    });
     runtime.setRebindSession(async (session) => this.bindSlot(slot, session));
     this.slots.add(slot);
     try {
@@ -267,6 +289,10 @@ export class SessionRegistry {
       });
       return slot;
     } catch (error) {
+      this.diagnostics?.record("session.slot.create_failed", {
+        sessionId: runtime.session.sessionId,
+        errorName: error instanceof Error ? error.name : typeof error,
+      }, { error });
       this.slots.delete(slot);
       await runtime.dispose().catch(() => undefined);
       throw error;
@@ -274,6 +300,10 @@ export class SessionRegistry {
   }
 
   private async bindSlot(slot: RuntimeSlot, session: AgentSession): Promise<void> {
+    this.diagnostics?.record("session.slot.bind", {
+      sessionId: session.sessionId,
+      hasSessionPath: session.sessionFile !== undefined,
+    });
     this.removeIndexes(slot);
     const idCollision = this.byId.get(session.sessionId);
     const path = session.sessionFile ? this.canonicalPath(session.sessionFile) : undefined;
@@ -302,13 +332,31 @@ export class SessionRegistry {
   }
 
   private onSessionEvent(slot: RuntimeSlot, event: AgentSessionEvent): void {
-    if (event.type === "agent_start") { slot.agentStartCount++; slot.isRunning = true; this.cancelReclaim(slot); }
+    if (event.type === "agent_start") {
+      slot.agentStartCount++;
+      slot.isRunning = true;
+      this.cancelReclaim(slot);
+      this.diagnostics?.record("session.agent_start", {
+        sessionId: slot.runtime.session.sessionId,
+        agentStartCount: slot.agentStartCount,
+        isRunning: true,
+      });
+    }
+    if (event.type === "agent_settled") {
+      this.diagnostics?.flushStreamSummaries("agent_settled", { sessionId: slot.runtime.session.sessionId });
+    }
     this.emit(slot, event);
     if (event.type === "message_end" && event.message.role === "assistant" && event.message.errorMessage) {
       this.emit(slot, { type: "runtime_error", phase: "provider", message: event.message.errorMessage, recoverable: true });
     }
     if (event.type === "agent_settled") {
       slot.isRunning = false;
+      this.diagnostics?.record("session.agent_settled", {
+        sessionId: slot.runtime.session.sessionId,
+        sequence: slot.sequence,
+        isRunning: false,
+        closeAfterSettled: slot.closeAfterSettled,
+      });
       if (slot.closeAfterSettled) {
         runDetached(this.disposeSlot(slot), (error) => this.emit(slot, {
           type: "runtime_error", phase: "dispose", message: error instanceof Error ? error.message : String(error), recoverable: true,
@@ -319,13 +367,33 @@ export class SessionRegistry {
 
   private emit(slot: RuntimeSlot, payload: unknown): void {
     const session = slot.runtime.session;
+    const sequence = ++slot.sequence;
+    const diagnosticType = eventType(payload);
+    if (isHighFrequencyEvent(payload)) {
+      this.diagnostics?.recordStream({
+        stage: "produced",
+        sessionId: session.sessionId,
+        eventStreamId: slot.eventStreamId,
+        sequence,
+        eventType: diagnosticType,
+      }, { payload });
+    } else {
+      this.diagnostics?.record("event.produced", {
+        sessionId: session.sessionId,
+        eventStreamId: slot.eventStreamId,
+        sequence,
+        eventType: diagnosticType,
+        hasSessionPath: session.sessionFile !== undefined,
+      }, { payload });
+    }
     this.emitEvent({ type: "agent.event", sessionId: session.sessionId, sessionPath: session.sessionFile,
-      sequence: ++slot.sequence, payload });
+      eventStreamId: slot.eventStreamId, sequence, payload });
   }
 
   private identity(slot: RuntimeSlot): RuntimeIdentity {
     const session = slot.runtime.session;
-    return { sessionId: session.sessionId, sessionPath: session.sessionFile, cwd: slot.runtime.cwd,
+    return { sessionId: session.sessionId, sessionPath: session.sessionFile, eventStreamId: slot.eventStreamId,
+      cwd: slot.runtime.cwd,
       isRunning: slot.isRunning || session.isStreaming, isIdle: !slot.isRunning && session.isIdle };
   }
 
@@ -348,20 +416,61 @@ export class SessionRegistry {
     for (const [key, value] of this.byPath) if (value === slot) this.byPath.delete(key);
   }
   private cancelReclaim(slot: RuntimeSlot): void {
-    if (slot.reclaimTimer) clearTimeout(slot.reclaimTimer);
+    if (slot.reclaimTimer) {
+      clearTimeout(slot.reclaimTimer);
+      this.diagnostics?.record("session.reclaim.cancelled", { sessionId: slot.runtime.session.sessionId });
+    }
     slot.reclaimTimer = undefined;
   }
   private scheduleReclaim(slot: RuntimeSlot): void {
     this.cancelReclaim(slot);
     if (this.idleTimeoutMs <= 0) return;
-    slot.reclaimTimer = setTimeout(() => runDetached(this.disposeSlot(slot), (error) => this.emit(slot, {
-      type: "runtime_error", phase: "dispose", message: error instanceof Error ? error.message : String(error), recoverable: true,
-    })), this.idleTimeoutMs);
+    this.diagnostics?.record("session.reclaim.scheduled", {
+      sessionId: slot.runtime.session.sessionId,
+      idleTimeoutMs: this.idleTimeoutMs,
+    });
+    slot.reclaimTimer = setTimeout(() => {
+      this.diagnostics?.record("session.reclaim.fired", { sessionId: slot.runtime.session.sessionId });
+      runDetached(this.disposeSlot(slot), (error) => this.emit(slot, {
+        type: "runtime_error", phase: "dispose", message: error instanceof Error ? error.message : String(error), recoverable: true,
+      }));
+    }, this.idleTimeoutMs);
     slot.reclaimTimer.unref();
   }
   private async disposeSlot(slot: RuntimeSlot): Promise<void> {
     if (!this.slots.delete(slot)) return;
+    const sessionId = slot.runtime.session.sessionId;
+    this.diagnostics?.flushStreamSummaries("session_dispose", { sessionId });
+    this.diagnostics?.record("session.dispose.start", { sessionId });
     this.cancelReclaim(slot); this.removeIndexes(slot); slot.unsubscribe?.(); slot.ui?.dispose();
-    await slot.runtime.dispose();
+    try {
+      await slot.runtime.dispose();
+      this.diagnostics?.record("session.dispose.end", { sessionId });
+    } catch (error) {
+      this.diagnostics?.record("session.dispose.failed", {
+        sessionId,
+        errorName: error instanceof Error ? error.name : typeof error,
+      }, { error });
+      throw error;
+    }
   }
+}
+
+function eventType(payload: unknown): string {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return typeof payload;
+  const value = payload as { type?: unknown; assistantMessageEvent?: { type?: unknown } };
+  const type = value.type;
+  if (type === "message_update") {
+    const nestedType = value.assistantMessageEvent?.type;
+    if (nestedType === "text_delta" || nestedType === "thinking_delta") return nestedType;
+  }
+  return typeof type === "string" ? type : "unknown";
+}
+
+function isHighFrequencyEvent(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const value = payload as { type?: unknown; assistantMessageEvent?: { type?: unknown } };
+  return value.type === "message_update" || value.type === "tool_execution_update" ||
+    value.type === "text_delta" || value.type === "thinking_delta" ||
+    value.assistantMessageEvent?.type === "text_delta" || value.assistantMessageEvent?.type === "thinking_delta";
 }

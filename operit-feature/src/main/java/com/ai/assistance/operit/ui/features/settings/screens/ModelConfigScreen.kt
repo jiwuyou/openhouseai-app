@@ -35,13 +35,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.EnhancedAIService
-import com.ai.assistance.operit.api.chat.llmprovider.AIService
-import com.ai.assistance.operit.api.chat.llmprovider.ModelConfigConnectionTester
-import com.ai.assistance.operit.api.chat.llmprovider.ModelConnectionTestType
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
+import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.pi.PiModelSettingsAdapter
 import com.ai.assistance.operit.ui.features.settings.DebouncedModelConfigAutoSaveEffect
 import com.ai.assistance.operit.ui.features.settings.RegisterModelConfigSaveAction
 import com.ai.assistance.operit.ui.features.settings.rememberModelConfigSaveCoordinator
@@ -149,6 +148,7 @@ fun ModelConfigScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val saveCoordinator = rememberModelConfigSaveCoordinator()
+    val piModelSettings = remember { PiModelSettingsAdapter.instance }
 
     // 配置状态
     val configList = configManager.configListFlow.collectAsState(initial = listOf("default")).value
@@ -172,7 +172,6 @@ fun ModelConfigScreen(
     var isTestingConnection by remember { mutableStateOf(false) }
     var testResults by remember { mutableStateOf<List<ConnectionTestItem>?>(null) }
     var connectionTestJob by remember { mutableStateOf<Job?>(null) }
-    var activeConnectionTestService by remember { mutableStateOf<AIService?>(null) }
 
     // 初始化配置，并默认定位到“对话功能模型”所使用的配置
     LaunchedEffect(Unit) {
@@ -387,7 +386,6 @@ fun ModelConfigScreen(
                             TextButton(
                                 onClick = {
                                     if (isTestingConnection) {
-                                        activeConnectionTestService?.cancelStreaming()
                                         connectionTestJob?.cancel()
                                         return@TextButton
                                     }
@@ -403,32 +401,27 @@ fun ModelConfigScreen(
                                                     configManager.getModelConfig(selectedConfigId)
 
                                                 latestConfig?.let { config ->
-                                                    val report =
-                                                        ModelConfigConnectionTester.run(
-                                                            context = context,
-                                                            modelConfigManager = configManager,
-                                                            config = config,
-                                                            onActiveServiceChanged = {
-                                                                activeConnectionTestService = it
-                                                            }
+                                                    val tested =
+                                                        piModelSettings.test(
+                                                            operitProviderId = config.apiProviderTypeId,
+                                                            modelId = config.modelName,
+                                                            apiKey = config.apiKey.takeUnless {
+                                                                it.isBlank() || it == ApiPreferences.DEFAULT_API_KEY
+                                                            },
                                                         )
-
-                                                    report.items.forEach { item ->
-                                                        val result =
-                                                            if (item.success) {
-                                                                Result.success(Unit)
-                                                            } else {
-                                                                Result.failure(
-                                                                    Exception(item.error ?: "Unknown error")
-                                                                )
-                                                            }
-                                                        results.add(
-                                                            ConnectionTestItem(
-                                                                labelResId = item.type.toLabelResId(),
-                                                                result = result
-                                                            )
+                                                    results.add(
+                                                        ConnectionTestItem(
+                                                            labelResId = R.string.test_item_chat,
+                                                            result =
+                                                                if (tested.ok) Result.success(Unit)
+                                                                else Result.failure(
+                                                                    Exception(
+                                                                        tested.status
+                                                                            ?: tested.text.ifBlank { "Pi model test failed" }
+                                                                    )
+                                                                ),
                                                         )
-                                                    }
+                                                    )
                                                 } ?: run {
                                                     results.add(
                                                         ConnectionTestItem(
@@ -455,7 +448,6 @@ fun ModelConfigScreen(
                                             }
                                             testResults = results
                                         } finally {
-                                            activeConnectionTestService = null
                                             isTestingConnection = false
                                             connectionTestJob = null
                                         }
@@ -1417,16 +1409,6 @@ private data class ConnectionTestItem(
     val labelResId: Int,
     val result: Result<Unit>
 )
-
-private fun ModelConnectionTestType.toLabelResId(): Int {
-    return when (this) {
-        ModelConnectionTestType.CHAT -> R.string.test_item_chat
-        ModelConnectionTestType.TOOL_CALL -> R.string.test_item_toolcall
-        ModelConnectionTestType.IMAGE -> R.string.test_item_image
-        ModelConnectionTestType.AUDIO -> R.string.test_item_audio
-        ModelConnectionTestType.VIDEO -> R.string.test_item_video
-    }
-}
 
 private fun formatFloatValue(value: Float): String {
     return if (value % 1f == 0f) value.toInt().toString() else String.format("%.2f", value)

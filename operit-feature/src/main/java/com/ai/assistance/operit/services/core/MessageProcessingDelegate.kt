@@ -11,6 +11,8 @@ import com.ai.assistance.operit.core.chat.logMessageTiming
 import com.ai.assistance.operit.core.chat.messageTimingNow
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.agent.PhoneAgentJobRegistry
+import com.ai.assistance.operit.pi.PiChatEngine
+import com.ai.assistance.operit.pi.PiModelSettingsAdapter
 import com.ai.assistance.operit.data.model.*
 import com.ai.assistance.operit.data.model.InputProcessingState as EnhancedInputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
@@ -86,6 +88,8 @@ class MessageProcessingDelegate(
 
     // 角色卡管理器
     private val characterCardManager = CharacterCardManager.getInstance(context)
+    private val piChatEngine = PiChatEngine.getInstance(context)
+    private val piModelSettings = PiModelSettingsAdapter.instance
 
     // 模型配置管理器
     private val modelConfigManager = ModelConfigManager(context)
@@ -405,6 +409,7 @@ class MessageProcessingDelegate(
             }
 
         clearCurrentTurnToolInvocationCount(chatId)
+        piChatEngine.cancel(chatId)
         AIMessageManager.cancelOperation(chatId)
 
         jobsToCancel.forEach { job -> job.cancel() }
@@ -756,47 +761,15 @@ class MessageProcessingDelegate(
 
                 val acquireServiceStartTime = messageTimingNow()
                 val chatScopedService = EnhancedAIService.getChatInstance(context, activeChatId)
-                val service =
-                    (chatScopedService
-                        ?: getEnhancedAiService())
-                        ?: run {
-                            withContext(Dispatchers.Main) { showErrorMessage(context.getString(R.string.message_ai_service_not_initialized)) }
-                            chatRuntime.isLoading.value = false
-                            updateGlobalLoadingState()
-                            setChatInputProcessingState(activeChatId, EnhancedInputProcessingState.Idle)
-                            return@launch
-                        }
+                val service = chatScopedService ?: getEnhancedAiService()
                 logMessageTiming(
                     stage = "delegate.acquireService",
                     startTimeMs = acquireServiceStartTime,
                     details = "chatId=$activeChatId, reusedChatInstance=${chatScopedService != null}"
                 )
                 serviceForTurnComplete = service
-
-                // 清除上一次可能残留的 Error 状态，避免 StateFlow 重放导致新一轮发送立即再次触发弹窗
-                service.setInputProcessingState(EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing)))
-
-                // 监听此 chat 对应的 EnhancedAIService 状态，映射到 per-chat state
                 chatRuntime.stateCollectionJob?.cancel()
-                chatRuntime.stateCollectionJob =
-                    coroutineScope.launch {
-                        var lastErrorMessage: String? = null
-                        service.inputProcessingState.collect { state ->
-                            setChatInputProcessingState(activeChatId, state)
-
-                            if (state is EnhancedInputProcessingState.Error) {
-                                val msg = state.message
-                                if (msg != lastErrorMessage) {
-                                    lastErrorMessage = msg
-                                    withContext(Dispatchers.Main) {
-                                        showErrorMessage(msg)
-                                    }
-                                }
-                            } else {
-                                lastErrorMessage = null
-                            }
-                        }
-                    }
+                chatRuntime.stateCollectionJob = null
 
                 val responseStartTime = messageTimingNow()
 
@@ -819,56 +792,9 @@ class MessageProcessingDelegate(
                     startTimeMs = loadRoleInfoStartTime,
                     details = "chatId=$activeChatId, roleCardId=$effectiveRoleCardId, roleName=$currentRoleName"
                 )
-                calculateNextWindowSize = {
-                    runCatching {
-                        AIMessageManager.calculateStableContextWindow(
-                            enhancedAiService = service,
-                            chatId = activeChatId,
-                            messageContent = "",
-                            chatHistory = getRuntimeChatHistory(activeChatId),
-                            workspacePath = workspacePath,
-                            workspaceEnv = workspaceEnv,
-                            promptFunctionType = promptFunctionType,
-                            roleCardId = effectiveRoleCardId,
-                            currentRoleName = currentRoleName,
-                            splitHistoryByRole = true,
-                            groupOrchestrationMode = isGroupOrchestrationTurn,
-                            groupParticipantNamesText = groupParticipantNamesText,
-                            chatModelConfigIdOverride = chatModelConfigIdOverride,
-                            chatModelIndexOverride = chatModelIndexOverride,
-                            preferenceProfileIdOverride = preferenceProfileIdOverride,
-                            publishEstimate = false
-                        )
-                    }.onFailure {
-                        AppLogger.w(TAG, "回合结束后重算上下文窗口失败", it)
-                    }.getOrNull()
-                }
-
-                val loadChatHistoryStartTime = messageTimingNow()
-                val chatHistory = getRuntimeChatHistory(activeChatId)
-                logMessageTiming(
-                    stage = "delegate.loadChatHistory",
-                    startTimeMs = loadChatHistoryStartTime,
-                    details = "chatId=$activeChatId, size=${chatHistory.size}"
-                )
-
-                // 关闭总结时仍保留真实 limits，避免下游插件收到 0/Infinity 这类无效 JSON 值。
-                val effectiveMaxTokens = maxTokens
-                val effectiveEnableSummary = enableSummary && effectivePersistTurn
-                val effectiveTokenUsageThreshold =
-                    if (effectiveEnableSummary) tokenUsageThreshold else Double.MAX_VALUE
-                val effectiveOnTokenLimitExceeded = if (effectiveEnableSummary) {
-                    suspend {
-                        onTokenLimitExceeded(
-                            activeChatId,
-                            effectiveRoleCardId,
-                            isGroupOrchestrationTurn,
-                            groupParticipantNamesText
-                        )
-                    }
-                } else {
-                    null
-                }
+                // Pi owns context accounting and compaction. Operit must not rebuild or inject the
+                // visible Android history into a Pi prompt.
+                calculateNextWindowSize = { null }
 
                 // 2. 使用 AIMessageManager 发送消息
                 // 群组编排模式下，只有当消息内容不为空时才添加 [From user] 前缀
@@ -893,47 +819,28 @@ class MessageProcessingDelegate(
                 }
 
                 val prepareResponseStreamStartTime = messageTimingNow()
-                val responseStream = AIMessageManager.sendMessage(
-                    enhancedAiService = service,
-                    chatId = activeChatId,
-                    messageContent = requestMessageContent,
-                    // 仅在群组编排中去掉当前用户消息，避免重复拼接。
-                    chatHistory = if (isGroupOrchestrationTurn && userMessageAdded && chatHistory.isNotEmpty()) {
-                        chatHistory.subList(0, chatHistory.size - 1)
-                    } else {
-                        chatHistory
-                    },
-                    workspacePath = workspacePath,
-                    promptFunctionType = promptFunctionType,
-                    enableThinking = enableThinking,
-                    enableMemoryAutoUpdate = enableMemoryAutoUpdate,
-                    maxTokens = effectiveMaxTokens,
-                    tokenUsageThreshold = effectiveTokenUsageThreshold,
-                    onNonFatalError = { error ->
-                        _nonFatalErrorEvent.emit(error)
-                    },
-                    onTokenLimitExceeded = effectiveOnTokenLimitExceeded,
-                    characterName = characterName,
-                    avatarUri = avatarUri,
-                    roleCardId = effectiveRoleCardId,
-                    currentRoleName = currentRoleName,
-                    splitHistoryByRole = true,
-                    groupOrchestrationMode = isGroupOrchestrationTurn,
-                    groupParticipantNamesText = groupParticipantNamesText,
-                    proxySenderName = proxySenderNameOverride,
-                    onToolInvocation = {
-                        incrementCurrentTurnToolInvocationCount(chatId)
-                    },
-                    notifyReplyOverride = turnOptions.notifyReply,
-                    chatModelConfigIdOverride = chatModelConfigIdOverride,
-                    chatModelIndexOverride = chatModelIndexOverride,
-                    preferenceProfileIdOverride = preferenceProfileIdOverride,
-                    disableWarning = turnOptions.disableWarning
-                )
+                val responseStream =
+                    piChatEngine.send(
+                        request =
+                            PiChatEngine.TurnRequest(
+                                chatId = activeChatId,
+                                sessionKey = piChatEngine.getActiveSessionKey(activeChatId),
+                                message = requestMessageContent,
+                                userMessageTimestamp = userMessage.timestamp.takeIf { userMessageAdded },
+                                workingDirectory = workspacePath,
+                                onState = { state ->
+                                    setChatInputProcessingState(activeChatId, state)
+                                },
+                                onToolInvocation = {
+                                    incrementCurrentTurnToolInvocationCount(chatId)
+                                },
+                            ),
+                        streamScope = coroutineScope,
+                    )
                 logMessageTiming(
                     stage = "delegate.prepareResponseStream",
                     startTimeMs = prepareResponseStreamStartTime,
-                    details = "chatId=$activeChatId, requestLength=${requestMessageContent.length}, history=${chatHistory.size}"
+                    details = "chatId=$activeChatId, requestLength=${requestMessageContent.length}, engine=node-pi"
                 )
 
                 // AIMessageManager 已返回可重放的共享流，这里直接复用，避免在 viewModelScope 上再包一层。
@@ -944,16 +851,11 @@ class MessageProcessingDelegate(
 
                 // 获取当前使用的provider和model信息
                 val loadProviderModelStartTime = messageTimingNow()
-                val (provider, modelName) = try {
-                    service.getProviderAndModelForFunction(
-                        functionType = com.ai.assistance.operit.data.model.FunctionType.CHAT,
-                        chatModelConfigIdOverride = chatModelConfigIdOverride,
-                        chatModelIndexOverride = chatModelIndexOverride
-                    )
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "获取provider和model信息失败: ${e.message}", e)
-                    Pair("", "")
-                }
+                val (provider, modelName) = runCatching {
+                    piModelSettings.defaultModelDisplay()
+                }.onFailure { error ->
+                    AppLogger.w(TAG, "读取 Pi 默认模型显示信息失败", error)
+                }.getOrElse { "pi" to "" }
                 logMessageTiming(
                     stage = "delegate.loadProviderModel",
                     startTimeMs = loadProviderModelStartTime,
@@ -1237,9 +1139,10 @@ class MessageProcessingDelegate(
                 )
 
                 runCatching {
-                    turnInputTokens = service.getCurrentInputTokenCount()
-                    turnOutputTokens = service.getCurrentOutputTokenCount()
-                    turnCachedInputTokens = service.getCurrentCachedInputTokenCount()
+                    val usage = piChatEngine.getUsage(activeChatId)
+                    turnInputTokens = usage.inputTokens
+                    turnOutputTokens = usage.outputTokens
+                    turnCachedInputTokens = usage.cachedInputTokens
                 }.onFailure {
                     AppLogger.w(TAG, "读取本轮 token 统计失败", it)
                 }
@@ -1375,16 +1278,13 @@ class MessageProcessingDelegate(
                 }
 
                 if (shouldNotifyTurnComplete && !deferTurnCompleteToAsyncJob) {
-                    val service = serviceForTurnComplete
-                    if (service != null) {
-                        notifyTurnComplete(
-                            chatId,
-                            activeChatId,
-                            service,
-                            calculateNextWindowSize,
-                            turnOptions
-                        )
-                    }
+                    notifyTurnComplete(
+                        chatId,
+                        activeChatId,
+                        serviceForTurnComplete,
+                        calculateNextWindowSize,
+                        turnOptions
+                    )
                 }
 
                 logMessageTiming(
@@ -1441,44 +1341,26 @@ class MessageProcessingDelegate(
         )
         var terminalState: EnhancedInputProcessingState? = null
         var exceptionToPropagate: Exception? = null
+        val sourceSessionKey = piChatEngine.getActiveSessionKey(chatId)
+        val originalUserTimestamp =
+            requestHistory.lastOrNull { it.sender == "user" }?.timestamp
+        val variantSessionKey =
+            piChatEngine.createVariantSessionKey(chatId, targetMessageTimestamp)
+        var variantSessionActivated = false
 
         try {
             val service =
                 EnhancedAIService.getChatInstance(context, chatId)
                     ?: getEnhancedAiService()
-                    ?: throw IllegalStateException(context.getString(R.string.message_ai_service_not_initialized))
             serviceForTerminalCleanup = service
-            service.setInputProcessingState(
-                EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing))
-            )
-
             chatRuntime.stateCollectionJob?.cancel()
-            chatRuntime.stateCollectionJob =
-                coroutineScope.launch {
-                    var lastErrorMessage: String? = null
-                    service.inputProcessingState.collect { state ->
-                        setChatInputProcessingState(chatId, state)
+            chatRuntime.stateCollectionJob = null
 
-                        if (state is EnhancedInputProcessingState.Error) {
-                            val msg = state.message
-                            if (msg != lastErrorMessage) {
-                                lastErrorMessage = msg
-                                withContext(Dispatchers.Main) {
-                                    showErrorMessage(msg)
-                                }
-                            }
-                        } else {
-                            lastErrorMessage = null
-                        }
-                    }
-                }
-
-            val (provider, modelName) =
-                service.getProviderAndModelForFunction(
-                    functionType = FunctionType.CHAT,
-                    chatModelConfigIdOverride = chatModelConfigIdOverride,
-                    chatModelIndexOverride = chatModelIndexOverride,
-                )
+            val (provider, modelName) = runCatching {
+                piModelSettings.defaultModelDisplay()
+            }.onFailure { error ->
+                AppLogger.w(TAG, "读取 Pi 默认模型显示信息失败", error)
+            }.getOrElse { "pi" to "" }
 
             var firstResponseElapsed: Long? = null
             val requestSentAt = System.currentTimeMillis()
@@ -1494,28 +1376,24 @@ class MessageProcessingDelegate(
                 }
 
             val responseStream =
-                AIMessageManager.sendMessage(
-                    enhancedAiService = service,
-                    chatId = chatId,
-                    messageContent = effectiveRequestMessageContent,
-                    chatHistory = requestHistory,
-                    workspacePath = workspacePath,
-                    promptFunctionType = promptFunctionType,
-                    enableThinking = enableThinking,
-                    enableMemoryAutoUpdate = enableMemoryAutoUpdate,
-                    maxTokens = maxTokens,
-                    tokenUsageThreshold = tokenUsageThreshold,
-                    onNonFatalError = { error -> _nonFatalErrorEvent.emit(error) },
-                    characterName = currentRoleName,
-                    roleCardId = roleCardId,
-                    currentRoleName = currentRoleName,
-                    splitHistoryByRole = true,
-                    groupOrchestrationMode = groupOrchestrationMode,
-                    groupParticipantNamesText = groupParticipantNamesText,
-                    onToolInvocation = { incrementCurrentTurnToolInvocationCount(chatId) },
-                    chatModelConfigIdOverride = chatModelConfigIdOverride,
-                    chatModelIndexOverride = chatModelIndexOverride,
-                    preferenceProfileIdOverride = preferenceProfileIdOverride,
+                piChatEngine.send(
+                    request =
+                        PiChatEngine.TurnRequest(
+                            chatId = chatId,
+                            sessionKey = variantSessionKey,
+                            message = effectiveRequestMessageContent,
+                            userMessageTimestamp = requireNotNull(originalUserTimestamp) {
+                                "Regeneration requires the persisted user message timestamp"
+                            },
+                            workingDirectory = workspacePath,
+                            forkFromSessionKey = sourceSessionKey,
+                            forkUserMessage = effectiveRequestMessageContent,
+                            onState = { state -> setChatInputProcessingState(chatId, state) },
+                            onToolInvocation = {
+                                incrementCurrentTurnToolInvocationCount(chatId)
+                            },
+                        ),
+                    streamScope = coroutineScope,
                 )
 
             val sharedResponseStream = responseStream
@@ -1578,13 +1456,10 @@ class MessageProcessingDelegate(
             var turnInputTokens = 0
             var turnOutputTokens = 0
             var turnCachedInputTokens = 0
-            runCatching {
-                turnInputTokens = service.getCurrentInputTokenCount()
-                turnOutputTokens = service.getCurrentOutputTokenCount()
-                turnCachedInputTokens = service.getCurrentCachedInputTokenCount()
-            }.onFailure {
-                AppLogger.w(TAG, "读取重新生成 token 统计失败", it)
-            }
+            val piUsage = piChatEngine.getUsage(chatId)
+            turnInputTokens = piUsage.inputTokens
+            turnOutputTokens = piUsage.outputTokens
+            turnCachedInputTokens = piUsage.cachedInputTokens
 
             val waitDurationMs =
                 if (firstResponseElapsed != null) {
@@ -1614,6 +1489,8 @@ class MessageProcessingDelegate(
                     completedAt = completedAt,
                 )
             )
+            piChatEngine.replaceActiveSession(chatId, variantSessionKey)
+            variantSessionActivated = true
             terminalState = EnhancedInputProcessingState.Completed
             shouldResetInputStateToIdle = true
         } catch (e: Exception) {
@@ -1630,6 +1507,9 @@ class MessageProcessingDelegate(
             }
             exceptionToPropagate = e
         } finally {
+            if (!variantSessionActivated) {
+                piChatEngine.discardSession(chatId, variantSessionKey)
+            }
             clearCurrentTurnToolInvocationCount(chatId)
             if (chatRuntime.sendJob === currentJob) {
                 chatRuntime.sendJob = null
@@ -1653,21 +1533,27 @@ class MessageProcessingDelegate(
     private suspend fun notifyTurnComplete(
         chatId: String?,
         activeChatId: String?,
-        service: EnhancedAIService,
+        service: EnhancedAIService?,
         calculateNextWindowSize: (suspend () -> Int?)? = null,
         turnOptions: ChatTurnOptions = ChatTurnOptions()
     ) {
+        val completionPlan = planTurnCompletion(
+            currentCount = chatId?.let { _turnCompleteCounterByChatId.value[it] } ?: 0L,
+            hasLegacyService = service != null,
+        )
         if (!chatId.isNullOrBlank()) {
             val updated = _turnCompleteCounterByChatId.value.toMutableMap()
-            updated[chatId] = (updated[chatId] ?: 0L) + 1L
+            updated[chatId] = completionPlan.nextCount
             _turnCompleteCounterByChatId.value = updated
         }
         val nextWindowSize = calculateNextWindowSize?.invoke()
         AppLogger.d(
             TAG,
-            "回合完成: chatId=$activeChatId, nextWindow=$nextWindowSize, service=${service.javaClass.simpleName}"
+            "回合完成: chatId=$activeChatId, nextWindow=$nextWindowSize, service=${service?.javaClass?.simpleName ?: "pi-only"}"
         )
-        onTurnComplete(activeChatId, service, nextWindowSize, turnOptions)
+        if (completionPlan.invokeLegacyHook && service != null) {
+            onTurnComplete(activeChatId, service, nextWindowSize, turnOptions)
+        }
     }
 
     private suspend fun finalizeMessageAndNotify(
@@ -1766,3 +1652,14 @@ class MessageProcessingDelegate(
         updateGlobalLoadingState()
     }
 }
+
+internal data class TurnCompletionPlan(
+    val nextCount: Long,
+    val invokeLegacyHook: Boolean,
+)
+
+internal fun planTurnCompletion(currentCount: Long, hasLegacyService: Boolean): TurnCompletionPlan =
+    TurnCompletionPlan(
+        nextCount = currentCount.coerceAtLeast(0L) + 1L,
+        invokeLegacyHook = hasLegacyService,
+    )

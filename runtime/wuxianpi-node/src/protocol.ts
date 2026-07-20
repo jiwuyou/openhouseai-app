@@ -1,4 +1,5 @@
 export const PROTOCOL_NAME = "wuxianpi-sdk-v1" as const;
+export const PROTOCOL_VERSION = 2 as const;
 export const RUNTIME_VERSION = "0.1.0" as const;
 
 export interface ClientRequest {
@@ -18,23 +19,29 @@ export interface SuccessResponse {
   id: string;
   ok: true;
   result: unknown;
+  connectionId?: string;
 }
 
 export interface ErrorResponse {
   id: string;
   ok: false;
   error: ProtocolError;
+  connectionId?: string;
 }
 
 export type ServerResponse = SuccessResponse | ErrorResponse;
 
 export interface AgentEventEnvelope {
   type: "agent.event";
+  connectionId: string;
   sessionId: string;
   sessionPath?: string;
+  eventStreamId: string;
   sequence: number;
   payload: unknown;
 }
+
+export type RuntimeAgentEventEnvelope = Omit<AgentEventEnvelope, "connectionId">;
 
 export class RequestError extends Error {
   constructor(
@@ -76,20 +83,21 @@ export function parseRequest(raw: string): ClientRequest {
   return candidate as ClientRequest;
 }
 
-export function success(id: string, result: unknown = {}): SuccessResponse {
-  return { id, ok: true, result };
+export function success(id: string, result: unknown = {}, connectionId?: string): SuccessResponse {
+  return { id, ok: true, result, ...(connectionId ? { connectionId } : {}) };
 }
 
-export function failure(id: string, error: unknown): ErrorResponse {
+export function failure(id: string, error: unknown, connectionId?: string): ErrorResponse {
   if (error instanceof RequestError) {
     return {
       id,
       ok: false,
       error: { code: error.code, message: error.message, details: error.details },
+      ...(connectionId ? { connectionId } : {}),
     };
   }
   const message = error instanceof Error ? error.message : String(error);
-  return { id, ok: false, error: { code: "runtime_error", message } };
+  return { id, ok: false, error: { code: "runtime_error", message }, ...(connectionId ? { connectionId } : {}) };
 }
 
 export function stringifyMessage(value: unknown): string {

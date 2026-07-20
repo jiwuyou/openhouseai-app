@@ -1,10 +1,10 @@
 plugins {
     id "com.android.library"
-    id "org.jetbrains.kotlin.android" version "2.2.0"
-    id "org.jetbrains.kotlin.plugin.compose" version "2.2.0"
-    id "org.jetbrains.kotlin.plugin.serialization" version "2.2.0"
-    id "org.jetbrains.kotlin.kapt" version "2.2.0"
-    id "org.jetbrains.kotlin.plugin.parcelize" version "2.2.0"
+    id "org.jetbrains.kotlin.android"
+    id "org.jetbrains.kotlin.plugin.compose"
+    id "org.jetbrains.kotlin.plugin.serialization"
+    id "org.jetbrains.kotlin.kapt"
+    id "org.jetbrains.kotlin.plugin.parcelize"
     id "io.objectbox"
 }
 
@@ -82,6 +82,7 @@ android {
 
 dependencies {
     api project(":termux-shared")
+    implementation project(":pi-client")
     implementation project(":operit-dragonbones")
     implementation project(":operit-mnn")
     implementation project(":operit-llama")
@@ -164,7 +165,11 @@ dependencies {
     implementation "org.apache.poi:poi-ooxml:5.2.3"
     implementation "org.apache.poi:poi-scratchpad:5.2.3"
     implementation "com.itextpdf:itextg:5.5.10"
-    implementation "com.tom-roush:pdfbox-android:2.0.27.0"
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0") {
+        exclude group: "org.bouncycastle", module: "bcprov-jdk15to18"
+        exclude group: "org.bouncycastle", module: "bcpkix-jdk15to18"
+        exclude group: "org.bouncycastle", module: "bcutil-jdk15to18"
+    }
 
     implementation "io.coil-kt:coil:2.5.0"
     implementation "io.coil-kt:coil-compose:2.5.0"
@@ -185,6 +190,8 @@ dependencies {
     implementation "androidx.work:work-runtime-ktx:2.9.0"
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
     implementation "org.bouncycastle:bcprov-jdk18on:1.78"
+    implementation "org.bouncycastle:bcpkix-jdk18on:1.78"
+    implementation "org.bouncycastle:bcutil-jdk18on:1.78"
     implementation "com.android.tools.build:apksig:8.1.0"
     implementation "net.dongliu:apk-parser:2.6.10"
     implementation "com.github.Sable:axml:2.0.0"
@@ -211,4 +218,5 @@ dependencies {
 
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
     testImplementation "junit:junit:4.13.2"
+    testImplementation "org.json:json:20240303"
 }

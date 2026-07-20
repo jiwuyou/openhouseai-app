@@ -36,13 +36,14 @@ class PiProtocolTest {
     @Test
     fun `wrapped message update keeps session identity and sequence`() {
         val frame = PiProtocol.parse(
-            """{"type":"agent.event","sessionId":"s1","sessionPath":"/tmp/s.jsonl","sequence":9,"payload":{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hi"}}}""",
+            """{"type":"agent.event","connectionId":"c1","sessionId":"s1","sessionPath":"/tmp/s.jsonl","eventStreamId":"stream-1","sequence":9,"payload":{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hi"}}}""",
         ) as ParsedPiFrame.Event
         val event = frame.value as PiEvent.TextDelta
         assertEquals("hi", event.delta)
         assertEquals("s1", event.sessionId)
         assertEquals("/tmp/s.jsonl", event.sessionPath)
         assertEquals(9L, event.sequence)
+        assertEquals("stream-1", parseWireFrameMetadata(event.rawJson)?.eventStreamId)
     }
 
     @Test

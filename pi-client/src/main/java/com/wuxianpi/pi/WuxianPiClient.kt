@@ -46,7 +46,7 @@ sealed interface PiConnectionState {
     data class Failed(val message: String, val retryable: Boolean) : PiConnectionState
 }
 
-private data class InboundFrame(val socketGeneration: Long, val text: String)
+private data class InboundFrame(val socketGeneration: Long, val receivedAt: Long, val text: String)
 
 private data class PendingCommand(
     val command: String,
@@ -72,12 +72,15 @@ class WuxianPiClient(
     private val config: PiServiceConfig,
     private val http: OkHttpClient = OkHttpClient(),
     parentScope: CoroutineScope? = null,
+    private val diagnostics: PiDiagnosticSink = NoOpPiDiagnosticSink,
 ) : AutoCloseable {
     private val scope = parentScope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val ownsScope = parentScope == null
     private val requestCounter = AtomicLong(0)
     private val socketGenerations = SocketGenerationGate()
     private val pending = ConcurrentHashMap<String, PendingCommand>()
+    private val pendingAcks = PendingAckTracker(64)
+    private val eventAggregator = DiagnosticEventAggregator()
     private val promptGate = PromptGate()
     private val activationMutex = Mutex()
     private val activationInFlight = AtomicBoolean(false)
@@ -85,6 +88,7 @@ class WuxianPiClient(
     private val _responses = MutableSharedFlow<PiResponse>(extraBufferCapacity = 64)
     private val _connection = MutableStateFlow<PiConnectionState>(PiConnectionState.Disconnected)
     private val _agentActive = MutableStateFlow(false)
+    private val _runtimeReady = MutableStateFlow<PiRuntimeReady?>(null)
     private val inbound = OrderedQueue<InboundFrame>(scope, consume = ::handleFrame)
     private val lastSequence = ConcurrentHashMap<String, Long>()
 
@@ -92,9 +96,11 @@ class WuxianPiClient(
     val responses: SharedFlow<PiResponse> = _responses.asSharedFlow()
     val connection: StateFlow<PiConnectionState> = _connection.asStateFlow()
     val agentActive: StateFlow<Boolean> = _agentActive.asStateFlow()
+    val runtimeReady: StateFlow<PiRuntimeReady?> = _runtimeReady.asStateFlow()
 
     @Volatile private var socket: WebSocket? = null
     @Volatile private var explicitClose = false
+    @Volatile private var connectionId: String? = null
     @Volatile private var activeSession: PiSessionRef? = null
     @Volatile private var connectWaiter: CompletableDeferred<Unit>? = null
     private var reconnectJob: Job? = null
@@ -102,6 +108,7 @@ class WuxianPiClient(
 
     suspend fun connect(timeoutMillis: Long = 15_000) {
         if (_connection.value is PiConnectionState.Connected) return
+        diagnostics.record("ws.connect.request", mapOf("timeoutMs" to timeoutMillis))
         explicitClose = false
         reconnectJob?.cancel()
         val waiter = CompletableDeferred<Unit>()
@@ -111,6 +118,25 @@ class WuxianPiClient(
     }
 
     suspend fun runtimeStatus(): PiResponse = command("runtime.status", includeSession = false)
+
+    suspend fun diagnosticsStatus(): PiNodeDiagnosticsStatus = PiNodeDiagnosticsStatus.from(
+        command("diagnostics.status", includeSession = false).requireSuccess(),
+    )
+
+    suspend fun setDiagnosticsDetail(enabled: Boolean, durationMs: Long = MAX_DIAGNOSTIC_DETAIL_MS): PiNodeDiagnosticsStatus {
+        val bounded = durationMs.coerceIn(1, MAX_DIAGNOSTIC_DETAIL_MS)
+        val response = command(
+            "diagnostics.detail",
+            JSONObject().put("enabled", enabled).put("durationMs", bounded),
+            includeSession = false,
+        )
+        if (enabled) diagnostics.enableDetailedMode(bounded) else diagnostics.disableDetailedMode()
+        return PiNodeDiagnosticsStatus.from(response.requireSuccess())
+    }
+
+    suspend fun exportNodeDiagnostics(): PiNodeDiagnosticsExport = PiNodeDiagnosticsExport.from(
+        command("diagnostics.export", includeSession = false, timeoutMillis = 60_000).requireSuccess(),
+    )
 
     suspend fun modelStatus(provider: String? = null): PiModelStatus {
         val response = command(
@@ -352,16 +378,31 @@ class WuxianPiClient(
                 isStreaming = _agentActive.value,
             )
         ) {
+            diagnostics.record(
+                "prompt_gate.rejected",
+                mapOf("connected" to (_connection.value is PiConnectionState.Connected), "agentActive" to _agentActive.value),
+            )
             throw IllegalStateException("A Pi turn is active or session recovery is incomplete")
         }
+        if (isPrompt) diagnostics.record("prompt_gate.occupied", mapOf("reason" to "prompt_queued"))
 
         val id = "android-${requestCounter.incrementAndGet()}-${UUID.randomUUID()}"
         val deferred = CompletableDeferred<PiResponse>()
         pending[id] = PendingCommand(type, deferred)
         val current = socket
-        if (current == null || !current.send(PiProtocol.request(id, type, sessionId, payload))) {
+        val rawRequest = PiProtocol.request(id, type, sessionId, payload)
+        diagnostics.record(
+            "frame.outbound",
+            mapOf("id" to id, "type" to type, "sessionId" to sessionId, "bytes" to rawRequest.toByteArray().size),
+            detailedJson = rawRequest,
+        )
+        if (current == null || !current.send(rawRequest)) {
             pending.remove(id)
-            if (isPrompt) promptGate.onPromptRejected()
+            if (isPrompt) {
+                promptGate.onPromptRejected()
+                diagnostics.record("prompt_gate.released", mapOf("reason" to "send_failed"))
+            }
+            diagnostics.record("frame.outbound.failed", mapOf("id" to id, "type" to type))
             throw IOException("WuxianPi service is not connected")
         }
         onQueued?.invoke()
@@ -369,7 +410,10 @@ class WuxianPiClient(
             val response = if (timeoutMillis == null) deferred.await() else withTimeout(timeoutMillis) {
                 deferred.await()
             }
-            if (isPrompt && !response.success) promptGate.onPromptRejected()
+            if (isPrompt && !response.success) {
+                promptGate.onPromptRejected()
+                diagnostics.record("prompt_gate.released", mapOf("reason" to "prompt_rejected"))
+            }
             response
         } finally {
             // A timed-out accepted prompt stays gated until agent_settled or authoritative recovery.
@@ -379,6 +423,7 @@ class WuxianPiClient(
 
     private fun openSocket(reconnecting: Boolean) {
         if (explicitClose) return
+        diagnostics.record("ws.opening", mapOf("reconnecting" to reconnecting, "attempt" to reconnectAttempt))
         _connection.value = if (reconnecting) {
             PiConnectionState.Reconnecting(reconnectAttempt)
         } else {
@@ -398,6 +443,7 @@ class WuxianPiClient(
                 return
             }
             socket = webSocket
+            diagnostics.record("ws.open", mapOf("httpCode" to response.code, "generation" to generation))
             // A service restart starts event sequence numbers again.
             lastSequence.clear()
             reconnectJob = null
@@ -414,7 +460,7 @@ class WuxianPiClient(
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
-            if (current() && inbound.offer(InboundFrame(generation, text)) ==
+            if (current() && inbound.offer(InboundFrame(generation, System.currentTimeMillis(), text)) ==
                 QueueOfferResult.OVERFLOW_REQUIRES_RECOVERY
             ) {
                 if (socket === webSocket) socket = null
@@ -425,11 +471,13 @@ class WuxianPiClient(
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            diagnostics.record("ws.closing", mapOf("code" to code, "reason" to reason.take(240)))
             webSocket.close(code, reason)
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             if (!current()) return
+            diagnostics.record("ws.closed", mapOf("code" to code, "reason" to reason.take(240)))
             if (socket === webSocket) socket = null
             failPending(IOException("WuxianPi connection closed ($code): $reason"))
             scheduleReconnect(generation)
@@ -437,6 +485,10 @@ class WuxianPiClient(
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (!current()) return
+            diagnostics.record(
+                "ws.failure",
+                mapOf("message" to (t.message ?: t.javaClass.simpleName), "httpCode" to response?.code),
+            )
             if (socket === webSocket) socket = null
             failPending(IOException("WuxianPi connection lost", t))
             scheduleReconnect(generation)
@@ -474,14 +526,92 @@ class WuxianPiClient(
     }
 
     private suspend fun handleFrame(frame: InboundFrame) {
-        if (!socketGenerations.isCurrent(frame.socketGeneration)) return
+        if (!socketGenerations.isCurrent(frame.socketGeneration)) {
+            diagnostics.record("frame.filtered", mapOf("reason" to "stale_generation"))
+            return
+        }
+        val metadata = parseWireFrameMetadata(frame.text)
+        recordInboundFrame(frame, metadata)
+        parseRuntimeReady(frame.text)?.let { ready ->
+            connectionId = ready.connectionId
+            _runtimeReady.value = ready
+            diagnostics.record(
+                "runtime.ready",
+                mapOf(
+                    "connectionId" to ready.connectionId,
+                    "version" to ready.version,
+                    "eventAck" to ready.capabilities.eventAck,
+                    "persistentDiagnostics" to ready.capabilities.persistentDiagnostics,
+                ),
+            )
+        }
+        metadata?.connectionId?.let { connectionId = it }
         when (val parsed = PiProtocol.parse(frame.text)) {
             is ParsedPiFrame.Response -> handleResponse(parsed.value)
-            is ParsedPiFrame.Event -> handleEvent(parsed.value)
+            is ParsedPiFrame.Event -> {
+                val outcome = handleEvent(parsed.value, metadata)
+                if (metadata?.type == "agent.event" && shouldSendEventAck(_runtimeReady.value, parsed.value)) {
+                    flushEventAggregate("terminal")
+                    sendEventAck(metadata, outcome)
+                }
+            }
         }
     }
 
+    private fun recordInboundFrame(frame: InboundFrame, metadata: PiWireFrameMetadata?) {
+        val byteCount = frame.text.toByteArray().size
+        val aggregateCategory = diagnosticAggregationCategory(metadata)
+        if (aggregateCategory != null && !diagnostics.isDetailedMode()) {
+            eventAggregator.add(aggregateCategory, byteCount, frame.receivedAt)?.let(::recordAggregate)
+            return
+        }
+        diagnostics.record(
+            "frame.inbound",
+            mapOf(
+                "bytes" to byteCount,
+                "type" to metadata?.type,
+                "id" to metadata?.id,
+                "sessionId" to metadata?.sessionId,
+                "eventStreamId" to metadata?.eventStreamId,
+                "sequence" to metadata?.sequence,
+                "eventType" to metadata?.eventType,
+                "updateType" to metadata?.updateType,
+            ),
+            detailedJson = frame.text,
+        )
+    }
+
+    private fun flushEventAggregate(reason: String) {
+        eventAggregator.drain(reason)?.let(::recordAggregate)
+    }
+
+    private fun recordAggregate(snapshot: DiagnosticAggregateSnapshot) {
+        diagnostics.record(
+            "stream.aggregate",
+            mapOf(
+                "counts" to snapshot.counts,
+                "bytes" to snapshot.bytes,
+                "reason" to snapshot.reason,
+                "startedAt" to snapshot.startedAt,
+                "endedAt" to snapshot.endedAt,
+            ),
+        )
+    }
+
     private suspend fun handleResponse(response: PiResponse) {
+        if (isAckResponseId(response.id)) {
+            val tracked = pendingAcks.remove(response.id)
+            diagnostics.record(
+                if (response.success) "event_ack.accepted" else "event_ack.rejected",
+                mapOf(
+                    "id" to response.id,
+                    "tracked" to tracked,
+                    "errorCode" to response.errorCode,
+                    "error" to response.error,
+                ),
+            )
+            return
+        }
         val matched = pending.remove(response.id)
         val correlated = if (response.command == null && matched != null) {
             response.copy(command = matched.command)
@@ -502,36 +632,105 @@ class WuxianPiClient(
         }
     }
 
-    private suspend fun handleEvent(event: PiEvent) {
+    private suspend fun handleEvent(event: PiEvent, metadata: PiWireFrameMetadata?): String {
         if (!eventBelongsToActiveSession(
                 activeSession?.sessionId,
                 event.sessionId,
                 activationInFlight.get(),
             )
-        ) return
-        if (!acceptSequence(event)) return
+        ) {
+            diagnostics.record(
+                "event.filtered",
+                mapOf("reason" to "foreign_session", "sessionId" to event.sessionId, "sequence" to event.sequence),
+            )
+            return "foreign_session"
+        }
+        if (!acceptSequence(event, metadata)) {
+            diagnostics.record(
+                "event.filtered",
+                mapOf("reason" to "duplicate_sequence", "sessionId" to event.sessionId, "sequence" to event.sequence),
+            )
+            return "duplicate_sequence"
+        }
         when (event) {
             is PiEvent.AgentStart -> {
                 _agentActive.value = true
                 promptGate.onAgentStart()
+                diagnostics.record("prompt_gate.occupied", mapOf("reason" to "agent_start"))
             }
             is PiEvent.AgentSettled -> {
                 _agentActive.value = false
                 promptGate.onAgentSettled()
+                diagnostics.record("prompt_gate.released", mapOf("reason" to "agent_settled"))
             }
             is PiEvent.PromptCompleted -> {
-                if (event.handledWithoutAgent && !event.isRunning) {
+                if (!event.isRunning) {
+                    _agentActive.value = false
                     promptGate.onPromptCompletedWithoutAgent()
+                    diagnostics.record("prompt_gate.released", mapOf("reason" to "prompt_completed"))
                 }
             }
+            is PiEvent.ProtocolError -> diagnostics.record("frame.parse_error", mapOf("message" to event.message))
             else -> Unit
         }
         _events.emit(event)
+        if (event !is PiEvent.TextDelta && event !is PiEvent.ThinkingDelta && event !is PiEvent.ToolUpdate &&
+            !(event is PiEvent.Other && event.type == "message_update")
+        ) {
+            diagnostics.record(
+                "event.processed",
+                mapOf("eventType" to event.javaClass.simpleName, "sessionId" to event.sessionId, "sequence" to event.sequence),
+            )
+        }
+        return "processed"
     }
 
-    private fun acceptSequence(event: PiEvent): Boolean {
-        val id = event.sessionId ?: return true
+    private fun sendEventAck(metadata: PiWireFrameMetadata, outcome: String) {
+        val ready = _runtimeReady.value ?: return
+        if (!ready.capabilities.eventAck) return
+        val sequence = metadata.sequence ?: return
+        val eventType = metadata.eventType ?: return
+        val eventStreamId = metadata.eventStreamId ?: return
+        val id = "ack-${requestCounter.incrementAndGet()}-${UUID.randomUUID()}"
+        val raw = buildEventAckRequest(
+            id = id,
+            sessionId = metadata.sessionId,
+            connectionId = connectionId ?: ready.connectionId,
+            eventStreamId = eventStreamId,
+            sequence = sequence,
+            eventType = eventType,
+        )
+        pendingAcks.add(id)?.let { evicted ->
+            diagnostics.record("event_ack.evicted", mapOf("id" to evicted, "capacity" to 64))
+        }
+        if (socket?.send(raw) != true) {
+            pendingAcks.remove(id)
+            diagnostics.record(
+                "event_ack.send_failed",
+                mapOf("sessionId" to metadata.sessionId, "sequence" to sequence, "eventType" to eventType),
+            )
+        } else {
+            diagnostics.record(
+                "event_ack.sent",
+                mapOf(
+                    "sessionId" to metadata.sessionId,
+                    "eventStreamId" to eventStreamId,
+                    "sequence" to sequence,
+                    "eventType" to eventType,
+                    "outcome" to outcome,
+                ),
+            )
+        }
+    }
+
+    private fun acceptSequence(event: PiEvent, metadata: PiWireFrameMetadata?): Boolean {
         val sequence = event.sequence ?: return true
+        val sessionId = event.sessionId ?: metadata?.sessionId ?: return true
+        val id = listOf(
+            metadata?.connectionId ?: connectionId.orEmpty(),
+            metadata?.eventStreamId.orEmpty(),
+            sessionId,
+        ).joinToString("\u001f")
         var accepted = false
         lastSequence.compute(id) { _, previous ->
             if (previous == null || sequence > previous) {
@@ -549,6 +748,10 @@ class WuxianPiClient(
         session.isRunning?.let {
             _agentActive.value = it
             promptGate.onRecovered(it)
+            diagnostics.record(
+                if (it) "prompt_gate.occupied" else "prompt_gate.released",
+                mapOf("reason" to "session_recovered"),
+            )
         }
         _connection.value = PiConnectionState.Connected(session.sessionId, session.sessionPath)
     }
@@ -567,6 +770,7 @@ class WuxianPiClient(
         if (explicitClose || !socketGenerations.isCurrent(failedGeneration)) return
         if (reconnectJob?.isActive == true) return
         reconnectAttempt += 1
+        diagnostics.record("ws.reconnect.scheduled", mapOf("attempt" to reconnectAttempt))
         if (reconnectAttempt > ReconnectPolicy.MAX_ATTEMPTS) {
             _connection.value = PiConnectionState.Failed("WuxianPi service is unavailable", retryable = true)
             connectWaiter?.completeExceptionally(IOException("WuxianPi service is unavailable"))
@@ -584,11 +788,20 @@ class WuxianPiClient(
     }
 
     private fun failPending(error: Throwable) {
+        diagnostics.record(
+            "commands.pending.failed",
+            mapOf("count" to pending.size, "pendingAcks" to pendingAcks.size(), "message" to error.message),
+        )
         pending.values.forEach { it.deferred.completeExceptionally(error) }
         pending.clear()
+        pendingAcks.clear()
+        flushEventAggregate("connection_end")
     }
 
     override fun close() {
+        diagnostics.record("client.close")
+        flushEventAggregate("client_close")
+        pendingAcks.clear()
         explicitClose = true
         reconnectJob?.cancel()
         reconnectJob = null

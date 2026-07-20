@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -7,10 +8,38 @@
         android:label="WuxianPi"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
-        android:theme="@style/Theme.WuxianPi">
+        android:theme="@style/Theme.WuxianPi"
+        tools:replace="android:allowBackup,android:label,android:theme">
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <provider
+            android:name="com.ai.assistance.operit.provider.WorkspaceDocumentsProvider"
+            android:authorities="${applicationId}.documents.workspace"
+            tools:replace="android:authorities" />
+
+        <provider
+            android:name="com.ai.assistance.operit.provider.MemoryDocumentsProvider"
+            android:authorities="${applicationId}.documents.memory"
+            tools:replace="android:authorities" />
+
+        <provider
+            android:name="com.ai.assistance.operit.provider.OperitDataDocumentsProvider"
+            android:authorities="${applicationId}.documents.data"
+            tools:replace="android:authorities" />
+
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
+            android:name="com.ai.assistance.operit.ui.main.MainActivity"
+            android:exported="true"
+            android:process=":operit"
+            tools:replace="android:exported">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

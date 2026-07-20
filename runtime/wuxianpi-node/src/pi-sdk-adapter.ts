@@ -207,8 +207,13 @@ export class PiSdkAdapter {
         source: "rpc",
         preflightResult: (success) => {
           if (success) {
+            const userEntryId = session.sessionManager.getLeafId();
+            if (!userEntryId) {
+              reject(new RequestError("missing_user_entry", "Prompt was accepted without a persisted user entry"));
+              return;
+            }
             accepted = true;
-            resolve({ accepted: true, ...this.registry.describe(slot) });
+            resolve({ accepted: true, userEntryId, ...this.registry.describe(slot) });
           } else {
             reject(new RequestError("prompt_rejected", "Prompt was rejected before it was accepted"));
           }

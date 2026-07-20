@@ -55,6 +55,7 @@ import com.ai.assistance.operit.data.model.ModelOption
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.plugins.toolpkg.ToolPkgAiProviderRegistry
+import com.ai.assistance.operit.pi.PiModelSettingsAdapter
 import com.ai.assistance.operit.ui.common.input.bringIntoViewOnImeFocus
 import com.ai.assistance.operit.ui.features.settings.DebouncedModelConfigAutoSaveEffect
 import com.ai.assistance.operit.ui.features.settings.ModelConfigSaveCoordinator
@@ -87,6 +88,7 @@ fun ModelApiSettingsSection(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val piModelSettings = remember { PiModelSettingsAdapter.instance }
 
     // 区域告警可见性
     var showRegionWarning by remember { mutableStateOf(false) }
@@ -186,9 +188,6 @@ fun ModelApiSettingsSection(
                     enableToolCall = state.enableToolCall,
                 )
 
-                EnhancedAIService.refreshAllServices(
-                    configManager.appContext
-                )
             }
         }
     }
@@ -222,6 +221,13 @@ fun ModelApiSettingsSection(
                 "保存API设置: apiKey=${state.apiKey.take(5)}..., endpoint=${state.apiEndpoint}, model=${state.modelName}, providerType=${state.provider.name}"
             )
             persist(state)
+            piModelSettings.applySettings(
+                operitProviderId = state.providerTypeId,
+                apiKey = state.apiKey.takeUnless {
+                    it.isBlank() || it == ApiPreferences.DEFAULT_API_KEY
+                },
+                modelId = state.modelName,
+            )
             AppLogger.d(TAG, "API设置保存完成并刷新服务")
             if (showSuccess) {
                 showNotification(context.getString(R.string.api_settings_saved))
@@ -351,14 +357,7 @@ fun ModelApiSettingsSection(
         !isMnnProvider &&
             !isLlamaProvider &&
             (canUseKeylessModelUi || !isUsingDefaultApiKey)
-    val canRequestModelList =
-        isToolPkgProvider ||
-            isMnnProvider ||
-            isLlamaProvider ||
-            (
-                apiEndpointInput.isNotBlank() &&
-                    (!providerRequiresApiKey || (!isUsingDefaultApiKey && apiKeyInput.isNotBlank()))
-            )
+    val canRequestModelList = !isMnnProvider && !isLlamaProvider
     val endpointOptions = getEndpointOptions(selectedProviderTypeId)
     val selectableEndpointOptions =
         when {
@@ -374,46 +373,12 @@ fun ModelApiSettingsSection(
             else -> emptyList()
         }
 
-    suspend fun fetchAvailableModels(): Result<List<ModelOption>> {
-        return when {
-            isMnnProvider -> ModelListFetcher.getMnnLocalModels(context)
-            isLlamaProvider -> ModelListFetcher.getLlamaLocalModels(context)
-            isToolPkgProvider -> runCatching {
-                val service =
-                    AIServiceFactory.createService(
-                        config =
-                            config.copy(
-                                apiKey = apiKeyInput,
-                                apiEndpoint = apiEndpointInput,
-                                modelName = modelNameInput,
-                                apiProviderType = ApiProviderType.OTHER,
-                                apiProviderTypeId = selectedProviderTypeId,
-                                enableDirectImageProcessing = enableDirectImageProcessingInput,
-                                enableDirectAudioProcessing = enableDirectAudioProcessingInput,
-                                enableDirectVideoProcessing = enableDirectVideoProcessingInput,
-                                enableGoogleSearch = enableGoogleSearchInput,
-                                enableClaude1hPromptCache = enableClaude1hPromptCacheInput,
-                                enableToolCall = enableToolCallInput
-                            ),
-                        modelConfigManager = configManager,
-                        context = context
-                    )
-                try {
-                    service.getModelsList(context).getOrThrow()
-                } finally {
-                    service.release()
-                }
+    suspend fun fetchAvailableModels(reload: Boolean = false): Result<List<ModelOption>> =
+        runCatching {
+            piModelSettings.models(selectedProviderTypeId, reload).map { model ->
+                ModelOption(id = model.id, name = model.name)
             }
-
-            else ->
-                ModelListFetcher.getModelsList(
-                    context,
-                    apiKeyInput,
-                    apiEndpointInput,
-                    selectedApiProvider ?: ApiProviderType.OPENAI_GENERIC
-                )
         }
-    }
     // 移除了强制锁定模型名称的逻辑，允许用户自由修改
 
     Card(
@@ -818,7 +783,7 @@ fun ModelApiSettingsSection(
                                         if (canRequestModelList) {
                                             isLoadingModels = true
                                             try {
-                                                val result = fetchAvailableModels()
+                                                val result = fetchAvailableModels(reload = true)
                                                 if (result.isSuccess) {
                                                     modelsList = result.getOrThrow()
                                                 } else {
@@ -1032,6 +997,19 @@ fun ModelApiSettingsSection(
                                     modelNameInput = orderedSelection.joinToString(",")
                                     if (selectedApiProvider == ApiProviderType.MNN) {
                                         AppLogger.d(TAG, "选择MNN模型: $modelNameInput")
+                                    }
+                                    scope.launch {
+                                        runCatching {
+                                            piModelSettings.applySettings(
+                                                operitProviderId = selectedProviderTypeId,
+                                                apiKey = apiKeyInput.takeUnless {
+                                                    it.isBlank() || it == ApiPreferences.DEFAULT_API_KEY
+                                                },
+                                                modelId = modelNameInput,
+                                            )
+                                        }.onFailure { error ->
+                                            showNotification(error.message ?: context.getString(R.string.save_failed))
+                                        }
                                     }
                                     showModelsDialog = false
                                 },

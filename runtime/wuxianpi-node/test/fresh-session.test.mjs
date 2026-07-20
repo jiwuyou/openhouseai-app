@@ -39,3 +39,50 @@ test("active sessions share one service-level ModelRuntime", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("reclaim and reopen creates a new event stream with sequence restarted", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wuxianpi-event-stream-"));
+  const events = [];
+  const registry = new SessionRegistry((event) => events.push(event), {
+    agentDir: join(root, "agent"), idleTimeoutMs: 20,
+  });
+  try {
+    const created = await registry.create(root);
+    const firstSlot = await registry.getOrOpen(created.sessionId);
+    firstSlot.runtime.session.sessionManager.appendMessage({
+      role: "assistant", content: [{ type: "text", text: "seed" }], api: "openai-responses",
+      provider: "openai", model: "seed", usage: {
+        input: 0, output: 0, cacheRead: 0, cacheWrite: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      }, stopReason: "stop", timestamp: Date.now(),
+    });
+    const sessionPath = firstSlot.runtime.session.sessionFile;
+    assert.ok(sessionPath);
+    registry.emitPromptCompleted(firstSlot);
+    await waitUntil(() => registry.size === 0);
+
+    const reopened = await registry.open(sessionPath);
+    const secondSlot = await registry.getOrOpen(reopened.sessionId);
+    assert.notEqual(reopened.eventStreamId, created.eventStreamId);
+    assert.equal(secondSlot.sequence, 0);
+    registry.emitPromptCompleted(secondSlot);
+
+    const terminalEvents = events.filter((event) => event.payload?.type === "prompt_completed");
+    assert.equal(terminalEvents.length, 2);
+    assert.equal(terminalEvents[0].sequence, 1);
+    assert.equal(terminalEvents[1].sequence, 1);
+    assert.equal(terminalEvents[0].eventStreamId, created.eventStreamId);
+    assert.equal(terminalEvents[1].eventStreamId, reopened.eventStreamId);
+  } finally {
+    await registry.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function waitUntil(predicate, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("condition timed out");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}

@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger
 open class WuxianPiActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WuxianPiDiagnostics.recordActivity(this, "create")
         AiFeatureStatus.onCreated()
         val config = intent.toFeatureConfig()
         setContent { WuxianPiFeature(config) }
@@ -18,15 +19,18 @@ open class WuxianPiActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        WuxianPiDiagnostics.recordActivity(this, "start")
         AiFeatureStatus.onStarted()
     }
 
     override fun onStop() {
+        WuxianPiDiagnostics.recordActivity(this, "stop")
         AiFeatureStatus.onStopped()
         super.onStop()
     }
 
     override fun onDestroy() {
+        WuxianPiDiagnostics.recordActivity(this, "destroy")
         AiFeatureStatus.onDestroyed()
         super.onDestroy()
     }

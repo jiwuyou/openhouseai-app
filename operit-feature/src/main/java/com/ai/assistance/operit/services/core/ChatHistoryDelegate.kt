@@ -25,6 +25,7 @@ import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.ActivePromptManager
 import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.model.ChatMessageTimestampAllocator
+import com.ai.assistance.operit.pi.PiChatEngine
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** 委托类，负责管理聊天历史相关功能 */
@@ -48,6 +49,7 @@ class ChatHistoryDelegate(
     private val chatHistoryManager = ChatHistoryManager.getInstance(context)
     private val characterCardManager = CharacterCardManager.getInstance(context) // 新增
     private val activePromptManager = ActivePromptManager.getInstance(context)
+    private val piChatEngine = PiChatEngine.getInstance(context)
     private val isInitialized = AtomicBoolean(false)
     private val historyUpdateMutex = Mutex()
     private val allowAddMessage = AtomicBoolean(true) // 控制是否允许添加消息，切换对话时设为false
@@ -81,6 +83,7 @@ class ChatHistoryDelegate(
     }
 
     private suspend fun finishDestructiveHistoryMutation(chatId: String) {
+        piChatEngine.rotateSession(chatId)
         afterDestructiveHistoryMutation?.invoke(chatId)
     }
 
@@ -1074,6 +1077,7 @@ class ChatHistoryDelegate(
                 } else {
                     chatHistoryManager.deleteChatHistory(chatId)
                 }
+            if (deleted) piChatEngine.closeSession(chatId)
             onResult(deleted)
         }
     }
@@ -1217,6 +1221,7 @@ class ChatHistoryDelegate(
                 } else {
                     chatHistoryManager.deleteChatHistory(chatId)
                 }
+            if (deleted) piChatEngine.closeSession(chatId)
             onResult(deleted)
         }
     }
