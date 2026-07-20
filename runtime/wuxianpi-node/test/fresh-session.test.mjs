@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { NativeEventProjector } from "../dist/native-event-projector.js";
 import { SessionRegistry } from "../dist/session-registry.js";
 
 test("fresh unsaved session supports history, list, and reconnect open", async () => {
@@ -40,14 +41,17 @@ test("active sessions share one service-level ModelRuntime", async () => {
   }
 });
 
-test("reclaim and reopen creates a new event stream with sequence restarted", async () => {
+test("native projection creates a new event stream after runtime reclaim", async () => {
   const root = await mkdtemp(join(tmpdir(), "wuxianpi-event-stream-"));
   const events = [];
-  const registry = new SessionRegistry((event) => events.push(event), {
+  const registry = new SessionRegistry(undefined, {
     agentDir: join(root, "agent"), idleTimeoutMs: 20,
   });
+  const projection = new NativeEventProjector(registry);
+  registry.subscribe((event) => events.push(projection.project(event)));
   try {
     const created = await registry.create(root);
+    const createdNative = await projection.decorateResult(created);
     const firstSlot = await registry.getOrOpen(created.sessionId);
     firstSlot.runtime.session.sessionManager.appendMessage({
       role: "assistant", content: [{ type: "text", text: "seed" }], api: "openai-responses",
@@ -62,17 +66,18 @@ test("reclaim and reopen creates a new event stream with sequence restarted", as
     await waitUntil(() => registry.size === 0);
 
     const reopened = await registry.open(sessionPath);
+    const reopenedNative = await projection.decorateResult(reopened);
     const secondSlot = await registry.getOrOpen(reopened.sessionId);
-    assert.notEqual(reopened.eventStreamId, created.eventStreamId);
-    assert.equal(secondSlot.sequence, 0);
+    assert.notEqual(reopenedNative.eventStreamId, createdNative.eventStreamId);
+    assert.equal(projection.identity(secondSlot).sequence, 0);
     registry.emitPromptCompleted(secondSlot);
 
     const terminalEvents = events.filter((event) => event.payload?.type === "prompt_completed");
     assert.equal(terminalEvents.length, 2);
     assert.equal(terminalEvents[0].sequence, 1);
     assert.equal(terminalEvents[1].sequence, 1);
-    assert.equal(terminalEvents[0].eventStreamId, created.eventStreamId);
-    assert.equal(terminalEvents[1].eventStreamId, reopened.eventStreamId);
+    assert.equal(terminalEvents[0].eventStreamId, createdNative.eventStreamId);
+    assert.equal(terminalEvents[1].eventStreamId, reopenedNative.eventStreamId);
   } finally {
     await registry.dispose();
     await rm(root, { recursive: true, force: true });

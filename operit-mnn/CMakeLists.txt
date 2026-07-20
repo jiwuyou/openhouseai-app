@@ -23,7 +23,14 @@ set(MNN_CPU_WEIGHT_DEQUANT_GEMM ON CACHE BOOL "CPU weight dequant gemm" FORCE)
 set(MNN_VULKAN ON CACHE BOOL "Enable Vulkan backend" FORCE)
 set(MNN_OPENCL ON CACHE BOOL "Enable OpenCL backend" FORCE)
 set(MNN_OPENGL ON CACHE BOOL "Enable OpenGL backend" FORCE)
+set(MNN_OPENGL_REGEN ON CACHE BOOL "Regenerate OpenGL shaders in the build directory" FORCE)
 set(MNN_SUPPORT_RENDER ON CACHE BOOL "Enable render backend" FORCE)
+
+# OpenGL's AllShader.cpp is generated and intentionally ignored by MNN. Always
+# provide an explicit interpreter so a fresh checkout does not depend on a
+# historical source-tree generation artifact or a /usr/bin/python alias.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}" CACHE FILEPATH "Python interpreter used by MNN code generation" FORCE)
 
 # 禁用分离编译 - 将所有后端编入 libMNN.so (解决 "Can't Find type=3 backend" 问题)
 set(MNN_SEP_BUILD OFF CACHE BOOL "Build backends separately" FORCE)
@@ -94,4 +101,3 @@ target_link_options(MNN PRIVATE "-Wl,-z,max-page-size=16384")
 if(TARGET llm)
     target_link_options(llm PRIVATE "-Wl,-z,max-page-size=16384")
 endif()
-

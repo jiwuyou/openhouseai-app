@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.80.10",
+    "fflate": "0.8.2",
     "ws": "8.18.3"
   },
   "devDependencies": {

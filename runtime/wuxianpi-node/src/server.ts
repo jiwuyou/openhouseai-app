@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { WebSocket, WebSocketServer } from "ws";
 import { PersistentDiagnostics } from "./diagnostics.js";
+import { NativeEventProjector } from "./native-event-projector.js";
 import { PiSdkAdapter } from "./pi-sdk-adapter.js";
 import {
   boundedInteger,
@@ -20,6 +21,9 @@ import {
   success,
 } from "./protocol.js";
 import { SessionRegistry } from "./session-registry.js";
+import { StaticFiles } from "./static-files.js";
+import { WebApi } from "./web-api.js";
+import { WebServices } from "./web-services.js";
 
 export interface RuntimeServerOptions {
   host: string;
@@ -28,6 +32,7 @@ export interface RuntimeServerOptions {
   agentDir?: string;
   diagnosticsMaxFileBytes?: number;
   diagnosticsMaxFiles?: number;
+  webRoot?: string;
 }
 
 interface ConnectionContext {
@@ -79,14 +84,41 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
   const subscriptions = new SessionSubscriptions<WebSocket>();
   const requestOwner = new AsyncLocalStorage<WebSocket>();
   const inFlightRequests = new Map<WebSocket, number>();
-  const registry = new SessionRegistry((event) => routeEvent(event), {
+  const registry = new SessionRegistry(undefined, {
     idleTimeoutMs: options.idleTimeoutMs,
     agentDir,
     diagnostics,
   });
+  const nativeEvents = new NativeEventProjector(registry);
+  registry.subscribe((event) => routeEvent(nativeEvents.project(event)));
   const adapter = new PiSdkAdapter(registry);
+  const webServices = new WebServices({ agentDir, registry });
+  const staticFiles = new StaticFiles(options.webRoot);
+  const webApi = new WebApi({
+    registry,
+    services: webServices,
+    status: () => ({
+      version: RUNTIME_VERSION,
+      protocolVersion: PROTOCOL_VERSION,
+      protocol: PROTOCOL_NAME,
+      ...registry.status(),
+      eventTransport: "snapshot-sse-v1",
+      nativeWebsocketPath: "/v1/ws",
+      capabilities: { ...CAPABILITIES, webApi: 1, snapshotSse: 1, staticWebUi: staticFiles.enabled ? 1 : 0 },
+    }),
+  });
   const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
-  const httpServer = createServer((request, response) => handleHttp(request, response));
+  const httpServer = createServer((request, response) => {
+    void handleHttp(request, response).catch((error) => {
+      diagnostics.record("http.request.failed", {
+        method: request.method,
+        path: request.url,
+        errorName: error instanceof Error ? error.name : typeof error,
+      }, { error });
+      if (!response.headersSent) json(response, 500, { ok: false, error: { code: "runtime_error", message: "Internal server error" } });
+      else response.end();
+    });
+  });
 
   function routeEvent(event: RuntimeAgentEventEnvelope): void {
     const diagnosticType = eventType(event.payload);
@@ -202,8 +234,9 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
     response.end(encoded);
   }
 
-  function handleHttp(request: IncomingMessage, response: HttpResponse): void {
+  async function handleHttp(request: IncomingMessage, response: HttpResponse): Promise<void> {
     const path = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`).pathname;
+    if (await webApi.handle(request, response)) return;
     if (request.method === "GET" && (path === "/health" || path === "/admin/v1/health")) {
       json(response, 200, {
         ok: true,
@@ -213,13 +246,27 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
         activeSessions: registry.size,
         capabilities: CAPABILITIES,
       });
-    } else if (request.method === "GET" && (path === "/" || path === "/v1/status")) {
+    } else if (request.method === "GET" && path === "/v1/status") {
       json(response, 200, {
         ok: true,
         version: RUNTIME_VERSION,
         protocolVersion: PROTOCOL_VERSION,
+        protocol: PROTOCOL_NAME,
         ...registry.status(),
         websocketPath: "/v1/ws",
+        capabilities: CAPABILITIES,
+        diagnostics: diagnostics.status(),
+      });
+    } else if (await staticFiles.serve(request, response, path)) return;
+    else if (request.method === "GET" && path === "/") {
+      json(response, 200, {
+        ok: true,
+        version: RUNTIME_VERSION,
+        protocolVersion: PROTOCOL_VERSION,
+        protocol: PROTOCOL_NAME,
+        ...registry.status(),
+        websocketPath: "/v1/ws",
+        webApiPath: "/api/web/v1",
         capabilities: CAPABILITIES,
         diagnostics: diagnostics.status(),
       });
@@ -256,14 +303,15 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
     }, {
       headers: request.headers,
     });
-    send(websocket, {
+    void nativeEvents.decorateResult(registry.status()).then((nativeStatus) => send(websocket, {
       type: "runtime.ready",
       version: RUNTIME_VERSION,
       protocolVersion: PROTOCOL_VERSION,
       connectionId: connection.id,
+      protocol: PROTOCOL_NAME,
       capabilities: CAPABILITIES,
-      ...registry.status(),
-    }, { kind: "runtime.ready" });
+      ...(nativeStatus as object),
+    }, { kind: "runtime.ready" }));
 
     websocket.on("message", (data, isBinary) => {
       diagnostics.record("websocket.frame.received", {
@@ -305,7 +353,7 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
             result = await dispatchDiagnostics(request.type, request.payload ?? {});
           } else {
             if (request.sessionId) updateSubscription(websocket, request.sessionId, request.type);
-            result = await adapter.dispatch(request);
+            result = await nativeEvents.decorateResult(await adapter.dispatch(request));
             if (result && typeof result === "object" && "sessionId" in result && typeof result.sessionId === "string") {
               updateSubscription(websocket, result.sessionId, `${request.type}:result`);
             }
@@ -467,6 +515,7 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
 
   return {
     registry,
+    nativeEvents,
     diagnostics,
     async start() {
       await new Promise<void>((resolve, reject) => {
@@ -489,6 +538,7 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
     async stop(): Promise<void> {
       diagnostics.record("runtime.stop.requested", { clients: clients.size, activeSessions: registry.size });
       for (const client of clients) client.close(1001, "runtime stopping");
+      webApi.close();
       await registry.dispose();
       await new Promise<void>((resolve, reject) => httpServer.close((error) => error ? reject(error) : resolve()));
       websocketServer.close();

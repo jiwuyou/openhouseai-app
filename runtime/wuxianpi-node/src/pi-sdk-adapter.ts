@@ -1,6 +1,6 @@
 import type { ClientRequest } from "./protocol.js";
-import { boundedInteger, optionalString, RequestError, requireString } from "./protocol.js";
-import { requireIdle, type RuntimeSlot, SessionRegistry } from "./session-registry.js";
+import { boundedInteger, optionalString, PROTOCOL_NAME, RequestError, requireString } from "./protocol.js";
+import { SessionRegistry } from "./session-registry.js";
 
 export class PiSdkAdapter {
   constructor(private readonly registry: SessionRegistry) {}
@@ -26,7 +26,7 @@ export class PiSdkAdapter {
           request.sessionId,
         );
       case "runtime.status":
-        return this.registry.status();
+        return { protocol: PROTOCOL_NAME, ...this.registry.status() };
       case "session.list":
         return this.registry.list({
           cwd: optionalString(payload, "cwd"), all: payload.all === true,
@@ -55,177 +55,65 @@ export class PiSdkAdapter {
 
   private async dispatchToSession(request: ClientRequest, payload: Record<string, unknown>): Promise<unknown> {
     const sessionId = this.requireSessionId(request);
-    const operation = async (slot: RuntimeSlot) => {
-      const session = this.registry.session(slot);
-      try {
-        switch (request.type) {
-          case "session.prompt":
-            return this.prompt(slot, requireString(payload, "message"), payload);
-          case "session.steer":
-            await session.steer(requireString(payload, "message"), payload.images as never);
-            return {};
-          case "session.followUp":
-            await session.followUp(requireString(payload, "message"), payload.images as never);
-            return {};
-          case "session.abort":
-            await session.abort();
-            return {};
-          case "session.compact":
-            requireIdle(slot, request.type);
-            return session.compact(optionalString(payload, "customInstructions"));
-          case "session.abortCompaction":
-            session.abortCompaction();
-            return {};
-          case "session.clearQueue":
-            return session.clearQueue();
-          case "session.new": {
-            requireIdle(slot, request.type);
-            const parentSession = optionalString(payload, "parentSession");
-            const result = await this.registry.runtime(slot).newSession(parentSession ? { parentSession } : undefined);
-            return { ...result, ...this.registry.describe(slot) };
-          }
-          case "session.switch":
-            requireIdle(slot, request.type);
-            return this.registry.switch(slot, requireString(payload, "sessionPath"));
-          case "session.fork": {
-            requireIdle(slot, request.type);
-            const position = optionalString(payload, "position") ?? "before";
-            if (position !== "before" && position !== "at") {
-              throw new RequestError("invalid_payload", "position must be before or at");
-            }
-            const result = await this.registry.runtime(slot).fork(requireString(payload, "entryId"), { position });
-            return { cancelled: result.cancelled, text: result.selectedText, ...this.registry.describe(slot) };
-          }
-          case "session.import": {
-            requireIdle(slot, request.type);
-            const result = await this.registry.runtime(slot).importFromJsonl(
-              requireString(payload, "inputPath"), optionalString(payload, "cwd"));
-            return { ...result, ...this.registry.describe(slot) };
-          }
-          case "session.navigateTree":
-            requireIdle(slot, request.type);
-            return session.navigateTree(requireString(payload, "targetId"), {
-              summarize: payload.summarize === true,
-              customInstructions: optionalString(payload, "customInstructions"),
-              replaceInstructions: payload.replaceInstructions === true,
-              label: optionalString(payload, "label"),
-            });
-          case "session.reload":
-            requireIdle(slot, request.type);
-            await session.reload();
-            return {};
-          case "session.state":
-            return this.state(slot);
-          case "session.messages":
-            return { messages: session.messages };
-          case "session.entries": {
-            let entries = session.sessionManager.getEntries();
-            const since = optionalString(payload, "since");
-            if (since) {
-              const index = entries.findIndex((entry) => entry.id === since);
-              if (index < 0) throw new RequestError("entry_not_found", `Entry not found: ${since}`);
-              entries = entries.slice(index + 1);
-            }
-            return { entries, leafId: session.sessionManager.getLeafId() };
-          }
-          case "session.tree":
-            return { tree: session.sessionManager.getTree(), leafId: session.sessionManager.getLeafId() };
-          case "session.commands":
-            return { commands: this.commands(slot) };
-          case "session.tools":
-            return { tools: session.getAllTools(), activeToolNames: session.getActiveToolNames() };
-          case "session.setTools": {
-            requireIdle(slot, request.type);
-            const names = payload.toolNames;
-            if (!Array.isArray(names) || !names.every((name) => typeof name === "string")) {
-              throw new RequestError("invalid_payload", "toolNames must be an array of strings");
-            }
-            session.setActiveToolsByName(names);
-            return { activeToolNames: session.getActiveToolNames() };
-          }
-          case "session.models":
-            return { models: await session.modelRuntime.getAvailable() };
-          case "session.setModel": {
-            requireIdle(slot, request.type);
-            const provider = requireString(payload, "provider");
-            const modelId = requireString(payload, "modelId");
-            const model = (await session.modelRuntime.getAvailable()).find((item) => item.provider === provider && item.id === modelId);
-            if (!model) throw new RequestError("model_not_found", `Model not found: ${provider}/${modelId}`);
-            await session.setModel(model);
-            return model;
-          }
-          case "session.cycleModel":
-            requireIdle(slot, request.type);
-            return (await session.cycleModel(payload.direction === "backward" ? "backward" : "forward")) ?? null;
-          case "session.setThinkingLevel":
-            requireIdle(slot, request.type);
-            session.setThinkingLevel(requireString(payload, "level") as Parameters<typeof session.setThinkingLevel>[0]);
-            return { level: session.thinkingLevel };
-          case "session.cycleThinkingLevel": {
-            requireIdle(slot, request.type);
-            const level = session.cycleThinkingLevel();
-            return level ? { level } : null;
-          }
-          case "session.setName": {
-            const name = requireString(payload, "name").trim();
-            session.setSessionName(name);
-            return {};
-          }
-          case "session.stats":
-            return session.getSessionStats();
-          case "session.lastAssistantText":
-            return { text: session.getLastAssistantText() };
-          case "extension.uiResponse": {
-            const requestId = requireString(payload, "requestId");
-            this.registry.respondToExtensionUi(slot, {
-              requestId,
-              value: optionalString(payload, "value"),
-              confirmed: typeof payload.confirmed === "boolean" ? payload.confirmed : undefined,
-              cancelled: payload.cancelled === true,
-            });
-            return {};
-          }
-          default:
-            throw new RequestError("unknown_command", `Unknown command: ${request.type}`);
+    switch (request.type) {
+      case "session.prompt":
+        return this.registry.prompt(sessionId, {
+          message: requireString(payload, "message"),
+          images: payload.images,
+          streamingBehavior: payload.streamingBehavior === "steer" || payload.streamingBehavior === "followUp"
+            ? payload.streamingBehavior : undefined,
+          source: "rpc",
+        });
+      case "session.steer": await this.registry.steer(sessionId, requireString(payload, "message"), payload.images); return {};
+      case "session.followUp": await this.registry.followUp(sessionId, requireString(payload, "message"), payload.images); return {};
+      case "session.abort": await this.registry.abort(sessionId); return {};
+      case "session.compact": return this.registry.compact(sessionId, optionalString(payload, "customInstructions"));
+      case "session.abortCompaction": await this.registry.abortCompaction(sessionId); return {};
+      case "session.clearQueue": return this.registry.clearQueue(sessionId);
+      case "session.new": return this.registry.newSession(sessionId, optionalString(payload, "parentSession"));
+      case "session.switch": return this.registry.switchSession(sessionId, requireString(payload, "sessionPath"));
+      case "session.fork": {
+        const position = optionalString(payload, "position") ?? "before";
+        if (position !== "before" && position !== "at") throw new RequestError("invalid_payload", "position must be before or at");
+        return this.registry.fork(sessionId, requireString(payload, "entryId"), position);
+      }
+      case "session.import": return this.registry.importSession(sessionId, requireString(payload, "inputPath"), optionalString(payload, "cwd"));
+      case "session.navigateTree": return this.registry.navigateTree(sessionId, requireString(payload, "targetId"), {
+        summarize: payload.summarize === true,
+        customInstructions: optionalString(payload, "customInstructions"),
+        replaceInstructions: payload.replaceInstructions === true,
+        label: optionalString(payload, "label"),
+      });
+      case "session.reload": await this.registry.reloadSession(sessionId); return {};
+      case "session.state": return this.registry.state(sessionId);
+      case "session.messages": return this.registry.messages(sessionId);
+      case "session.entries": return this.registry.entries(sessionId, optionalString(payload, "since"));
+      case "session.tree": return this.registry.tree(sessionId);
+      case "session.commands": return this.registry.commands(sessionId);
+      case "session.tools": return this.registry.tools(sessionId);
+      case "session.setTools": {
+        const names = payload.toolNames;
+        if (!Array.isArray(names) || !names.every((name) => typeof name === "string")) {
+          throw new RequestError("invalid_payload", "toolNames must be an array of strings");
         }
-      } catch (error) { throw error; }
-    };
-    return CONTROL_COMMANDS.has(request.type)
-      ? this.registry.control(sessionId, operation)
-      : this.registry.run(sessionId, operation);
-  }
-
-  private prompt(slot: RuntimeSlot, message: string, payload: Record<string, unknown>): Promise<unknown> {
-    const session = this.registry.session(slot);
-    const agentStartCount = this.registry.agentStartCount(slot);
-    return new Promise((resolve, reject) => {
-      let accepted = false;
-      const run = session.prompt(message, {
-        images: payload.images as never,
-        streamingBehavior: payload.streamingBehavior === "steer" || payload.streamingBehavior === "followUp"
-          ? payload.streamingBehavior : undefined,
-        source: "rpc",
-        preflightResult: (success) => {
-          if (success) {
-            const userEntryId = session.sessionManager.getLeafId();
-            if (!userEntryId) {
-              reject(new RequestError("missing_user_entry", "Prompt was accepted without a persisted user entry"));
-              return;
-            }
-            accepted = true;
-            resolve({ accepted: true, userEntryId, ...this.registry.describe(slot) });
-          } else {
-            reject(new RequestError("prompt_rejected", "Prompt was rejected before it was accepted"));
-          }
-        },
-      });
-      void run.catch((error) => {
-        if (!accepted) reject(error);
-        else this.registry.emitRuntimeError(slot, "session.prompt", error);
-      }).then(() => {
-        if (accepted && this.registry.agentStartCount(slot) === agentStartCount) this.registry.emitPromptCompleted(slot);
-      });
-    });
+        return this.registry.setTools(sessionId, names);
+      }
+      case "session.models": return this.registry.sessionModels(sessionId);
+      case "session.setModel": return this.registry.setModel(sessionId, requireString(payload, "provider"), requireString(payload, "modelId"));
+      case "session.cycleModel": return this.registry.cycleModel(sessionId, payload.direction === "backward" ? "backward" : "forward");
+      case "session.setThinkingLevel": return this.registry.setThinkingLevel(sessionId, requireString(payload, "level"));
+      case "session.cycleThinkingLevel": return this.registry.cycleThinkingLevel(sessionId);
+      case "session.setName": await this.registry.setName(sessionId, requireString(payload, "name")); return {};
+      case "session.stats": return this.registry.stats(sessionId);
+      case "session.lastAssistantText": return this.registry.lastAssistantText(sessionId);
+      case "extension.uiResponse": await this.registry.extensionUiResponse(sessionId, {
+        requestId: requireString(payload, "requestId"),
+        value: optionalString(payload, "value"),
+        confirmed: typeof payload.confirmed === "boolean" ? payload.confirmed : undefined,
+        cancelled: payload.cancelled === true,
+      }); return {};
+      default: throw new RequestError("unknown_command", `Unknown command: ${request.type}`);
+    }
   }
 
   private async modelStatus(providerFilter?: string) {
@@ -330,37 +218,6 @@ export class PiSdkAdapter {
     } finally {
       clearTimeout(timer);
     }
-  }
-
-  private state(slot: RuntimeSlot) {
-    const session = this.registry.session(slot);
-    const identity = this.registry.describe(slot);
-    return {
-      ...identity,
-      model: session.model, thinkingLevel: session.thinkingLevel, isStreaming: session.isStreaming,
-      isCompacting: session.isCompacting, steeringMode: session.steeringMode, followUpMode: session.followUpMode,
-      sessionFile: session.sessionFile, sessionName: session.sessionName,
-      autoCompactionEnabled: session.autoCompactionEnabled, messageCount: session.messages.length,
-      pendingMessageCount: session.pendingMessageCount, contextUsage: session.getContextUsage(),
-      systemPrompt: session.systemPrompt, extensionStatuses: {}, extensionWidgets: {},
-      queuedMessages: { steering: [...session.getSteeringMessages()], followUp: [...session.getFollowUpMessages()] },
-      isPromptRunning: identity.isRunning,
-    };
-  }
-
-  private commands(slot: RuntimeSlot) {
-    const session = this.registry.session(slot);
-    return [
-      ...session.extensionRunner.getRegisteredCommands().map((command) => ({
-        name: command.invocationName, description: command.description, source: "extension", sourceInfo: command.sourceInfo,
-      })),
-      ...session.promptTemplates.map((template) => ({
-        name: template.name, description: template.description, source: "prompt", sourceInfo: template.sourceInfo,
-      })),
-      ...session.resourceLoader.getSkills().skills.map((skill) => ({
-        name: `skill:${skill.name}`, description: skill.description, source: "skill", sourceInfo: skill.sourceInfo,
-      })),
-    ];
   }
 
   private requireSessionId(request: ClientRequest): string {
