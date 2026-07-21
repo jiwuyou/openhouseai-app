@@ -410,8 +410,26 @@ export class SessionRegistry {
   async setTools(sessionId: string, toolNames: string[]): Promise<unknown> {
     return this.run(sessionId, async (slot) => {
       requireIdle(slot, "session.setTools");
-      slot.runtime.session.setActiveToolsByName(toolNames);
-      return { activeToolNames: slot.runtime.session.getActiveToolNames() };
+      const available = new Set(slot.runtime.session.getAllTools().map((tool) => tool.name));
+      const requested = [...new Set(toolNames)];
+      const unknown = requested.filter((name) => !available.has(name));
+      const availableToolNames = [...available];
+      const warnings = unknown.length > 0 ? [{
+        code: "unknown_tool",
+        message: `Unknown tool name(s) ignored: ${unknown.join(", ")}`,
+        unknown,
+        available: availableToolNames,
+      }] : [];
+      if (unknown.length > 0) {
+        this.diagnostics?.record("tools.warning", {
+          sessionId: slot.runtime.session.sessionId,
+          unknown,
+          available: availableToolNames,
+          code: "unknown_tool",
+        });
+      }
+      slot.runtime.session.setActiveToolsByName(requested.filter((name) => available.has(name)));
+      return { activeToolNames: slot.runtime.session.getActiveToolNames(), warnings };
     });
   }
 

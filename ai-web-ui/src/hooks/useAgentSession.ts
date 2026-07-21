@@ -476,7 +476,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const result = await webApi.createSession({
         ...(assistantId ? { assistantId } : {}),
         cwd: newSessionCwd,
-        ...(!assistantId ? { toolNames } : {}),
+        toolNames,
         ...(selectedModel && !assistantId ? { provider: selectedModel.provider, modelId: selectedModel.modelId } : {}),
         ...(thinkingLevel !== "auto" && !assistantId ? { thinkingLevel } : {}),
       });
@@ -864,7 +864,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const result = await webApi.createSession({
             ...(assistantId ? { assistantId } : {}),
             cwd: newSessionCwd,
-            ...(!assistantId ? { toolNames } : {}),
+            toolNames,
             ...(selectedModel && !assistantId ? { provider: selectedModel.provider, modelId: selectedModel.modelId } : {}),
             ...(thinkingLevel !== "auto" && !assistantId ? { thinkingLevel } : {}),
           });

@@ -89,19 +89,21 @@ export class WebApi {
         ?? (typeof manifest.thinkingLevel === "string" && manifest.thinkingLevel !== "inherit" ? manifest.thinkingLevel : undefined)
         ?? (typeof config.defaults?.thinkingLevel === "string" ? config.defaults.thinkingLevel : undefined);
       const created = await this.options.registry.create(cwd);
+      let toolWarnings: unknown[] = [];
       try {
         if (body.toolNames !== undefined && (!Array.isArray(body.toolNames) || !body.toolNames.every((name) => typeof name === "string"))) {
             throw new RequestError("invalid_payload", "toolNames must be an array of strings");
         }
         if (configuredTools && configuredTools.every((name: unknown) => typeof name === "string")) {
-          await this.options.registry.setTools(created.sessionId, configuredTools as string[]);
+          const toolResult = await this.options.registry.setTools(created.sessionId, configuredTools as string[]);
+          if (isRecord(toolResult) && Array.isArray(toolResult.warnings)) toolWarnings = toolResult.warnings;
         }
         if ((configuredProvider && !configuredModelId) || (!configuredProvider && configuredModelId)) {
           throw new RequestError("invalid_payload", "provider and modelId must be supplied together");
         }
         if (configuredProvider && configuredModelId) await this.options.registry.setModel(created.sessionId, configuredProvider, configuredModelId);
         if (configuredThinking) await this.options.registry.setThinkingLevel(created.sessionId, configuredThinking);
-        json(response, 201, { ok: true, data: created });
+        json(response, 201, { ok: true, data: { ...created, ...(toolWarnings.length > 0 ? { warnings: toolWarnings } : {}) } });
       } catch (error) {
         await this.options.registry.close(created.sessionId).catch(() => undefined);
         throw error;

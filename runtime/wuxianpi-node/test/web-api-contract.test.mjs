@@ -34,6 +34,18 @@ test("AI Web contract covers session controls and complete snapshots", { timeout
   assert.equal(Array.isArray(snapshot.data.state.slashCommands.commands), true);
   assert.equal(typeof snapshot.data.state.sessionStats, "object");
 
+  const updatedTools = await jsonFetch(`${fixture.base}/api/web/v1/sessions/${sessionId}/tools`, {
+    method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ toolNames: ["read", "pi:read", "bash"] }),
+  });
+  assert.deepEqual(updatedTools.data.activeToolNames, ["read", "bash"]);
+  assert.equal(Array.isArray(updatedTools.data.warnings), true);
+  assert.equal(updatedTools.data.warnings.length, 1);
+  assert.equal(updatedTools.data.warnings[0].code, "unknown_tool");
+  assert.equal(updatedTools.data.warnings[0].message, "Unknown tool name(s) ignored: pi:read");
+  assert.deepEqual(updatedTools.data.warnings[0].unknown, ["pi:read"]);
+  assert.equal(updatedTools.data.warnings[0].available.includes("read"), true);
+  assert.equal(updatedTools.data.warnings[0].available.includes("bash"), true);
+
   await jsonFetch(`${fixture.base}/api/web/v1/sessions/${sessionId}`, {
     method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ name: "Renamed" }),
   });
