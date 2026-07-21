@@ -530,6 +530,7 @@ export class SessionRegistry {
   private stateOf(slot: RuntimeSlot): Record<string, unknown> {
     const session = slot.runtime.session;
     const identity = this.identity(slot);
+    const extensionUi = slot.ui?.state();
     return {
       ...identity,
       model: session.model,
@@ -545,8 +546,8 @@ export class SessionRegistry {
       pendingMessageCount: session.pendingMessageCount,
       contextUsage: session.getContextUsage(),
       systemPrompt: session.systemPrompt,
-      extensionStatuses: {},
-      extensionWidgets: {},
+      extensionStatuses: extensionUi?.statuses ?? [],
+      extensionWidgets: extensionUi?.widgets ?? [],
       queuedMessages: {
         steering: [...session.getSteeringMessages()],
         followUp: [...session.getFollowUpMessages()],

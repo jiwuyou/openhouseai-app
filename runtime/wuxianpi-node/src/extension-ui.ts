@@ -6,9 +6,23 @@ type UiResponse = { requestId: string; value?: string; confirmed?: boolean; canc
 type DialogOptions = { timeout?: number; signal?: AbortSignal };
 type PendingRequest = { resolve: (value: unknown) => void; fallback: unknown; timer?: NodeJS.Timeout; cleanup?: () => void };
 
+export interface ExtensionUiState {
+  statuses: Array<{ key: string; text: string }>;
+  widgets: Array<{ key: string; lines: string[]; placement: "aboveEditor" | "belowEditor" }>;
+}
+
 export class ExtensionUiBridge {
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly statuses = new Map<string, { key: string; text: string }>();
+  private readonly widgets = new Map<string, { key: string; lines: string[]; placement: "aboveEditor" | "belowEditor" }>();
   constructor(private readonly emit: (payload: unknown) => void) {}
+
+  state(): ExtensionUiState {
+    return {
+      statuses: [...this.statuses.values()],
+      widgets: [...this.widgets.values()],
+    };
+  }
 
   readonly context = {
     select: (title: string, options: string[], opts?: DialogOptions) =>
@@ -21,7 +35,7 @@ export class ExtensionUiBridge {
       this.fire("notify", { message, notifyType }),
     onTerminalInput: () => () => {},
     setStatus: (statusKey: string, statusText?: string) =>
-      this.fire("setStatus", { statusKey, statusText }),
+      this.setStatus(statusKey, statusText),
     setWorkingMessage: (message?: string) =>
       this.fire("setWorkingMessage", { message }),
     setWorkingVisible: (visible: boolean) =>
@@ -32,7 +46,7 @@ export class ExtensionUiBridge {
       this.fire("setHiddenThinkingLabel", { label }),
     setWidget: (widgetKey: string, content: unknown, options?: unknown) => {
       if (content === undefined || Array.isArray(content)) {
-        this.fire("setWidget", { widgetKey, widgetLines: content, widgetPlacement: (options as { placement?: unknown } | undefined)?.placement });
+        this.setWidget(widgetKey, content, options);
       }
     },
     setFooter: () => {}, setHeader: () => {},
@@ -67,6 +81,29 @@ export class ExtensionUiBridge {
       pending.resolve(pending.fallback);
     }
     this.pending.clear();
+    this.statuses.clear();
+    this.widgets.clear();
+  }
+
+  private setStatus(statusKey: string, statusText?: string): void {
+    if (statusText) this.statuses.set(statusKey, { key: statusKey, text: statusText });
+    else this.statuses.delete(statusKey);
+    this.fire("setStatus", { statusKey, statusText });
+  }
+
+  private setWidget(widgetKey: string, content: unknown, options?: unknown): void {
+    const placement = (options as { placement?: unknown } | undefined)?.placement === "belowEditor"
+      ? "belowEditor" : "aboveEditor";
+    if (content === undefined) {
+      this.widgets.delete(widgetKey);
+    } else if (Array.isArray(content)) {
+      this.widgets.set(widgetKey, {
+        key: widgetKey,
+        lines: content.filter((line): line is string => typeof line === "string"),
+        placement,
+      });
+    }
+    this.fire("setWidget", { widgetKey, widgetLines: content, widgetPlacement: placement });
   }
 
   private fire(method: string, fields: Record<string, unknown>): void {

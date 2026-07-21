@@ -167,6 +167,21 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizeExtensionWidgets(value: unknown): ExtensionWidgetItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as { key?: unknown; lines?: unknown; placement?: unknown };
+    if (typeof row.key !== "string" || !Array.isArray(row.lines)) return [];
+    const lines = row.lines.filter((line): line is string => typeof line === "string");
+    return [{
+      key: row.key,
+      lines,
+      placement: row.placement === "belowEditor" ? "belowEditor" : "aboveEditor",
+    }];
+  });
+}
+
 function markOldestNoticeExiting(notices: NoticeItem[]): NoticeItem[] {
   const index = notices.findIndex((notice) => !notice.exiting);
   if (index === -1) return notices;
@@ -396,7 +411,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setCurrentModelOverride(null);
       setError(null);
       if (Array.isArray(state?.extensionStatuses)) setExtensionStatuses(state.extensionStatuses);
-      if (Array.isArray(state?.extensionWidgets)) setExtensionWidgets(state.extensionWidgets);
+      if (state?.extensionWidgets !== undefined) setExtensionWidgets(normalizeExtensionWidgets(state.extensionWidgets));
       // If no live agent state, fall back to thinking level from session file
       if (!state?.thinkingLevel && d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
         setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
@@ -707,7 +722,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               if (state?.contextUsage !== undefined) setContextUsage(state.contextUsage ?? null);
               if (state?.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
               if (state?.extensionStatuses !== undefined) setExtensionStatuses(Array.isArray(state.extensionStatuses) ? state.extensionStatuses : []);
-              if (state?.extensionWidgets !== undefined) setExtensionWidgets(Array.isArray(state.extensionWidgets) ? state.extensionWidgets : []);
+              if (state?.extensionWidgets !== undefined) setExtensionWidgets(normalizeExtensionWidgets(state.extensionWidgets));
             })
             .catch(() => {});
         }
@@ -1200,7 +1215,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
           if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "auto");
           if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
-          if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
+          if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(normalizeExtensionWidgets(agentState.state.extensionWidgets));
         }
       });
     }

@@ -19,3 +19,19 @@ test("extension UI abort returns the dialog fallback", async () => {
   assert.equal(await confirmed, false);
   bridge.dispose();
 });
+
+test("extension UI state is snapshotted as arrays", () => {
+  const emitted = [];
+  const bridge = new ExtensionUiBridge((event) => emitted.push(event));
+  bridge.context.setStatus("build", "Running");
+  bridge.context.setWidget("progress", ["one", "two"], { placement: "belowEditor" });
+  assert.deepEqual(bridge.state(), {
+    statuses: [{ key: "build", text: "Running" }],
+    widgets: [{ key: "progress", lines: ["one", "two"], placement: "belowEditor" }],
+  });
+  bridge.context.setStatus("build");
+  bridge.context.setWidget("progress", undefined);
+  assert.deepEqual(bridge.state(), { statuses: [], widgets: [] });
+  assert.equal(emitted.length, 4);
+  bridge.dispose();
+});

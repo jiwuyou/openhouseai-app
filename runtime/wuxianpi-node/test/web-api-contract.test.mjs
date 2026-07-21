@@ -28,6 +28,8 @@ test("AI Web contract covers session controls and complete snapshots", { timeout
   assert.equal(snapshot.data.sessionEntries.some((entry) => entry.id === leafId), true);
   assert.equal(Array.isArray(snapshot.data.tree), true);
   assert.equal(Array.isArray(snapshot.data.state.tools), true);
+  assert.equal(Array.isArray(snapshot.data.state.extensionStatuses), true);
+  assert.equal(Array.isArray(snapshot.data.state.extensionWidgets), true);
   assert.deepEqual(snapshot.data.state.activeToolNames, ["read"]);
   assert.equal(Array.isArray(snapshot.data.state.slashCommands.commands), true);
   assert.equal(typeof snapshot.data.state.sessionStats, "object");
