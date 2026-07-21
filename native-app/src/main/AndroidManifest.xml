@@ -2,6 +2,9 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Required for the rescue runtime to invoke Termux commands through its
+         documented external-command service. -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <application
         android:allowBackup="false"
@@ -45,5 +48,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Android-local second AI.  It keeps the complete Operit UI but runs in an isolated
+             process so a Rust/JNI failure cannot take down the normal Node/Termux chat. -->
+        <activity
+            android:name="com.ai.assistance.operit.rescue.ui.RescueActivity"
+            android:exported="false"
+            android:label="@string/rescue_ai_title"
+            android:process=":rescue_ui"
+            android:theme="@style/Theme.Operit" />
     </application>
 </manifest>

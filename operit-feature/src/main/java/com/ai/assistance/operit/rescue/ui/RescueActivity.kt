@@ -1,0 +1,93 @@
+package com.ai.assistance.operit.rescue.ui
+
+import android.app.ActivityManager
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
+import com.ai.assistance.operit.core.application.OperitApplication
+import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.ui.common.NavItem
+import com.ai.assistance.operit.ui.main.OperitApp
+import com.ai.assistance.operit.ui.theme.OperitTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * Entry point for the Android-local Rescue AI.
+ *
+ * This intentionally hosts the complete Operit UI instead of adding a second maintenance
+ * dashboard.  The activity lives in its own process, and ChatViewModel uses the process marker to
+ * select ChatRuntimeSlot.RESCUE.  The normal WuxianPi/Node UI is not changed.
+ */
+class RescueActivity : ComponentActivity() {
+    companion object {
+        const val ACTION_OPEN_RESCUE = "com.wuxianpi.action.OPEN_RESCUE_AI"
+        const val EXTRA_RESCUE_ENTRY = "com.wuxianpi.extra.RESCUE_ENTRY"
+        const val RESCUE_PROCESS_SUFFIX = ":rescue_ui"
+
+        fun createIntent(context: Context): Intent =
+            Intent(context, RescueActivity::class.java).apply {
+                putExtra(EXTRA_RESCUE_ENTRY, true)
+            }
+
+        /** Returns true for an Activity/Context running the Android-local rescue UI. */
+        fun isRescueContext(context: Context): Boolean {
+            var current: Context? = context
+            while (current is ContextWrapper) {
+                if (current is RescueActivity) return true
+                current = current.baseContext
+            }
+            if (current is RescueActivity) return true
+
+            val processName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                android.app.Application.getProcessName()
+            } else {
+                val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                manager?.runningAppProcesses
+                    ?.firstOrNull { it.pid == android.os.Process.myPid() }
+                    ?.processName
+            }
+            return processName == "${context.packageName}$RESCUE_PROCESS_SUFFIX"
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // The rescue process must initialize only the shared Operit environment.  Loading the Rust
+        // library itself remains lazy and is owned by RescuePiChatEngine on the first turn.
+        // Match MainActivity's startup ordering: initialize the shared Operit environment before
+        // composing any screen that may access it.  The Rust library remains lazy afterwards.
+        setContent {
+            OperitTheme {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+        }
+        lifecycleScope.launch {
+            withContext(Dispatchers.Default) {
+                OperitApplication.initializeMainApplication(applicationContext)
+            }
+            setContent {
+                OperitTheme {
+                    OperitApp(
+                        initialNavItem = NavItem.AiChat,
+                        toolHandler = AIToolHandler.getInstance(this@RescueActivity),
+                    )
+                }
+            }
+        }
+    }
+}

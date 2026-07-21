@@ -56,6 +56,8 @@ import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.plugins.toolpkg.ToolPkgAiProviderRegistry
 import com.ai.assistance.operit.pi.PiModelSettingsAdapter
+import com.ai.assistance.operit.pi.RescuePiChatEngine
+import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.ui.common.input.bringIntoViewOnImeFocus
 import com.ai.assistance.operit.ui.features.settings.DebouncedModelConfigAutoSaveEffect
 import com.ai.assistance.operit.ui.features.settings.ModelConfigSaveCoordinator
@@ -221,6 +223,13 @@ fun ModelApiSettingsSection(
                 "保存API设置: apiKey=${state.apiKey.take(5)}..., endpoint=${state.apiEndpoint}, model=${state.modelName}, providerType=${state.provider.name}"
             )
             persist(state)
+            // Rescue has an independent Android-local model snapshot.  Refresh it only after an
+            // explicit settings save; never mirror the main config on every chat turn.
+            if (RescueActivity.isRescueContext(context)) {
+                configManager.getModelConfig(config.id)?.let { savedConfig ->
+                    RescuePiChatEngine.getInstance(context).configureModel(savedConfig)
+                }
+            }
             piModelSettings.applySettings(
                 operitProviderId = state.providerTypeId,
                 apiKey = state.apiKey.takeUnless {

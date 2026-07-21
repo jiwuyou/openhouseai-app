@@ -37,6 +37,27 @@ android {
     }
 }
 
+def rescueRustLibrary = file("src/main/jniLibs/arm64-v8a/libwuxianpi_rescue.so")
+
+tasks.register("buildPiRustAndroid", Exec) {
+    group = "build"
+    description = "Build the Android-resident WuxianPi rescue agent for arm64-v8a."
+    workingDir rootDir
+    commandLine "bash", file("${rootDir}/scripts/build-pi-rust-android.sh").absolutePath
+    inputs.dir file("${rootDir}/rust/pi-android-bridge/src")
+    inputs.dir file("${rootDir}/rust/vendor/pi_agent_rust/src")
+    inputs.files(
+        file("${rootDir}/rust/pi-android-bridge/Cargo.toml"),
+        file("${rootDir}/rust/pi-android-bridge/Cargo.lock"),
+        file("${rootDir}/rust/vendor/pi_agent_rust/Cargo.toml"),
+        file("${rootDir}/rust/vendor/pi_agent_rust/Cargo.lock"),
+        file("${rootDir}/scripts/build-pi-rust-android.sh"),
+    )
+    outputs.file rescueRustLibrary
+}
+
+tasks.named("preBuild").configure { dependsOn("buildPiRustAndroid") }
+
 tasks.register("verifyDebugRuntimeAsset") {
     group = "verification"
     description = "Verify the ARM64 runtime keeps its exact .tgz APK asset path and bytes."

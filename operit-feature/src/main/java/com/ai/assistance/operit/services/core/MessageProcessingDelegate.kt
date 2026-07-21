@@ -6,6 +6,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
 import com.ai.assistance.operit.core.chat.AIMessageManager
 import com.ai.assistance.operit.core.chat.logMessageTiming
 import com.ai.assistance.operit.core.chat.messageTimingNow
@@ -13,6 +14,7 @@ import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.agent.PhoneAgentJobRegistry
 import com.ai.assistance.operit.pi.PiChatEngine
 import com.ai.assistance.operit.pi.PiModelSettingsAdapter
+import com.ai.assistance.operit.pi.RescuePiChatEngine
 import com.ai.assistance.operit.data.model.*
 import com.ai.assistance.operit.data.model.InputProcessingState as EnhancedInputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
@@ -55,6 +57,7 @@ import kotlin.coroutines.coroutineContext
 class MessageProcessingDelegate(
         private val context: Context,
         private val coroutineScope: CoroutineScope,
+        private val runtimeSlot: ChatRuntimeSlot = ChatRuntimeSlot.MAIN,
         private val getEnhancedAiService: () -> EnhancedAIService?,
         private val getFullChatHistory: suspend (String) -> List<ChatMessage>,
         private val getRuntimeChatHistory: suspend (String) -> List<ChatMessage>,
@@ -89,7 +92,9 @@ class MessageProcessingDelegate(
     // 角色卡管理器
     private val characterCardManager = CharacterCardManager.getInstance(context)
     private val piChatEngine = PiChatEngine.getInstance(context)
+    private val rescuePiChatEngine by lazy { RescuePiChatEngine.getInstance(context) }
     private val piModelSettings = PiModelSettingsAdapter.instance
+    private val isRescueRuntime: Boolean = runtimeSlot == ChatRuntimeSlot.RESCUE
 
     // 模型配置管理器
     private val modelConfigManager = ModelConfigManager(context)
@@ -409,7 +414,11 @@ class MessageProcessingDelegate(
             }
 
         clearCurrentTurnToolInvocationCount(chatId)
-        piChatEngine.cancel(chatId)
+        if (isRescueRuntime) {
+            rescuePiChatEngine.cancel(chatId)
+        } else {
+            piChatEngine.cancel(chatId)
+        }
         AIMessageManager.cancelOperation(chatId)
 
         jobsToCancel.forEach { job -> job.cancel() }
@@ -819,28 +828,54 @@ class MessageProcessingDelegate(
                 }
 
                 val prepareResponseStreamStartTime = messageTimingNow()
+                // Rescue keeps its own persisted model snapshot.  Do not mirror the
+                // main Operit CHAT config on every turn: that would overwrite a
+                // deliberately independent rescue configuration before the request
+                // reaches the Rust runtime.
                 val responseStream =
-                    piChatEngine.send(
-                        request =
-                            PiChatEngine.TurnRequest(
-                                chatId = activeChatId,
-                                sessionKey = piChatEngine.getActiveSessionKey(activeChatId),
-                                message = requestMessageContent,
-                                userMessageTimestamp = userMessage.timestamp.takeIf { userMessageAdded },
-                                workingDirectory = workspacePath,
-                                onState = { state ->
-                                    setChatInputProcessingState(activeChatId, state)
-                                },
-                                onToolInvocation = {
-                                    incrementCurrentTurnToolInvocationCount(chatId)
-                                },
-                            ),
-                        streamScope = coroutineScope,
-                    )
+                    if (isRescueRuntime) {
+                        rescuePiChatEngine.send(
+                            request =
+                                RescuePiChatEngine.TurnRequest(
+                                    chatId = activeChatId,
+                                    sessionKey = rescuePiChatEngine.getActiveSessionKey(activeChatId),
+                                    message = requestMessageContent,
+                                    userMessageTimestamp = userMessage.timestamp.takeIf { userMessageAdded },
+                                    workingDirectory = workspacePath,
+                                    onState = { state ->
+                                        setChatInputProcessingState(activeChatId, state)
+                                    },
+                                    onToolInvocation = {
+                                        incrementCurrentTurnToolInvocationCount(chatId)
+                                    },
+                                ),
+                            streamScope = coroutineScope,
+                        )
+                    } else {
+                        piChatEngine.send(
+                            request =
+                                PiChatEngine.TurnRequest(
+                                    chatId = activeChatId,
+                                    sessionKey = piChatEngine.getActiveSessionKey(activeChatId),
+                                    message = requestMessageContent,
+                                    userMessageTimestamp = userMessage.timestamp.takeIf { userMessageAdded },
+                                    workingDirectory = workspacePath,
+                                    onState = { state ->
+                                        setChatInputProcessingState(activeChatId, state)
+                                    },
+                                    onToolInvocation = {
+                                        incrementCurrentTurnToolInvocationCount(chatId)
+                                    },
+                                ),
+                            streamScope = coroutineScope,
+                        )
+                    }
                 logMessageTiming(
                     stage = "delegate.prepareResponseStream",
                     startTimeMs = prepareResponseStreamStartTime,
-                    details = "chatId=$activeChatId, requestLength=${requestMessageContent.length}, engine=node-pi"
+                    details =
+                        "chatId=$activeChatId, requestLength=${requestMessageContent.length}, " +
+                            "engine=${if (isRescueRuntime) "android-rust-pi" else "node-pi"}"
                 )
 
                 // AIMessageManager 已返回可重放的共享流，这里直接复用，避免在 viewModelScope 上再包一层。
@@ -852,7 +887,11 @@ class MessageProcessingDelegate(
                 // 获取当前使用的provider和model信息
                 val loadProviderModelStartTime = messageTimingNow()
                 val (provider, modelName) = runCatching {
-                    piModelSettings.defaultModelDisplay()
+                    if (isRescueRuntime) {
+                        rescuePiChatEngine.defaultModelDisplay()
+                    } else {
+                        piModelSettings.defaultModelDisplay()
+                    }
                 }.onFailure { error ->
                     AppLogger.w(TAG, "读取 Pi 默认模型显示信息失败", error)
                 }.getOrElse { "pi" to "" }
@@ -1139,10 +1178,17 @@ class MessageProcessingDelegate(
                 )
 
                 runCatching {
-                    val usage = piChatEngine.getUsage(activeChatId)
-                    turnInputTokens = usage.inputTokens
-                    turnOutputTokens = usage.outputTokens
-                    turnCachedInputTokens = usage.cachedInputTokens
+                    if (isRescueRuntime) {
+                        val usage = rescuePiChatEngine.getUsage(activeChatId)
+                        turnInputTokens = usage.inputTokens
+                        turnOutputTokens = usage.outputTokens
+                        turnCachedInputTokens = usage.cachedInputTokens
+                    } else {
+                        val usage = piChatEngine.getUsage(activeChatId)
+                        turnInputTokens = usage.inputTokens
+                        turnOutputTokens = usage.outputTokens
+                        turnCachedInputTokens = usage.cachedInputTokens
+                    }
                 }.onFailure {
                     AppLogger.w(TAG, "读取本轮 token 统计失败", it)
                 }
@@ -1341,11 +1387,20 @@ class MessageProcessingDelegate(
         )
         var terminalState: EnhancedInputProcessingState? = null
         var exceptionToPropagate: Exception? = null
-        val sourceSessionKey = piChatEngine.getActiveSessionKey(chatId)
+        val sourceSessionKey =
+            if (isRescueRuntime) {
+                rescuePiChatEngine.getActiveSessionKey(chatId)
+            } else {
+                piChatEngine.getActiveSessionKey(chatId)
+            }
         val originalUserTimestamp =
             requestHistory.lastOrNull { it.sender == "user" }?.timestamp
         val variantSessionKey =
-            piChatEngine.createVariantSessionKey(chatId, targetMessageTimestamp)
+            if (isRescueRuntime) {
+                rescuePiChatEngine.createVariantSessionKey(chatId, targetMessageTimestamp)
+            } else {
+                piChatEngine.createVariantSessionKey(chatId, targetMessageTimestamp)
+            }
         var variantSessionActivated = false
 
         try {
@@ -1357,7 +1412,11 @@ class MessageProcessingDelegate(
             chatRuntime.stateCollectionJob = null
 
             val (provider, modelName) = runCatching {
-                piModelSettings.defaultModelDisplay()
+                if (isRescueRuntime) {
+                    rescuePiChatEngine.defaultModelDisplay()
+                } else {
+                    piModelSettings.defaultModelDisplay()
+                }
             }.onFailure { error ->
                 AppLogger.w(TAG, "读取 Pi 默认模型显示信息失败", error)
             }.getOrElse { "pi" to "" }
@@ -1376,25 +1435,47 @@ class MessageProcessingDelegate(
                 }
 
             val responseStream =
-                piChatEngine.send(
-                    request =
-                        PiChatEngine.TurnRequest(
-                            chatId = chatId,
-                            sessionKey = variantSessionKey,
-                            message = effectiveRequestMessageContent,
-                            userMessageTimestamp = requireNotNull(originalUserTimestamp) {
-                                "Regeneration requires the persisted user message timestamp"
-                            },
-                            workingDirectory = workspacePath,
-                            forkFromSessionKey = sourceSessionKey,
-                            forkUserMessage = effectiveRequestMessageContent,
-                            onState = { state -> setChatInputProcessingState(chatId, state) },
-                            onToolInvocation = {
-                                incrementCurrentTurnToolInvocationCount(chatId)
-                            },
-                        ),
-                    streamScope = coroutineScope,
-                )
+                if (isRescueRuntime) {
+                    rescuePiChatEngine.send(
+                        request =
+                            RescuePiChatEngine.TurnRequest(
+                                chatId = chatId,
+                                sessionKey = variantSessionKey,
+                                message = effectiveRequestMessageContent,
+                                userMessageTimestamp = requireNotNull(originalUserTimestamp) {
+                                    "Regeneration requires the persisted user message timestamp"
+                                },
+                                workingDirectory = workspacePath,
+                                forkFromSessionKey = sourceSessionKey,
+                                forkUserMessage = effectiveRequestMessageContent,
+                                onState = { state -> setChatInputProcessingState(chatId, state) },
+                                onToolInvocation = {
+                                    incrementCurrentTurnToolInvocationCount(chatId)
+                                },
+                            ),
+                        streamScope = coroutineScope,
+                    )
+                } else {
+                    piChatEngine.send(
+                        request =
+                            PiChatEngine.TurnRequest(
+                                chatId = chatId,
+                                sessionKey = variantSessionKey,
+                                message = effectiveRequestMessageContent,
+                                userMessageTimestamp = requireNotNull(originalUserTimestamp) {
+                                    "Regeneration requires the persisted user message timestamp"
+                                },
+                                workingDirectory = workspacePath,
+                                forkFromSessionKey = sourceSessionKey,
+                                forkUserMessage = effectiveRequestMessageContent,
+                                onState = { state -> setChatInputProcessingState(chatId, state) },
+                                onToolInvocation = {
+                                    incrementCurrentTurnToolInvocationCount(chatId)
+                                },
+                            ),
+                        streamScope = coroutineScope,
+                    )
+                }
 
             val sharedResponseStream = responseStream
             chatRuntime.responseStream = sharedResponseStream
@@ -1456,10 +1537,17 @@ class MessageProcessingDelegate(
             var turnInputTokens = 0
             var turnOutputTokens = 0
             var turnCachedInputTokens = 0
-            val piUsage = piChatEngine.getUsage(chatId)
-            turnInputTokens = piUsage.inputTokens
-            turnOutputTokens = piUsage.outputTokens
-            turnCachedInputTokens = piUsage.cachedInputTokens
+            if (isRescueRuntime) {
+                val piUsage = rescuePiChatEngine.getUsage(chatId)
+                turnInputTokens = piUsage.inputTokens
+                turnOutputTokens = piUsage.outputTokens
+                turnCachedInputTokens = piUsage.cachedInputTokens
+            } else {
+                val piUsage = piChatEngine.getUsage(chatId)
+                turnInputTokens = piUsage.inputTokens
+                turnOutputTokens = piUsage.outputTokens
+                turnCachedInputTokens = piUsage.cachedInputTokens
+            }
 
             val waitDurationMs =
                 if (firstResponseElapsed != null) {
@@ -1489,7 +1577,11 @@ class MessageProcessingDelegate(
                     completedAt = completedAt,
                 )
             )
-            piChatEngine.replaceActiveSession(chatId, variantSessionKey)
+            if (isRescueRuntime) {
+                rescuePiChatEngine.replaceActiveSession(chatId, variantSessionKey)
+            } else {
+                piChatEngine.replaceActiveSession(chatId, variantSessionKey)
+            }
             variantSessionActivated = true
             terminalState = EnhancedInputProcessingState.Completed
             shouldResetInputStateToIdle = true
@@ -1508,7 +1600,11 @@ class MessageProcessingDelegate(
             exceptionToPropagate = e
         } finally {
             if (!variantSessionActivated) {
-                piChatEngine.discardSession(chatId, variantSessionKey)
+                if (isRescueRuntime) {
+                    rescuePiChatEngine.discardSession(chatId, variantSessionKey)
+                } else {
+                    piChatEngine.discardSession(chatId, variantSessionKey)
+                }
             }
             clearCurrentTurnToolInvocationCount(chatId)
             if (chatRuntime.sendJob === currentJob) {

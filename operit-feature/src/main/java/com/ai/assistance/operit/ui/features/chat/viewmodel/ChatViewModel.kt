@@ -93,6 +93,7 @@ import com.ai.assistance.operit.services.ChatServiceUiBridge
 import com.ai.assistance.operit.services.EmptyChatServiceUiBridge
 import com.ai.assistance.operit.ui.features.chat.util.MessageImageGenerator
 import com.ai.assistance.operit.ui.features.chat.components.CharacterSelectorTarget
+import com.ai.assistance.operit.rescue.ui.RescueActivity
 enum class ChatHistoryDisplayMode {
     BY_CHARACTER_CARD,
     BY_FOLDER,
@@ -445,7 +446,14 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     }
 
     private fun initializeDelegates() {
-        mainChatCore = chatRuntimeHolder.getCore(ChatRuntimeSlot.MAIN)
+        // RescueActivity keeps the full Operit UI but uses an Android-local Rust backend.  MAIN
+        // remains unchanged for the normal WuxianPi/Node process.
+        val runtimeSlot = if (RescueActivity.isRescueContext(context)) {
+            ChatRuntimeSlot.RESCUE
+        } else {
+            ChatRuntimeSlot.MAIN
+        }
+        mainChatCore = chatRuntimeHolder.getCore(runtimeSlot)
         uiStateDelegate = mainChatCore.getUiStateDelegate()
         tokenStatsDelegate = mainChatCore.getTokenStatisticsDelegate()
         apiConfigDelegate = mainChatCore.getApiConfigDelegate()
@@ -484,6 +492,17 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         coroutineScope = viewModelScope,
                         inputProcessingState = this.currentChatInputProcessingState
                 )
+
+        if (RescueActivity.isRescueContext(context)) {
+            // Rescue sessions never follow the global MAIN current-chat selection.  Bootstrap one
+            // namespaced local chat when the rescue UI has no previous session to restore.
+            viewModelScope.launch {
+                delay(350)
+                if (mainChatCore.currentChatId.value == null) {
+                    mainChatCore.createNewChat(setAsCurrentChat = true)
+                }
+            }
+        }
     }
 
     private fun setupPermissionSystemCollection() {

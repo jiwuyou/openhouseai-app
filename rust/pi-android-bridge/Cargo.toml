@@ -1,0 +1,22 @@
+[package]
+name = "pi_android_bridge"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "wuxianpi_rescue"
+crate-type = ["cdylib"]
+
+[dependencies]
+async-trait = "0.1.89"
+asupersync = { version = "0.3.4", default-features = false, features = ["tls-webpki-roots"] }
+futures = "0.3.32"
+jni = "0.21.1"
+pi_agent_rust = { path = "../vendor/pi_agent_rust", default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+
+[profile.release]
+panic = "abort"
+lto = "thin"
+strip = true

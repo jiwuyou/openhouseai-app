@@ -80,6 +80,7 @@ import androidx.compose.ui.res.stringResource
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 import com.ai.assistance.operit.ui.features.github.GitHubOAuthCoordinator
 import com.ai.assistance.operit.widget.ToolPkgDesktopWidgetHost
+import com.ai.assistance.operit.rescue.ui.RescueActivity
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
@@ -930,8 +931,9 @@ class MainActivity : ComponentActivity() {
                             }
 
                             CompositionLocalProvider(LocalPluginLoadingState provides pluginLoadingState) {
-                                // 主应用界面 (始终存在于底层)
-                                OperitApp(
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    // 主应用界面 (始终存在于底层)
+                                    OperitApp(
                                         initialNavItem = initialNavItem,
                                         toolHandler = toolHandler,
                                         shortcutNavRequest = shortcutNavItem,
@@ -962,7 +964,31 @@ class MainActivity : ComponentActivity() {
                                                 pendingRouteRequestId = 0L
                                             }
                                         }
-                                )
+                                    )
+                                    // The Operit UI module is shared by the native and all-in-one
+                                    // Termux APKs.  Only the native APK declares RescueActivity
+                                    // (and packages the Rust rescue runtime), so do not expose a
+                                    // dead button in the all-in-one build.
+                                    val rescueIntentAvailable = remember {
+                                        packageManager.resolveActivity(
+                                            RescueActivity.createIntent(this@MainActivity),
+                                            PackageManager.MATCH_DEFAULT_ONLY,
+                                        ) != null
+                                    }
+                                    if (!isHostedMode && rescueIntentAvailable) {
+                                        TextButton(
+                                            onClick = {
+                                                startActivity(RescueActivity.createIntent(this@MainActivity))
+                                            },
+                                            modifier =
+                                                Modifier.align(Alignment.BottomEnd)
+                                                    .padding(16.dp)
+                                                    .zIndex(5f),
+                                        ) {
+                                            Text(stringResource(R.string.rescue_ai_open))
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

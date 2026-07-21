@@ -39,6 +39,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import java.io.BufferedWriter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -1428,6 +1429,7 @@ class ChatHistoryManager private constructor(private val context: Context) {
 
     // 创建新对话
     suspend fun createNewChat(
+        idPrefix: String? = null,
         group: String? = null,
         inheritGroupFromChatId: String? = null,
         characterCardName: String? = null,
@@ -1456,6 +1458,7 @@ class ChatHistoryManager private constructor(private val context: Context) {
 
         val newHistory =
             ChatHistory(
+                id = (idPrefix ?: "") + UUID.randomUUID().toString(),
                 title = "${localizedContext.getString(R.string.new_conversation)} $formattedTime",
                 messages = listOf<ChatMessage>(),
                 inputTokens = 0,

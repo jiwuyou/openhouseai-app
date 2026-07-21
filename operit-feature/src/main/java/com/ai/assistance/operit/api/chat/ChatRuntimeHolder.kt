@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.api.chat
 
 import android.content.Context
+import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.services.ChatServiceCore
 import com.ai.assistance.operit.services.core.ChatSelectionMode
 import com.ai.assistance.operit.util.AppLogger
@@ -17,6 +18,12 @@ import kotlinx.coroutines.launch
 
 class ChatRuntimeHolder private constructor(context: Context) {
     private val appContext = context.applicationContext
+    /**
+     * The rescue activity runs in a separate process.  That process must never eagerly create
+     * the MAIN/FLOATING cores: doing so initializes the Node/Termux delegate even though rescue is
+     * meant to be an Android-local runtime.
+     */
+    private val isRescueProcess = RescueActivity.isRescueContext(appContext)
     private val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val cores = ConcurrentHashMap<ChatRuntimeSlot, ChatServiceCore>()
     private val _activeConversationCount = MutableStateFlow(0)
@@ -25,27 +32,61 @@ class ChatRuntimeHolder private constructor(context: Context) {
     val currentSessionToolCount: StateFlow<Int> = _currentSessionToolCount.asStateFlow()
 
     init {
-        ChatRuntimeSlot.values().forEach { slot ->
-            getCore(slot)
+        if (isRescueProcess) {
+            // Rescue owns only its isolated slot.  The Rust backend itself remains lazy inside
+            // RescuePiChatEngine, but the Android ChatServiceCore is needed by the full UI.
+            getCore(ChatRuntimeSlot.RESCUE)
+            observeStats()
+        } else {
+            // Keep normal startup limited to the two existing slots. Rescue is created only when
+            // the rescue activity is opened.
+            arrayOf(ChatRuntimeSlot.MAIN, ChatRuntimeSlot.FLOATING).forEach { slot ->
+                getCore(slot)
+            }
+            setupCrossSessionSync()
+            observeStats()
         }
-        setupCrossSessionSync()
-        observeStats()
     }
 
     fun getCore(slot: ChatRuntimeSlot): ChatServiceCore {
-        return cores.getOrPut(slot) {
+        // A stray shared component in the rescue process may still ask for MAIN (for example a
+        // generic HTTP bridge). Never let that request instantiate the Node/Termux core there.
+        val effectiveSlot = if (isRescueProcess) ChatRuntimeSlot.RESCUE else slot
+        return cores.getOrPut(effectiveSlot) {
             ChatServiceCore(
                 context = appContext,
                 coroutineScope = runtimeScope,
-                selectionMode = when (slot) {
+                runtimeSlot = effectiveSlot,
+                selectionMode = when (effectiveSlot) {
                     ChatRuntimeSlot.MAIN -> ChatSelectionMode.FOLLOW_GLOBAL
                     ChatRuntimeSlot.FLOATING -> ChatSelectionMode.LOCAL_ONLY
+                    ChatRuntimeSlot.RESCUE -> ChatSelectionMode.RESCUE_LOCAL
                 }
             )
         }
     }
 
     private fun observeStats() {
+        if (isRescueProcess) {
+            val rescueCore = getCore(ChatRuntimeSlot.RESCUE)
+            runtimeScope.launch {
+                rescueCore.activeStreamingChatIds.collect { activeChatIds ->
+                    _activeConversationCount.value = activeChatIds.size
+                }
+            }
+            runtimeScope.launch {
+                combine(
+                    rescueCore.activeStreamingChatIds,
+                    rescueCore.currentTurnToolInvocationCountByChatId
+                ) { activeChatIds, counts ->
+                    countCurrentTurnToolsForActiveChats(activeChatIds, counts)
+                }.collect { count ->
+                    _currentSessionToolCount.value = count
+                }
+            }
+            return
+        }
+
         val mainCore = getCore(ChatRuntimeSlot.MAIN)
         val floatingCore = getCore(ChatRuntimeSlot.FLOATING)
 
@@ -133,7 +174,7 @@ class ChatRuntimeHolder private constructor(context: Context) {
     }
 
     fun syncMainChatSelectionToFloating(chatId: String) {
-        if (chatId.isBlank()) return
+        if (isRescueProcess || chatId.isBlank()) return
         syncChatSelection(
             sourceSlot = ChatRuntimeSlot.MAIN,
             targetSlot = ChatRuntimeSlot.FLOATING,

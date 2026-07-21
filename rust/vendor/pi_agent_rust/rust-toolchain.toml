@@ -1,0 +1,15 @@
+# Pinned to a specific nightly so CI is reproducible. The codebase requires
+# nightly because the fsqlite / sqlmodel-sqlite dependency family uses
+# feature(portable_simd) (pi itself is #![forbid(unsafe_code)] and uses no
+# nightly features directly). An unpinned `nightly` channel let clippy drift
+# across toolchains: newer nightlies strengthen the pedantic/nursery lint groups
+# and even stop honoring crate-level/`#[allow]`d lints (e.g. the floating
+# 2026-05-22 nightly re-flagged ~19 `clippy::unused_async` sites that already
+# carry `#![allow(clippy::unused_async)]` in src/lib.rs). CI runs
+# `cargo clippy --all-targets -- -D warnings`, so every newly-introduced or
+# newly-unmasked lint turned the build red without any code change. Pinning a
+# known-good date (matching the sibling beads_rust / meta_skill repos) keeps lint
+# results stable. Bump this deliberately, re-running clippy, rather than floating.
+[toolchain]
+channel = "nightly-2026-02-19"
+components = ["rustfmt", "clippy"]

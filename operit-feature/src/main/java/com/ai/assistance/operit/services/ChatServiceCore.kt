@@ -4,6 +4,7 @@ import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import androidx.compose.ui.text.input.TextFieldValue
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.ChatTurnOptions
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 class ChatServiceCore(
     private val context: Context,
     private val coroutineScope: CoroutineScope,
+    private val runtimeSlot: ChatRuntimeSlot = ChatRuntimeSlot.MAIN,
     private val selectionMode: ChatSelectionMode = ChatSelectionMode.FOLLOW_GLOBAL
 ) {
     companion object {
@@ -161,6 +163,7 @@ class ChatServiceCore(
         messageProcessingDelegate = MessageProcessingDelegate(
             context = context,
             coroutineScope = coroutineScope,
+            runtimeSlot = runtimeSlot,
             getEnhancedAiService = { enhancedAiService },
             getFullChatHistory = { chatId -> chatHistoryDelegate.getChatHistory(chatId) },
             getRuntimeChatHistory = { chatId -> chatHistoryDelegate.getRuntimeChatHistory(chatId) },
@@ -309,7 +312,11 @@ class ChatServiceCore(
 
     /** 切换聊天 */
     fun switchChat(chatId: String) {
-        chatHistoryDelegate.switchChat(chatId)
+        if (selectionMode == ChatSelectionMode.RESCUE_LOCAL) {
+            chatHistoryDelegate.switchChat(chatId, syncToGlobal = false)
+        } else {
+            chatHistoryDelegate.switchChat(chatId)
+        }
     }
 
     /**
@@ -324,6 +331,7 @@ class ChatServiceCore(
      * 将当前本地 chatId 写回全局 currentChatId，用于“返回主应用”时同步。
      */
     fun syncCurrentChatIdToGlobal() {
+        if (selectionMode == ChatSelectionMode.RESCUE_LOCAL) return
         val chatId = chatHistoryDelegate.currentChatId.value ?: return
         chatHistoryDelegate.switchChat(chatId, syncToGlobal = true)
     }

@@ -26,6 +26,7 @@ import com.ai.assistance.operit.data.preferences.ActivePromptManager
 import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.model.ChatMessageTimestampAllocator
 import com.ai.assistance.operit.pi.PiChatEngine
+import com.ai.assistance.operit.pi.RescuePiChatEngine
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** 委托类，负责管理聊天历史相关功能 */
@@ -42,6 +43,9 @@ class ChatHistoryDelegate(
     companion object {
         private const val TAG = "ChatHistoryDelegate"
         private const val DISPLAY_WINDOW_QUERY_BATCH_SIZE = 80
+        private const val RESCUE_CHAT_ID_PREFIX = "rescue::"
+        private const val RESCUE_SELECTION_PREFERENCES = "rescue_chat_selection"
+        private const val RESCUE_CURRENT_CHAT_ID = "current_chat_id"
         // This constant is now in AIMessageManager
         // private const val SUMMARY_CHUNK_SIZE = 8
     }
@@ -50,6 +54,11 @@ class ChatHistoryDelegate(
     private val characterCardManager = CharacterCardManager.getInstance(context) // 新增
     private val activePromptManager = ActivePromptManager.getInstance(context)
     private val piChatEngine = PiChatEngine.getInstance(context)
+    private val rescuePiChatEngine by lazy { RescuePiChatEngine.getInstance(context) }
+    private val isRescueSelection = selectionMode == ChatSelectionMode.RESCUE_LOCAL
+    private val rescueSelectionPreferences by lazy {
+        context.getSharedPreferences(RESCUE_SELECTION_PREFERENCES, Context.MODE_PRIVATE)
+    }
     private val isInitialized = AtomicBoolean(false)
     private val historyUpdateMutex = Mutex()
     private val allowAddMessage = AtomicBoolean(true) // 控制是否允许添加消息，切换对话时设为false
@@ -83,8 +92,20 @@ class ChatHistoryDelegate(
     }
 
     private suspend fun finishDestructiveHistoryMutation(chatId: String) {
-        piChatEngine.rotateSession(chatId)
+        if (isRescueSelection) {
+            rescuePiChatEngine.rotateSession(chatId)
+        } else {
+            piChatEngine.rotateSession(chatId)
+        }
         afterDestructiveHistoryMutation?.invoke(chatId)
+    }
+
+    private fun closePiSession(chatId: String) {
+        if (isRescueSelection) {
+            rescuePiChatEngine.closeSession(chatId)
+        } else {
+            piChatEngine.closeSession(chatId)
+        }
     }
 
     private fun clearCurrentChatHistoryInMemory() {
@@ -542,10 +563,16 @@ class ChatHistoryDelegate(
 
         coroutineScope.launch {
             chatHistoryManager.chatHistoriesFlow.collect { histories ->
-                _chatHistories.value = histories
+                val visibleHistories =
+                    if (isRescueSelection) {
+                        histories.filter { it.id.startsWith(RESCUE_CHAT_ID_PREFIX) }
+                    } else {
+                        histories.filterNot { it.id.startsWith(RESCUE_CHAT_ID_PREFIX) }
+                    }
+                _chatHistories.value = visibleHistories
 
                 val currentId = _currentChatId.value
-                if (currentId != null && histories.none { it.id == currentId }) {
+                if (currentId != null && visibleHistories.none { it.id == currentId }) {
                     val exists = chatHistoryManager.chatExists(currentId)
                     if (!exists) {
                         AppLogger.w(TAG, "当前聊天已不存在，清除currentChatId: $currentId")
@@ -601,6 +628,23 @@ class ChatHistoryDelegate(
                     AppLogger.d(TAG, "本地会话初始化 currentChatId: $initialChatId")
                     _currentChatId.value = initialChatId
                     loadChatMessages(initialChatId)
+                }
+            }
+            ChatSelectionMode.RESCUE_LOCAL -> {
+                coroutineScope.launch {
+                    val initialChatId =
+                        rescueSelectionPreferences
+                            .getString(RESCUE_CURRENT_CHAT_ID, null)
+                            ?.takeIf { it.startsWith(RESCUE_CHAT_ID_PREFIX) }
+
+                    if (initialChatId != null && chatHistoryManager.chatExists(initialChatId)) {
+                        AppLogger.d(TAG, "救援会话初始化 currentChatId: $initialChatId")
+                        _currentChatId.value = initialChatId
+                        loadChatMessages(initialChatId)
+                    } else {
+                        rescueSelectionPreferences.edit().remove(RESCUE_CURRENT_CHAT_ID).apply()
+                        AppLogger.d(TAG, "救援会话没有可恢复的 currentChatId")
+                    }
                 }
             }
         }
@@ -818,6 +862,7 @@ class ChatHistoryDelegate(
 
             // 创建新对话，如果有当前对话则继承其分组，并绑定角色卡
             val newChat = chatHistoryManager.createNewChat(
+                idPrefix = if (isRescueSelection) RESCUE_CHAT_ID_PREFIX else null,
                 group = group,
                 inheritGroupFromChatId = inheritGroupFromChatId,
                 characterCardName = effectiveCharacterCardName,
@@ -854,6 +899,11 @@ class ChatHistoryDelegate(
                 } else {
                     // LOCAL_ONLY 不写回全局 currentChatId，只切换悬浮窗自己的本地会话。
                     _currentChatId.value = newChat.id
+                    if (isRescueSelection) {
+                        rescueSelectionPreferences.edit()
+                            .putString(RESCUE_CURRENT_CHAT_ID, newChat.id)
+                            .apply()
+                    }
                     loadChatMessages(newChat.id)
                 }
                 onTokenStatisticsLoaded(newChat.id, 0, 0, 0)
@@ -863,6 +913,10 @@ class ChatHistoryDelegate(
 
     /** 切换聊天 */
     fun switchChat(chatId: String, syncToGlobal: Boolean = true) {
+        if (isRescueSelection && !chatId.startsWith(RESCUE_CHAT_ID_PREFIX)) {
+            AppLogger.w(TAG, "拒绝救援界面切换到主会话: $chatId")
+            return
+        }
         coroutineScope.launch {
             // 切换对话时，禁止添加消息
             allowAddMessage.set(false)
@@ -886,6 +940,11 @@ class ChatHistoryDelegate(
                 } else {
                     // 本地切换：只更新内存态（供悬浮窗使用），不写回 DataStore。
                     _currentChatId.value = chatId
+                    if (isRescueSelection) {
+                        rescueSelectionPreferences.edit()
+                            .putString(RESCUE_CURRENT_CHAT_ID, chatId)
+                            .apply()
+                    }
                     loadChatMessages(chatId)
                 }
 
@@ -1077,7 +1136,7 @@ class ChatHistoryDelegate(
                 } else {
                     chatHistoryManager.deleteChatHistory(chatId)
                 }
-            if (deleted) piChatEngine.closeSession(chatId)
+            if (deleted) closePiSession(chatId)
             onResult(deleted)
         }
     }
@@ -1221,7 +1280,7 @@ class ChatHistoryDelegate(
                 } else {
                     chatHistoryManager.deleteChatHistory(chatId)
                 }
-            if (deleted) piChatEngine.closeSession(chatId)
+            if (deleted) closePiSession(chatId)
             onResult(deleted)
         }
     }
@@ -1557,11 +1616,17 @@ class ChatHistoryDelegate(
             saveCurrentChat(inputTokens, outputTokens, windowSize)
 
             val newChat = chatHistoryManager.createNewChat(
+                idPrefix = if (isRescueSelection) RESCUE_CHAT_ID_PREFIX else null,
                 group = groupName,
                 characterCardName = characterCardName,
                 characterGroupId = characterGroupId
             )
             _currentChatId.value = newChat.id
+            if (isRescueSelection) {
+                rescueSelectionPreferences.edit()
+                    .putString(RESCUE_CURRENT_CHAT_ID, newChat.id)
+                    .apply()
+            }
             loadChatMessages(newChat.id)
 
             onTokenStatisticsLoaded(newChat.id, 0, 0, 0)

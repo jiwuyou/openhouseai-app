@@ -3,6 +3,8 @@ package com.ai.assistance.operit.services.core
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.pi.RescuePiChatEngine
+import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
@@ -494,6 +496,15 @@ class ApiConfigDelegate(
                         _modelName.value,
                         _apiProviderType.value
                 )
+
+                // Rescue persists a private model snapshot.  Keep it in sync when the user
+                // explicitly saves settings from the Rescue UI, without overwriting it on every
+                // subsequent turn.
+                if (RescueActivity.isRescueContext(context)) {
+                    modelConfigManager.getModelConfig(configId)?.let { savedConfig ->
+                        RescuePiChatEngine.getInstance(context).configureModel(savedConfig)
+                    }
+                }
 
                 AppLogger.d(TAG, "API配置已保存到ModelConfigManager")
 
