@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="oh_app_name">OpenHouse</string>
+    <string name="oh_menu">菜单</string>
+    <string name="oh_close">关闭</string>
+    <string name="oh_desktop">桌面</string>
+    <string name="oh_basic">基础模式</string>
+    <string name="oh_advanced">高级 UI</string>
+    <string name="oh_repair">维修模式</string>
+    <string name="oh_service_control">服务控制</string>
+    <string name="oh_settings">设置</string>
+    <string name="oh_modes">模式</string>
+    <string name="oh_system">系统</string>
+    <string name="oh_refresh">刷新</string>
+    <string name="oh_back">返回</string>
+    <string name="oh_retry">重试</string>
+    <string name="oh_open_host_settings">打开宿主设置</string>
+    <string name="oh_advanced_loading">正在连接高级 UI…</string>
+    <string name="oh_advanced_failed">高级 UI 暂时不可用</string>
+</resources>

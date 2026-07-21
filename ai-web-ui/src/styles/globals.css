@@ -819,3 +819,79 @@ button:disabled { cursor: not-allowed !important; opacity: .48; transform: none 
     box-shadow: var(--wuxianpi-shadow);
   }
 }
+
+/* Model services use a page shell on narrow screens rather than a floating dialog. */
+.models-page-backdrop {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  background: var(--bg);
+  backdrop-filter: none;
+}
+.models-page-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg);
+  box-shadow: none;
+}
+.models-page-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 62px;
+  padding: max(10px, env(safe-area-inset-top)) 14px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(18px);
+}
+.models-page-header h2 { margin: 4px 0 0; font-size: 20px; }
+.models-page-close { flex: 0 0 auto; }
+.models-page-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 14px 24px;
+}
+.models-page-body .settings-hint { margin: 0 0 16px; color: var(--text-muted); font-size: 12px; line-height: 1.55; }
+.models-provider-list { padding-bottom: 4px; }
+.models-page-footer {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: stretch;
+  gap: 9px;
+  padding: 11px 14px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-panel) 94%, var(--bg));
+}
+.models-page-footer > button { flex: 1 1 0; min-height: 42px; }
+
+@media (min-width: 860px) {
+  .models-page-backdrop {
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(6, 10, 20, .52);
+    backdrop-filter: blur(7px);
+  }
+  .models-page-shell {
+    width: min(760px, 100%);
+    height: min(880px, calc(100dvh - 36px));
+    max-height: min(880px, calc(100dvh - 36px));
+    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+    border-radius: 24px;
+    box-shadow: 0 30px 100px -35px rgba(0, 0, 0, .65);
+  }
+  .models-page-header { min-height: 70px; padding: 18px 20px 12px; background: var(--bg); backdrop-filter: none; }
+  .models-page-body { padding: 18px 20px 24px; }
+  .models-page-footer { justify-content: flex-end; padding: 12px 20px max(12px, env(safe-area-inset-bottom)); }
+  .models-page-footer > button { flex: 0 0 auto; }
+}

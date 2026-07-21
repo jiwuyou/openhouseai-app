@@ -38,15 +38,28 @@ export function ModelsConfig({ onClose, onModelsChanged }: ModelsConfigProps) {
     } finally { setBusy(null); }
   };
 
-  return <div className="wuxianpi-modal-backdrop" role="dialog" aria-modal="true" aria-label="模型服务">
-    <section className="wuxianpi-modal models-modal">
-      <header className="wuxianpi-modal-header"><div><span className="eyebrow">MODELS</span><h2>模型服务</h2></div><button type="button" className="icon-button" onClick={onClose}>×</button></header>
-      <div className="wuxianpi-modal-body">
-        <p className="settings-hint">Provider 凭据、默认模型和测试结果由 Termux 中的 Pi Runtime 持久化。本版本允许直接填写 API Key。</p>
+  return <div className="wuxianpi-modal-backdrop models-page-backdrop" role="presentation" data-page-shell="models">
+    <section
+      className="wuxianpi-modal models-modal models-page-shell"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="models-config-title"
+      aria-describedby="models-config-description"
+      tabIndex={-1}
+    >
+      <header className="wuxianpi-modal-header models-page-header">
+        <div>
+          <span className="eyebrow">MODELS</span>
+          <h2 id="models-config-title">模型服务</h2>
+        </div>
+        <button type="button" className="icon-button models-page-close" onClick={onClose} aria-label="返回设置" title="返回设置">×</button>
+      </header>
+      <main className="wuxianpi-modal-body models-page-body">
+        <p className="settings-hint" id="models-config-description">Provider 凭据、默认模型和测试结果由 Termux 中的 Pi Runtime 持久化。本版本允许直接填写 API Key。</p>
         {loading && <div className="wuxianpi-state">正在读取模型…</div>}
         {notice && <div className={`wuxianpi-state ${notice.type === "error" ? "error" : "success"}`}><span>{notice.message}</span><button type="button" onClick={() => setNotice(null)}>关闭</button></div>}
         {!loading && providers.length === 0 && <div className="wuxianpi-state warning">Runtime 没有返回可配置的 Provider。</div>}
-        <div className="settings-stack">
+        <div className="settings-stack models-provider-list" aria-label="模型服务列表">
           {providers.map((provider) => <section className="settings-card" key={provider.id}>
             <header><div><strong>{provider.name || provider.id}</strong><small>{provider.authenticated ? `已登录${provider.authLabel ? ` · ${provider.authLabel}` : ""}` : "尚未登录"}</small></div><span className={`status-pill ${provider.authenticated ? "success" : "warning"}`}>{provider.authenticated ? "已配置" : "未配置"}</span></header>
             <div className="form-grid compact">
@@ -68,8 +81,11 @@ export function ModelsConfig({ onClose, onModelsChanged }: ModelsConfigProps) {
             })}</div>
           </section>)}
         </div>
-      </div>
-      <footer className="wuxianpi-modal-footer"><button type="button" className="secondary-button" disabled={busy !== null} onClick={() => void load()}>刷新</button><button type="button" className="primary-button" onClick={onClose}>完成</button></footer>
+      </main>
+      <footer className="wuxianpi-modal-footer models-page-footer">
+        <button type="button" className="secondary-button models-page-refresh" disabled={busy !== null} onClick={() => void load()}>刷新</button>
+        <button type="button" className="primary-button models-page-done" onClick={onClose}>完成</button>
+      </footer>
     </section>
   </div>;
 }

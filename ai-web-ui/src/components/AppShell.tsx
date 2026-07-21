@@ -31,6 +31,11 @@ const LAST_ASSISTANT_KEY = "wuxianpi:last-assistant-id";
 const DEFAULT_ASSISTANT_ID = "wuxianpi";
 
 type PanelView = "assistants" | "capabilities" | "settings" | null;
+type ShellOverlayContext = {
+  panel: PanelView;
+  l1Open: boolean;
+  l2Open: boolean;
+};
 
 function avatarText(assistant: AssistantSummary): string {
   return assistant.manifest.name.trim().slice(0, 1).toUpperCase() || "π";
@@ -95,6 +100,9 @@ export function AppShell() {
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const [editorAssistant, setEditorAssistant] = useState<AssistantSummary | null | undefined>(undefined);
   const [modelsOpen, setModelsOpen] = useState(false);
+  // The model service is a page-level overlay. Preserve the page/drawer that
+  // opened it so closing returns the user to the exact previous context.
+  const [modelsReturnContext, setModelsReturnContext] = useState<ShellOverlayContext | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [platformUnavailable, setPlatformUnavailable] = useState(false);
@@ -216,6 +224,26 @@ export function AppShell() {
     setPanel(null);
   }, [assistants, router, sessions]);
 
+  const openModelsPage = useCallback(() => {
+    setModelsReturnContext((current) => current ?? { panel, l1Open, l2Open });
+    setModelsOpen(true);
+    // A model page is independent from the navigation drawers. Keep the
+    // previous values in modelsReturnContext and restore them on close.
+    setPanel(null);
+    setL1Open(false);
+    setL2Open(false);
+  }, [l1Open, l2Open, panel]);
+
+  const closeModelsPage = useCallback(() => {
+    setModelsOpen(false);
+    if (modelsReturnContext) {
+      setPanel(modelsReturnContext.panel);
+      setL1Open(modelsReturnContext.l1Open);
+      setL2Open(modelsReturnContext.l2Open);
+    }
+    setModelsReturnContext(null);
+  }, [modelsReturnContext]);
+
   // Bootstrap: always land on chat (URL session → last session → default assistant).
   useEffect(() => {
     if (loading || bootstrapped) return;
@@ -274,16 +302,17 @@ export function AppShell() {
   }, [bootstrapped, loading, openSession, searchParams, selectedSession?.id, sessions]);
 
   useEffect(() => {
-    if (!l1Open && !l2Open && !panel) return;
+    if (!modelsOpen && !l1Open && !l2Open && !panel) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (panel) setPanel(null);
+      if (modelsOpen) closeModelsPage();
+      else if (panel) setPanel(null);
       else if (l1Open) setL1Open(false);
       else if (l2Open) setL2Open(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [l1Open, l2Open, panel]);
+  }, [closeModelsPage, l1Open, l2Open, modelsOpen, panel]);
 
   const handleImport = async (file: File) => {
     try {
@@ -436,7 +465,7 @@ export function AppShell() {
             initialPrompt={initialPrompt}
             initialPromptKey={initialPrompt ? `${selectedAssistant.id}:${initialPrompt}` : null}
             onInitialPromptQueued={() => setInitialPrompt(null)}
-            onOpenModelsConfig={() => setModelsOpen(true)}
+            onOpenModelsConfig={openModelsPage}
             onBranchDataChange={handleBranchDataChange}
           />
         )}
@@ -549,7 +578,7 @@ export function AppShell() {
                   error={error}
                   onReload={() => void loadPlatform()}
                   onConfigChanged={setGlobalConfig}
-                  onOpenModels={() => setModelsOpen(true)}
+                  onOpenModels={openModelsPage}
                 />
               </Suspense>
             )}
@@ -560,7 +589,7 @@ export function AppShell() {
                 includeArchived={includeArchived}
                 setIncludeArchived={setIncludeArchived}
                 platformUnavailable={platformUnavailable}
-                onOpenModels={() => setModelsOpen(true)}
+                onOpenModels={openModelsPage}
               />
             )}
           </div>
@@ -595,7 +624,11 @@ export function AppShell() {
           />
         </Suspense>
       )}
-      {modelsOpen && <Suspense fallback={<div className="wuxianpi-state">正在加载模型设置…</div>}><ModelsConfig onClose={() => setModelsOpen(false)} onModelsChanged={() => void loadPlatform()} /></Suspense>}
+      {modelsOpen && (
+        <Suspense fallback={<div className="wuxianpi-state">正在加载模型设置…</div>}>
+          <ModelsConfig onClose={closeModelsPage} onModelsChanged={() => void loadPlatform()} />
+        </Suspense>
+      )}
       {notice && <div className="wuxianpi-toast" role="status">{notice}</div>}
     </main>
   );

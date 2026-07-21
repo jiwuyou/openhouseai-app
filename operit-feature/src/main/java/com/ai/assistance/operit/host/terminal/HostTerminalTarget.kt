@@ -7,7 +7,7 @@ enum class HostTerminalTarget(
 ) {
     AUTO("auto", "Auto", "auto"),
     UBUNTU("ubuntu", "Ubuntu", "ubuntu"),
-    TERMUX("termux", "Termux", "termux");
+    HOST("host", "Host", "host");
 
     companion object {
         val DEFAULT: HostTerminalTarget = AUTO

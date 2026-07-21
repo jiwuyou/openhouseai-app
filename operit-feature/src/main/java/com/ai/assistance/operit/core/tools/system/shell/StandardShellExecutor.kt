@@ -6,7 +6,7 @@ import com.ai.assistance.operit.core.tools.system.ShellIdentity
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.ai.assistance.operit.host.terminal.HostTerminalPolicy
-import com.ai.assistance.operit.host.terminal.TermuxHostTerminalAdapter
+import com.ai.assistance.operit.host.terminal.HostTerminalAdapter
 import com.ai.assistance.operit.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -20,7 +20,7 @@ class StandardShellExecutor(private val context: Context) : ShellExecutor {
         private const val COMMAND_TIMEOUT_MS = 30_000L
     }
 
-    private val terminalAdapter = TermuxHostTerminalAdapter()
+    private val terminalAdapter = HostTerminalAdapter()
 
     override fun getPermissionLevel(): AndroidPermissionLevel = AndroidPermissionLevel.STANDARD
 
@@ -56,7 +56,7 @@ class StandardShellExecutor(private val context: Context) : ShellExecutor {
                         command = command,
                         executorKey = "standard-shell",
                         timeoutMs = COMMAND_TIMEOUT_MS,
-                        target = HostTerminalTarget.TERMUX
+                        target = HostTerminalTarget.HOST
                     )
                 ShellExecutor.CommandResult(
                     success = result.isOk,

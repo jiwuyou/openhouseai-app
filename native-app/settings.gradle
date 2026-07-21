@@ -4,16 +4,29 @@ pluginManagement {
         id "com.android.library" version "8.13.2"
         id "org.jetbrains.kotlin.android" version "2.2.0"
         id "org.jetbrains.kotlin.plugin.compose" version "2.2.0"
+        id "org.jetbrains.kotlin.plugin.serialization" version "2.2.0"
+        id "org.jetbrains.kotlin.kapt" version "2.2.0"
+        id "org.jetbrains.kotlin.plugin.parcelize" version "2.2.0"
+        id "io.objectbox" version "5.3.0"
     }
     repositories {
+        maven { url = uri("${rootDir}/../local-maven") }
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://api.xposed.info/") }
+        maven { url = uri("https://oss.sonatype.org/content/repositories/snapshots") }
         gradlePluginPortal()
     }
 }
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    versionCatalogs {
+        libs {
+            from(files("../gradle/libs.versions.toml"))
+        }
+    }
     repositories {
         google()
         mavenCentral()
@@ -21,6 +34,23 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "WuxianPiNative"
-include ":ai-feature", ":pi-client"
-project(":ai-feature").projectDir = file("../ai-feature")
-project(":pi-client").projectDir = file("../pi-client")
+
+def sharedProperties = new Properties()
+file("../gradle.properties").withInputStream { sharedProperties.load(it) }
+gradle.beforeProject { target ->
+    sharedProperties.each { key, value -> target.ext.set(key.toString(), value.toString()) }
+}
+
+def sharedModules = [
+    "pi-client", "operit-feature", "termux-shared",
+    "terminal-emulator", "terminal-view",
+    "operit-dragonbones", "operit-mnn", "operit-llama", "operit-mmd",
+    "operit-fbx", "operit-quickjs", "operit-showerclient",
+    "openhouse-core", "openhouse-feature", "service-control-feature",
+    "native-host-adapter", "termux-host-adapter"
+]
+
+sharedModules.each { moduleName ->
+    include ":${moduleName}"
+    project(":${moduleName}").projectDir = file("../${moduleName}")
+}

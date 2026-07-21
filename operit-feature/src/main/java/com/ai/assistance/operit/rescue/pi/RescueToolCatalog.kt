@@ -29,7 +29,7 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = "runtime_status",
                     description =
-                        "Inspect whether Termux is installed and whether the WuxianPi Node runtime health endpoint is responding.",
+                        "Inspect host availability and whether the WuxianPi Node runtime health endpoint is responding.",
                 ),
                 definition(
                     name = "connection_test",
@@ -45,7 +45,7 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = "read_diagnostics",
                     description =
-                        "Read the local runtime health result and recent WuxianPi runtime or repair logs available through the persisted Termux SAF grant.",
+                        "Read the local runtime health result and recent runtime or repair logs provided by the active host.",
                     properties =
                         JSONObject().put(
                             "maxBytes",
@@ -58,12 +58,12 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = "restart_runtime",
                     description =
-                        "Request Termux to restart the installed WuxianPi Node runtime. The command is deterministic and runs asynchronously.",
+                        "Ask the active host to restart the installed WuxianPi Node runtime.",
                 ),
                 definition(
                     name = "redeploy_runtime",
                     description =
-                        "Stage the APK-bundled WuxianPi runtime into the authorized Termux Home and start a deterministic background redeployment job.",
+                        "Ask the active host to stage and redeploy the bundled WuxianPi runtime.",
                 ),
                 definition(
                     name = "verify_payload",
@@ -83,13 +83,13 @@ class RescueToolCatalog private constructor(
                     required = JSONArray().put("jobId"),
                 ),
                 definition(
-                    name = "open_termux",
-                    description = "Open the installed Termux application for user-visible recovery work.",
+                    name = "open_host",
+                    description = "Open the active host application for user-visible recovery work.",
                 ),
                 definition(
                     name = "export_logs",
                     description =
-                        "Export a rescue diagnostic report into the authorized Termux Home under .wuxianpi/exports.",
+                        "Export a rescue diagnostic report through the active host.",
                 ),
             )
 

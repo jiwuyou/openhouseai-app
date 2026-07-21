@@ -60,8 +60,8 @@
     {
       "id": "pi-agent",
       "archive": "pi-runtime.tar",
-      "sha256": "aa26b779ca00ba8dadb2b9e36f478042aced67bae0fdf72afccb4f1f9dade172",
-      "size": 159354880,
+      "sha256": "9485c93bbc963c46f57db9a38d9602d025a76eab202ead60f1a73053431c8d13",
+      "size": 167680000,
       "platform": "termux-android-arm64",
       "version": "0.1.0+pi.0.80.10",
       "sourceRepo": "https://github.com/earendil-works/pi.git",
@@ -76,7 +76,9 @@
       "provides": {
         "piSdkEmbedded": true,
         "webSocket": true,
-        "nativeJsonlSessions": true
+        "nativeJsonlSessions": true,
+        "staticWebUi": true,
+        "uiMetadata": true
       },
       "targetDir": "pi-runtime"
     },
@@ -155,14 +157,14 @@
   "nativeInstallBundle": {
     "id": "wuxianpi-native-install",
     "archive": "wuxianpi-native-install.tar",
-    "sha256": "52585bd38c0fa5b10c33edaff427b4a725c692dd9a7598c9099033d202659aa6",
-    "size": 159365120,
+    "sha256": "448fcb136f1b883b95d33388e1342710bf69e6183e9702812002d252bb49af63",
+    "size": 167690240,
     "applicationId": "com.wuxianpi"
   },
   "nativeRuntimeAsset": {
     "archive": "runtime-aarch64.tgz",
-    "sha256": "c9228edef888522cc39aca3110b6320c904e8dd88ba6495d56844d2206fb6588",
-    "size": 28695884,
+    "sha256": "97817743adc1576378a2308dd03785db28191ad0e525644219305397f30b2f05",
+    "size": 31527421,
     "abi": "arm64-v8a",
     "applicationId": "com.wuxianpi"
   }

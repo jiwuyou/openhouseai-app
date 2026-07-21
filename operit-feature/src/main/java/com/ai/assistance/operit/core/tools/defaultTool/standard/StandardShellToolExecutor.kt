@@ -13,10 +13,7 @@ import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import kotlinx.coroutines.runBlocking
 
 /**
- * Tool for Android/Termux-oriented shell commands.
- *
- * This path is intentionally pinned to TERMUX instead of DEFAULT because commands such as pm,
- * settings, input and getprop target the Android-side shell surface, not the Ubuntu plugin runtime.
+ * Tool for host-oriented shell commands.
  */
 open class StandardShellToolExecutor(private val context: Context) {
 
@@ -38,7 +35,7 @@ open class StandardShellToolExecutor(private val context: Context) {
         }
 
         val command = tool.parameters.find { it.name == "command" }?.value ?: ""
-        val target = HostTerminalTarget.TERMUX
+        val target = HostTerminalTarget.HOST
 
         HostTerminalPolicy.rejectionReason(command)?.let { reason ->
             return ToolResult(
@@ -54,7 +51,7 @@ open class StandardShellToolExecutor(private val context: Context) {
                     runBlocking {
                         Terminal.getInstance(context).executeHiddenCommand(
                                 command = command,
-                                executorKey = "execute-shell-termux",
+                                executorKey = "execute-shell-host",
                                 timeoutMs = DEFAULT_TIMEOUT,
                                 target = target
                         )
@@ -81,21 +78,21 @@ open class StandardShellToolExecutor(private val context: Context) {
                         success = false,
                         result = StringResultData(""),
                         error =
-                                "Termux host shell command failed (exit code: ${result.exitCode}): $errorOutput"
+                                "Host shell command failed (exit code: ${result.exitCode}): $errorOutput"
                 )
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Error executing Termux host shell command", e)
+            AppLogger.e(TAG, "Error executing host shell command", e)
             ToolResult(
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "Termux host shell command failed: ${e.message}"
+                    error = "Host shell command failed: ${e.message}"
             )
         }
     }
 
-    /** Validates the parameters for the Android/Termux shell tool. */
+    /** Validates the parameters for the host shell tool. */
     fun validateParameters(tool: AITool): ToolValidationResult {
         val command = tool.parameters.find { it.name == "command" }?.value
 

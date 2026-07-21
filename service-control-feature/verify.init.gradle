@@ -1,0 +1,13 @@
+settingsEvaluated { settings ->
+    [
+        'service-control-feature',
+        'openhouse-feature',
+        'termux-host-adapter',
+        'native-host-adapter',
+    ].each { moduleName ->
+        if (settings.findProject(":" + moduleName) == null) {
+            settings.include ":" + moduleName
+            settings.project(":" + moduleName).projectDir = new File(settings.rootDir, moduleName)
+        }
+    }
+}

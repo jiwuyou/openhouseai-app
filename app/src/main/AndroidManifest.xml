@@ -95,6 +95,7 @@
             android:exported="true"
             android:label="@string/application_name"
             android:launchMode="singleTask"
+            android:process=":openhouse"
             android:resizeableActivity="true"
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
             tools:targetApi="n">
@@ -129,6 +130,7 @@
             android:configChanges="orientation|screenSize|smallestScreenSize|density|screenLayout|keyboard|keyboardHidden|navigation"
             android:label="@string/application_name"
             android:launchMode="singleTask"
+            android:process=":advanced_ui"
             android:resizeableActivity="true"
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
             tools:targetApi="n" />
@@ -182,7 +184,27 @@
             android:name=".app.activities.OpenHouseServiceControlActivity"
             android:exported="false"
             android:label="@string/openhouse_nav_service_control"
+            android:process=":openhouse"
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar" />
+
+        <activity
+            android:name="com.ai.assistance.operit.ui.main.MainActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":operit"
+            tools:replace="android:exported,android:process" />
+
+        <activity
+            android:name="com.ai.assistance.operit.rescue.ui.RescueActivity"
+            android:exported="false"
+            android:process=":rescue_ui"
+            tools:replace="android:exported,android:process" />
+
+        <activity
+            android:name="com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity"
+            android:exported="false"
+            android:process=":openhouse"
+            tools:replace="android:exported,android:process" />
 
         <activity
             android:name=".app.activities.OpenHouseAgreementActivity"
@@ -320,6 +342,21 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/openhouse_release_file_paths" />
         </provider>
+
+        <provider
+            android:name="com.ai.assistance.operit.provider.WorkspaceDocumentsProvider"
+            android:authorities="${applicationId}.documents.workspace"
+            tools:replace="android:authorities" />
+
+        <provider
+            android:name="com.ai.assistance.operit.provider.MemoryDocumentsProvider"
+            android:authorities="${applicationId}.documents.memory"
+            tools:replace="android:authorities" />
+
+        <provider
+            android:name="com.ai.assistance.operit.provider.OperitDataDocumentsProvider"
+            android:authorities="${applicationId}.documents.data"
+            tools:replace="android:authorities" />
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

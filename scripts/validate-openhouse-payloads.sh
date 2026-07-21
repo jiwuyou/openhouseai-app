@@ -932,7 +932,7 @@ def validate_pi_agent_payload(pi_agent_entry):
         members = {member.name.lstrip("./"): member for member in tar.getmembers()}
         required = (
             "install.sh", "bin/wuxianpi", "bin/wuxianpi-node", "bin/wuxianpi-node-start",
-            "node/dist/index.js", "node/package-lock.json",
+            "node/dist/index.js", "node/package-lock.json", "node/web/index.html",
             "node/node_modules/@earendil-works/pi-coding-agent/package.json",
             "scripts/install.sh", "scripts/check.sh", "scripts/register-service.sh", "metadata/build.json",
         )
@@ -967,6 +967,14 @@ def validate_pi_agent_payload(pi_agent_entry):
         fail("pi-agent install must preserve/use Pi native $HOME/.pi sessions")
     if re.search(r"rm\s+-rf\s+[^\n]*\$HOME/\.pi", install_script):
         fail("pi-agent install must never remove $HOME/.pi")
+    start_script = read_tar_member(archive_path, ["bin/wuxianpi-node-start"])
+    if "--web-root" not in start_script or "node/web" not in start_script:
+        fail("pi-agent must serve the bundled ai-web-ui dist through wuxianpi-node")
+    if "--preferred-web-ui-url" not in start_script or "127.0.0.1:25808" not in start_script:
+        fail("pi-agent must expose AionUI as the preferred Advanced UI endpoint")
+    provides = pi_agent_entry.get("provides")
+    if not isinstance(provides, dict) or provides.get("staticWebUi") is not True or provides.get("uiMetadata") is not True:
+        fail("pi-agent manifest must advertise staticWebUi and uiMetadata")
 
 
 def validate_native_runtime_asset(manifest, payload_manifest):
@@ -986,7 +994,7 @@ def validate_native_runtime_asset(manifest, payload_manifest):
     with tarfile.open(native_runtime_asset_path, "r:gz") as tar:
         members = {member.name.lstrip("./"): member for member in tar.getmembers()}
         for name in ("install.sh", "bin/wuxianpi", "bin/wuxianpi-node", "bin/wuxianpi-node-start",
-                     "node/dist/index.js", "scripts/install.sh", "scripts/register-service.sh", "metadata/build.json"):
+                     "node/dist/index.js", "node/web/index.html", "scripts/install.sh", "scripts/register-service.sh", "metadata/build.json"):
             member = members.get(name)
             if member is None or not member.isfile() or member.size <= 0:
                 fail(f"Native runtime asset is missing non-empty {name}")

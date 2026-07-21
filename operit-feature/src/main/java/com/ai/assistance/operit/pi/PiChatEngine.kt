@@ -74,7 +74,6 @@ class PiChatEngine private constructor(context: Context) {
     companion object {
         private const val TAG = "PiChatEngine"
         private const val REPLAY_CHUNKS = 65_536
-        private const val SERVICE_URL = "http://127.0.0.1:8765/"
         private const val SESSION_BINDINGS = "wuxianpi_node_session_bindings"
 
         @Volatile private var INSTANCE: PiChatEngine? = null
@@ -87,7 +86,7 @@ class PiChatEngine private constructor(context: Context) {
 
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val serviceConfig = PiServiceConfig(SERVICE_URL.toHttpUrl())
+    private val serviceConfig = PiServiceConfig(OPERIT_PI_RUNTIME_URL.toHttpUrl())
     private val bindings = appContext.getSharedPreferences(SESSION_BINDINGS, Context.MODE_PRIVATE)
     private val entryBindings =
         appContext.getSharedPreferences("wuxianpi_pi_entry_bindings", Context.MODE_PRIVATE)

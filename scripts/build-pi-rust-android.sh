@@ -9,6 +9,7 @@ API_LEVEL="26"
 CLANG="$TOOLCHAIN/bin/${TARGET}${API_LEVEL}-clang"
 CLANG_RESOURCE_DIR="$($CLANG -print-resource-dir)"
 TARGET_DIR="${PI_ANDROID_CARGO_TARGET_DIR:-$ROOT_DIR/rust/pi-android-bridge/target}"
+SHARED_JNI_LIBRARY="$ROOT_DIR/operit-feature/src/main/jniLibs/arm64-v8a/libwuxianpi_rescue.so"
 
 export ANDROID_NDK_HOME="$NDK_ROOT"
 export ANDROID_NDK_ROOT="$NDK_ROOT"
@@ -29,4 +30,4 @@ cargo +nightly-2026-07-05 build \
 
 install -Dm755 \
     "$TARGET_DIR/$TARGET/release/libwuxianpi_rescue.so" \
-    "$ROOT_DIR/native-app/src/main/jniLibs/arm64-v8a/libwuxianpi_rescue.so"
+    "$SHARED_JNI_LIBRARY"

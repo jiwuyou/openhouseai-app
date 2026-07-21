@@ -5,7 +5,7 @@ import com.ai.assistance.operit.host.terminal.HostTerminalCommandEvent
 import com.ai.assistance.operit.host.terminal.HostTerminalHiddenResult
 import com.ai.assistance.operit.host.terminal.HostTerminalState
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
-import com.ai.assistance.operit.host.terminal.TermuxHostTerminalAdapter
+import com.ai.assistance.operit.host.terminal.HostTerminalAdapter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -28,7 +28,7 @@ class Terminal private constructor(private val context: Context) {
         }
     }
 
-    private val adapter = TermuxHostTerminalAdapter()
+    private val adapter = HostTerminalAdapter()
 
     val terminalState: StateFlow<HostTerminalState> = adapter.terminalState
 

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/oh_surface"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/oh_panel"
+        android:elevation="2dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp">
+
+        <Button
+            android:id="@+id/oh_advanced_back"
+            android:layout_width="58dp"
+            android:layout_height="42dp"
+            android:background="@drawable/oh_button_background"
+            android:minWidth="0dp"
+            android:text="@string/oh_back"
+            android:textAllCaps="false" />
+
+        <TextView
+            android:id="@+id/oh_advanced_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:text="@string/oh_advanced"
+            android:textColor="@color/oh_text"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/oh_advanced_refresh"
+            android:layout_width="64dp"
+            android:layout_height="42dp"
+            android:background="@drawable/oh_button_background"
+            android:minWidth="0dp"
+            android:text="@string/oh_refresh"
+            android:textAllCaps="false" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <WebView
+            android:id="@+id/oh_advanced_webview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <LinearLayout
+            android:id="@+id/oh_advanced_error_panel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="28dp">
+
+            <TextView
+                android:id="@+id/oh_advanced_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="@string/oh_advanced_loading"
+                android:textColor="@color/oh_text"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/oh_advanced_detail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:textColor="@color/oh_text_secondary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/oh_advanced_retry"
+                android:layout_width="160dp"
+                android:layout_height="48dp"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/oh_button_background"
+                android:text="@string/oh_retry"
+                android:textAllCaps="false" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

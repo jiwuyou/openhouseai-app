@@ -17,7 +17,6 @@ import com.ai.assistance.operit.core.tools.FilePartContentData
 import com.ai.assistance.operit.core.tools.FindFilesResultData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.ToolExecutionLimits
-import com.ai.assistance.operit.BuildConfig
 import com.ai.assistance.operit.core.tools.defaultTool.accessbility.AccessibilityFileSystemTools
 import com.ai.assistance.operit.core.tools.system.AndroidShellExecutor
 import com.ai.assistance.operit.data.model.AITool
@@ -52,9 +51,10 @@ import kotlinx.coroutines.flow.collect
 open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTools(context) {
     companion object {
         private const val TAG = "DebuggerFileSystemTools"
-        internal fun isOperitInternalPath(path: String): Boolean {
+        internal fun isOperitInternalPath(path: String, packageName: String): Boolean {
             val normalizedPath = path.trim()
-            val appPackage = BuildConfig.APPLICATION_ID
+            val appPackage = packageName.trim()
+            if (appPackage.isEmpty()) return false
             return normalizedPath.startsWith("/data/data/$appPackage") ||
                 AndroidUserPathUtils.isCurrentUserPackageDataPath(normalizedPath, appPackage)
         }
@@ -65,7 +65,7 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
      * 仅针对 Operit 应用自身数据目录路径返回true
      */
     protected fun isOperitInternalPath(path: String): Boolean {
-        return Companion.isOperitInternalPath(path)
+        return Companion.isOperitInternalPath(path, context.packageName)
     }
 
     private fun shQuote(value: String): String {

@@ -325,7 +325,7 @@ class DemoStateManager(private val context: Context, private val coroutineScope:
                 "command -v $command",
                 executorKey = "demo-env-$command",
                 timeoutMs = ENVIRONMENT_CHECK_TIMEOUT_MS,
-                target = HostTerminalTarget.TERMUX
+                target = HostTerminalTarget.HOST
             )
         val output = listOf(result.output, result.error).joinToString("\n")
         return result.exitCode == 0 && output.contains(command)

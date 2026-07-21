@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_dir="$repo_dir/runtime/wuxianpi-node"
+web_source_dir="$repo_dir/ai-web-ui"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 output="$payload_dir/pi-runtime.tar"
 native_output="$payload_dir/wuxianpi-native-install.tar"
@@ -10,12 +11,14 @@ native_asset_dir="$repo_dir/native-app/src/main/assets/openhouse-runtime"
 native_asset="$native_asset_dir/runtime-aarch64.tgz"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-payload.XXXXXX")"
 build="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-build.XXXXXX")"
-trap 'rm -rf -- "$stage" "$build"' EXIT
+web_build="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-web-build.XXXXXX")"
+trap 'rm -rf -- "$stage" "$build" "$web_build"' EXIT
 
 log() { printf '[wuxianpi-node payload] %s\n' "$*"; }
 die() { printf '[wuxianpi-node payload] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ -f "$source_dir/package-lock.json" ]] || die "missing committed package-lock.json"
+[[ -f "$web_source_dir/package-lock.json" ]] || die "missing ai-web-ui package-lock.json"
 grep -Fq '"@earendil-works/pi-coding-agent": "0.80.10"' "$source_dir/package.json" \
   || die "Pi SDK must be pinned exactly to 0.80.10"
 
@@ -34,8 +37,24 @@ fi
 rm -rf "$build/node_modules/@types" "$build/node_modules/typescript" "$build/node_modules/undici-types"
 rm -f "$build/node_modules/.bin/tsc" "$build/node_modules/.bin/tsserver"
 
+(cd "$web_source_dir" && tar --exclude='./node_modules' --exclude='./dist' -cf - .) \
+  | (cd "$web_build" && tar -xf -)
+if [[ -d "${WUXIANPI_WEB_NODE_MODULES_DIR:-$web_source_dir/node_modules}" ]]; then
+  cp -a "${WUXIANPI_WEB_NODE_MODULES_DIR:-$web_source_dir/node_modules}" "$web_build/node_modules"
+else
+  (cd "$web_build" && npm ci)
+fi
+(
+  cd "$web_build"
+  npm run typecheck
+  npm test
+  npm run build
+  test -s dist/index.html
+)
+
 mkdir -p "$stage/bin" "$stage/node" "$stage/scripts" "$stage/metadata"
 cp -a "$build/package.json" "$build/package-lock.json" "$build/dist" "$build/node_modules" "$stage/node/"
+cp -a "$web_build/dist" "$stage/node/web"
 
 cat > "$stage/bin/wuxianpi-node" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/sh
@@ -52,7 +71,9 @@ mkdir -p "$HOME/.pi/agent/sessions" "$HOME/workspace"
 exec "$HOME/.local/bin/wuxianpi-node" \
   --listen "${OPENHOUSE_PI_LISTEN:-127.0.0.1:8765}" \
   --agent-dir "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}" \
-  --idle-timeout-ms "${OPENHOUSE_PI_IDLE_TIMEOUT_MS:-300000}"
+  --idle-timeout-ms "${OPENHOUSE_PI_IDLE_TIMEOUT_MS:-300000}" \
+  --web-root "${WUXIANPI_WEB_ROOT:-$HOME/.local/share/openhouseai/runtime/node/web}" \
+  --preferred-web-ui-url "${OPENHOUSE_AIONUI_ORIGIN:-http://127.0.0.1:25808/}"
 EOF
 
 cat > "$stage/bin/wuxianpi" <<'EOF'
@@ -97,6 +118,7 @@ node -e 'const [major,minor]=process.versions.node.split(".").map(Number);if(maj
 test -x "$HOME/.local/bin/wuxianpi-node"
 test -x "$HOME/.local/bin/wuxianpi-node-start"
 test -f "$runtime/node/dist/index.js"
+test -s "$runtime/node/web/index.html"
 test -f "$runtime/node/node_modules/@earendil-works/pi-coding-agent/package.json"
 node -e 'const p=require(process.env.HOME+"/.local/share/openhouseai/runtime/node/node_modules/@earendil-works/pi-coding-agent/package.json");if(p.version!=="0.80.10")process.exit(1)'
 printf 'ok: WuxianPi Node SDK runtime is installed\n'
@@ -121,7 +143,9 @@ cat > "$tmp" <<JSON
     "HOME": "$HOME",
     "PATH": "$HOME/.local/bin:${PREFIX:-/data/data/com.termux/files/usr}/bin:/system/bin",
     "PI_CODING_AGENT_DIR": "$HOME/.pi/agent",
-    "OPENHOUSE_PI_RUNTIME_ORIGIN": "http://127.0.0.1:8765"
+    "OPENHOUSE_PI_RUNTIME_ORIGIN": "http://127.0.0.1:8765",
+    "OPENHOUSE_AIONUI_ORIGIN": "http://127.0.0.1:25808/",
+    "WUXIANPI_WEB_ROOT": "$HOME/.local/share/openhouseai/runtime/node/web"
   },
   "runtime": {"strategy": "termux-process", "runtime": "termux", "platform": "android-arm64"},
   "restart": {"mode": "always", "max_retries": 0},
@@ -154,6 +178,10 @@ path.write_text(json.dumps({
     "piSdkPackage": "@earendil-works/pi-coding-agent",
     "piSdkVersion": "0.80.10",
     "node": ">=22.19.0",
+    "staticWebUi": True,
+    "staticWebUiPath": "node/web/index.html",
+    "uiMetadataPath": "/v1/ui/metadata",
+    "preferredWebUi": "http://127.0.0.1:25808/",
 }, indent=2) + "\n", encoding="utf-8")
 PY
 
@@ -205,7 +233,8 @@ for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloa
         "sdkPackage": "@earendil-works/pi-coding-agent", "sdkVersion": "0.80.10",
         "nodeVersion": ">=22.19.0", "transport": "wuxianpi-sdk-v1",
         "registrationRequires": {"serviceManager": ">=0.3.1", "registryApiVersion": 2},
-        "provides": {"piSdkEmbedded": True, "webSocket": True, "nativeJsonlSessions": True},
+        "provides": {"piSdkEmbedded": True, "webSocket": True, "nativeJsonlSessions": True,
+                     "staticWebUi": True, "uiMetadata": True},
     })
     if key == "components": entry["targetDir"] = "pi-runtime"
     doc["nativeInstallBundle"] = {"id": "wuxianpi-native-install", "archive": native_archive.name,

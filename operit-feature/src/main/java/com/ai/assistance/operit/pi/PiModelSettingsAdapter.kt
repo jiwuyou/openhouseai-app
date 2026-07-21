@@ -13,7 +13,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 /** Typed model-settings bridge. No Operit provider request class is used by these actions. */
 class PiModelSettingsAdapter private constructor() {
     private val client =
-        WuxianPiClient(PiServiceConfig("http://127.0.0.1:8765/".toHttpUrl()))
+        WuxianPiClient(PiServiceConfig(OPERIT_PI_RUNTIME_URL.toHttpUrl()))
     private val connectionMutex = Mutex()
 
     companion object {

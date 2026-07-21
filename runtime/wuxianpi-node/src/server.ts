@@ -33,6 +33,7 @@ export interface RuntimeServerOptions {
   diagnosticsMaxFileBytes?: number;
   diagnosticsMaxFiles?: number;
   webRoot?: string;
+  preferredWebUiUrl?: string;
 }
 
 interface ConnectionContext {
@@ -94,6 +95,13 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
   const adapter = new PiSdkAdapter(registry);
   const webServices = new WebServices({ agentDir, registry });
   const staticFiles = new StaticFiles(options.webRoot);
+  const runtimeCapabilities = {
+    ...CAPABILITIES,
+    webApi: 1,
+    snapshotSse: 1,
+    staticWebUi: staticFiles.enabled ? 1 : 0,
+  } as const;
+  const preferredWebUiUrl = options.preferredWebUiUrl ?? "http://127.0.0.1:25808/";
   const webApi = new WebApi({
     registry,
     services: webServices,
@@ -104,7 +112,7 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
       ...registry.status(),
       eventTransport: "snapshot-sse-v1",
       nativeWebsocketPath: "/v1/ws",
-      capabilities: { ...CAPABILITIES, webApi: 1, snapshotSse: 1, staticWebUi: staticFiles.enabled ? 1 : 0 },
+      capabilities: runtimeCapabilities,
     }),
   });
   const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
@@ -236,6 +244,7 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
 
   async function handleHttp(request: IncomingMessage, response: HttpResponse): Promise<void> {
     const path = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`).pathname;
+    const runtimeOrigin = `http://${request.headers.host ?? "127.0.0.1:8765"}`;
     if (await webApi.handle(request, response)) return;
     if (request.method === "GET" && (path === "/health" || path === "/admin/v1/health")) {
       json(response, 200, {
@@ -244,7 +253,21 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
         protocolVersion: PROTOCOL_VERSION,
         version: RUNTIME_VERSION,
         activeSessions: registry.size,
-        capabilities: CAPABILITIES,
+        capabilities: runtimeCapabilities,
+        uiMetadataPath: "/v1/ui/metadata",
+      });
+    } else if (request.method === "GET" && path === "/v1/ui/metadata") {
+      json(response, 200, {
+        ok: true,
+        schemaVersion: 1,
+        preferred: { id: "aionui", url: preferredWebUiUrl },
+        fallback: {
+          id: "wuxianpi-builtin",
+          url: `${runtimeOrigin}/`,
+          available: staticFiles.enabled,
+        },
+        webApiUrl: `${runtimeOrigin}/api/web/v1`,
+        capabilities: runtimeCapabilities,
       });
     } else if (request.method === "GET" && path === "/v1/status") {
       json(response, 200, {
@@ -254,7 +277,8 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
         protocol: PROTOCOL_NAME,
         ...registry.status(),
         websocketPath: "/v1/ws",
-        capabilities: CAPABILITIES,
+        capabilities: runtimeCapabilities,
+        uiMetadataPath: "/v1/ui/metadata",
         diagnostics: diagnostics.status(),
       });
     } else if (await staticFiles.serve(request, response, path)) return;
@@ -267,7 +291,8 @@ export function createRuntimeServer(options: RuntimeServerOptions) {
         ...registry.status(),
         websocketPath: "/v1/ws",
         webApiPath: "/api/web/v1",
-        capabilities: CAPABILITIES,
+        capabilities: runtimeCapabilities,
+        uiMetadataPath: "/v1/ui/metadata",
         diagnostics: diagnostics.status(),
       });
     } else json(response, 404, { ok: false, error: { code: "not_found", message: "Not found" } });

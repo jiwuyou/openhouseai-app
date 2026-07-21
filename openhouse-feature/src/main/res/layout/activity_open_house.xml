@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/oh_drawer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/oh_surface"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@color/oh_panel"
+            android:elevation="2dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp">
+
+            <Button
+                android:id="@+id/oh_open_drawer"
+                android:layout_width="58dp"
+                android:layout_height="42dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_menu"
+                android:textAllCaps="false"
+                android:textColor="@color/oh_text" />
+
+            <TextView
+                android:id="@+id/oh_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/oh_desktop"
+                android:textColor="@color/oh_text"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/oh_done_editing"
+                android:layout_width="72dp"
+                android:layout_height="42dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="完成"
+                android:textAllCaps="false"
+                android:textColor="@color/oh_text"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:id="@+id/oh_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="288dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@color/oh_panel"
+        android:elevation="8dp"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="OpenHouse"
+                android:textColor="@color/oh_text"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/oh_close_drawer"
+                android:layout_width="58dp"
+                android:layout_height="42dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_close"
+                android:textAllCaps="false" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/oh_nav_desktop"
+            style="@style/OhDrawerButton"
+            android:layout_marginTop="20dp"
+            android:text="@string/oh_desktop" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/oh_modes"
+            android:textColor="@color/oh_text_secondary"
+            android:textSize="12sp" />
+
+        <Button android:id="@+id/oh_nav_basic" style="@style/OhDrawerButton" android:text="@string/oh_basic" />
+        <Button android:id="@+id/oh_nav_advanced" style="@style/OhDrawerButton" android:text="@string/oh_advanced" />
+        <Button android:id="@+id/oh_nav_repair" style="@style/OhDrawerButton" android:text="@string/oh_repair" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/oh_system"
+            android:textColor="@color/oh_text_secondary"
+            android:textSize="12sp" />
+
+        <Button android:id="@+id/oh_nav_service" style="@style/OhDrawerButton" android:text="@string/oh_service_control" />
+        <Button android:id="@+id/oh_nav_settings" style="@style/OhDrawerButton" android:text="@string/oh_settings" />
+    </LinearLayout>
+</androidx.drawerlayout.widget.DrawerLayout>

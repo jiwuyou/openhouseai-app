@@ -30,6 +30,7 @@ import com.ai.assistance.operit.core.tools.ToolExecutionLimits
 import com.ai.assistance.operit.core.tools.climode.CliToolModeSupport
 import com.ai.assistance.operit.core.tools.climode.ToolExposureMode
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
+import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
@@ -370,8 +371,8 @@ class EnhancedAIService private constructor(private val context: Context) {
     // Tool handler for executing tools
     private val toolHandler = AIToolHandler.getInstance(context)
 
-    private fun shouldExposeTermuxHostTerminalTools(): Boolean {
-        return context.packageName == "com.termux"
+    private fun shouldExposeHostTerminalTools(): Boolean {
+        return OperitHostProvider.currentOrNull() != null
     }
 
     private suspend fun ensureInitialized() {
@@ -2896,7 +2897,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     )
                 }
 
-                val termuxHostTerminalTools = if (shouldExposeTermuxHostTerminalTools()) {
+                val hostTerminalTools = if (shouldExposeHostTerminalTools()) {
                     val terminalCategory = if (isEnglish) {
                         SystemToolPrompts.getHostTerminalToolCategoryEn()
                     } else {
@@ -2907,7 +2908,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     emptyList()
                 }
 
-                (categories.flatMap { it.tools } + termuxHostTerminalTools)
+                (categories.flatMap { it.tools } + hostTerminalTools)
                     .distinctBy { it.name }
                     .toMutableList()
                     .apply {

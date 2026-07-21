@@ -4,8 +4,6 @@ import android.content.Context
 import com.ai.assistance.operit.host.OperitHostProvider
 
 object OperitTerminalManager {
-    const val PACKAGE_NAME = "com.termux"
-
     data class ReleaseInfo(
         val version: String,
         val downloadUrl: String,
@@ -17,11 +15,10 @@ object OperitTerminalManager {
     }
 
     fun getInstalledVersion(context: Context): String? {
-        return if (isInstalled(context)) "SmallPhoneAI Termux host" else null
+        return if (isInstalled(context)) "SmallPhoneAI host" else null
     }
 
     suspend fun fetchLatestReleaseInfo(context: Context): ReleaseInfo? {
         return null
     }
 }
-

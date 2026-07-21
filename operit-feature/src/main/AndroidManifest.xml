@@ -74,6 +74,16 @@
             android:windowSoftInputMode="adjustPan" />
 
         <activity
+            android:name=".rescue.ui.RescueActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout"
+            android:exported="false"
+            android:label="@string/rescue_ai_title"
+            android:launchMode="singleTask"
+            android:process=":rescue_ui"
+            android:theme="@style/Theme.Operit"
+            android:windowSoftInputMode="adjustPan" />
+
+        <activity
             android:name=".services.assistant.OperitAssistActivity"
             android:excludeFromRecents="true"
             android:exported="true"

@@ -1,0 +1,73 @@
+plugins {
+    id "com.android.library"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.wuxianpi.openhouse.core"
+    compileSdkVersion 36
+
+    defaultConfig {
+        minSdkVersion 26
+        targetSdkVersion 28
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions { jvmTarget = "1.8" }
+
+    testOptions { unitTests.returnDefaultValues = true }
+}
+
+dependencies {
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.json:json:20240303"
+}
+
+tasks.register("verifyHostNeutralCore") {
+    group = "verification"
+    description = "Reject host-specific dependencies and paths in openhouse-core production sources."
+    inputs.files(fileTree("src/main") { include "**/*.java", "**/*.kt" })
+    doLast {
+        def forbidden = [
+            "com.termux",
+            "termux-shared",
+            "java.io.File",
+            "/data/data/com.termux",
+            "/data/user/0/com.termux"
+        ]
+        inputs.files.files.each { source ->
+            def text = source.getText("UTF-8")
+            forbidden.each { needle ->
+                if (text.contains(needle)) {
+                    throw new GradleException("Host-specific value '${needle}' found in ${source}")
+                }
+            }
+        }
+
+        def serviceSources = fileTree("src/main/java/com/wuxianpi/openhouse/core/service") {
+            include "**/*.java"
+        }
+        def lifecycleBypasses = [
+            "ControlPlaneStarter",
+            "ProcessBuilder",
+            "Runtime.getRuntime()",
+            ".sh",
+            "nohup ",
+            "/bin/"
+        ]
+        serviceSources.files.each { source ->
+            def text = source.getText("UTF-8")
+            lifecycleBypasses.each { needle ->
+                if (text.contains(needle)) {
+                    throw new GradleException("Business service client bypass '${needle}' found in ${source}")
+                }
+            }
+        }
+    }
+}
+
+tasks.withType(Test).configureEach { dependsOn("verifyHostNeutralCore") }

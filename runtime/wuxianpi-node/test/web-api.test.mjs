@@ -36,6 +36,16 @@ test("web API serves static UI and core resource endpoints", { timeout: 20_000 }
   assert.equal(status.eventTransport, "snapshot-sse-v1");
   assert.equal(status.capabilities.staticWebUi, 1);
 
+  const health = await jsonFetch(`${base}/health`);
+  assert.equal(health.capabilities.staticWebUi, 1);
+  assert.equal(health.uiMetadataPath, "/v1/ui/metadata");
+
+  const ui = await jsonFetch(`${base}/v1/ui/metadata`);
+  assert.equal(ui.preferred.url, "http://127.0.0.1:25808/");
+  assert.equal(ui.fallback.url, `${base}/`);
+  assert.equal(ui.fallback.available, true);
+  assert.equal(ui.webApiUrl, `${base}/api/web/v1`);
+
   const created = await jsonFetch(`${base}/api/web/v1/sessions`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cwd: root }),
   });

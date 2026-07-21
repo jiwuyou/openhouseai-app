@@ -5,19 +5,20 @@ import android.content.Context;
 import android.content.Intent;
 import android.widget.Toast;
 
-import com.wuxianpi.ai.AiFeatureStatus;
-import com.wuxianpi.ai.WuxianPiActivity;
+import com.ai.assistance.operit.host.control.OperitControlProtocol;
+import com.ai.assistance.operit.host.control.OperitControlStateSnapshot;
+import com.ai.assistance.operit.host.control.OperitControlStateStore;
+import com.ai.assistance.operit.host.control.OperitProcessState;
+import com.ai.assistance.operit.launcher.OperitModeLauncher;
 
 /**
  * Compatibility shim for the existing OpenHouse desktop entry.
  *
- * <p>The old Operit process/agent host is no longer part of the production build. This class keeps
- * the established desktop wiring stable while routing it to the shared WuxianPi UI and the
- * Termux-native WuxianPi Node service backed directly by the official Pi SDK.</p>
+ * <p>This keeps the established desktop wiring stable while routing both APK hosts to the shared
+ * Operit Basic activity in hosted mode. PiChatEngine owns the loopback Pi Runtime connection.</p>
  */
 public final class OperitHomeIntegration {
 
-    private static final String RUNTIME_URL = "http://127.0.0.1:8765/";
     public static final long SHUTDOWN_PENDING_UI_MS = 5_000L;
     public static final long LAUNCH_PENDING_UI_MS = 7_000L;
     public static final long LAUNCH_PROCESS_GRACE_MS = 1_500L;
@@ -51,11 +52,8 @@ public final class OperitHomeIntegration {
     public static boolean openAiFriendHelp(Activity activity) {
         if (activity == null) return false;
         try {
-            activity.startActivity(WuxianPiActivity.createBundledIntent(
-                activity,
-                RUNTIME_URL,
-                "wuxianpi-bundled"
-            ));
+            activity.startActivity(OperitModeLauncher.createBasicIntent(
+                activity, "com.termux.app.activities.OpenHouseHomeActivity"));
             return true;
         } catch (Throwable error) {
             Toast.makeText(
@@ -68,19 +66,27 @@ public final class OperitHomeIntegration {
     }
 
     public static DisplayState readDisplayState(Context context) {
-        return AiFeatureStatus.isVisible() ? DisplayState.FOREGROUND : DisplayState.NOT_RUNNING;
+        OperitControlStateSnapshot snapshot = OperitControlStateStore.read(context);
+        OperitProcessState state = snapshot.getEffectiveState();
+        if (state == OperitProcessState.FOREGROUND) return DisplayState.FOREGROUND;
+        if (state == OperitProcessState.BACKGROUND) return DisplayState.BACKGROUND;
+        if (state == OperitProcessState.STOPPING) return DisplayState.STOPPING;
+        return DisplayState.NOT_RUNNING;
     }
 
     public static boolean isBackground(Context context) {
-        return false;
+        return readDisplayState(context) == DisplayState.BACKGROUND;
     }
 
     public static boolean requestShutdown(Context context) {
-        return false;
+        if (context == null) return false;
+        context.sendBroadcast(OperitControlProtocol.createShutdownIntent(context));
+        return true;
     }
 
     public static boolean isOperitProcessAlive(Context context, int expectedPid) {
-        return AiFeatureStatus.isRunning();
+        OperitControlStateSnapshot snapshot = OperitControlStateStore.read(context);
+        return snapshot.isRunning() && (expectedPid <= 0 || snapshot.getPid() == expectedPid);
     }
 
     private static String safeMessage(Throwable error) {

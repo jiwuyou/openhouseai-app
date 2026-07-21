@@ -16,7 +16,6 @@ import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import androidx.core.app.NotificationCompat
-import com.ai.assistance.operit.BuildConfig
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.AppListData
 import com.ai.assistance.operit.core.tools.AppOperationData
@@ -65,7 +64,7 @@ open class StandardSystemOperationTools(private val context: Context) {
 
     private fun isOperitInternalPath(path: String): Boolean {
         val normalizedPath = path.trim()
-        val appPackage = BuildConfig.APPLICATION_ID
+        val appPackage = context.packageName
         return normalizedPath.startsWith("/data/data/$appPackage") ||
             AndroidUserPathUtils.isCurrentUserPackageDataPath(normalizedPath, appPackage)
     }

@@ -74,7 +74,7 @@ import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.core.tools.defaultTool.PathValidator
 import com.ai.assistance.operit.core.tools.system.Terminal
 import com.ai.assistance.operit.host.terminal.HostTerminalHiddenResult
-import com.ai.assistance.operit.host.terminal.HostTermuxFileSystemProvider
+import com.ai.assistance.operit.host.terminal.HostFileSystemProvider
 import com.ai.assistance.operit.util.LocaleUtils
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicInteger
@@ -113,13 +113,13 @@ open class StandardFileSystemTools(protected val context: Context) {
     private var lastLinuxFileSystemProviderLabel: String? = null
 
     private val hostLinuxFileSystem by lazy {
-        HostTermuxFileSystemProvider()
+        HostFileSystemProvider()
     }
 
-    protected fun getLinuxFileSystem(): HostTermuxFileSystemProvider {
-        if (lastLinuxFileSystemProviderLabel != "termux-host") {
-            AppLogger.d(TAG, "Using SmallPhoneAI/Termux host file system provider")
-            lastLinuxFileSystemProviderLabel = "termux-host"
+    protected fun getLinuxFileSystem(): HostFileSystemProvider {
+        if (lastLinuxFileSystemProviderLabel != "host") {
+            AppLogger.d(TAG, "Using injected host file system provider")
+            lastLinuxFileSystemProviderLabel = "host"
         }
         return hostLinuxFileSystem
     }

@@ -12,7 +12,7 @@ import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 
 /** 调试级别的系统操作工具，继承无障碍版本, 并使用shell命令覆盖部分实现 */
-open class DebuggerSystemOperationTools(context: Context) :
+open class DebuggerSystemOperationTools(private val context: Context) :
     AccessibilitySystemOperationTools(context) {
 
     private val TAG = "DebuggerSystemTools"
@@ -146,7 +146,7 @@ open class DebuggerSystemOperationTools(context: Context) :
             )
         }
 
-        if (DebuggerFileSystemTools.isOperitInternalPath(apkPath)) {
+        if (DebuggerFileSystemTools.isOperitInternalPath(apkPath, context.packageName)) {
             AppLogger.d(
                 TAG,
                 "installApp detected Operit internal path, delegating to AccessibilitySystemOperationTools"

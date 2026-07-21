@@ -21,6 +21,8 @@ import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.app.openhouse.release.OpenHousePostUpdateSync;
 import com.termux.app.openhouse.OpenHouseForegroundRuntimeKeeper;
 import com.termux.app.operit.init.OperitHostBootstrap;
+import com.ai.assistance.operit.host.OperitHostProvider;
+import com.openhouse.host.termux.TermuxOperitHostOperations;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -36,6 +38,9 @@ public class TermuxApplication extends Application {
         Context context = getApplicationContext();
 
         configureProcessScopedWebViewDataDirectory(context);
+        // Application.onCreate() runs independently in :operit, :rescue_ui and :openhouse.
+        // Install the host operations in every process before shared Operit code is touched.
+        OperitHostProvider.INSTANCE.installOperations(new TermuxOperitHostOperations(context));
         OperitHostBootstrap.installHostBridge(context);
 
         // Set crash handler for the app

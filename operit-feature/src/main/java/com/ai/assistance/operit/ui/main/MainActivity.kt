@@ -88,6 +88,8 @@ class MainActivity : ComponentActivity() {
         const val ACTION_OPEN_SETTINGS_SHORTCUT = "com.ai.assistance.operit.action.OPEN_SETTINGS_SHORTCUT"
         const val EXTRA_HOSTED_MODE = "com.ai.assistance.operit.extra.HOSTED_MODE"
         const val EXTRA_HELP_MODE = "com.ai.assistance.operit.extra.HELP_MODE"
+        const val EXTRA_HOST_RETURN_ACTIVITY =
+            "com.ai.assistance.operit.extra.HOST_RETURN_ACTIVITY"
     }
 
     private val TAG = "MainActivity"
@@ -295,10 +297,7 @@ class MainActivity : ComponentActivity() {
         AppLogger.e(TAG, "Operit startup failed", error)
         if (isHostedControlProcess()) {
             OperitControlStateStore.markStopped(applicationContext)
-            val hostIntent =
-                Intent()
-                    .setClassName(packageName, "com.termux.app.activities.OpenHouseHomeActivity")
-                    .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            val hostIntent = createHostReturnIntent()
             runCatching { startActivity(hostIntent) }
                 .onFailure { AppLogger.e(TAG, "Failed to return to host after Operit startup failure", it) }
         } else {
@@ -354,15 +353,25 @@ class MainActivity : ComponentActivity() {
         }
 
         OperitControlStateStore.markBackground(applicationContext)
-        val hostIntent =
-            Intent()
-                .setClassName(packageName, "com.termux.app.activities.OpenHouseHomeActivity")
-                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val hostIntent = createHostReturnIntent()
         try {
             startActivity(hostIntent)
         } catch (error: Exception) {
             AppLogger.e(TAG, "Failed to return to SmallPhoneAI main menu", error)
         }
+    }
+
+    private fun createHostReturnIntent(): Intent {
+        val requestedActivity =
+            intent?.getStringExtra(EXTRA_HOST_RETURN_ACTIVITY)?.trim().orEmpty()
+        if (requestedActivity.isNotEmpty()) {
+            return Intent()
+                .setClassName(packageName, requestedActivity)
+                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        return packageManager.getLaunchIntentForPackage(packageName)
+            ?.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            ?: Intent().setPackage(packageName)
     }
 
     private fun shutdownOperit(
@@ -965,10 +974,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     )
-                                    // The Operit UI module is shared by the native and all-in-one
-                                    // Termux APKs.  Only the native APK declares RescueActivity
-                                    // (and packages the Rust rescue runtime), so do not expose a
-                                    // dead button in the all-in-one build.
+                                    // Keep this entry capability-driven so host manifest overrides
+                                    // can still disable Repair mode without changing the Operit UI.
                                     val rescueIntentAvailable = remember {
                                         packageManager.resolveActivity(
                                             RescueActivity.createIntent(this@MainActivity),
