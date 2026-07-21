@@ -52,7 +52,7 @@ export function ModelsConfig({ onClose, onModelsChanged }: ModelsConfigProps) {
           <span className="eyebrow">MODELS</span>
           <h2 id="models-config-title">模型服务</h2>
         </div>
-        <button type="button" className="icon-button models-page-close" onClick={onClose} aria-label="返回设置" title="返回设置">×</button>
+        <button type="button" className="icon-button models-page-close" onClick={onClose} aria-label="返回" title="返回">×</button>
       </header>
       <main className="wuxianpi-modal-body models-page-body">
         <p className="settings-hint" id="models-config-description">Provider 凭据、默认模型和测试结果由 Termux 中的 Pi Runtime 持久化。本版本允许直接填写 API Key。</p>
