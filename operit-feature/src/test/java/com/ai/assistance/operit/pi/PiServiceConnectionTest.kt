@@ -14,6 +14,17 @@ class PiServiceConnectionTest {
     }
 
     @Test
+    fun `credentials canonicalize service URLs to the runtime root`() {
+        assertEquals(
+            "http://localhost:8765/",
+            PiServiceCredentials(
+                " http://LOCALHOST:8765/admin/v1/health?probe=1#status ",
+                "basic",
+            ).serviceUrl,
+        )
+    }
+
+    @Test
     fun `credentials reject a non-loopback endpoint`() {
         assertThrows(IllegalArgumentException::class.java) {
             PiServiceCredentials("https://example.com", "basic")

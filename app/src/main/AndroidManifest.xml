@@ -91,13 +91,14 @@
         </activity>
 
         <activity
-            android:name=".app.activities.OpenHouseHomeActivity"
+            android:name="com.wuxianpi.openhouse.feature.OpenHouseActivity"
             android:exported="true"
             android:label="@string/application_name"
             android:launchMode="singleTask"
             android:process=":openhouse"
             android:resizeableActivity="true"
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
+            tools:replace="android:exported,android:launchMode,android:process,android:theme"
             tools:targetApi="n">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -125,6 +126,16 @@
         </activity>
 
         <activity
+            android:name=".app.activities.OpenHouseHomeActivity"
+            android:exported="false"
+            android:label="@string/application_name"
+            android:launchMode="singleTask"
+            android:process=":openhouse"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
+            tools:targetApi="n" />
+
+        <activity
             android:name=".app.activities.OpenHouseWebHostActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|smallestScreenSize|density|screenLayout|keyboard|keyboardHidden|navigation"
@@ -134,6 +145,14 @@
             android:resizeableActivity="true"
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
             tools:targetApi="n" />
+
+        <activity
+            android:name="com.wuxianpi.openhouse.feature.AdvancedUiActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":advanced_ui"
+            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
+            tools:replace="android:exported,android:launchMode,android:process,android:theme" />
 
         <activity
             android:name="live.pw.renderX.LatexView"
@@ -149,7 +168,7 @@
         <activity-alias
             android:name=".HomeActivity"
             android:exported="true"
-            android:targetActivity=".app.activities.OpenHouseHomeActivity">
+            android:targetActivity="com.wuxianpi.openhouse.feature.OpenHouseActivity">
 
             <!-- Launch activity automatically on boot on Android Things devices -->
             <intent-filter>

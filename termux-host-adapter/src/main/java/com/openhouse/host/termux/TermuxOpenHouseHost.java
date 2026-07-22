@@ -9,19 +9,28 @@ import com.wuxianpi.openhouse.core.ControlPlaneStarter;
 import com.wuxianpi.openhouse.core.HostActionResult;
 import com.wuxianpi.openhouse.core.HostCapabilities;
 import com.wuxianpi.openhouse.core.HostEdition;
+import com.wuxianpi.openhouse.core.LegacyRegistrySource;
 import com.wuxianpi.openhouse.core.OpenHouseHost;
 import com.wuxianpi.openhouse.core.RuntimeConnection;
 import com.wuxianpi.openhouse.core.SetupResult;
 import com.wuxianpi.openhouse.core.SetupState;
+import com.wuxianpi.openhouse.core.registry.LegacyRegistrySnapshot;
+import com.wuxianpi.openhouse.core.registry.RegistryManifest;
 
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /** Complete host adapter for the Termux-embedded OpenHouse edition. */
 public final class TermuxOpenHouseHost implements OpenHouseHost {
@@ -35,10 +44,17 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
         TERMUX_HOME + "/.config/openhouseai/service-manager/config.json");
     private final Context appContext;
     private final ControlPlaneStarter controlPlaneStarter = new TermuxControlPlaneStarter();
+    private final LegacyRegistrySource legacyRegistrySource;
 
     public TermuxOpenHouseHost(Context context) {
+        this(context, new File(TERMUX_HOME + "/.config/openhouseai"));
+    }
+
+    TermuxOpenHouseHost(Context context, File registryConfigDir) {
         if (context == null) throw new IllegalArgumentException("context is required");
-        appContext = context.getApplicationContext();
+        Context applicationContext = context.getApplicationContext();
+        appContext = applicationContext == null ? context : applicationContext;
+        legacyRegistrySource = createLegacyRegistrySource(registryConfigDir);
     }
 
     @Override public HostEdition edition() {
@@ -85,6 +101,10 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
 
     @Override public ControlPlaneStarter controlPlaneStarter() {
         return controlPlaneStarter;
+    }
+
+    @Override public LegacyRegistrySource legacyRegistrySource() {
+        return legacyRegistrySource;
     }
 
     @Override public HostActionResult openTerminal() {
@@ -166,6 +186,72 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
         return text;
     }
 
+    private static LegacyRegistrySource createLegacyRegistrySource(File configDir) {
+        return () -> loadLegacyRegistry(configDir);
+    }
+
+    private static LegacyRegistrySnapshot loadLegacyRegistry(File configDir) {
+        if (configDir == null) return LegacyRegistrySnapshot.unavailable();
+        File componentsDir = new File(configDir, "components.d");
+        if (!componentsDir.isDirectory()) return LegacyRegistrySnapshot.unavailable();
+        File[] files = componentsDir.listFiles((dir, name) -> name != null && name.endsWith(".json"));
+        if (files == null || files.length == 0) return LegacyRegistrySnapshot.unavailable();
+        Arrays.sort(files, (left, right) -> left.getName().compareToIgnoreCase(right.getName()));
+
+        List<RegistryManifest> manifests = new ArrayList<>();
+        int invalidFiles = 0;
+        for (File file : files) {
+            try {
+                String json = readText(file);
+                if (json.isEmpty()) throw new IllegalArgumentException("component manifest is empty");
+                manifests.add(RegistryManifest.fromManifestJson(
+                    "components.d/" + file.getName(), json));
+            } catch (Exception ignored) {
+                invalidFiles++;
+            }
+        }
+        if (manifests.isEmpty()) {
+            return LegacyRegistrySnapshot.failure(
+                "no valid component manifests in " + componentsDir.getAbsolutePath()
+                    + " (invalid=" + invalidFiles + ")");
+        }
+        String stateJson = readText(new File(configDir, "registry-state.json"));
+        return LegacyRegistrySnapshot.available(resolveLegacyRevision(stateJson, manifests), manifests);
+    }
+
+    private static String resolveLegacyRevision(String stateJson, List<RegistryManifest> manifests) {
+        try {
+            if (stateJson != null && !stateJson.trim().isEmpty()) {
+                JSONObject state = new JSONObject(stateJson);
+                String revision = firstNonBlank(
+                    state.optString("revision"),
+                    state.optString("generatedAt"), state.optString("generated_at"),
+                    state.optString("syncedAt"), state.optString("synced_at"),
+                    state.optString("updatedAt"), state.optString("updated_at"));
+                if (!revision.isEmpty()) return revision;
+            }
+        } catch (Exception ignored) {
+            // A malformed state file must not hide otherwise valid component manifests.
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (RegistryManifest manifest : manifests) {
+                digest.update(manifest.relativePath.getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(manifest.normalizedJson.getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+            }
+            StringBuilder revision = new StringBuilder("legacy-");
+            for (byte value : digest.digest()) {
+                revision.append(Character.forDigit((value >>> 4) & 0x0f, 16));
+                revision.append(Character.forDigit(value & 0x0f, 16));
+            }
+            return revision.toString();
+        } catch (Exception ignored) {
+            return "legacy-" + Integer.toHexString(manifests.toString().hashCode());
+        }
+    }
+
     private static JSONObject readObject(File file) {
         try {
             String text = readText(file);
@@ -178,7 +264,8 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
     private static String readText(File file) {
         if (file == null || !file.isFile() || file.length() > 2 * 1024 * 1024) return "";
         StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+            new FileInputStream(file), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) output.append(line).append('\n');
             return output.toString().trim();

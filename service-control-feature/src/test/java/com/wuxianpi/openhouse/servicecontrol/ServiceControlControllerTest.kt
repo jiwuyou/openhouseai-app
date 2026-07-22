@@ -57,14 +57,7 @@ class ServiceControlControllerTest {
     fun serviceActionsUseCurrentServiceManagerHttpApiOnly() {
         val transport = RecordingTransport()
         val host = FakeHost()
-        val controller = controller(
-            transport,
-            host,
-            request = ServiceControlRequest(
-                serviceIds = listOf("pi-agent"),
-                showAllServices = false,
-            ),
-        )
+        val controller = controller(transport, host)
         controller.refresh()
         scope.advanceUntilIdle()
 
@@ -81,6 +74,8 @@ class ServiceControlControllerTest {
     fun logsAndHttpErrorsAreRenderedWithoutRegistryDependency() {
         val transport = RecordingTransport()
         val controller = controller(transport, FakeHost())
+        controller.refresh()
+        scope.advanceUntilIdle()
 
         controller.fetchLogs("pi-agent")
         scope.advanceUntilIdle()

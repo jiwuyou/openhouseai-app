@@ -9,7 +9,9 @@ import com.ai.assistance.operit.host.OperitHostOperations
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.wuxianpi.openhouse.core.service.ServiceAction
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
@@ -21,39 +23,22 @@ import org.json.JSONObject
 class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
     private val appContext = context.applicationContext
     private val host = TermuxOpenHouseHost(appContext)
+    private val commandExecutor = TermuxHostCommandExecutor(
+        TermuxRuntimeLayout.defaults(),
+        host.runtimeConnection().serviceManagerBaseUrl,
+    )
 
     override suspend fun executeCommand(
         command: String,
         target: HostTerminalTarget,
         timeoutMs: Long,
     ): OperitHostCommandResult = withContext(Dispatchers.IO) {
-        val startedAt = System.currentTimeMillis()
-        val cleanCommand = command.trim()
-        if (cleanCommand.isEmpty()) {
-            return@withContext commandResult(command, 2, "command is empty", startedAt)
-        }
-        val bash = File(TermuxOpenHouseHost.TERMUX_PREFIX, "bin/bash")
-        if (!bash.isFile) {
-            return@withContext commandResult(command, 127, "Termux bash is not installed", startedAt)
-        }
-        val shellCommand = when (target) {
-            HostTerminalTarget.UBUNTU ->
-                "proot-distro login ubuntu -- bash -lc ${shellQuote(cleanCommand)}"
-            else -> cleanCommand
-        }
-        runProcess(
-            command = command,
-            processBuilder = ProcessBuilder(bash.absolutePath, "-lc", shellCommand)
-                .directory(File(TermuxOpenHouseHost.TERMUX_HOME))
-                .redirectErrorStream(true),
-            timeoutMs = timeoutMs,
-            startedAt = startedAt,
-        )
+        commandExecutor.execute(command, target, timeoutMs)
     }
 
     override fun openPermissions(context: Context): Boolean = runCatching {
         context.startActivity(
-            Intent(Intent.ACTION_APPLICATION_DETAILS_SETTINGS)
+            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                 .setData(Uri.parse("package:${context.packageName}"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
@@ -143,42 +128,6 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
           "${'$'}BASE/paired/${'$'}PAIR"
     """.trimIndent()
 
-    private fun runProcess(
-        command: String,
-        processBuilder: ProcessBuilder,
-        timeoutMs: Long,
-        startedAt: Long,
-    ): OperitHostCommandResult {
-        return runCatching {
-            val process = processBuilder.start()
-            val completed = process.waitFor(timeoutMs.coerceAtLeast(1L), TimeUnit.MILLISECONDS)
-            if (!completed) {
-                process.destroyForcibly()
-                return commandResult(command, 124, "command timed out", startedAt, timedOut = true)
-            }
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            commandResult(command, process.exitValue(), output, startedAt)
-        }.getOrElse { commandResult(command, 1, it.message ?: "command failed", startedAt) }
-    }
-
-    private fun commandResult(
-        command: String,
-        exitCode: Int,
-        output: String,
-        startedAt: Long,
-        timedOut: Boolean = false,
-    ) = OperitHostCommandResult(
-        command = command,
-        exitCode = exitCode,
-        stdout = output,
-        stderr = "",
-        error = if (exitCode == 0 && !timedOut) "" else output,
-        timedOut = timedOut,
-        durationMs = System.currentTimeMillis() - startedAt,
-    )
-
-    private fun shellQuote(value: String): String = "'${value.replace("'", "'\\\"'\\\"'")}'"
-
     private fun success(operation: String, details: JSONObject) =
         OperitHostOperationResult(true, details.put("operation", operation), operation, null)
 
@@ -188,4 +137,251 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
     private fun com.wuxianpi.openhouse.core.HostActionResult.toOperationResult(operation: String) =
         if (isSuccess()) success(operation, JSONObject().put("message", message))
         else failure(operation, message)
+}
+
+internal data class TermuxRuntimeLayout(
+    val prefix: File,
+    val home: File,
+) {
+    val bash: File get() = File(prefix, "bin/bash")
+    val prootDistro: File get() = File(prefix, "bin/proot-distro")
+    val currentUbuntuRootfs: File get() = File(prefix, "var/lib/proot-distro/containers/ubuntu/rootfs")
+    val legacyUbuntuRootfs: File get() = File(prefix, "var/lib/proot-distro/installed-rootfs/ubuntu")
+
+    companion object {
+        fun defaults() = TermuxRuntimeLayout(
+            File(TermuxOpenHouseHost.TERMUX_PREFIX),
+            File(TermuxOpenHouseHost.TERMUX_HOME),
+        )
+    }
+}
+
+internal class TermuxHostCommandExecutor(
+    private val layout: TermuxRuntimeLayout,
+    private val serviceManagerUrl: String,
+    private val runner: ConcurrentProcessRunner = ConcurrentProcessRunner(),
+) {
+    fun execute(command: String, target: HostTerminalTarget, timeoutMs: Long): OperitHostCommandResult {
+        val startedAt = System.currentTimeMillis()
+        val cleanCommand = command.trim()
+        if (cleanCommand.isEmpty()) return failure(command, 2, "command is empty", startedAt)
+        if (!layout.bash.isFile) {
+            return failure(command, 127, "Termux bash is not installed: ${layout.bash.absolutePath}", startedAt)
+        }
+        if (!layout.home.isDirectory) {
+            return failure(command, 127, "Termux home is unavailable: ${layout.home.absolutePath}", startedAt)
+        }
+
+        val effectiveTimeout = timeoutMs.coerceAtLeast(1L)
+        val shellCommand = if (target == HostTerminalTarget.UBUNTU) {
+            val plan = ubuntuCommand(command, cleanCommand, effectiveTimeout, startedAt)
+            plan.failure?.let { return it }
+            checkNotNull(plan.shellCommand)
+        } else {
+            cleanCommand
+        }
+        return runner.run(
+            originalCommand = command,
+            processBuilder = processBuilder(shellCommand, target),
+            timeoutMs = effectiveTimeout,
+            startedAt = startedAt,
+        )
+    }
+
+    private fun ubuntuCommand(
+        originalCommand: String,
+        cleanCommand: String,
+        timeoutMs: Long,
+        startedAt: Long,
+    ): UbuntuCommandPlan {
+        if (!layout.prootDistro.isFile) {
+            return UbuntuCommandPlan(
+                failure = failure(
+                    originalCommand,
+                    127,
+                    "Ubuntu is unavailable because proot-distro is not installed: ${layout.prootDistro.absolutePath}",
+                    startedAt,
+                ),
+            )
+        }
+        if (!layout.currentUbuntuRootfs.isDirectory && !layout.legacyUbuntuRootfs.isDirectory) {
+            return UbuntuCommandPlan(
+                failure = failure(
+                    originalCommand,
+                    127,
+                    "Ubuntu rootfs is not ready. Checked ${layout.currentUbuntuRootfs.absolutePath} and ${layout.legacyUbuntuRootfs.absolutePath}",
+                    startedAt,
+                ),
+            )
+        }
+        val probe = runner.run(
+            originalCommand = originalCommand,
+            processBuilder = processBuilder(
+                "${shellQuote(layout.prootDistro.absolutePath)} login ubuntu -- true",
+                HostTerminalTarget.UBUNTU,
+            ),
+            timeoutMs = minOf(timeoutMs, 10_000L),
+            startedAt = startedAt,
+        )
+        if (!probe.isSuccess) {
+            return UbuntuCommandPlan(
+                failure = probe.copy(
+                    command = originalCommand,
+                    error = "Ubuntu login probe failed. ${probe.error.ifBlank { probe.stderr.ifBlank { probe.stdout } }}".trim(),
+                ),
+            )
+        }
+        return UbuntuCommandPlan(
+            shellCommand = "${shellQuote(layout.prootDistro.absolutePath)} login ubuntu -- bash -lc ${shellQuote(cleanCommand)}",
+        )
+    }
+
+    private fun processBuilder(shellCommand: String, target: HostTerminalTarget): ProcessBuilder {
+        val builder = ProcessBuilder(layout.bash.absolutePath, "-lc", shellCommand)
+            .directory(layout.home)
+            .redirectErrorStream(false)
+        val environment = builder.environment()
+        environment["HOME"] = layout.home.absolutePath
+        environment["PREFIX"] = layout.prefix.absolutePath
+        environment["PATH"] = prependPath(environment["PATH"], File(layout.prefix, "bin").absolutePath, "/system/bin")
+        environment["LD_LIBRARY_PATH"] = prependPath(
+            environment["LD_LIBRARY_PATH"],
+            File(layout.prefix, "lib").absolutePath,
+        )
+        environment["TMPDIR"] = File(layout.prefix, "tmp").absolutePath
+        if (environment["LANG"].isNullOrBlank()) environment["LANG"] = "C.UTF-8"
+        val resolvedTarget = if (target == HostTerminalTarget.UBUNTU) "ubuntu" else "termux"
+        environment["OPENHOUSEAI_HOST_TERMINAL"] = "1"
+        environment["SMALLPHONEAI_HOST_TERMINAL"] = "1"
+        environment["OPERIT_HOST_TERMINAL"] = "1"
+        environment["OPENHOUSEAI_TERMINAL_PROVIDER"] = "openhouse-termux"
+        environment["SMALLPHONEAI_TERMINAL_PROVIDER"] = "openhouse-termux"
+        environment["OPERIT_TERMINAL_PROVIDER"] = "openhouse-termux"
+        environment["OPENHOUSEAI_HOST_TERMINAL_TARGET"] = resolvedTarget
+        environment["SMALLPHONEAI_HOST_TERMINAL_TARGET"] = resolvedTarget
+        environment["OPERIT_HOST_TERMINAL_TARGET"] = resolvedTarget
+        environment["OPENHOUSEAI_SERVICE_MANAGER_URL"] = serviceManagerUrl
+        environment["SMALLPHONEAI_SERVICE_MANAGER_URL"] = serviceManagerUrl
+        environment["OPERIT_SERVICE_MANAGER_URL"] = serviceManagerUrl
+        environment["OPENHOUSEAI_NO_AUTO_UBUNTU"] = "1"
+        environment["SMALLPHONEAI_NO_AUTO_UBUNTU"] = "1"
+        environment["TERMUX_NO_AUTO_UBUNTU"] = "1"
+        environment["OPERIT_NO_AUTO_UBUNTU"] = "1"
+        if (target == HostTerminalTarget.UBUNTU) {
+            environment["OPENHOUSEAI_UBUNTU_PROVIDER"] = "termux-proot-distro"
+            environment["SMALLPHONEAI_UBUNTU_PROVIDER"] = "termux-proot-distro"
+            environment["OPERIT_UBUNTU_PROVIDER"] = "termux-proot-distro"
+            environment["OPENHOUSEAI_UBUNTU_CONTAINER"] = "ubuntu"
+            environment["SMALLPHONEAI_UBUNTU_CONTAINER"] = "ubuntu"
+            environment["OPERIT_UBUNTU_CONTAINER"] = "ubuntu"
+        }
+        return builder
+    }
+
+    private fun prependPath(original: String?, vararg entries: String): String {
+        val values = original.orEmpty().split(File.pathSeparator).filter(String::isNotBlank).toMutableList()
+        entries.reversed().forEach { entry ->
+            values.remove(entry)
+            values.add(0, entry)
+        }
+        return values.joinToString(File.pathSeparator)
+    }
+
+    private fun failure(command: String, code: Int, message: String, startedAt: Long) = OperitHostCommandResult(
+        command = command,
+        exitCode = code,
+        stdout = "",
+        stderr = "",
+        error = message,
+        timedOut = false,
+        durationMs = System.currentTimeMillis() - startedAt,
+    )
+
+    private fun shellQuote(value: String): String = "'${value.replace("'", "'\"'\"'")}'"
+
+    private data class UbuntuCommandPlan(
+        val shellCommand: String? = null,
+        val failure: OperitHostCommandResult? = null,
+    )
+}
+
+internal class ConcurrentProcessRunner {
+    fun run(
+        originalCommand: String,
+        processBuilder: ProcessBuilder,
+        timeoutMs: Long,
+        startedAt: Long = System.currentTimeMillis(),
+    ): OperitHostCommandResult = runCatching {
+        val process = processBuilder.start()
+        val stdout = StreamDrainer(process.inputStream, "host-command-stdout")
+        val stderr = StreamDrainer(process.errorStream, "host-command-stderr")
+        stdout.start()
+        stderr.start()
+        val finished = process.waitFor(timeoutMs.coerceAtLeast(1L), TimeUnit.MILLISECONDS)
+        if (!finished) {
+            process.destroy()
+            if (!process.waitFor(200L, TimeUnit.MILLISECONDS)) process.destroyForcibly()
+        }
+        val stdoutCapture = stdout.await()
+        val stderrCapture = stderr.await()
+        val exitCode = if (finished) process.exitValue() else 124
+        val streamError = listOf(stdoutCapture.error, stderrCapture.error).filter(String::isNotBlank).joinToString("\n")
+        val error = when {
+            !finished -> listOf("command timed out after ${timeoutMs.coerceAtLeast(1L)} ms", streamError)
+                .filter(String::isNotBlank).joinToString("\n")
+            exitCode != 0 -> stderrCapture.text.ifBlank { stdoutCapture.text }.ifBlank { streamError }
+            streamError.isNotBlank() -> streamError
+            else -> ""
+        }
+        OperitHostCommandResult(
+            command = originalCommand,
+            exitCode = exitCode,
+            stdout = stdoutCapture.text,
+            stderr = stderrCapture.text,
+            error = error,
+            timedOut = !finished,
+            durationMs = System.currentTimeMillis() - startedAt,
+        )
+    }.getOrElse { error ->
+        OperitHostCommandResult(
+            command = originalCommand,
+            exitCode = 1,
+            stdout = "",
+            stderr = "",
+            error = error.message ?: error.javaClass.simpleName,
+            timedOut = false,
+            durationMs = System.currentTimeMillis() - startedAt,
+        )
+    }
+}
+
+private data class StreamCapture(val text: String, val error: String)
+
+private class StreamDrainer(
+    private val stream: InputStream,
+    name: String,
+) {
+    private val output = ByteArrayOutputStream()
+    private var failure: Throwable? = null
+    private val thread = Thread({
+        try {
+            stream.use { input -> input.copyTo(output) }
+        } catch (error: Throwable) {
+            failure = error
+        }
+    }, name).apply { isDaemon = true }
+
+    fun start() = thread.start()
+
+    fun await(): StreamCapture {
+        thread.join(2_000L)
+        if (thread.isAlive) {
+            runCatching { stream.close() }
+            thread.join(250L)
+        }
+        return StreamCapture(
+            output.toString(Charsets.UTF_8.name()),
+            failure?.message.orEmpty(),
+        )
+    }
 }

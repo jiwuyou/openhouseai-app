@@ -153,10 +153,10 @@ class PiPairingInstallerServer(
             409 -> "Conflict"
             else -> "Error"
         }
-        output.write(
+        val headers =
             "HTTP/1.1 $code $reason\r\nContent-Type: $type\r\n" +
-                "Content-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray(),
-        )
+                "Content-Length: ${body.size}\r\nConnection: close\r\n\r\n"
+        output.write(headers.toByteArray(StandardCharsets.US_ASCII))
         output.write(body)
         output.flush()
     }

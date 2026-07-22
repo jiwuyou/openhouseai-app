@@ -2,16 +2,16 @@ package com.ai.assistance.operit.pi
 
 import android.content.Context
 import java.util.UUID
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /** Connection coordinates shared by Basic UI and host-specific setup flows. */
-data class PiServiceCredentials(
-    val serviceUrl: String,
+class PiServiceCredentials(
+    serviceUrl: String,
     val clientId: String,
 ) {
+    val serviceUrl: String = normalizePiServiceUrl(serviceUrl)
+
     init {
-        require(serviceUrl.startsWith("http://127.0.0.1:") || serviceUrl.startsWith("http://localhost:")) {
-            "Pi service must use a loopback URL"
-        }
         require(clientId.isNotBlank()) { "Pi clientId is required" }
     }
 }
@@ -24,12 +24,12 @@ class PiServiceStore(context: Context) {
     fun load(): PiServiceCredentials? {
         val serviceUrl = preferences.getString(KEY_URL, null) ?: return null
         val clientId = preferences.getString(KEY_CLIENT, null) ?: return null
-        return runCatching { PiServiceCredentials(normalizeUrl(serviceUrl), clientId) }.getOrNull()
+        return runCatching { PiServiceCredentials(serviceUrl, clientId) }.getOrNull()
     }
 
     fun save(serviceUrl: String, clientId: String = currentOrNewClientId()) {
         preferences.edit()
-            .putString(KEY_URL, normalizeUrl(serviceUrl))
+            .putString(KEY_URL, normalizePiServiceUrl(serviceUrl))
             .putString(KEY_CLIENT, clientId)
             .apply()
     }
@@ -39,17 +39,32 @@ class PiServiceStore(context: Context) {
     fun currentOrNewClientId(): String =
         preferences.getString(KEY_CLIENT, null) ?: "operit-${UUID.randomUUID()}"
 
-    private fun normalizeUrl(value: String): String {
-        val trimmed = value.trim()
-        require(trimmed.startsWith("http://127.0.0.1:") || trimmed.startsWith("http://localhost:")) {
-            "Pi service must use a loopback URL"
-        }
-        return trimmed.trimEnd('/') + "/"
-    }
-
     private companion object {
         const val PREFERENCES_NAME = "operit_pi_service"
         const val KEY_URL = "service_url"
         const val KEY_CLIENT = "client_id"
     }
+}
+
+private fun normalizePiServiceUrl(value: String): String {
+    val parsed = value.trim().toHttpUrl()
+    require(parsed.scheme == "http" || parsed.scheme == "https") {
+        "Pi service must use HTTP(S)"
+    }
+    require(
+        parsed.host == "127.0.0.1" ||
+            parsed.host == "::1" ||
+            parsed.host.equals("localhost", ignoreCase = true)
+    ) {
+        "Pi service must use a loopback URL"
+    }
+    require(parsed.username.isEmpty() && parsed.password.isEmpty()) {
+        "Pi service URL must not contain credentials"
+    }
+    return parsed.newBuilder()
+        .encodedPath("/")
+        .query(null)
+        .fragment(null)
+        .build()
+        .toString()
 }

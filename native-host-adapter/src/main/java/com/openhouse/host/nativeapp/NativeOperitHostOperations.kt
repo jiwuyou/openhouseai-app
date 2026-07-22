@@ -9,7 +9,9 @@ import com.ai.assistance.operit.host.OperitHostOperations
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.wuxianpi.openhouse.core.service.ServiceAction
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
@@ -21,38 +23,22 @@ import org.json.JSONObject
 class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     private val appContext = context.applicationContext
     private val host = NativeOpenHouseHost(appContext)
+    private val commandExecutor = NativeHostCommandExecutor(
+        shell = File("/system/bin/sh"),
+        workingDirectory = appContext.filesDir,
+    )
 
     override suspend fun executeCommand(
         command: String,
         target: HostTerminalTarget,
         timeoutMs: Long,
     ): OperitHostCommandResult = withContext(Dispatchers.IO) {
-        val startedAt = System.currentTimeMillis()
-        val cleanCommand = command.trim()
-        if (cleanCommand.isEmpty()) {
-            return@withContext commandResult(command, 2, "command is empty", startedAt)
-        }
-        if (target == HostTerminalTarget.UBUNTU) {
-            return@withContext commandResult(command, 127, "Ubuntu target is unavailable in native APK", startedAt)
-        }
-        runCatching {
-            val process = ProcessBuilder("/system/bin/sh", "-c", cleanCommand)
-                .directory(appContext.filesDir)
-                .redirectErrorStream(true)
-                .start()
-            val completed = process.waitFor(timeoutMs.coerceAtLeast(1L), TimeUnit.MILLISECONDS)
-            if (!completed) {
-                process.destroyForcibly()
-                return@withContext commandResult(command, 124, "command timed out", startedAt, timedOut = true)
-            }
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            commandResult(command, process.exitValue(), output, startedAt)
-        }.getOrElse { commandResult(command, 1, it.message ?: "command failed", startedAt) }
+        commandExecutor.execute(command, target, timeoutMs)
     }
 
     override fun openPermissions(context: Context): Boolean = runCatching {
         context.startActivity(
-            Intent(Intent.ACTION_APPLICATION_DETAILS_SETTINGS)
+            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                 .setData(Uri.parse("package:${context.packageName}"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
@@ -143,22 +129,6 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
           "${'$'}BASE/paired/${'$'}PAIR"
     """.trimIndent()
 
-    private fun commandResult(
-        command: String,
-        exitCode: Int,
-        output: String,
-        startedAt: Long,
-        timedOut: Boolean = false,
-    ) = OperitHostCommandResult(
-        command = command,
-        exitCode = exitCode,
-        stdout = output,
-        stderr = "",
-        error = if (exitCode == 0 && !timedOut) "" else output,
-        timedOut = timedOut,
-        durationMs = System.currentTimeMillis() - startedAt,
-    )
-
     private fun success(operation: String, details: JSONObject) =
         OperitHostOperationResult(true, details.put("operation", operation), operation, null)
 
@@ -168,4 +138,119 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     private fun com.wuxianpi.openhouse.core.HostActionResult.toOperationResult(operation: String) =
         if (isSuccess()) success(operation, JSONObject().put("message", message))
         else failure(operation, message)
+}
+
+internal class NativeHostCommandExecutor(
+    private val shell: File,
+    private val workingDirectory: File,
+    private val runner: NativeProcessRunner = NativeProcessRunner(),
+) {
+    fun execute(command: String, target: HostTerminalTarget, timeoutMs: Long): OperitHostCommandResult {
+        val startedAt = System.currentTimeMillis()
+        val cleanCommand = command.trim()
+        if (cleanCommand.isEmpty()) return failure(command, 2, "command is empty", startedAt)
+        if (target == HostTerminalTarget.UBUNTU) {
+            return failure(command, 127, "Ubuntu target is unavailable in native APK", startedAt)
+        }
+        if (!shell.isFile) return failure(command, 127, "Android shell is unavailable: ${shell.absolutePath}", startedAt)
+        return runner.run(
+            originalCommand = command,
+            processBuilder = ProcessBuilder(shell.absolutePath, "-c", cleanCommand)
+                .directory(workingDirectory)
+                .redirectErrorStream(false),
+            timeoutMs = timeoutMs.coerceAtLeast(1L),
+            startedAt = startedAt,
+        )
+    }
+
+    private fun failure(command: String, code: Int, message: String, startedAt: Long) = OperitHostCommandResult(
+        command = command,
+        exitCode = code,
+        stdout = "",
+        stderr = "",
+        error = message,
+        timedOut = false,
+        durationMs = System.currentTimeMillis() - startedAt,
+    )
+}
+
+internal class NativeProcessRunner {
+    fun run(
+        originalCommand: String,
+        processBuilder: ProcessBuilder,
+        timeoutMs: Long,
+        startedAt: Long = System.currentTimeMillis(),
+    ): OperitHostCommandResult = runCatching {
+        val process = processBuilder.start()
+        val stdout = NativeStreamDrainer(process.inputStream, "native-host-command-stdout")
+        val stderr = NativeStreamDrainer(process.errorStream, "native-host-command-stderr")
+        stdout.start()
+        stderr.start()
+        val finished = process.waitFor(timeoutMs.coerceAtLeast(1L), TimeUnit.MILLISECONDS)
+        if (!finished) {
+            process.destroy()
+            if (!process.waitFor(200L, TimeUnit.MILLISECONDS)) process.destroyForcibly()
+        }
+        val stdoutCapture = stdout.await()
+        val stderrCapture = stderr.await()
+        val exitCode = if (finished) process.exitValue() else 124
+        val streamError = listOf(stdoutCapture.error, stderrCapture.error).filter(String::isNotBlank).joinToString("\n")
+        val error = when {
+            !finished -> listOf("command timed out after ${timeoutMs.coerceAtLeast(1L)} ms", streamError)
+                .filter(String::isNotBlank).joinToString("\n")
+            exitCode != 0 -> stderrCapture.text.ifBlank { stdoutCapture.text }.ifBlank { streamError }
+            streamError.isNotBlank() -> streamError
+            else -> ""
+        }
+        OperitHostCommandResult(
+            command = originalCommand,
+            exitCode = exitCode,
+            stdout = stdoutCapture.text,
+            stderr = stderrCapture.text,
+            error = error,
+            timedOut = !finished,
+            durationMs = System.currentTimeMillis() - startedAt,
+        )
+    }.getOrElse { error ->
+        OperitHostCommandResult(
+            command = originalCommand,
+            exitCode = 1,
+            stdout = "",
+            stderr = "",
+            error = error.message ?: error.javaClass.simpleName,
+            timedOut = false,
+            durationMs = System.currentTimeMillis() - startedAt,
+        )
+    }
+}
+
+private data class NativeStreamCapture(val text: String, val error: String)
+
+private class NativeStreamDrainer(
+    private val stream: InputStream,
+    name: String,
+) {
+    private val output = ByteArrayOutputStream()
+    private var failure: Throwable? = null
+    private val thread = Thread({
+        try {
+            stream.use { input -> input.copyTo(output) }
+        } catch (error: Throwable) {
+            failure = error
+        }
+    }, name).apply { isDaemon = true }
+
+    fun start() = thread.start()
+
+    fun await(): NativeStreamCapture {
+        thread.join(2_000L)
+        if (thread.isAlive) {
+            runCatching { stream.close() }
+            thread.join(250L)
+        }
+        return NativeStreamCapture(
+            output.toString(Charsets.UTF_8.name()),
+            failure?.message.orEmpty(),
+        )
+    }
 }

@@ -9,7 +9,7 @@ import com.ai.assistance.operit.host.control.OperitControlProtocol;
 import com.ai.assistance.operit.host.control.OperitControlStateSnapshot;
 import com.ai.assistance.operit.host.control.OperitControlStateStore;
 import com.ai.assistance.operit.host.control.OperitProcessState;
-import com.ai.assistance.operit.launcher.OperitModeLauncher;
+import com.ai.assistance.operit.launcher.OperitAiLauncher;
 
 /**
  * Compatibility shim for the existing OpenHouse desktop entry.
@@ -52,7 +52,7 @@ public final class OperitHomeIntegration {
     public static boolean openAiFriendHelp(Activity activity) {
         if (activity == null) return false;
         try {
-            activity.startActivity(OperitModeLauncher.createBasicIntent(
+            activity.startActivity(OperitAiLauncher.basicIntent(
                 activity, "com.termux.app.activities.OpenHouseHomeActivity"));
             return true;
         } catch (Throwable error) {

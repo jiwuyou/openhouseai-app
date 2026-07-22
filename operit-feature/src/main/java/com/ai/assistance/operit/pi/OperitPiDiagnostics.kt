@@ -56,7 +56,7 @@ object OperitPiDiagnostics {
             .put("nodeSize", node?.size ?: nodeStatus?.size)
             .put("nodeExportError", nodeError)
         ZipOutputStream(FileOutputStream(output)).use { zip ->
-            zip.writeEntry("android.jsonl", logger.snapshotJsonl().toByteArray())
+            zip.writeEntry("android.jsonl", logger.snapshotJsonl())
             zip.writeEntry("node.jsonl", node?.content.orEmpty().toByteArray())
             zip.writeEntry("metadata.json", metadata.toString(2).toByteArray())
         }

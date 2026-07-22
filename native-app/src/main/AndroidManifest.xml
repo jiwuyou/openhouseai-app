@@ -40,11 +40,36 @@
             tools:replace="android:authorities" />
 
         <activity
-            android:name="com.ai.assistance.operit.ui.main.MainActivity"
+            android:name="com.wuxianpi.openhouse.feature.OpenHouseActivity"
             android:exported="true"
-            android:process=":operit"
-            tools:replace="android:exported">
+            android:launchMode="singleTask"
+            android:process=":openhouse"
+            tools:replace="android:exported,android:launchMode,android:process">
             <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="com.ai.assistance.operit.ui.main.MainActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":operit"
+            tools:replace="android:exported,android:launchMode,android:process" />
+
+        <activity
+            android:name="com.wuxianpi.openhouse.feature.AdvancedUiActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":advanced_ui"
+            tools:replace="android:exported,android:launchMode,android:process" />
+
+        <activity
+            android:name="live.pw.renderX.LatexView"
+            android:exported="false"
+            tools:replace="android:exported">
+            <intent-filter tools:node="remove">
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
@@ -55,9 +80,11 @@
         <activity
             android:name="com.ai.assistance.operit.rescue.ui.RescueActivity"
             android:exported="false"
+            android:launchMode="singleTask"
             android:label="@string/rescue_ai_title"
             android:process=":rescue_ui"
-            android:theme="@style/Theme.Operit" />
+            android:theme="@style/Theme.Operit"
+            tools:replace="android:exported,android:launchMode,android:process" />
 
         <activity
             android:name="com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity"

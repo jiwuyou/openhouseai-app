@@ -21,16 +21,18 @@ import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.app.openhouse.release.OpenHousePostUpdateSync;
 import com.termux.app.openhouse.OpenHouseForegroundRuntimeKeeper;
 import com.termux.app.operit.init.OperitHostBootstrap;
-import com.ai.assistance.operit.host.OperitHostProvider;
-import com.openhouse.host.termux.TermuxOperitHostOperations;
+import com.openhouse.host.termux.TermuxProductHost;
+import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost;
+import com.wuxianpi.openhouse.feature.OpenHouseFeatureHostProvider;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 
-public class TermuxApplication extends Application {
+public class TermuxApplication extends Application implements OpenHouseFeatureHostProvider {
 
     private static final String LOG_TAG = "TermuxApplication";
+    private TermuxProductHost productHost;
 
     public void onCreate() {
         super.onCreate();
@@ -38,9 +40,8 @@ public class TermuxApplication extends Application {
         Context context = getApplicationContext();
 
         configureProcessScopedWebViewDataDirectory(context);
-        // Application.onCreate() runs independently in :operit, :rescue_ui and :openhouse.
-        // Install the host operations in every process before shared Operit code is touched.
-        OperitHostProvider.INSTANCE.installOperations(new TermuxOperitHostOperations(context));
+        productHost = new TermuxProductHost(context);
+        productHost.install();
         OperitHostBootstrap.installHostBridge(context);
 
         // Set crash handler for the app
@@ -90,6 +91,15 @@ public class TermuxApplication extends Application {
             OpenHousePostUpdateSync.maybeRun(context);
             OpenHouseForegroundRuntimeKeeper.register(this);
         }
+    }
+
+    @Override
+    public OpenHouseFeatureHost openHouseFeatureHost() {
+        if (productHost == null) {
+            productHost = new TermuxProductHost(this);
+            productHost.install();
+        }
+        return productHost;
     }
 
     private static void configureProcessScopedWebViewDataDirectory(Context context) {

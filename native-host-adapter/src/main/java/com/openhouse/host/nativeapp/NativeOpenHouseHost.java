@@ -13,10 +13,13 @@ import com.wuxianpi.openhouse.core.ControlPlaneStarter;
 import com.wuxianpi.openhouse.core.HostActionResult;
 import com.wuxianpi.openhouse.core.HostCapabilities;
 import com.wuxianpi.openhouse.core.HostEdition;
+import com.wuxianpi.openhouse.core.LegacyRegistrySource;
 import com.wuxianpi.openhouse.core.OpenHouseHost;
 import com.wuxianpi.openhouse.core.RuntimeConnection;
 import com.wuxianpi.openhouse.core.SetupResult;
 import com.wuxianpi.openhouse.core.SetupState;
+import com.wuxianpi.openhouse.core.registry.LegacyRegistrySnapshot;
+import com.wuxianpi.openhouse.core.registry.RegistryManifest;
 
 import org.json.JSONObject;
 
@@ -24,7 +27,9 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /** Complete host adapter for OpenHouse backed by an external Termux installation. */
@@ -46,10 +51,20 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
 
     private final Context appContext;
     private final ControlPlaneStarter controlPlaneStarter = new NativeControlPlaneStarter();
+    private final LegacyRegistrySource legacyRegistrySource;
 
     public NativeOpenHouseHost(Context context) {
+        this(context, null);
+    }
+
+    NativeOpenHouseHost(Context context, RegistryFileAccess registryFileAccess) {
         if (context == null) throw new IllegalArgumentException("context is required");
-        appContext = context.getApplicationContext();
+        Context applicationContext = context.getApplicationContext();
+        appContext = applicationContext == null ? context : applicationContext;
+        RegistryFileAccess files = registryFileAccess == null
+            ? new SafRegistryFileAccess()
+            : registryFileAccess;
+        legacyRegistrySource = createLegacyRegistrySource(files);
     }
 
     @Override public HostEdition edition() {
@@ -101,6 +116,10 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
 
     @Override public ControlPlaneStarter controlPlaneStarter() {
         return controlPlaneStarter;
+    }
+
+    @Override public LegacyRegistrySource legacyRegistrySource() {
+        return legacyRegistrySource;
     }
 
     @Override public HostActionResult openTerminal() {
@@ -211,6 +230,106 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
             if (current == null) return null;
         }
         return current;
+    }
+
+    interface RegistryFileAccess {
+        List<String> listJsonFiles(String relativeDirectory);
+        String readText(String relativePath);
+    }
+
+    private final class SafRegistryFileAccess implements RegistryFileAccess {
+        @Override public List<String> listJsonFiles(String relativeDirectory) {
+            DocumentFile directory = findInTermuxHome(relativeDirectory);
+            if (directory == null || !directory.isDirectory()) return null;
+            List<String> names = new ArrayList<>();
+            for (DocumentFile file : directory.listFiles()) {
+                String name = file == null ? null : file.getName();
+                if (file != null && file.isFile() && name != null && name.endsWith(".json")) {
+                    names.add(name);
+                }
+            }
+            names.sort(String.CASE_INSENSITIVE_ORDER);
+            return names;
+        }
+
+        @Override public String readText(String relativePath) {
+            return NativeOpenHouseHost.this.readText(findInTermuxHome(relativePath));
+        }
+    }
+
+    private static LegacyRegistrySource createLegacyRegistrySource(RegistryFileAccess files) {
+        return () -> loadLegacyRegistry(files);
+    }
+
+    private static LegacyRegistrySnapshot loadLegacyRegistry(RegistryFileAccess files) {
+        if (files == null) return LegacyRegistrySnapshot.unavailable();
+        List<String> names;
+        try {
+            names = files.listJsonFiles(".config/openhouseai/components.d");
+        } catch (Exception error) {
+            return LegacyRegistrySnapshot.failure(safeMessage(error));
+        }
+        if (names == null || names.isEmpty()) return LegacyRegistrySnapshot.unavailable();
+        names = new ArrayList<>(names);
+        names.sort(String.CASE_INSENSITIVE_ORDER);
+
+        List<RegistryManifest> manifests = new ArrayList<>();
+        int invalidFiles = 0;
+        for (String name : names) {
+            if (name == null || name.contains("/") || name.contains("\\") || !name.endsWith(".json")) {
+                invalidFiles++;
+                continue;
+            }
+            try {
+                String relativePath = ".config/openhouseai/components.d/" + name;
+                String json = files.readText(relativePath);
+                if (json == null || json.trim().isEmpty()) {
+                    throw new IllegalArgumentException("component manifest is empty");
+                }
+                manifests.add(RegistryManifest.fromManifestJson("components.d/" + name, json));
+            } catch (Exception ignored) {
+                invalidFiles++;
+            }
+        }
+        if (manifests.isEmpty()) {
+            return LegacyRegistrySnapshot.failure(
+                "no valid component manifests in Termux Home (invalid=" + invalidFiles + ")");
+        }
+        String stateJson = files.readText(".config/openhouseai/registry-state.json");
+        return LegacyRegistrySnapshot.available(resolveLegacyRevision(stateJson, manifests), manifests);
+    }
+
+    private static String resolveLegacyRevision(String stateJson, List<RegistryManifest> manifests) {
+        try {
+            if (stateJson != null && !stateJson.trim().isEmpty()) {
+                JSONObject state = new JSONObject(stateJson);
+                String revision = firstNonBlank(
+                    state.optString("revision"),
+                    state.optString("generatedAt"), state.optString("generated_at"),
+                    state.optString("syncedAt"), state.optString("synced_at"),
+                    state.optString("updatedAt"), state.optString("updated_at"));
+                if (!revision.isEmpty()) return revision;
+            }
+        } catch (Exception ignored) {
+            // A malformed state file must not hide otherwise valid component manifests.
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (RegistryManifest manifest : manifests) {
+                digest.update(manifest.relativePath.getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(manifest.normalizedJson.getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+            }
+            StringBuilder revision = new StringBuilder("legacy-");
+            for (byte value : digest.digest()) {
+                revision.append(Character.forDigit((value >>> 4) & 0x0f, 16));
+                revision.append(Character.forDigit(value & 0x0f, 16));
+            }
+            return revision.toString();
+        } catch (Exception ignored) {
+            return "legacy-" + Integer.toHexString(manifests.toString().hashCode());
+        }
     }
 
     private JSONObject readJson(DocumentFile file) {

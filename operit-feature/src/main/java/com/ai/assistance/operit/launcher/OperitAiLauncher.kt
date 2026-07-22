@@ -4,6 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.ai.assistance.operit.pi.OPERIT_ADVANCED_UI_URL
+import com.ai.assistance.operit.pi.OPERIT_BUILTIN_WEB_UI_URL
+import com.ai.assistance.operit.pi.OPERIT_PI_RUNTIME_URL
 import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.ui.main.MainActivity
 
