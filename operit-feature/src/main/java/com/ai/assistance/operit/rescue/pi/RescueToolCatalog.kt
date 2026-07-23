@@ -98,7 +98,11 @@ class RescueToolCatalog private constructor(
 
         fun default(): RescueToolCatalog =
             from(
-                (SystemToolPrompts.fileSystemTools.tools + SystemToolPrompts.httpTools.tools)
+                (
+                    SystemToolPrompts.fileSystemTools.tools +
+                        SystemToolPrompts.httpTools.tools +
+                        SystemToolPrompts.getHostTerminalToolCategoryEn().tools
+                )
                     .distinctBy(ToolPrompt::name)
             )
 
