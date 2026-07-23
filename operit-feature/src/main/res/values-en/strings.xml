@@ -264,7 +264,7 @@
 
     <string name="workflow_execute_config_title">Execution Config</string>
     <string name="workflow_tool_name_label">Tool name</string>
-    <string name="workflow_tool_name_placeholder">e.g.: execute_shell</string>
+    <string name="workflow_tool_name_placeholder">e.g.: execute_android_command</string>
     <string name="workflow_tool_params_title">Tool parameters</string>
     <string name="workflow_param_name_label">Parameter name</string>
     <string name="workflow_param_value_label">Parameter value</string>
@@ -5363,7 +5363,9 @@
 
     <string name="toolreg_env_info"> (env: %1$s)</string>
     <string name="toolreg_env_arrow_info"> (%1$s → %2$s)</string>
-    <string name="toolreg_execute_shell_desc">Execute ADB shell: %1$s</string>
+    <string name="toolreg_execute_android_command_desc">Execute with Android /system/bin/sh: %1$s</string>
+    <string name="toolreg_execute_termux_command_desc">Execute through Termux "%1$s": %2$s</string>
+    <string name="termux_error_execute_command">Failed to execute Termux command: %1$s</string>
     <string name="toolreg_close_all_virtual_displays_desc">Close all virtual displays</string>
     <string name="toolreg_unnamed">Unnamed</string>
     <string name="toolreg_create_terminal_session_desc">Create or get terminal session: %1$s</string>

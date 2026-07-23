@@ -52,10 +52,10 @@ import com.ai.assistance.operit.data.collects.ApiProviderConfigs
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.model.ModelOption
+import com.ai.assistance.operit.data.model.usesAndroidLocalModelEngine
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.plugins.toolpkg.ToolPkgAiProviderRegistry
-import com.ai.assistance.operit.pi.PiModelSettingsAdapter
 import com.ai.assistance.operit.pi.RescuePiChatEngine
 import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.ui.common.input.bringIntoViewOnImeFocus
@@ -89,8 +89,34 @@ fun ModelApiSettingsSection(
         navigateToMnnModelDownload: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    if (!RescueActivity.isRescueContext(context) && !config.usesAndroidLocalModelEngine()) {
+        PiModelSetupSection(
+            config = config,
+            configManager = configManager,
+            showNotification = showNotification,
+        )
+    } else {
+        LocalModelApiSettingsSection(
+            config = config,
+            configManager = configManager,
+            saveCoordinator = saveCoordinator,
+            showNotification = showNotification,
+            navigateToMnnModelDownload = navigateToMnnModelDownload,
+        )
+    }
+}
+
+@Composable
+@SuppressLint("MissingPermission")
+private fun LocalModelApiSettingsSection(
+        config: ModelConfigData,
+        configManager: ModelConfigManager,
+        saveCoordinator: ModelConfigSaveCoordinator,
+        showNotification: (String) -> Unit,
+        navigateToMnnModelDownload: (() -> Unit)? = null
+) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val piModelSettings = remember { PiModelSettingsAdapter.instance }
 
     // 区域告警可见性
     var showRegionWarning by remember { mutableStateOf(false) }
@@ -170,6 +196,13 @@ fun ModelApiSettingsSection(
     suspend fun persist(state: ApiAutoSaveState) {
         modelApiSettingsSaveMutex.withLock {
             withContext(Dispatchers.IO) {
+                if (!RescueActivity.isRescueContext(context) &&
+                    state.provider != ApiProviderType.MNN &&
+                    state.provider != ApiProviderType.LLAMA_CPP
+                ) {
+                    configManager.switchToPiRuntime(config.id)
+                    return@withContext
+                }
                 configManager.updateApiSettingsFull(
                     configId = config.id,
                     apiKey = state.apiKey,
@@ -230,14 +263,7 @@ fun ModelApiSettingsSection(
                     RescuePiChatEngine.getInstance(context).configureModel(savedConfig)
                 }
             }
-            piModelSettings.applySettings(
-                operitProviderId = state.providerTypeId,
-                apiKey = state.apiKey.takeUnless {
-                    it.isBlank() || it == ApiPreferences.DEFAULT_API_KEY
-                },
-                modelId = state.modelName,
-            )
-            AppLogger.d(TAG, "API设置保存完成并刷新服务")
+            AppLogger.d(TAG, "本地模型设置保存完成")
             if (showSuccess) {
                 showNotification(context.getString(R.string.api_settings_saved))
             }
@@ -383,11 +409,7 @@ fun ModelApiSettingsSection(
         }
 
     suspend fun fetchAvailableModels(reload: Boolean = false): Result<List<ModelOption>> =
-        runCatching {
-            piModelSettings.models(selectedProviderTypeId, reload).map { model ->
-                ModelOption(id = model.id, name = model.name)
-            }
-        }
+        Result.success(emptyList())
     // 移除了强制锁定模型名称的逻辑，允许用户自由修改
 
     Card(
@@ -1006,19 +1028,6 @@ fun ModelApiSettingsSection(
                                     modelNameInput = orderedSelection.joinToString(",")
                                     if (selectedApiProvider == ApiProviderType.MNN) {
                                         AppLogger.d(TAG, "选择MNN模型: $modelNameInput")
-                                    }
-                                    scope.launch {
-                                        runCatching {
-                                            piModelSettings.applySettings(
-                                                operitProviderId = selectedProviderTypeId,
-                                                apiKey = apiKeyInput.takeUnless {
-                                                    it.isBlank() || it == ApiPreferences.DEFAULT_API_KEY
-                                                },
-                                                modelId = modelNameInput,
-                                            )
-                                        }.onFailure { error ->
-                                            showNotification(error.message ?: context.getString(R.string.save_failed))
-                                        }
                                     }
                                     showModelsDialog = false
                                 },

@@ -1,0 +1,559 @@
+package com.openhouse.host.nativeapp
+
+import android.app.Application
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Process
+import com.ai.assistance.operit.host.OperitHostCommandResult
+import com.ai.assistance.operit.host.terminal.tmux.TermuxSessionTransport
+import com.ai.assistance.operit.host.terminal.tmux.TermuxTransportResult
+import java.io.File
+import java.util.UUID
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+
+internal const val EXTERNAL_TERMUX_PACKAGE = "com.termux"
+internal const val TERMUX_SUCCESS_ERROR_CODE = -1
+
+internal enum class ExternalTermuxCommandTarget {
+    TERMUX,
+    UBUNTU,
+}
+
+internal data class NativeTermuxCommandRequest(
+    val command: String,
+    val executable: String,
+    val arguments: List<String>,
+    val workingDirectory: String,
+    val stdin: String? = null,
+)
+
+internal data class NativeTermuxCommandResponse(
+    val stdout: String,
+    val stderr: String,
+    val exitCode: Int,
+    val errorCode: Int,
+    val errorMessage: String,
+    val timedOut: Boolean = false,
+)
+
+internal fun interface NativeTermuxCommandTransport {
+    suspend fun execute(
+        request: NativeTermuxCommandRequest,
+        timeoutMs: Long,
+    ): NativeTermuxCommandResponse
+}
+
+internal class ExternalTermuxCommandExecutor(
+    private val transport: NativeTermuxCommandTransport,
+    private val termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
+) {
+    suspend fun execute(
+        command: String,
+        target: ExternalTermuxCommandTarget,
+        timeoutMs: Long,
+    ): OperitHostCommandResult {
+        val startedAt = System.currentTimeMillis()
+        val cleanCommand = command.trim()
+        if (cleanCommand.isEmpty()) {
+            return failure(command, 2, "command is empty", startedAt)
+        }
+
+        val request = buildNativeTermuxCommandRequest(cleanCommand, target, termuxPackage)
+        return try {
+            transport.execute(request, timeoutMs.coerceAtLeast(1L)).toHostResult(command, startedAt)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: NativeTermuxTransportException) {
+            failure(command, error.exitCode, error.message.orEmpty(), startedAt)
+        } catch (error: SecurityException) {
+            failure(command, 126, error.message ?: "Termux RUN_COMMAND permission denied", startedAt)
+        } catch (error: Throwable) {
+            failure(command, 1, error.message ?: error.javaClass.simpleName, startedAt)
+        }
+    }
+
+    private fun NativeTermuxCommandResponse.toHostResult(
+        originalCommand: String,
+        startedAt: Long,
+    ): OperitHostCommandResult {
+        val resolvedExitCode = when {
+            timedOut -> 124
+            exitCode >= 0 -> exitCode
+            errorCode != TERMUX_SUCCESS_ERROR_CODE -> 1
+            else -> exitCode
+        }
+        val resolvedError = when {
+            timedOut -> errorMessage.ifBlank { "Termux command timed out" }
+            errorCode != TERMUX_SUCCESS_ERROR_CODE ->
+                errorMessage.ifBlank { "Termux RUN_COMMAND transport error $errorCode" }
+            resolvedExitCode != 0 -> stderr.ifBlank { stdout }.ifBlank { "Command exited with code $resolvedExitCode" }
+            else -> ""
+        }
+        return OperitHostCommandResult(
+            command = originalCommand,
+            exitCode = resolvedExitCode,
+            stdout = stdout,
+            stderr = stderr,
+            error = resolvedError,
+            timedOut = timedOut,
+            durationMs = System.currentTimeMillis() - startedAt,
+        )
+    }
+
+    private fun failure(
+        command: String,
+        exitCode: Int,
+        message: String,
+        startedAt: Long,
+    ) = OperitHostCommandResult(
+        command = command,
+        exitCode = exitCode,
+        stdout = "",
+        stderr = "",
+        error = message,
+        timedOut = false,
+        durationMs = System.currentTimeMillis() - startedAt,
+    )
+}
+
+internal fun buildNativeTermuxCommandRequest(
+    command: String,
+    target: ExternalTermuxCommandTarget,
+    termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
+): NativeTermuxCommandRequest {
+    val prefix = "/data/data/$termuxPackage/files/usr"
+    val home = "/data/data/$termuxPackage/files/home"
+    return if (target == ExternalTermuxCommandTarget.UBUNTU) {
+        NativeTermuxCommandRequest(
+            command = command,
+            executable = "$prefix/bin/proot-distro",
+            arguments = listOf("login", "ubuntu", "--", "bash", "-lc", command),
+            workingDirectory = home,
+        )
+    } else {
+        NativeTermuxCommandRequest(
+            command = command,
+            executable = "$prefix/bin/bash",
+            arguments = listOf("-lc", command),
+            workingDirectory = home,
+        )
+    }
+}
+
+internal fun interface NativeTermuxRawCommandTransport {
+    suspend fun execute(
+        request: NativeTermuxCommandRequest,
+        timeoutMs: Long,
+    ): NativeTermuxCommandResponse?
+}
+
+internal data class NativeTermuxManagedExecution(
+    val token: String,
+    val commandRequest: NativeTermuxCommandRequest,
+    val terminationRequest: NativeTermuxCommandRequest,
+    val terminationConfirmationPrefix: String,
+)
+
+internal data class NativeTermuxTerminationResult(
+    val confirmed: Boolean,
+    val detail: String,
+)
+
+internal fun buildManagedNativeTermuxExecution(
+    request: NativeTermuxCommandRequest,
+    token: String,
+    termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
+): NativeTermuxManagedExecution {
+    require(token.matches(Regex("^[A-Za-z0-9_-]{8,128}$"))) {
+        "RUN_COMMAND execution token is invalid"
+    }
+    val prefix = "/data/data/$termuxPackage/files/usr"
+    val controlDirectory = "$prefix/tmp/operit-run-command"
+    val commandLine = (listOf(request.executable) + request.arguments)
+        .joinToString(" ") { shellQuote(it) }
+    val commandScript = """
+        set -u
+        export PATH=${shellQuote("$prefix/bin:/system/bin")}
+        control_dir=${shellQuote(controlDirectory)}
+        token=${shellQuote(token)}
+        pid_file="${'$'}control_dir/${'$'}token.pid"
+        cancel_file="${'$'}control_dir/${'$'}token.cancel"
+        done_file="${'$'}control_dir/${'$'}token.done"
+        mkdir -p "${'$'}control_dir"
+        rm -f "${'$'}pid_file" "${'$'}done_file"
+        finish_managed_command() {
+          status="${'$'}1"
+          if [ -e "${'$'}cancel_file" ]; then
+            printf '%s\n' "${'$'}status" > "${'$'}done_file"
+            sleep 1
+            rm -f "${'$'}cancel_file" "${'$'}done_file"
+          else
+            rm -f "${'$'}done_file"
+          fi
+          rm -f "${'$'}pid_file"
+        }
+        if [ -e "${'$'}cancel_file" ]; then
+          finish_managed_command 143
+          exit 143
+        fi
+        set -m
+        OPERIT_RUN_COMMAND_ID="${'$'}token" $commandLine &
+        command_pid="${'$'}!"
+        command_pgid="${'$'}command_pid"
+        printf '%s %s\n' "${'$'}command_pgid" "${'$'}command_pid" > "${'$'}pid_file"
+        if [ -e "${'$'}cancel_file" ]; then
+          kill -TERM -- "-${'$'}command_pgid" 2>/dev/null || true
+        fi
+        wait "${'$'}command_pid"
+        status="${'$'}?"
+        finish_managed_command "${'$'}status"
+        exit "${'$'}status"
+    """.trimIndent()
+    val confirmationPrefix = "$REMOTE_TERMINATION_MARKER_PREFIX$token:"
+    val terminationScript = """
+        set -u
+        export PATH=${shellQuote("$prefix/bin:/system/bin")}
+        control_dir=${shellQuote(controlDirectory)}
+        token=${shellQuote(token)}
+        pid_file="${'$'}control_dir/${'$'}token.pid"
+        cancel_file="${'$'}control_dir/${'$'}token.cancel"
+        done_file="${'$'}control_dir/${'$'}token.done"
+        mkdir -p "${'$'}control_dir"
+        : > "${'$'}cancel_file"
+        iteration=0
+        term_sent=0
+        term_iteration=0
+        while [ "${'$'}iteration" -lt 100 ]; do
+          if [ -f "${'$'}done_file" ]; then
+            status="${'$'}(cat "${'$'}done_file" 2>/dev/null || true)"
+            rm -f "${'$'}pid_file" "${'$'}cancel_file" "${'$'}done_file"
+            printf '%s%s\n' ${shellQuote(confirmationPrefix)} "confirmed:${'$'}status"
+            exit 0
+          fi
+          if [ -s "${'$'}pid_file" ]; then
+            command_pgid=''
+            command_pid=''
+            read -r command_pgid command_pid < "${'$'}pid_file" || true
+            if [[ ! "${'$'}command_pgid" =~ ^[0-9]+${'$'} || ! "${'$'}command_pid" =~ ^[0-9]+${'$'} ]]; then
+              printf 'Invalid managed RUN_COMMAND pid record for %s\n' "${'$'}token" >&2
+              exit 65
+            fi
+            if ! kill -0 -- "-${'$'}command_pgid" 2>/dev/null; then
+              rm -f "${'$'}pid_file" "${'$'}cancel_file" "${'$'}done_file"
+              printf '%s%s\n' ${shellQuote(confirmationPrefix)} 'gone'
+              exit 0
+            fi
+            if [ "${'$'}term_sent" -eq 0 ]; then
+              if ! grep -a -F -q "OPERIT_RUN_COMMAND_ID=${'$'}token" "/proc/${'$'}command_pid/environ" 2>/dev/null; then
+                printf 'Managed RUN_COMMAND marker mismatch for %s\n' "${'$'}token" >&2
+                exit 66
+              fi
+              kill -TERM -- "-${'$'}command_pgid" 2>/dev/null || true
+              term_sent=1
+              term_iteration="${'$'}iteration"
+            elif [ "${'$'}((iteration - term_iteration))" -ge 20 ]; then
+              kill -KILL -- "-${'$'}command_pgid" 2>/dev/null || true
+            fi
+          elif [ "${'$'}iteration" -ge 10 ]; then
+            printf '%s%s\n' ${shellQuote(confirmationPrefix)} 'armed-before-start'
+            exit 0
+          fi
+          sleep 0.1
+          iteration="${'$'}((iteration + 1))"
+        done
+        printf 'Timed out terminating managed RUN_COMMAND %s\n' "${'$'}token" >&2
+        exit 124
+    """.trimIndent()
+    return NativeTermuxManagedExecution(
+        token = token,
+        commandRequest = NativeTermuxCommandRequest(
+            command = request.command,
+            executable = "$prefix/bin/bash",
+            arguments = listOf("-lc", commandScript),
+            workingDirectory = request.workingDirectory,
+            stdin = request.stdin,
+        ),
+        terminationRequest = NativeTermuxCommandRequest(
+            command = "terminate managed RUN_COMMAND $token",
+            executable = "$prefix/bin/bash",
+            arguments = listOf("-lc", terminationScript),
+            workingDirectory = "/data/data/$termuxPackage/files/home",
+        ),
+        terminationConfirmationPrefix = confirmationPrefix,
+    )
+}
+
+internal class NativeTermuxManagedCommandTransport(
+    private val rawTransport: NativeTermuxRawCommandTransport,
+    private val termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
+    private val tokenFactory: () -> String = {
+        UUID.randomUUID().toString().replace("-", "")
+    },
+    private val terminationTimeoutMs: Long = DEFAULT_REMOTE_TERMINATION_TIMEOUT_MS,
+) : NativeTermuxCommandTransport {
+    override suspend fun execute(
+        request: NativeTermuxCommandRequest,
+        timeoutMs: Long,
+    ): NativeTermuxCommandResponse {
+        val effectiveTimeout = timeoutMs.coerceAtLeast(1L)
+        val execution = buildManagedNativeTermuxExecution(
+            request = request,
+            token = tokenFactory(),
+            termuxPackage = termuxPackage,
+        )
+        val response = try {
+            rawTransport.execute(execution.commandRequest, effectiveTimeout)
+        } catch (error: CancellationException) {
+            val termination = withContext(NonCancellable) { terminate(execution) }
+            if (!termination.confirmed) {
+                error.addSuppressed(
+                    NativeTermuxTransportException(
+                        124,
+                        "Remote Termux cancellation was not confirmed: ${termination.detail}",
+                    ),
+                )
+            }
+            throw error
+        }
+        if (response != null) return response
+
+        val termination = withContext(NonCancellable) { terminate(execution) }
+        return NativeTermuxCommandResponse(
+            stdout = "",
+            stderr = "",
+            exitCode = 124,
+            errorCode = 1,
+            errorMessage = buildString {
+                append("Timed out waiting for Termux command result after ${effectiveTimeout}ms; ")
+                if (termination.confirmed) {
+                    append("remote execution termination confirmed")
+                } else {
+                    append("remote execution termination was not confirmed: ${termination.detail}")
+                }
+            },
+            timedOut = true,
+        )
+    }
+
+    private suspend fun terminate(execution: NativeTermuxManagedExecution): NativeTermuxTerminationResult {
+        val response = try {
+            rawTransport.execute(
+                execution.terminationRequest,
+                terminationTimeoutMs.coerceAtLeast(1L),
+            )
+        } catch (error: Throwable) {
+            return NativeTermuxTerminationResult(
+                confirmed = false,
+                detail = error.message ?: error.javaClass.simpleName,
+            )
+        }
+        if (response == null) {
+            return NativeTermuxTerminationResult(false, "termination command timed out")
+        }
+        val marker = response.stdout.lineSequence()
+            .map(String::trim)
+            .firstOrNull { it.startsWith(execution.terminationConfirmationPrefix) }
+        val confirmed = response.errorCode == TERMUX_SUCCESS_ERROR_CODE &&
+            response.exitCode == 0 && marker != null
+        return NativeTermuxTerminationResult(
+            confirmed = confirmed,
+            detail = marker
+                ?: response.errorMessage.ifBlank { response.stderr.ifBlank { "missing termination confirmation" } },
+        )
+    }
+}
+
+internal class NativeTermuxRunCommandTransport(
+    context: Context,
+    termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
+    processNameProvider: (Context) -> String = NativeProcessNameResolver::currentProcessName,
+) : NativeTermuxCommandTransport {
+    private val delegate = NativeTermuxManagedCommandTransport(
+        rawTransport = AndroidNativeTermuxRawCommandTransport(
+            context = context,
+            termuxPackage = termuxPackage,
+            processNameProvider = processNameProvider,
+        ),
+        termuxPackage = termuxPackage,
+    )
+
+    override suspend fun execute(
+        request: NativeTermuxCommandRequest,
+        timeoutMs: Long,
+    ): NativeTermuxCommandResponse = delegate.execute(request, timeoutMs)
+}
+
+private class AndroidNativeTermuxRawCommandTransport(
+    context: Context,
+    private val termuxPackage: String,
+    private val processNameProvider: (Context) -> String,
+) : NativeTermuxRawCommandTransport {
+    private val appContext = context.applicationContext ?: context
+
+    override suspend fun execute(
+        request: NativeTermuxCommandRequest,
+        timeoutMs: Long,
+    ): NativeTermuxCommandResponse? {
+        ensureAvailable()
+        val effectiveTimeout = timeoutMs.coerceAtLeast(1L)
+        val result = withTimeoutOrNull(effectiveTimeout) {
+            suspendCancellableCoroutine<NativeTermuxCommandResult> { continuation ->
+                val receiverClass = NativeTermuxReceiverSelector.receiverClassFor(
+                    processNameProvider(appContext),
+                    appContext.packageName,
+                )
+                val pendingRequest = NativeTermuxCommandResultCallbacks.createPendingIntent(
+                    appContext,
+                    receiverClass,
+                ) { commandResult ->
+                    if (continuation.isActive) continuation.resume(commandResult)
+                }
+                continuation.invokeOnCancellation { pendingRequest.cancel() }
+
+                try {
+                    appContext.startForegroundService(buildRunCommandIntent(request, pendingRequest.pendingIntent))
+                } catch (error: Throwable) {
+                    pendingRequest.cancel()
+                    if (continuation.isActive) continuation.resumeWithException(error)
+                }
+            }
+        }
+        return result?.let {
+            NativeTermuxCommandResponse(
+                stdout = it.stdout,
+                stderr = it.stderr,
+                exitCode = it.exitCode,
+                errorCode = it.errorCode,
+                errorMessage = it.errorMessage,
+            )
+        }
+    }
+
+    private fun ensureAvailable() {
+        if (!isPackageInstalled()) {
+            throw NativeTermuxTransportException(127, "Termux package $termuxPackage is not installed")
+        }
+        val permission = "$termuxPackage.permission.RUN_COMMAND"
+        if (appContext.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+            throw NativeTermuxTransportException(126, "Missing $permission")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isPackageInstalled(): Boolean = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            appContext.packageManager.getPackageInfo(
+                termuxPackage,
+                PackageManager.PackageInfoFlags.of(0L),
+            )
+        } else {
+            appContext.packageManager.getPackageInfo(termuxPackage, 0)
+        }
+        true
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
+    }
+
+    private fun buildRunCommandIntent(
+        request: NativeTermuxCommandRequest,
+        pendingIntent: android.app.PendingIntent,
+    ): Intent = Intent("$termuxPackage.RUN_COMMAND").apply {
+        component = ComponentName(termuxPackage, "$termuxPackage.app.RunCommandService")
+        putExtra("$termuxPackage.RUN_COMMAND_PATH", request.executable)
+        putExtra("$termuxPackage.RUN_COMMAND_ARGUMENTS", request.arguments.toTypedArray())
+        request.stdin?.let { putExtra("$termuxPackage.RUN_COMMAND_STDIN", it) }
+        putExtra("$termuxPackage.RUN_COMMAND_WORKDIR", request.workingDirectory)
+        putExtra("$termuxPackage.RUN_COMMAND_BACKGROUND", true)
+        putExtra("$termuxPackage.RUN_COMMAND_BACKGROUND_CUSTOM_LOG_LEVEL", 0)
+        putExtra("$termuxPackage.RUN_COMMAND_PENDING_INTENT", pendingIntent)
+        putExtra("$termuxPackage.RUN_COMMAND_COMMAND_LABEL", "Operit host command")
+    }
+}
+
+private fun shellQuote(value: String): String =
+    "'${value.replace("'", "'\"'\"'")}'"
+
+private const val REMOTE_TERMINATION_MARKER_PREFIX = "OPERIT_REMOTE_TERMINATED:"
+private const val DEFAULT_REMOTE_TERMINATION_TIMEOUT_MS = 12_000L
+
+internal class NativeTermuxSessionTransport(
+    private val transport: NativeTermuxCommandTransport,
+    private val termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
+) : TermuxSessionTransport {
+    override val termuxPrefix: String = "/data/data/$termuxPackage/files/usr"
+    private val termuxHome = "/data/data/$termuxPackage/files/home"
+
+    override suspend fun executeProgram(
+        program: String,
+        arguments: List<String>,
+        stdin: String?,
+        timeoutMs: Long,
+    ): TermuxTransportResult {
+        require(program.matches(Regex("^[A-Za-z0-9._+-]+$"))) {
+            "Termux program must be relative to PREFIX/bin"
+        }
+        val result = try {
+            transport.execute(
+                NativeTermuxCommandRequest(
+                    command = (listOf(program) + arguments).joinToString(" "),
+                    executable = "$termuxPrefix/bin/$program",
+                    arguments = arguments,
+                    workingDirectory = termuxHome,
+                    stdin = stdin,
+                ),
+                timeoutMs,
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            return TermuxTransportResult(
+                exitCode = (error as? NativeTermuxTransportException)?.exitCode ?: 1,
+                errCode = 1,
+                errorMessage = error.message ?: error.javaClass.simpleName,
+            )
+        }
+        return TermuxTransportResult(
+            stdout = result.stdout,
+            stderr = result.stderr,
+            exitCode = result.exitCode,
+            errCode = result.errorCode,
+            errorMessage = result.errorMessage,
+            timedOut = result.timedOut,
+        )
+    }
+}
+
+internal class NativeTermuxTransportException(
+    val exitCode: Int,
+    message: String,
+) : IllegalStateException(message)
+
+internal object NativeProcessNameResolver {
+    fun currentProcessName(context: Context): String {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            runCatching { Application.getProcessName() }
+                .getOrNull()
+                ?.takeIf(String::isNotBlank)
+                ?.let { return it }
+        }
+        val pid = Process.myPid()
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        activityManager?.runningAppProcesses
+            ?.firstOrNull { it.pid == pid }
+            ?.processName
+            ?.takeIf(String::isNotBlank)
+            ?.let { return it }
+        return runCatching {
+            File("/proc/self/cmdline").readText().substringBefore('\u0000').trim()
+        }.getOrNull().orEmpty().ifBlank { context.packageName }
+    }
+}

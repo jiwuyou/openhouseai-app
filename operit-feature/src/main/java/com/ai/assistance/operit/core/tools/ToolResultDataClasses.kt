@@ -259,6 +259,60 @@ data class ADBResultData(val command: String, val output: String, val exitCode: 
     }
 }
 
+/** Explicit Android /system/bin/sh command result. */
+@Serializable
+data class AndroidCommandResultData(
+        val command: String,
+        val stdout: String,
+        val stderr: String,
+        val exitCode: Int,
+        val timedOut: Boolean = false,
+        val durationMs: Long = 0L
+) : ToolResultData() {
+    override fun toString(): String {
+        val sb = StringBuilder()
+        sb.appendLine("Android Command Execution Result:")
+        sb.appendLine("Command: $command")
+        sb.appendLine("Exit Code: $exitCode")
+        sb.appendLine("Duration Ms: $durationMs")
+        if (timedOut) sb.appendLine("Timed Out: true")
+        sb.appendLine("\nStdout:")
+        sb.appendLine(stdout)
+        if (stderr.isNotBlank()) sb.appendLine("\nStderr:").appendLine(stderr)
+        return sb.toString()
+    }
+}
+
+/** One-shot command result from the active host's Termux user space. */
+@Serializable
+data class TermuxCommandResultData(
+        val command: String,
+        val stdout: String,
+        val stderr: String,
+        val exitCode: Int,
+        val packageName: String = "com.termux",
+        val errCode: Int = -1,
+        val errmsg: String = "",
+        val timedOut: Boolean = false,
+        val durationMs: Long = 0L
+) : ToolResultData() {
+    override fun toString(): String {
+        val sb = StringBuilder()
+        sb.appendLine("Termux Command Execution Result:")
+        sb.appendLine("Package: $packageName")
+        sb.appendLine("Command: $command")
+        sb.appendLine("Exit Code: $exitCode")
+        sb.appendLine("Duration Ms: $durationMs")
+        if (errCode != -1 || errmsg.isNotBlank()) sb.appendLine("Termux Err Code: $errCode")
+        if (timedOut) sb.appendLine("Timed Out: true")
+        sb.appendLine("\nStdout:")
+        sb.appendLine(stdout)
+        if (stderr.isNotBlank()) sb.appendLine("\nStderr:").appendLine(stderr)
+        if (errmsg.isNotBlank()) sb.appendLine("\nTermux Error:").appendLine(errmsg)
+        return sb.toString()
+    }
+}
+
 /** 终端命令执行结果数据 */
 @Serializable
 data class TerminalCommandResultData(

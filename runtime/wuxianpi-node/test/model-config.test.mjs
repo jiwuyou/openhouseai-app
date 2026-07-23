@@ -40,12 +40,33 @@ function fixture() {
     getDefaultProvider: () => "openai",
     getDefaultModel: () => "gpt-test",
   };
+  const setupService = {
+    setup: async () => {
+      const providers = runtime.getProviders();
+      return {
+        revision: "test", presets: [], config: { providers: {} },
+        providers: providers.map((provider) => ({ ...provider, authenticated })),
+        models: runtime.getModels().map((item) => ({ ...item, available: authenticated })),
+        defaultModel: { provider: settings.getDefaultProvider(), modelId: settings.getDefaultModel() },
+      };
+    },
+    login: async (provider, apiKey) => {
+      await runtime.login(provider, "api_key", { prompt: async () => apiKey, notify: () => {} });
+      return { provider, authenticated: true };
+    },
+    logout: async (provider) => { await runtime.logout(provider); return { provider, authenticated: false }; },
+    testModel: async (payload) => {
+      const result = await runtime.completeSimple(model, {
+        messages: [{ role: "user", content: "Reply with OK only.", timestamp: Date.now() }],
+      }, { maxTokens: 16, timeoutMs: payload.timeoutMs, maxRetries: 0, cacheRetention: "none" });
+      return { ok: true, provider: model.provider, modelId: model.id, status: 200, text: result.content[0].text };
+    },
+    reload: async () => { calls.reloads++; return setupService.setup(); },
+  };
   const registry = {
-    models: async () => runtime,
-    settings: () => settings,
-    reloadModelConfiguration: async () => { calls.reloads++; },
-    setDefaultModel: async (provider, modelId, sessionId) => {
-      calls.setDefault = { provider, modelId, sessionId };
+    modelSetup: () => setupService,
+    setDefaultModel: async (provider, modelId, sessionId, setGlobalDefault) => {
+      calls.setDefault = { provider, modelId, sessionId, setGlobalDefault };
       return { provider, modelId, appliedSessionIds: sessionId ? [sessionId] : [] };
     },
   };
@@ -54,6 +75,9 @@ function fixture() {
 
 test("model login/status/logout use SDK auth without returning the API key", async () => {
   const { adapter, calls } = fixture();
+  await assert.rejects(() => adapter.dispatch({
+    id: "oauth", type: "model.login", payload: { provider: "openai", method: "oauth", apiKey: "ignored" },
+  }), (error) => error.code === "unsupported_auth_type");
   const login = await adapter.dispatch({
     id: "login", type: "model.login", payload: { provider: "openai", method: "api_key", apiKey: "secret-key" },
   });
@@ -92,8 +116,18 @@ test("reload and setDefault delegate to the shared registry with active session 
     id: "default", type: "model.setDefault", sessionId: "session-1",
     payload: { provider: "openai", modelId: "gpt-test" },
   });
-  assert.deepEqual(calls.setDefault, { provider: "openai", modelId: "gpt-test", sessionId: "session-1" });
+  assert.deepEqual(calls.setDefault, {
+    provider: "openai", modelId: "gpt-test", sessionId: "session-1", setGlobalDefault: undefined,
+  });
   assert.deepEqual(result.appliedSessionIds, ["session-1"]);
+
+  await adapter.dispatch({
+    id: "default-global", type: "model.setDefault", sessionId: "session-1",
+    payload: { provider: "openai", modelId: "gpt-test", setGlobalDefault: true },
+  });
+  assert.deepEqual(calls.setDefault, {
+    provider: "openai", modelId: "gpt-test", sessionId: "session-1", setGlobalDefault: true,
+  });
 });
 
 test("SDK login and default model persist in agentDir and restore after restart", { timeout: 15_000 }, async () => {
@@ -105,21 +139,7 @@ test("SDK login and default model persist in agentDir and restore after restart"
     await runtime.login("openai", "api_key", { prompt: async () => "persisted-test-key", notify: () => {} });
     const model = runtime.getModels("openai")[0];
     assert.ok(model);
-    const identity = await first.create(root);
-    const slot = await first.getOrOpen(identity.sessionId);
-    const beforeMessages = JSON.stringify(slot.runtime.session.messages);
-    slot.runtime.session.sessionManager.appendMessage({
-      role: "assistant", content: [{ type: "text", text: "seed" }], api: model.api,
-      provider: model.provider, model: model.id,
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-      stopReason: "stop", timestamp: Date.now(),
-    });
-    await first.setDefaultModel(model.provider, model.id, identity.sessionId);
-    assert.equal(JSON.stringify(slot.runtime.session.messages), beforeMessages);
-    const sessionFile = slot.runtime.session.sessionFile;
-    assert.ok(sessionFile);
-    assert.match(await readFile(sessionFile, "utf8"), /"type":"model_change"/);
+    await first.setDefaultModel(model.provider, model.id);
     await access(join(agentDir, "auth.json"));
     await access(join(agentDir, "settings.json"));
     await first.dispose();

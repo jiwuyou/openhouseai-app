@@ -4,6 +4,7 @@ import android.content.Context
 import com.ai.assistance.operit.api.chat.enhance.ConversationMarkupManager
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.data.model.InputProcessingState
+import com.ai.assistance.operit.data.model.PiModelBinding
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ChatMarkupRegex
@@ -48,6 +49,7 @@ class PiChatEngine private constructor(context: Context) {
         val workingDirectory: String? = null,
         val forkFromSessionKey: String? = null,
         val forkUserMessage: String? = null,
+        val modelBinding: PiModelBinding? = null,
         val onState: suspend (InputProcessingState) -> Unit,
         val onToolInvocation: suspend (String) -> Unit = {},
     )
@@ -67,6 +69,7 @@ class PiChatEngine private constructor(context: Context) {
     private data class SessionRuntime(
         val client: WuxianPiClient,
         val turnGate: PiSessionTurnGate = PiSessionTurnGate(),
+        val modelBinder: PiSessionModelBinder = PiSessionModelBinder(),
         @Volatile var session: PiSessionRef? = null,
         @Volatile var identity: SessionIdentity? = null,
     )
@@ -202,6 +205,7 @@ class PiChatEngine private constructor(context: Context) {
                             forkFromSessionKey = request.forkFromSessionKey,
                             forkUserMessageTimestamp = request.userMessageTimestamp,
                             forkUserMessage = request.forkUserMessage,
+                            modelBinding = request.modelBinding,
                         )
                     request.onState(InputProcessingState.Receiving("正在接收 Pi 响应"))
                     val accepted = runtime.client.prompt(request.message)
@@ -305,8 +309,12 @@ class PiChatEngine private constructor(context: Context) {
         forkFromSessionKey: String? = null,
         forkUserMessageTimestamp: Long? = null,
         forkUserMessage: String? = null,
+        modelBinding: PiModelBinding? = null,
     ): PiSessionRef {
-        runtime.session?.let { return it }
+        runtime.session?.let {
+            ensureModelBinding(runtime, modelBinding)
+            return it
+        }
         if (runtime.client.connection.value !is PiConnectionState.Connected) {
             runtime.client.connect()
         }
@@ -332,6 +340,8 @@ class PiChatEngine private constructor(context: Context) {
             runtime.client.createSession(cwd)
         }
         runtime.session = session
+        runtime.modelBinder.onSessionAttached()
+        ensureModelBinding(runtime, modelBinding)
         bindings.edit().putString(sessionKey, session.sessionPath).apply()
         runtime.client.runtimeReady.value?.connectionId?.let { connectionId ->
             session.eventStreamId?.let { streamId ->
@@ -339,6 +349,25 @@ class PiChatEngine private constructor(context: Context) {
             }
         }
         return session
+    }
+
+    private suspend fun ensureModelBinding(
+        runtime: SessionRuntime,
+        binding: PiModelBinding?,
+    ) {
+        binding ?: return
+        runtime.modelBinder.ensure(binding) { selected ->
+            val response = runtime.client.command(
+                "session.setModel",
+                JSONObject()
+                    .put("provider", selected.provider)
+                    .put("modelId", selected.modelId),
+                timeoutMillis = 60_000,
+            )
+            if (!response.success) {
+                throw IllegalStateException(response.error ?: "Pi session model switch failed")
+            }
+        }
     }
 
     private suspend fun forkSession(
@@ -517,6 +546,23 @@ internal class PiSessionTurnGate {
         val active = activeTurn ?: return false
         active.cancel(cause)
         return true
+    }
+}
+
+internal class PiSessionModelBinder {
+    private var appliedBinding: PiModelBinding? = null
+
+    fun onSessionAttached() {
+        appliedBinding = null
+    }
+
+    suspend fun ensure(
+        binding: PiModelBinding,
+        setModel: suspend (PiModelBinding) -> Unit,
+    ) {
+        if (appliedBinding == binding) return
+        setModel(binding)
+        appliedBinding = binding
     }
 }
 

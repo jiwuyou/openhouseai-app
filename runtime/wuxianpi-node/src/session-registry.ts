@@ -8,6 +8,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { ExtensionUiBridge } from "./extension-ui.js";
 import type { PersistentDiagnostics } from "./diagnostics.js";
+import { ModelSetupService } from "./model-setup-service.js";
 import { RequestError } from "./protocol.js";
 
 export class SerialExecutor {
@@ -37,6 +38,13 @@ export type RuntimeSlot = {
   runtime: AgentSessionRuntime; serial: SerialExecutor; isRunning: boolean;
   agentStartCount: number; createdAt: Date; closeAfterSettled: boolean; unsubscribe?: () => void;
   ui?: ExtensionUiBridge; reclaimTimer?: NodeJS.Timeout;
+  modelStatus: {
+    state: "ready" | "pending" | "invalid";
+    provider?: string;
+    modelId?: string;
+    code?: string;
+    message?: string;
+  };
 };
 
 export interface RegistrySessionEvent {
@@ -71,6 +79,7 @@ export class SessionRegistry {
   private readonly agentDir: string;
   private readonly sharedModelRuntime: Promise<ModelRuntime>;
   private readonly modelSettings: SettingsManager;
+  private readonly modelSetupService: ModelSetupService;
   private readonly listeners = new Set<EventSink>();
 
   constructor(emitEvent?: EventSink, options: {
@@ -89,6 +98,12 @@ export class SessionRegistry {
           modelsPath: join(this.agentDir, "models.json"),
         });
     this.modelSettings = options.settingsManager ?? SettingsManager.create(process.cwd(), this.agentDir);
+    this.modelSetupService = new ModelSetupService({
+      agentDir: this.agentDir,
+      modelRuntime: () => this.sharedModelRuntime,
+      settingsManager: this.modelSettings,
+      reload: () => this.reloadModelConfiguration(),
+    });
     this.diagnostics = options.diagnostics;
     if (emitEvent) this.listeners.add(emitEvent);
   }
@@ -108,33 +123,31 @@ export class SessionRegistry {
 
   models(): Promise<ModelRuntime> { return this.sharedModelRuntime; }
   settings(): SettingsManager { return this.modelSettings; }
+  modelSetup(): ModelSetupService { return this.modelSetupService; }
 
   async reloadModelConfiguration(): Promise<void> {
     const modelRuntime = await this.sharedModelRuntime;
     await modelRuntime.reloadConfig();
     await this.modelSettings.reload();
-    await Promise.all([...this.slots].map((slot) => slot.runtime.services.settingsManager.reload()));
+    const errors = this.modelSettings.drainErrors();
+    if (errors.length > 0) throw settingsErrors("model settings reload", errors);
+    await Promise.all([...this.slots].map((slot) => this.refreshSessionModel(slot)));
   }
 
-  async setDefaultModel(provider: string, modelId: string, sessionId?: string) {
-    const modelRuntime = await this.sharedModelRuntime;
-    const model = modelRuntime.getModel(provider, modelId);
-    if (!model) throw new RequestError("model_not_found", `Model not found: ${provider}/${modelId}`);
-    const persist = async () => {
-      this.modelSettings.setDefaultModelAndProvider(provider, modelId);
-      await this.modelSettings.flush();
-    };
-    if (!sessionId) {
-      await persist();
-      return { provider, modelId, appliedSessionIds: [] as string[] };
-    }
+  async setDefaultModel(provider: string, modelId: string, sessionId?: string, setGlobalDefault?: boolean) {
+    if (!sessionId) return this.modelSetupService.setDefault(provider, modelId);
     return this.run(sessionId, async (slot) => {
       requireIdle(slot, "model.setDefault");
-      await persist();
-      const session = slot.runtime.session;
-      await session.setModel(model);
-      await session.settingsManager.flush();
-      return { provider, modelId, appliedSessionIds: [session.sessionId] };
+      const model = (await slot.runtime.session.modelRuntime.getAvailable())
+        .find((item) => item.provider === provider && item.id === modelId);
+      if (!model) throw new RequestError("model_not_found", `Model not found: ${provider}/${modelId}`);
+      if (setGlobalDefault === true) await this.modelSetupService.setDefault(provider, modelId);
+      await slot.runtime.session.setModel(model);
+      this.markSessionModelReady(slot);
+      await slot.runtime.session.settingsManager.flush();
+      const errors = slot.runtime.session.settingsManager.drainErrors();
+      if (errors.length > 0) throw settingsErrors("session model settings", errors);
+      return { provider, modelId, appliedSessionIds: [slot.runtime.session.sessionId] };
     });
   }
 
@@ -221,6 +234,7 @@ export class SessionRegistry {
 
   async prompt(sessionId: string, input: PromptInput): Promise<RuntimeIdentity & { accepted: true; userEntryId: string }> {
     return this.run(sessionId, async (slot) => {
+      this.requireSessionModelReady(slot, "session.prompt");
       const session = slot.runtime.session;
       const agentStartCount = slot.agentStartCount;
       return new Promise((resolvePrompt, rejectPrompt) => {
@@ -254,11 +268,17 @@ export class SessionRegistry {
   }
 
   async steer(sessionId: string, message: string, images?: unknown): Promise<void> {
-    await this.control(sessionId, async (slot) => slot.runtime.session.steer(message, images as never));
+    await this.control(sessionId, async (slot) => {
+      this.requireSessionModelReady(slot, "session.steer");
+      await slot.runtime.session.steer(message, images as never);
+    });
   }
 
   async followUp(sessionId: string, message: string, images?: unknown): Promise<void> {
-    await this.control(sessionId, async (slot) => slot.runtime.session.followUp(message, images as never));
+    await this.control(sessionId, async (slot) => {
+      this.requireSessionModelReady(slot, "session.followUp");
+      await slot.runtime.session.followUp(message, images as never);
+    });
   }
 
   async abort(sessionId: string): Promise<void> {
@@ -268,6 +288,7 @@ export class SessionRegistry {
   async compact(sessionId: string, customInstructions?: string): Promise<unknown> {
     return this.run(sessionId, async (slot) => {
       requireIdle(slot, "session.compact");
+      this.requireSessionModelReady(slot, "session.compact");
       return slot.runtime.session.compact(customInstructions);
     });
   }
@@ -444,6 +465,7 @@ export class SessionRegistry {
         .find((item) => item.provider === provider && item.id === modelId);
       if (!model) throw new RequestError("model_not_found", `Model not found: ${provider}/${modelId}`);
       await slot.runtime.session.setModel(model);
+      this.markSessionModelReady(slot);
       return model;
     });
   }
@@ -451,7 +473,9 @@ export class SessionRegistry {
   async cycleModel(sessionId: string, direction: "forward" | "backward"): Promise<unknown> {
     return this.run(sessionId, async (slot) => {
       requireIdle(slot, "session.cycleModel");
-      return (await slot.runtime.session.cycleModel(direction)) ?? null;
+      const model = (await slot.runtime.session.cycleModel(direction)) ?? null;
+      if (model) this.markSessionModelReady(slot);
+      return model;
     });
   }
 
@@ -575,6 +599,7 @@ export class SessionRegistry {
       activeToolNames: session.getActiveToolNames(),
       slashCommands: { commands: this.commandsOf(slot) },
       sessionStats: session.getSessionStats(),
+      modelStatus: { ...slot.modelStatus },
     };
   }
 
@@ -646,10 +671,12 @@ export class SessionRegistry {
 
   private async createSlot(manager: SessionManager): Promise<RuntimeSlot> {
     const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
+      const settingsManager = isolatedSessionSettings(cwd, this.agentDir);
       const services = await createAgentSessionServices({
         cwd,
         agentDir: this.agentDir,
         modelRuntime: await this.sharedModelRuntime,
+        settingsManager,
       });
       return { ...(await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent })),
         services, diagnostics: services.diagnostics };
@@ -658,7 +685,16 @@ export class SessionRegistry {
       cwd: manager.getCwd(), agentDir: this.agentDir, sessionManager: manager,
     });
     const slot: RuntimeSlot = { runtime, serial: new SerialExecutor(), isRunning: false,
-      agentStartCount: 0, createdAt: new Date(), closeAfterSettled: false };
+      agentStartCount: 0, createdAt: new Date(), closeAfterSettled: false,
+      modelStatus: runtime.session.model ? {
+        state: "ready",
+        provider: runtime.session.model.provider,
+        modelId: runtime.session.model.id,
+      } : {
+        state: "invalid",
+        code: "session_model_missing",
+        message: "The session does not have a configured model",
+      } };
     this.diagnostics?.record("session.slot.created", {
       sessionId: runtime.session.sessionId,
       hasSessionPath: runtime.session.sessionFile !== undefined,
@@ -713,6 +749,7 @@ export class SessionRegistry {
       onError: (error) => this.emit(slot, { type: "extension_error", ...error }),
     });
     slot.unsubscribe = session.subscribe((event) => this.onSessionEvent(slot, event));
+    this.markSessionModelReady(slot);
   }
 
   private onSessionEvent(slot: RuntimeSlot, event: AgentSessionEvent): void {
@@ -744,8 +781,81 @@ export class SessionRegistry {
         runDetached(this.disposeSlot(slot), (error) => this.emit(slot, {
           type: "runtime_error", phase: "dispose", message: error instanceof Error ? error.message : String(error), recoverable: true,
         }));
-      } else this.scheduleReclaim(slot);
+      } else {
+        if (slot.modelStatus.state === "pending") {
+          runDetached(this.refreshSessionModel(slot, true), (error) => this.emit(slot, {
+            type: "runtime_error", phase: "model.refresh", message: error instanceof Error ? error.message : String(error), recoverable: true,
+          }));
+        }
+        this.scheduleReclaim(slot);
+      }
     }
+  }
+
+  private async refreshSessionModel(slot: RuntimeSlot, afterSettled = false): Promise<void> {
+    const current = slot.runtime.session.model;
+    if (!current) {
+      slot.modelStatus = {
+        state: "invalid",
+        code: "session_model_missing",
+        message: "The session does not have a configured model",
+      };
+      return;
+    }
+    if (!afterSettled && (slot.isRunning || !slot.runtime.session.isIdle)) {
+      slot.modelStatus = { state: "pending", provider: current.provider, modelId: current.id };
+      return;
+    }
+    const modelRuntime = await this.sharedModelRuntime;
+    const replacement = modelRuntime.getModel(current.provider, current.id);
+    if (!replacement) {
+      slot.modelStatus = {
+        state: "invalid",
+        provider: current.provider,
+        modelId: current.id,
+        code: "session_model_removed",
+        message: `The configured session model no longer exists: ${current.provider}/${current.id}`,
+      };
+      return;
+    }
+    try {
+      await slot.runtime.session.setModel(replacement);
+      this.markSessionModelReady(slot);
+    } catch (error) {
+      slot.modelStatus = {
+        state: "invalid",
+        provider: current.provider,
+        modelId: current.id,
+        code: "session_model_unavailable",
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  private markSessionModelReady(slot: RuntimeSlot): void {
+    const model = slot.runtime.session.model;
+    if (!model) {
+      slot.modelStatus = {
+        state: "invalid",
+        code: "session_model_missing",
+        message: "The session does not have a configured model",
+      };
+      return;
+    }
+    slot.modelStatus = {
+      state: "ready",
+      provider: model.provider,
+      modelId: model.id,
+    };
+  }
+
+  private requireSessionModelReady(slot: RuntimeSlot, command: string): void {
+    if (slot.modelStatus.state === "ready") return;
+    throw new RequestError(
+      slot.modelStatus.state === "pending" ? "session_model_refresh_pending" : "session_model_invalid",
+      slot.modelStatus.message ?? `${command} cannot run until the session model is refreshed`,
+      { ...slot.modelStatus },
+    );
   }
 
   private emit(slot: RuntimeSlot, payload: unknown): void {
@@ -836,6 +946,40 @@ export class SessionRegistry {
       throw error;
     }
   }
+}
+
+function isolatedSessionSettings(cwd: string, agentDir: string): SettingsManager {
+  const persisted = SettingsManager.create(cwd, agentDir);
+  const loadErrors = persisted.drainErrors();
+  if (loadErrors.length > 0) throw settingsErrors("session settings", loadErrors);
+  let defaultProvider = persisted.getDefaultProvider();
+  let defaultModel = persisted.getDefaultModel();
+  return new Proxy(persisted, {
+    get(target, property) {
+      if (property === "getDefaultProvider") return () => defaultProvider;
+      if (property === "getDefaultModel") return () => defaultModel;
+      if (property === "setDefaultProvider") return (provider: string) => { defaultProvider = provider; };
+      if (property === "setDefaultModel") return (modelId: string) => { defaultModel = modelId; };
+      if (property === "setDefaultModelAndProvider") return (provider: string, modelId: string) => {
+        defaultProvider = provider;
+        defaultModel = modelId;
+      };
+      if (property === "getGlobalSettings") return () => ({
+        ...target.getGlobalSettings(),
+        ...(defaultProvider === undefined ? {} : { defaultProvider }),
+        ...(defaultModel === undefined ? {} : { defaultModel }),
+      });
+      if (property === "reload") return async () => target.reload();
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+function settingsErrors(context: string, errors: Array<{ scope: string; error: Error }>): RequestError {
+  return new RequestError("settings_persist_failed", `Failed to persist ${context}`, {
+    errors: errors.map((item) => ({ scope: item.scope, message: item.error.message })),
+  });
 }
 
 function eventType(payload: unknown): string {

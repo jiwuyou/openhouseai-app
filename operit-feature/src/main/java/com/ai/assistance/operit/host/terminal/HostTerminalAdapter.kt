@@ -1,54 +1,61 @@
 package com.ai.assistance.operit.host.terminal
 
-import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostProvider
-import com.ai.assistance.operit.host.OperitHostServiceManagerRecoveryAction
-import com.ai.assistance.operit.host.executeServiceManagerRecoveryCommand
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
-class HostTerminalAdapter {
-    private val sessions = ConcurrentHashMap<String, MutableSession>()
+/** Strict Ubuntu-session facade. Android and Termux one-shot commands use explicit tools. */
+class HostTerminalAdapter(
+    private val backendProvider: () -> HostTerminalSessionBackend? = {
+        OperitHostProvider.currentOperationsOrNull()?.terminalSessionBackend
+    },
+) {
     private val _terminalState = MutableStateFlow(HostTerminalState())
+    private var stateScope: CoroutineScope? = null
 
     val terminalState: MutableStateFlow<HostTerminalState> = _terminalState
 
     suspend fun initialize(): Boolean {
-        if (OperitHostProvider.currentOperationsOrNull() == null) {
-            return false
-        }
-        refreshState()
-        return true
+        val backend = currentBackend() ?: return false
+        val initialized = backend.initialize()
+        mirrorBackendState(backend)
+        return initialized
     }
 
-    fun destroy() {
-        sessions.clear()
-        refreshState()
+    suspend fun destroy() {
+        stateScope?.cancel()
+        stateScope = null
+        currentBackend()?.destroy()
+        _terminalState.value = HostTerminalState()
     }
 
     suspend fun createSession(
         title: String? = null,
-        target: HostTerminalTarget = HostTerminalTarget.DEFAULT
+        target: HostTerminalTarget = HostTerminalTarget.DEFAULT,
     ): String {
-        val id = UUID.randomUUID().toString()
-        sessions[id] = MutableSession(
-            id = id,
-            title = title?.takeIf { it.isNotBlank() } ?: "${target.sessionPrefix}-$id",
-            target = target
-        )
-        refreshState()
-        return id
+        requireUbuntuTarget(target)
+        val displayTitle = title?.takeIf { it.isNotBlank() } ?: "ubuntu-${UUID.randomUUID()}"
+        val backend = requireBackend()
+        ensureBackendMirrored(backend)
+        return backend.createSession(displayTitle)
     }
 
     fun closeSession(sessionId: String) {
-        sessions.remove(sessionId)
-        refreshState()
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching { closeSessionAndWait(sessionId) }
+        }
+    }
+
+    suspend fun closeSessionAndWait(sessionId: String) {
+        requireBackend().closeSession(sessionId)
     }
 
     suspend fun executeCommand(sessionId: String, command: String): String? {
@@ -59,40 +66,37 @@ class HostTerminalAdapter {
     suspend fun executeCommandResult(
         sessionId: String,
         command: String,
-        timeoutMs: Long = DEFAULT_TIMEOUT_MS
-    ): HostTerminalHiddenResult {
-        return execute(sessionId, command, timeoutMs)
-    }
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+    ): HostTerminalHiddenResult = execute(sessionId, command, timeoutMs)
 
     fun executeCommandFlow(
         sessionId: String,
         command: String,
-        timeoutMs: Long = DEFAULT_TIMEOUT_MS
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS,
     ): Flow<HostTerminalCommandEvent> = flow {
         val commandId = UUID.randomUUID().toString()
-        val result = execute(sessionId, command, timeoutMs)
-        val output = buildOutput(result)
-        if (output.isNotEmpty()) {
+        val result = execute(sessionId, command, timeoutMs) { chunk ->
             emit(
                 HostTerminalCommandEvent(
                     sessionId = sessionId,
                     commandId = commandId,
-                    outputChunk = output,
+                    outputChunk = chunk,
                     isCompleted = false,
-                    exitCode = result.exitCode,
-                    target = result.target
-                )
+                    exitCode = 0,
+                    target = HostTerminalTarget.UBUNTU,
+                ),
             )
         }
         emit(
             HostTerminalCommandEvent(
                 sessionId = sessionId,
                 commandId = commandId,
-                outputChunk = output,
+                outputChunk = buildOutput(result),
                 isCompleted = true,
                 exitCode = result.exitCode,
-                target = result.target
-            )
+                target = HostTerminalTarget.UBUNTU,
+                timedOut = result.state == HostTerminalHiddenResult.State.TIMEOUT,
+            ),
         )
     }
 
@@ -100,326 +104,117 @@ class HostTerminalAdapter {
         command: String,
         executorKey: String = "default",
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
-        target: HostTerminalTarget = HostTerminalTarget.DEFAULT
+        target: HostTerminalTarget = HostTerminalTarget.DEFAULT,
     ): HostTerminalHiddenResult {
-        val sessionId = "hidden-${target.wireName}-$executorKey"
-        sessions.putIfAbsent(
-            sessionId,
-            MutableSession(sessionId, "hidden-${target.displayName}-$executorKey", target)
+        requireUbuntuTarget(target)
+        HostTerminalPolicy.rejectionReason(command)?.let { reason -> return rejected(reason) }
+        val backend = requireBackend()
+        ensureBackendMirrored(backend)
+        return backend.executeHiddenCommand(
+            command = command.trim(),
+            executorKey = executorKey,
+            timeoutMs = normalizeTimeoutMs(timeoutMs),
         )
-        return execute(sessionId, command, timeoutMs)
     }
 
     fun sendInput(sessionId: String, input: String) {
-        appendOutput(sessionId, input)
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching { sendInputAndWait(sessionId, true, input, null) }
+        }
     }
+
+    suspend fun sendInputAndWait(
+        sessionId: String,
+        hasInput: Boolean,
+        input: String,
+        control: String?,
+    ): Int = requireBackend().sendInput(sessionId, hasInput, input, control)
 
     fun sendInterruptSignal(sessionId: String) {
-        appendOutput(sessionId, "^C")
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching { sendInterruptSignalAndWait(sessionId) }
+        }
     }
 
-    fun isConnected(): Boolean = OperitHostProvider.currentOperationsOrNull() != null
+    suspend fun sendInterruptSignalAndWait(sessionId: String) {
+        requireBackend().sendInput(sessionId, hasInput = true, input = "c", control = "ctrl")
+    }
+
+    suspend fun getSessionScreen(sessionId: String): HostTerminalScreenSnapshot =
+        requireBackend().getSessionScreen(sessionId)
+
+    fun isConnected(): Boolean = currentBackend()?.isConnected() == true
 
     private suspend fun execute(
         sessionId: String,
         rawCommand: String,
-        timeoutMs: Long
+        timeoutMs: Long,
+        onOutput: suspend (String) -> Unit = {},
     ): HostTerminalHiddenResult {
-        val session = sessions.getOrPut(sessionId) { MutableSession(sessionId, sessionId) }
         val command = rawCommand.trim()
-        executeServiceManagerRecovery(session, command)?.let { return it }
-        HostTerminalPolicy.rejectionReason(command)?.let { reason ->
-            val result =
-                HostTerminalHiddenResult(
-                    state = HostTerminalHiddenResult.State.REJECTED,
-                    exitCode = -2,
-                    output = "",
-                    error = reason,
-                    rawOutputPreview = reason,
-                    target = session.target
-                )
-            completeSession(session, command, result)
-            return result
-        }
-
-        val commandToRun = buildSessionCommand(session, command)
-        session.isExecuting = true
-        refreshState()
-        val effectiveTimeoutMs = normalizeTimeoutMs(timeoutMs)
-        val execution =
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    executeWithTargetFallback(session.target, commandToRun, effectiveTimeoutMs)
-                }
-                    .getOrElse { throwable ->
-                        HostExecution(
-                            result =
-                                OperitHostCommandResult(
-                                    command = commandToRun,
-                                    exitCode = -1,
-                                    stdout = "",
-                                    stderr = "",
-                                    error =
-                                        "${session.target.displayName} host terminal unavailable: " +
-                                            (throwable.message ?: throwable::class.java.simpleName),
-                                    timedOut = false,
-                                    durationMs = 0L
-                                ),
-                            resolvedTarget = session.target
-                        )
-                    }
-            }
-        val hostResult = execution.result
-
-        applyDirectoryMutation(session, command)
-
-        val state =
-            when {
-                hostResult.timedOut -> HostTerminalHiddenResult.State.TIMEOUT
-                hostResult.isSuccess -> HostTerminalHiddenResult.State.SUCCESS
-                else -> HostTerminalHiddenResult.State.FAILED
-            }
-        val result =
-            HostTerminalHiddenResult(
-                state = state,
-                exitCode = hostResult.exitCode,
-                output = hostResult.stdout,
-                error = listOf(hostResult.error, hostResult.stderr).filter { it.isNotBlank() }.joinToString("\n"),
-                rawOutputPreview = buildString {
-                    append(hostResult.stdout)
-                    if (hostResult.stderr.isNotBlank()) {
-                        if (isNotEmpty()) append('\n')
-                        append(hostResult.stderr)
-                    }
-                    if (hostResult.error.isNotBlank()) {
-                        if (isNotEmpty()) append('\n')
-                        append(hostResult.error)
-                    }
-                }.takeLast(4000),
-                target = execution.resolvedTarget
-            )
-        completeSession(session, command, result)
-        return result
-    }
-
-    private suspend fun executeServiceManagerRecovery(
-        session: MutableSession,
-        command: String
-    ): HostTerminalHiddenResult? {
-        if (OperitHostServiceManagerRecoveryAction.fromCommand(command) == null) {
-            return null
-        }
-
-        session.isExecuting = true
-        refreshState()
-        val startedAtMs = System.currentTimeMillis()
-        val hostResult =
-            withContext(Dispatchers.IO) {
-                runCatching {
-                        OperitHostProvider
-                            .requireHost()
-                            .executeServiceManagerRecoveryCommand(
-                                command = command,
-                                reason = "host-terminal:${session.target.wireName}"
-                            )
-                    }
-                    .getOrElse { throwable ->
-                        OperitHostCommandResult(
-                            command = command,
-                            exitCode = -1,
-                            stdout = "",
-                            stderr = "",
-                            error =
-                                "${session.target.displayName} host terminal unavailable: " +
-                                    (throwable.message ?: throwable::class.java.simpleName),
-                            timedOut = false,
-                            durationMs = System.currentTimeMillis() - startedAtMs
-                        )
-                    }
-            }
-                ?: OperitHostCommandResult(
-                    command = command,
-                    exitCode = 1,
-                    stdout = "",
-                    stderr = "",
-                    error = "Command is not a service-manager recovery request.",
-                    timedOut = false,
-                    durationMs = System.currentTimeMillis() - startedAtMs
-                )
-
-        val state =
-            when {
-                hostResult.timedOut -> HostTerminalHiddenResult.State.TIMEOUT
-                hostResult.isSuccess -> HostTerminalHiddenResult.State.SUCCESS
-                else -> HostTerminalHiddenResult.State.FAILED
-            }
-        val result =
-            HostTerminalHiddenResult(
-                state = state,
-                exitCode = hostResult.exitCode,
-                output = hostResult.stdout,
-                error = listOf(hostResult.error, hostResult.stderr).filter { it.isNotBlank() }.joinToString("\n"),
-                rawOutputPreview = buildString {
-                    append(hostResult.stdout)
-                    if (hostResult.stderr.isNotBlank()) {
-                        if (isNotEmpty()) append('\n')
-                        append(hostResult.stderr)
-                    }
-                    if (hostResult.error.isNotBlank()) {
-                        if (isNotEmpty()) append('\n')
-                        append(hostResult.error)
-                    }
-                }.takeLast(4000),
-                target = HostTerminalTarget.HOST
-            )
-        completeSession(session, command, result)
-        return result
-    }
-
-    private suspend fun executeWithTargetFallback(
-        requestedTarget: HostTerminalTarget,
-        command: String,
-        timeoutMs: Long
-    ): HostExecution {
-        val result = OperitHostProvider.operationsOrUnsupported().executeCommand(
+        HostTerminalPolicy.rejectionReason(command)?.let { return rejected(it) }
+        val backend = requireBackend()
+        ensureBackendMirrored(backend)
+        return backend.executeCommand(
+            sessionId = sessionId,
             command = command,
-            target = requestedTarget,
-            timeoutMs = timeoutMs,
+            timeoutMs = normalizeTimeoutMs(timeoutMs),
+            onOutput = onOutput,
         )
-        return HostExecution(result, requestedTarget)
     }
 
-    private fun buildSessionCommand(session: MutableSession, command: String): String {
-        val cdPrefix = session.currentDirectory?.takeIf { it.isNotBlank() }?.let {
-            "cd ${HostTerminalPolicy.shellQuote(it)} && "
-        } ?: ""
-        val environmentPrefix =
-            session.environmentCommands
-                .takeIf { it.isNotEmpty() }
-                ?.joinToString(separator = " && ", postfix = " && ")
-                ?: ""
-        return "$cdPrefix$environmentPrefix$command"
-    }
+    private fun currentBackend(): HostTerminalSessionBackend? = backendProvider()
 
-    private fun normalizeTimeoutMs(timeoutMs: Long): Long {
-        if (timeoutMs <= 0L) {
-            return DEFAULT_TIMEOUT_MS
-        }
-        return timeoutMs.coerceAtMost(MAX_HOSTED_TIMEOUT_MS)
-    }
+    private fun requireBackend(): HostTerminalSessionBackend =
+        currentBackend()
+            ?: error(
+                "Ubuntu terminal backend is unavailable. The active host must provide a tmux-backed Ubuntu session transport.",
+            )
 
-    private fun applyDirectoryMutation(session: MutableSession, command: String) {
-        val cdTarget =
-            Regex("""^\s*cd\s+(.+?)\s*$""")
-                .matchEntire(command)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.trim()
-                ?.trim('"', '\'')
-        if (cdTarget != null) {
-            session.currentDirectory = cdTarget
-            return
-        }
-
-        val sourceCommand =
-            Regex("""^\s*(source|\.)\s+(.+?)\s*$""")
-                .matchEntire(command)
-                ?.value
-                ?.trim()
-                ?: return
-        if (session.environmentCommands.none { it == sourceCommand }) {
-            session.environmentCommands += sourceCommand
+    private fun requireUbuntuTarget(target: HostTerminalTarget) {
+        require(target == HostTerminalTarget.UBUNTU) {
+            "Terminal sessions support UBUNTU only; use execute_android_command or execute_termux_command for one-shot commands"
         }
     }
 
-    private fun completeSession(
-        session: MutableSession,
-        command: String,
-        result: HostTerminalHiddenResult
-    ) {
-        session.isExecuting = false
-        val output = buildOutput(result)
-        session.lastOutput =
-            buildString {
-                if (session.lastOutput.isNotBlank()) {
-                    append(session.lastOutput)
-                    append('\n')
-                }
-                append("[")
-                append(targetLabel(session.target, result.target))
-                append("] $ ")
-                append(command)
-                if (output.isNotBlank()) {
-                    append('\n')
-                    append(output)
-                }
-            }.takeLast(MAX_SCREEN_CHARS)
-        refreshState()
+    private fun rejected(reason: String) =
+        HostTerminalHiddenResult(
+            state = HostTerminalHiddenResult.State.REJECTED,
+            exitCode = -2,
+            output = "",
+            error = reason,
+            rawOutputPreview = reason,
+            target = HostTerminalTarget.UBUNTU,
+        )
+
+    private fun ensureBackendMirrored(backend: HostTerminalSessionBackend) {
+        if (stateScope == null) mirrorBackendState(backend)
     }
 
-    private fun targetLabel(requestedTarget: HostTerminalTarget, resolvedTarget: HostTerminalTarget): String {
-        return if (requestedTarget == HostTerminalTarget.AUTO && resolvedTarget != HostTerminalTarget.AUTO) {
-            "${requestedTarget.wireName}->${resolvedTarget.wireName}"
-        } else {
-            resolvedTarget.wireName
+    private fun mirrorBackendState(backend: HostTerminalSessionBackend) {
+        stateScope?.cancel()
+        stateScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope ->
+            scope.launch {
+                backend.terminalState.collectLatest { state -> _terminalState.value = state }
+            }
         }
+        _terminalState.value = backend.terminalState.value
     }
 
-    private fun appendOutput(sessionId: String, output: String) {
-        val session = sessions[sessionId] ?: return
-        session.lastOutput = (session.lastOutput + output).takeLast(MAX_SCREEN_CHARS)
-        refreshState()
-    }
+    private fun normalizeTimeoutMs(timeoutMs: Long): Long =
+        timeoutMs.takeIf { it > 0L }?.coerceAtMost(MAX_HOSTED_TIMEOUT_MS) ?: DEFAULT_TIMEOUT_MS
 
-    private fun buildOutput(result: HostTerminalHiddenResult): String {
-        return buildString {
+    private fun buildOutput(result: HostTerminalHiddenResult): String =
+        buildString {
             if (result.output.isNotBlank()) append(result.output)
             if (result.error.isNotBlank()) {
                 if (isNotEmpty()) append('\n')
                 append(result.error)
             }
         }
-    }
 
-    private fun refreshState() {
-        _terminalState.update {
-            HostTerminalState(
-                sessions =
-                    sessions.values
-                        .sortedBy { it.title }
-                        .map {
-                            HostTerminalSession(
-                                id = it.id,
-                                title = it.title,
-                                target = it.target,
-                                currentDirectory = it.currentDirectory,
-                                lastOutput = it.lastOutput,
-                                currentExecutingCommand =
-                                    HostTerminalExecutingCommand(it.isExecuting)
-                            )
-                        }
-            )
-        }
-    }
-
-    private data class MutableSession(
-        val id: String,
-        val title: String,
-        val target: HostTerminalTarget = HostTerminalTarget.DEFAULT,
-        var currentDirectory: String? = null,
-        val environmentCommands: MutableList<String> = mutableListOf(),
-        var lastOutput: String = "",
-        var isExecuting: Boolean = false
-    )
-
-    private data class HostExecution(
-        val result: OperitHostCommandResult,
-        val resolvedTarget: HostTerminalTarget
-    )
-
-    companion object {
-        private const val DEFAULT_TIMEOUT_MS = 60_000L
-        private const val MAX_HOSTED_TIMEOUT_MS = 60_000L
-        private const val MAX_SCREEN_CHARS = 32_000
+    private companion object {
+        const val DEFAULT_TIMEOUT_MS = 60_000L
+        const val MAX_HOSTED_TIMEOUT_MS = 86_400_000L
     }
 }

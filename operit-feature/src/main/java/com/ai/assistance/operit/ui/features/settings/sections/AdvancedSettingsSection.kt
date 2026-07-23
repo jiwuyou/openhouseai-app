@@ -31,6 +31,7 @@ import com.ai.assistance.operit.api.chat.llmprovider.ApiKeyPoolAvailabilityTeste
 import com.ai.assistance.operit.data.model.ApiKeyAvailabilityStatus
 import com.ai.assistance.operit.data.model.ApiKeyInfo
 import com.ai.assistance.operit.data.model.ModelConfigData
+import com.ai.assistance.operit.data.model.usesPiRuntime
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -79,6 +80,7 @@ fun AdvancedSettingsSection(
 
     // Save changes to the config
     fun saveChanges() {
+        if (!showsAndroidCredentialPool(config)) return
         scope.launch {
             configManager.updateApiKeyPoolSettings(
                 configId = config.id,
@@ -291,40 +293,42 @@ fun AdvancedSettingsSection(
             }
 
             // API Key Pool Toggle
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-                    .clickable {
-                        useApiKeyPool = !useApiKeyPool
-                        saveChanges()
-                    },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.use_api_key_pool),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Text(
-                        stringResource(R.string.api_key_pool_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            AnimatedVisibility(visible = showsAndroidCredentialPool(config)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .clickable {
+                            useApiKeyPool = !useApiKeyPool
+                            saveChanges()
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.use_api_key_pool),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            stringResource(R.string.api_key_pool_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = useApiKeyPool,
+                        onCheckedChange = {
+                            useApiKeyPool = it
+                            saveChanges()
+                        }
                     )
                 }
-                Switch(
-                    checked = useApiKeyPool,
-                    onCheckedChange = {
-                        useApiKeyPool = it
-                        saveChanges()
-                    }
-                )
             }
 
             // API Key Pool Management UI
             AnimatedVisibility(
-                visible = useApiKeyPool,
+                visible = showsAndroidCredentialPool(config) && useApiKeyPool,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -525,7 +529,7 @@ fun AdvancedSettingsSection(
         }
     }
 
-    if (showClearPoolConfirmDialog) {
+    if (showsAndroidCredentialPool(config) && showClearPoolConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showClearPoolConfirmDialog = false },
             title = { Text(stringResource(R.string.clear_api_key_pool)) },
@@ -550,7 +554,7 @@ fun AdvancedSettingsSection(
         )
     }
 
-    if (showAddKeyDialog || editingKey != null) {
+    if (showsAndroidCredentialPool(config) && (showAddKeyDialog || editingKey != null)) {
         ApiKeyEditDialog(
             keyInfo = editingKey,
             onDismiss = { showAddKeyDialog = false; editingKey = null },
@@ -567,6 +571,8 @@ fun AdvancedSettingsSection(
         )
     }
 }
+
+internal fun showsAndroidCredentialPool(config: ModelConfigData): Boolean = !config.usesPiRuntime()
 
 @Composable
 private fun ApiKeyItem(

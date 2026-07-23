@@ -192,7 +192,7 @@ class HostFileSystemProvider {
         withContext(Dispatchers.IO) {
             OperitHostProvider.operationsOrUnsupported().executeCommand(
                 command = command,
-                target = HostTerminalTarget.HOST,
+                target = HostTerminalTarget.TERMUX,
                 timeoutMs = COMMAND_TIMEOUT_MS,
             )
         }

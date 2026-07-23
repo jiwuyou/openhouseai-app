@@ -1446,7 +1446,7 @@
     <string name="workflow_trigger_fallback">Disparador</string>
     <string name="workflow_execute_config_title">Configuración de ejecución</string>
     <string name="workflow_tool_name_label">Nombre de la herramienta</string>
-    <string name="workflow_tool_name_placeholder">Ejemplo: execute_shell</string>
+    <string name="workflow_tool_name_placeholder">Ejemplo: execute_android_command</string>
     <string name="workflow_tool_params_title">Parámetros de la herramienta</string>
     <string name="workflow_param_name_label">Nombre del parámetro</string>
     <string name="workflow_param_value_label">Valor del parámetro</string>
@@ -5217,7 +5217,6 @@ Ahora puede usar el modo AutoGLM en la interfaz de conversación.</string>
     <string name="vd_overlay_a11y_stop_automation">Detener automatización</string>
     <string name="toolreg_env_info"> (Entorno: %1$s)</string>
     <string name="toolreg_env_arrow_info"> (%1$s → %2$s)</string>
-    <string name="toolreg_execute_shell_desc">Ejecutar ADB Shell: %1$s</string>
     <string name="toolreg_close_all_virtual_displays_desc">Cerrar todas las pantallas virtuales</string>
     <string name="toolreg_unnamed">Sin nombre</string>
     <string name="toolreg_create_terminal_session_desc">Crear u obtener sesión de terminal: %1$s</string>

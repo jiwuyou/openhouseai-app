@@ -9,7 +9,9 @@ import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.core.tools.system.Terminal
 import com.ai.assistance.operit.host.terminal.HostTerminalChar
 import com.ai.assistance.operit.host.terminal.HostTerminalHiddenResult
+import com.ai.assistance.operit.host.terminal.HostTerminalPolicy
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
+import com.ai.assistance.operit.host.OperitHostProvider
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -25,6 +27,85 @@ class StandardTerminalCommandExecutor(private val context: Context) {
         // 用于将会话名称映射到会话ID
         private val sessionNameToIdMap = ConcurrentHashMap<String, String>()
         private const val COMMAND_CANCEL_SETTLE_TIMEOUT_MS = 3_000L
+        private const val COMMAND_BACKEND_SETTLE_TIMEOUT_MS = 30_000L
+        private const val DEFAULT_TERMUX_TIMEOUT_MS = 120_000L
+        private const val MAX_TERMUX_TIMEOUT_MS = 86_400_000L
+        private const val DEFAULT_TERMUX_PACKAGE = "com.termux"
+    }
+
+    /** Execute a one-shot command in the active host's Termux user space. */
+    fun executeTermuxCommand(tool: AITool): ToolResult = runBlocking(Dispatchers.IO) {
+        try {
+            val command = tool.parameters.find { it.name == "command" }?.value.orEmpty()
+            if (command.isBlank()) {
+                return@runBlocking ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = context.getString(R.string.terminal_error_missing_command)
+                )
+            }
+
+            val packageName =
+                tool.parameters.find { it.name == "package_name" }?.value?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: DEFAULT_TERMUX_PACKAGE
+            if (packageName != DEFAULT_TERMUX_PACKAGE) {
+                return@runBlocking ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "The active host adapter supports only $DEFAULT_TERMUX_PACKAGE"
+                )
+            }
+
+            val workingDirectory =
+                tool.parameters.find { it.name == "working_directory" }?.value?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+            val timeoutMs =
+                tool.parameters.find { it.name == "timeout_ms" }?.value?.toLongOrNull()
+                    ?.takeIf { it in 1_000L..MAX_TERMUX_TIMEOUT_MS }
+                    ?: DEFAULT_TERMUX_TIMEOUT_MS
+            val commandToRun =
+                workingDirectory?.let { "cd ${HostTerminalPolicy.shellQuote(it)} && $command" }
+                    ?: command
+            val result =
+                OperitHostProvider.operationsOrUnsupported().executeCommand(
+                    command = commandToRun,
+                    target = HostTerminalTarget.TERMUX,
+                    timeoutMs = timeoutMs
+                )
+            val failure =
+                listOf(result.transportErrorMessage, result.error, result.stderr)
+                    .filter { it.isNotBlank() }
+                    .joinToString("\n")
+
+            ToolResult(
+                toolName = tool.name,
+                success = result.isSuccess,
+                result =
+                    TermuxCommandResultData(
+                        command = command,
+                        stdout = result.stdout,
+                        stderr = result.stderr,
+                        exitCode = result.exitCode,
+                        packageName = packageName,
+                        errCode = result.transportErrorCode,
+                        errmsg = result.transportErrorMessage.ifBlank { result.error },
+                        timedOut = result.timedOut,
+                        durationMs = result.durationMs
+                    ),
+                error = failure.takeIf { !result.isSuccess }
+            )
+        } catch (error: Exception) {
+            AppLogger.e(TAG, "Failed to execute Termux command", error)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = context.getString(R.string.termux_error_execute_command, error.message.orEmpty())
+            )
+        }
     }
 
 
@@ -42,7 +123,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                     )
                 }
 
-                val target = parseTerminalTarget(tool)
+                val target = HostTerminalTarget.UBUNTU
                 val terminal = Terminal.getInstance(context)
                 val sessionKey = sessionMapKey(target, sessionName)
 
@@ -127,7 +208,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                     )
                 }
 
-                val outputFlow = terminal.executeCommandFlow(sessionId, command)
+                val outputFlow = terminal.executeCommandFlow(sessionId, command, timeout)
 
                 if (outputFlow != null) {
                     val events = mutableListOf<String>()
@@ -137,7 +218,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                     var didTimeout = false
 
                     try {
-                        withTimeout(timeout) {
+                        withTimeout(collectionTimeoutMs(timeout)) {
                             outputFlow.collect { event ->
                                 if (event.isCompleted) {
                                     completionOutput = event.outputChunk
@@ -147,6 +228,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                                 if (event.isCompleted) {
                                     exitCode = event.exitCode
                                     hasCompleted = true
+                                    didTimeout = event.timedOut
                                 }
                             }
                         }
@@ -255,7 +337,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                 )
             )
 
-            val outputFlow = terminal.executeCommandFlow(sessionId, command)
+            val outputFlow = terminal.executeCommandFlow(sessionId, command, timeout)
             val events = mutableListOf<String>()
             var completionOutput: String? = null
             var exitCode = 0
@@ -265,12 +347,13 @@ class StandardTerminalCommandExecutor(private val context: Context) {
             var receivedChars = 0
 
             try {
-                withTimeout(timeout) {
+                withTimeout(collectionTimeoutMs(timeout)) {
                     outputFlow.collect { event ->
                         if (event.isCompleted) {
                             completionOutput = event.outputChunk
                             exitCode = event.exitCode
                             hasCompleted = true
+                            didTimeout = event.timedOut
                             return@collect
                         }
 
@@ -365,7 +448,6 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         ?.trim()
                         ?.ifEmpty { "default" }
                         ?: "default"
-                val target = parseTerminalTarget(tool)
                 val timeoutMs =
                     tool.parameters
                         .find { it.name == "timeout_ms" }
@@ -379,7 +461,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         command = command,
                         executorKey = executorKey,
                         timeoutMs = timeoutMs,
-                        target = target
+                        target = HostTerminalTarget.UBUNTU
                     )
                 val output = extractHiddenExecOutput(hiddenResult)
                 val didTimeout = hiddenResult.state == HostTerminalHiddenResult.State.TIMEOUT
@@ -517,7 +599,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                 }
 
                 val terminal = Terminal.getInstance(context)
-                terminal.closeSession(sessionId)
+                terminal.closeSessionAndWait(sessionId)
 
                 // 从名称映射中移除
                 sessionNameToIdMap.entries.removeIf { it.value == sessionId }
@@ -558,8 +640,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                 }
 
                 val terminal = Terminal.getInstance(context)
-                val session = terminal.terminalState.value.sessions.find { it.id == sessionId }
-                if (session == null) {
+                if (terminal.terminalState.value.sessions.none { it.id == sessionId }) {
                     sessionNameToIdMap.entries.removeIf { it.value == sessionId }
                     return@runBlocking ToolResult(
                         toolName = tool.name,
@@ -569,19 +650,16 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                     )
                 }
 
-                val screen = session.ansiParser.getScreenContent()
-                val content = renderSingleScreen(screen)
-                val rows = screen.size
-                val cols = if (rows > 0) screen[0].size else 0
+                val screen = terminal.getSessionScreen(sessionId)
 
                 ToolResult(
                     toolName = tool.name,
                     success = true,
                     result = TerminalSessionScreenResultData(
                         sessionId = sessionId,
-                        rows = rows,
-                        cols = cols,
-                        content = content
+                        rows = screen.rows,
+                        cols = screen.cols,
+                        content = screen.content
                     )
                 )
             } catch (e: Exception) {
@@ -611,7 +689,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
     }
 
     private suspend fun cancelTimedOutCommand(terminal: Terminal, sessionId: String) {
-        terminal.sendInterruptSignal(sessionId)
+        terminal.sendInterruptSignalAndWait(sessionId)
         val settled =
             withTimeoutOrNull(COMMAND_CANCEL_SETTLE_TIMEOUT_MS) {
                 terminal.terminalState.first { state ->
@@ -649,21 +727,15 @@ class StandardTerminalCommandExecutor(private val context: Context) {
         }
     }
 
-    private fun parseTerminalTarget(tool: AITool): HostTerminalTarget {
-        val rawTarget =
-            tool.parameters
-                .firstOrNull {
-                    it.name == "target" ||
-                        it.name == "terminal_target" ||
-                        it.name == "runtime"
-                }
-                ?.value
-        return HostTerminalTarget.fromWireName(rawTarget)
-    }
-
     private fun sessionMapKey(target: HostTerminalTarget, sessionName: String): String {
         return "${target.wireName}:$sessionName"
     }
+
+    private fun collectionTimeoutMs(commandTimeoutMs: Long): Long =
+        commandTimeoutMs
+            .coerceAtLeast(0L)
+            .coerceAtMost(Long.MAX_VALUE - COMMAND_BACKEND_SETTLE_TIMEOUT_MS) +
+            COMMAND_BACKEND_SETTLE_TIMEOUT_MS
 
     private fun normalizeControl(rawControl: String?): String? {
         val value = rawControl?.trim()?.lowercase()
@@ -682,115 +754,11 @@ class StandardTerminalCommandExecutor(private val context: Context) {
         }
     }
 
-    private fun applyTerminalInput(
+    private suspend fun applyTerminalInput(
         terminal: Terminal,
         sessionId: String,
         hasInput: Boolean,
         input: String,
         control: String?
-    ): Int {
-        if (control == null) {
-            if (hasInput && input.isNotEmpty()) {
-                terminal.sendInput(sessionId, input)
-            }
-            return if (hasInput) input.length else 0
-        }
-
-        if (isModifierControl(control)) {
-            return applyModifierControl(terminal, sessionId, control, hasInput, input)
-        }
-
-        val controlSequence = controlToSequence(control)
-            ?: throw IllegalArgumentException(context.getString(R.string.terminal_error_unsupported_control, control))
-
-        if (hasInput && input.isNotEmpty()) {
-            terminal.sendInput(sessionId, input)
-        }
-        terminal.sendInput(sessionId, controlSequence)
-        return (if (hasInput) input.length else 0) + controlSequence.length
-    }
-
-    private fun isModifierControl(control: String): Boolean {
-        return control == "ctrl" || control == "control" || control == "alt" || control == "shift" || control == "meta" || control == "cmd"
-    }
-
-    private fun applyModifierControl(
-        terminal: Terminal,
-        sessionId: String,
-        control: String,
-        hasInput: Boolean,
-        input: String
-    ): Int {
-        if (!hasInput) {
-            throw IllegalArgumentException(context.getString(R.string.terminal_error_control_requires_input, control))
-        }
-
-        return when (control) {
-            "ctrl", "control" -> applyCtrlCombination(terminal, sessionId, input)
-            "alt", "meta", "cmd" -> {
-                val payload = "\u001b$input"
-                terminal.sendInput(sessionId, payload)
-                payload.length
-            }
-            "shift" -> {
-                val payload = input.uppercase()
-                terminal.sendInput(sessionId, payload)
-                payload.length
-            }
-            else -> throw IllegalArgumentException(context.getString(R.string.terminal_error_unsupported_control, control))
-        }
-    }
-
-    private fun applyCtrlCombination(terminal: Terminal, sessionId: String, input: String): Int {
-        if (input.length != 1) {
-            throw IllegalArgumentException(context.getString(R.string.terminal_error_ctrl_input_single_char))
-        }
-
-        val value = input[0]
-        if (value.equals('c', ignoreCase = true)) {
-            terminal.sendInterruptSignal(sessionId)
-            return 1
-        }
-
-        val code =
-            when (val upper = value.uppercaseChar()) {
-                in 'A'..'Z' -> upper.code - 'A'.code + 1
-                '@' -> 0
-                '[' -> 27
-                '\\' -> 28
-                ']' -> 29
-                '^' -> 30
-                '_' -> 31
-                '?' -> 127
-                else ->
-                    throw IllegalArgumentException(
-                        context.getString(
-                            R.string.terminal_error_ctrl_input_unsupported,
-                            input
-                        )
-                    )
-            }
-
-        terminal.sendInput(sessionId, code.toChar().toString())
-        return 1
-    }
-
-    private fun controlToSequence(control: String): String? {
-        return when (control) {
-            "enter" -> "\r"
-            "tab" -> "\t"
-            "esc" -> "\u001b"
-            "up" -> "\u001b[A"
-            "down" -> "\u001b[B"
-            "left" -> "\u001b[D"
-            "right" -> "\u001b[C"
-            "home" -> "\u001b[H"
-            "end" -> "\u001b[F"
-            "pageup" -> "\u001b[5~"
-            "pagedown" -> "\u001b[6~"
-            "backspace" -> "\u007f"
-            "delete" -> "\u001b[3~"
-            else -> null
-        }
-    }
+    ): Int = terminal.sendInputAndWait(sessionId, hasInput, input, control)
 }

@@ -1,121 +1,78 @@
 package com.ai.assistance.operit.pi
 
-import com.wuxianpi.pi.PiAvailableModel
-import com.wuxianpi.pi.PiConnectionState
-import com.wuxianpi.pi.PiModelStatus
-import com.wuxianpi.pi.PiModelTestResult
+import android.content.Context
+import com.ai.assistance.operit.data.model.PiModelBinding
+import com.ai.assistance.operit.data.preferences.ModelConfigManager
+import com.wuxianpi.pi.PiModelDraftResult
+import com.wuxianpi.pi.PiModelSetupState
 import com.wuxianpi.pi.PiServiceConfig
 import com.wuxianpi.pi.WuxianPiClient
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import okhttp3.HttpUrl.Companion.toHttpUrl
 
-/** Typed model-settings bridge. No Operit provider request class is used by these actions. */
+/** Android-facing adapter for the Pi-owned model setup API. */
 class PiModelSettingsAdapter private constructor() {
-    private val client =
-        WuxianPiClient(PiServiceConfig(OPERIT_PI_RUNTIME_URL.toHttpUrl()))
-    private val connectionMutex = Mutex()
+    private val client = WuxianPiClient(PiServiceConfig(OPERIT_PI_RUNTIME_URL.toHttpUrl()))
+    internal val repository = PiModelSetupRepository(client.models)
+    private val migrationMutex = Mutex()
 
     companion object {
         val instance: PiModelSettingsAdapter by lazy { PiModelSettingsAdapter() }
     }
 
-    suspend fun status(reload: Boolean = false): PiModelStatus {
-        ensureConnected()
-        return if (reload) client.reloadModels() else client.modelStatus()
+    suspend fun setup(): PiModelSetupState = repository.setup()
+
+    suspend fun fetch(draft: PiModelEditorDraft): PiModelDraftResult = repository.fetch(draft)
+
+    suspend fun test(draft: PiModelEditorDraft): PiModelDraftResult = repository.test(draft)
+
+    suspend fun testSavedBinding(binding: PiModelBinding): PiModelDraftResult =
+        repository.testSavedBinding(repository.setup(), binding)
+
+    suspend fun apply(
+        setup: PiModelSetupState,
+        draft: PiModelEditorDraft,
+        setGlobalDefault: Boolean,
+    ): PiModelApplyOutcome = repository.apply(setup, draft, setGlobalDefault)
+
+    suspend fun migrateLegacyConfigs(
+        context: Context,
+        manager: ModelConfigManager,
+    ): PiModelMigrationReport = migrationMutex.withLock {
+        PiModelConfigMigration(
+            repository = repository,
+            configs = AndroidPiModelMigrationConfigStore(manager),
+            state = AndroidPiModelMigrationStateStore(context.applicationContext),
+            rescueStore = AndroidPiModelMigrationRescueStore(context.applicationContext),
+        ).migrateIfNeeded()
     }
 
-    suspend fun models(operitProviderId: String, reload: Boolean = false): List<PiAvailableModel> {
-        val status = status(reload)
-        val provider = resolveNodeProviderId(operitProviderId, status)
-        return status.models.filter { it.provider == provider && it.available }
+    suspend fun ensureLegacyConfigsMigrated(
+        context: Context,
+        manager: ModelConfigManager,
+    ) {
+        val report = migrateLegacyConfigs(context, manager)
+        check(report.complete) {
+            "旧模型配置迁移失败，可重试：${report.failures.entries.joinToString { "${it.key}: ${it.value}" }}"
+        }
     }
 
     suspend fun defaultModelDisplay(): Pair<String, String> {
-        val status = status()
-        val selected = status.defaultModel
-            ?: throw IllegalStateException(status.availabilityError ?: "Pi 尚未设置默认模型")
-        val model = status.models.firstOrNull {
+        val setup = repository.setup()
+        val selected = setup.defaultModel
+            ?: throw IllegalStateException(setup.availabilityError ?: "Pi 尚未设置默认模型")
+        val model = setup.models.firstOrNull {
             it.provider == selected.provider && it.id == selected.modelId
         }
         return selected.provider to (model?.name ?: selected.modelId)
     }
 
-    suspend fun applySettings(
-        operitProviderId: String,
-        apiKey: String?,
-        modelId: String,
-    ) {
-        var status = status()
-        val provider = resolveNodeProviderId(operitProviderId, status)
-        val providerStatus = status.providers.first { it.id == provider }
-        val normalizedKey = apiKey?.trim().orEmpty()
-        if (normalizedKey.isNotEmpty()) {
-            client.loginModelProvider(provider, normalizedKey)
-            status = client.reloadModels()
-        } else if (!providerStatus.authenticated) {
-            throw IllegalStateException("Pi provider ${providerStatus.name} 尚未登录")
+    suspend fun bindingDisplay(binding: PiModelBinding): Pair<String, String> {
+        val setup = repository.setup()
+        val model = setup.models.firstOrNull {
+            it.provider == binding.provider && it.id == binding.modelId
         }
-        val selectedModel = modelId.substringBefore(',').trim()
-        require(selectedModel.isNotEmpty()) { "请选择 Pi 模型" }
-        check(status.models.any { it.provider == provider && it.id == selectedModel && it.available }) {
-            "Pi provider ${providerStatus.name} 中没有可用模型 $selectedModel"
-        }
-        client.setDefaultModel(provider, selectedModel)
-    }
-
-    suspend fun test(
-        operitProviderId: String,
-        modelId: String,
-        apiKey: String?,
-    ): PiModelTestResult {
-        var status = status()
-        val provider = resolveNodeProviderId(operitProviderId, status)
-        val normalizedKey = apiKey?.trim().orEmpty()
-        if (normalizedKey.isNotEmpty()) {
-            client.loginModelProvider(provider, normalizedKey)
-            status = client.reloadModels()
-        }
-        val selectedModel = modelId.substringBefore(',').trim()
-        check(status.models.any { it.provider == provider && it.id == selectedModel }) {
-            "Pi 中未找到模型 $selectedModel"
-        }
-        return client.testModel(provider, selectedModel)
-    }
-
-    suspend fun logout(operitProviderId: String) {
-        val status = status()
-        client.logoutModelProvider(resolveNodeProviderId(operitProviderId, status))
-    }
-
-    private suspend fun ensureConnected() {
-        connectionMutex.withLock {
-            if (client.connection.value !is PiConnectionState.Connected) client.connect()
-        }
+        return binding.provider to (model?.name ?: binding.modelId)
     }
 }
-
-internal fun resolveNodeProviderId(operitProviderId: String, status: PiModelStatus): String {
-    val candidates = providerCandidates(operitProviderId)
-    return status.providers.firstOrNull { provider ->
-        normalizeProviderId(provider.id) in candidates
-    }?.id ?: throw IllegalArgumentException(
-        "Pi 当前没有提供商 $operitProviderId；可用提供商：${status.providers.joinToString { it.id }}"
-    )
-}
-
-internal fun providerCandidates(operitProviderId: String): Set<String> {
-    val normalized = normalizeProviderId(operitProviderId)
-    val aliases = when (normalized) {
-        "openairesponses", "openairesponsesgeneric", "openaigeneric", "openailocal" -> setOf("openai")
-        "anthropicgeneric" -> setOf("anthropic")
-        "geminigeneric" -> setOf("google", "gemini")
-        "fourrouter" -> setOf("4router", "fourrouter")
-        "llamacpp", "mnn" -> emptySet()
-        else -> emptySet()
-    }
-    return aliases + normalized
-}
-
-private fun normalizeProviderId(value: String): String =
-    value.lowercase().filter(Char::isLetterOrDigit)

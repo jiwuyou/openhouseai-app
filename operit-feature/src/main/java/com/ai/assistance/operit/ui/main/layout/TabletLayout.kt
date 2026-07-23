@@ -23,6 +23,7 @@ import androidx.compose.ui.zIndex
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavigationTransitionSource
 import com.ai.assistance.operit.ui.main.TopBarTitleContent
+import com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
 import com.ai.assistance.operit.ui.main.navigation.NavigationEntrySpec
 import com.ai.assistance.operit.ui.main.navigation.RouteEntry
 import com.ai.assistance.operit.ui.main.components.AppContent
@@ -61,6 +62,7 @@ fun TabletLayout(
         isHostedMode: Boolean = false,
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
+        hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
         onToggleSidebar: () -> Unit,
         navigateToTokenConfig: () -> Unit,
         canGoBack: Boolean,
@@ -156,7 +158,8 @@ fun TabletLayout(
                                                 onNavigationEntrySelected = onNavigationEntrySelected,
                                                 isHostedMode = isHostedMode,
                                                 onReturnToHostMainMenu = onReturnToHostMainMenu,
-                                                onCloseHostedOperit = onCloseHostedOperit
+                                                onCloseHostedOperit = onCloseHostedOperit,
+                                                hostedCloseLabel = hostedCloseLabel
                                         )
                                 } else {
                                         CollapsedDrawerContent(
@@ -170,7 +173,8 @@ fun TabletLayout(
                                                 onNavigationEntrySelected = onNavigationEntrySelected,
                                                 isHostedMode = isHostedMode,
                                                 onReturnToHostMainMenu = onReturnToHostMainMenu,
-                                                onCloseHostedOperit = onCloseHostedOperit
+                                                onCloseHostedOperit = onCloseHostedOperit,
+                                                hostedCloseLabel = hostedCloseLabel
                                         )
                                 }
                         }

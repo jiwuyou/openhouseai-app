@@ -63,6 +63,7 @@ import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.screens.ScreenRouteRegistry
 import com.ai.assistance.operit.ui.main.navigation.NavigationEntrySpec
 import com.ai.assistance.operit.ui.main.screens.Screen
+import com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
 import com.ai.assistance.operit.ui.theme.liquidGlass
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -137,7 +138,8 @@ fun DrawerContent(
         onNavigationEntrySelected: (NavigationEntrySpec) -> Unit,
         isHostedMode: Boolean = false,
         onReturnToHostMainMenu: () -> Unit = {},
-        onCloseHostedOperit: () -> Unit = {}
+        onCloseHostedOperit: () -> Unit = {},
+        hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL
 ) {
         val context = LocalContext.current
         val userPreferencesManager = remember(context) { UserPreferencesManager.getInstance(context) }
@@ -304,7 +306,7 @@ fun DrawerContent(
                         Spacer(modifier = Modifier.height(4.dp))
                         CompactNavigationDrawerItem(
                                 icon = Icons.Default.Close,
-                                label = "关闭 Operit",
+                                label = hostedCloseLabel,
                                 selected = false,
                                 appearance = appearance,
                                 onClick = handleCloseHostedOperit
@@ -333,7 +335,8 @@ fun CollapsedDrawerContent(
         onNavigationEntrySelected: (NavigationEntrySpec) -> Unit,
         isHostedMode: Boolean = false,
         onReturnToHostMainMenu: () -> Unit = {},
-        onCloseHostedOperit: () -> Unit = {}
+        onCloseHostedOperit: () -> Unit = {},
+        hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL
 ) {
         Column(
                 modifier =
@@ -431,7 +434,7 @@ fun CollapsedDrawerContent(
                                 IconButton(onClick = onCloseHostedOperit) {
                                         Icon(
                                                 imageVector = Icons.Default.Close,
-                                                contentDescription = "关闭 Operit",
+                                                contentDescription = hostedCloseLabel,
                                                 tint = appearance.itemColor,
                                                 modifier = Modifier.size(24.dp)
                                         )

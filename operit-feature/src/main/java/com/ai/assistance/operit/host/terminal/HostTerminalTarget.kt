@@ -5,12 +5,12 @@ enum class HostTerminalTarget(
     val displayName: String,
     val sessionPrefix: String
 ) {
-    AUTO("auto", "Auto", "auto"),
-    UBUNTU("ubuntu", "Ubuntu", "ubuntu"),
-    HOST("host", "Host", "host");
+    ANDROID("android", "Android", "android"),
+    TERMUX("termux", "Termux", "termux"),
+    UBUNTU("ubuntu", "Ubuntu", "ubuntu");
 
     companion object {
-        val DEFAULT: HostTerminalTarget = AUTO
+        val DEFAULT: HostTerminalTarget = UBUNTU
 
         fun fromWireName(value: String?): HostTerminalTarget {
             val normalized = value?.trim()?.lowercase().orEmpty()

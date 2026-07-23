@@ -95,6 +95,10 @@ class PiTransportInternalsTest {
             "http://127.0.0.1:8765/v1/ws",
             resolveServiceWebSocketUrl(base).toString(),
         )
+        assertEquals(
+            "http://127.0.0.1:8765/api/web/v1/models/setup",
+            resolveServiceHttpUrl(base, WuxianPiModelClient.MODELS_SETUP_PATH).toString(),
+        )
         assertThrows(IllegalArgumentException::class.java) {
             requireLoopbackService("https://example.com/".toHttpUrl())
         }

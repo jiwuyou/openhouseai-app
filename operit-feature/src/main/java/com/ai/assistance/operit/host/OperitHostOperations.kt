@@ -1,11 +1,17 @@
 package com.ai.assistance.operit.host
 
 import android.content.Context
+import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import org.json.JSONObject
 
 /** Host capabilities used by shared Operit and Rescue UI without naming a host implementation. */
 interface OperitHostOperations {
+    /** Optional real terminal/session backend supplied by the active host adapter. */
+    val terminalSessionBackend: HostTerminalSessionBackend?
+        get() = null
+
+    /** Execute on exactly the requested ANDROID, TERMUX, or UBUNTU backend without fallback. */
     suspend fun executeCommand(
         command: String,
         target: HostTerminalTarget = HostTerminalTarget.DEFAULT,

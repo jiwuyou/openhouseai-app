@@ -14,10 +14,13 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.80.10",
     "fflate": "0.8.2",
+    "jsonc-parser": "3.3.1",
+    "proper-lockfile": "4.1.2",
     "ws": "8.18.3"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
+    "@types/proper-lockfile": "4.1.4",
     "@types/ws": "8.18.1",
     "typescript": "5.9.3"
   }

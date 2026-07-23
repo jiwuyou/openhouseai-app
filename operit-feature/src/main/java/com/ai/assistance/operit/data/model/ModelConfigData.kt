@@ -63,6 +63,33 @@ object ModelConfigDefaults {
         const val DEFAULT_SUMMARY_MESSAGE_COUNT_THRESHOLD = 16
 }
 
+/** Android-owned reference to a model configured by the shared Pi Runtime. */
+@Serializable
+data class PiModelBinding(
+        val provider: String,
+        val modelId: String,
+) {
+        init {
+                require(provider.isNotBlank()) { "Pi provider must not be blank" }
+                require(modelId.isNotBlank()) { "Pi model ID must not be blank" }
+        }
+}
+
+/**
+ * Read-only snapshot retained after the one-time Pi migration.
+ *
+ * These values are not consulted by normal cloud execution. They only preserve the user's old
+ * Android configuration for inspection or a deliberate migration retry.
+ */
+@Serializable
+data class LegacyCloudModelBackup(
+        val apiKey: String = "",
+        val apiEndpoint: String = "",
+        val modelName: String = "",
+        val apiProviderTypeId: String = "",
+        val customHeaders: String = "{}",
+)
+
 /** 表示完整的模型配置，包括API设置和模型参数 */
 @Serializable
 data class ModelConfigData(
@@ -75,6 +102,10 @@ data class ModelConfigData(
         val modelName: String = "",
         val apiProviderType: ApiProviderType = ApiProviderType.DEEPSEEK,
         val apiProviderTypeId: String = apiProviderType.name,
+
+        // Pi Runtime owns normal cloud-provider details. Android owns only this named binding.
+        val piModelBinding: PiModelBinding? = null,
+        val legacyCloudBackup: LegacyCloudModelBackup? = null,
 
         // 多API Key支持
         val useMultipleApiKeys: Boolean = false, // 是否启用多API Key模式
@@ -158,6 +189,33 @@ data class ModelConfigData(
         val requestLimitPerMinute: Int = 0, // 每分钟最大请求次数，0表示不限流
         val maxConcurrentRequests: Int = 0 // 最大并发请求数，0表示不限制
 )
+
+fun ModelConfigData.usesAndroidLocalModelEngine(): Boolean =
+        apiProviderType == ApiProviderType.MNN || apiProviderType == ApiProviderType.LLAMA_CPP
+
+fun ModelConfigData.usesPiRuntime(): Boolean =
+        apiProviderTypeId.equals("PI_RUNTIME", ignoreCase = true) || piModelBinding != null
+
+fun ModelConfigData.withoutAndroidCloudCredentialAuthority(): ModelConfigData =
+        copy(
+                apiKey = "",
+                apiEndpoint = "",
+                modelName = "",
+                customHeaders = "{}",
+                useMultipleApiKeys = false,
+                apiKeyPool = emptyList(),
+                currentKeyIndex = 0,
+        )
+
+fun ModelConfigData.legacyCloudBackupSnapshot(): LegacyCloudModelBackup =
+        legacyCloudBackup
+                ?: LegacyCloudModelBackup(
+                        apiKey = apiKey,
+                        apiEndpoint = apiEndpoint,
+                        modelName = modelName,
+                        apiProviderTypeId = apiProviderTypeId,
+                        customHeaders = customHeaders,
+                )
 
 /** 简化版的模型配置数据，用于列表显示 */
 @Serializable

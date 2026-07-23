@@ -237,7 +237,7 @@
     <string name="workflow_trigger_fallback">Pencetus</string>
     <string name="workflow_execute_config_title">Konfigurasi pelaksanaan</string>
     <string name="workflow_tool_name_label">Nama alat</string>
-    <string name="workflow_tool_name_placeholder">Contoh: execute_shell</string>
+    <string name="workflow_tool_name_placeholder">Contoh: execute_android_command</string>
     <string name="workflow_tool_params_title">Parameter alat</string>
     <string name="workflow_param_name_label">Nama parameter</string>
     <string name="workflow_param_value_label">Nilai parameter</string>
@@ -4984,7 +4984,6 @@ Kini anda boleh menggunakan mod AutoGLM di antara muka perbualan.</string>
     <string name="vd_overlay_a11y_stop_automation">Hentikan automasi</string>
     <string name="toolreg_env_info"> (Persekitaran: %1$s)</string>
     <string name="toolreg_env_arrow_info"> (%1$s → %2$s)</string>
-    <string name="toolreg_execute_shell_desc">Laksanakan ADB Shell: %1$s</string>
     <string name="toolreg_close_all_virtual_displays_desc">Tutup semua paparan maya</string>
     <string name="toolreg_unnamed">Tanpa nama</string>
     <string name="toolreg_create_terminal_session_desc">Cipta atau dapatkan sesi terminal: %1$s</string>

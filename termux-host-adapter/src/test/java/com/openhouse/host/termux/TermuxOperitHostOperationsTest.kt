@@ -9,6 +9,7 @@ import com.wuxianpi.openhouse.core.registry.RegistryRemoteResult
 import com.wuxianpi.openhouse.core.registry.RegistryRepository
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -22,23 +23,32 @@ class TermuxOperitHostOperationsTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
-    fun autoAndHostUseMatureTermuxEnvironment() {
+    fun termuxTargetUsesMatureTermuxEnvironment() {
         val fixture = termuxFixture()
-        listOf(HostTerminalTarget.AUTO, HostTerminalTarget.HOST).forEach { target ->
-            val result = fixture.executor.execute(
-                "printf '%s' \"\$HOME|\$PREFIX|\$PATH|\$LD_LIBRARY_PATH|\$TMPDIR|\$OPERIT_HOST_TERMINAL_TARGET\"",
-                target,
-                5_000L,
-            )
-            assertTrue(result.error, result.isSuccess)
-            val values = result.stdout.split('|')
-            assertEquals(fixture.home.absolutePath, values[0])
-            assertEquals(fixture.prefix.absolutePath, values[1])
-            assertTrue(values[2].startsWith("${fixture.prefix}/bin:/system/bin"))
-            assertTrue(values[3].startsWith("${fixture.prefix}/lib"))
-            assertEquals("${fixture.prefix}/tmp", values[4])
-            assertEquals("termux", values[5])
-        }
+        val result = fixture.executor.execute(
+            "printf '%s' \"\$HOME|\$PREFIX|\$PATH|\$LD_LIBRARY_PATH|\$TMPDIR|\$OPERIT_HOST_TERMINAL_TARGET\"",
+            HostTerminalTarget.TERMUX,
+            5_000L,
+        )
+        assertTrue(result.error, result.isSuccess)
+        val values = result.stdout.split('|')
+        assertEquals(fixture.home.absolutePath, values[0])
+        assertEquals(fixture.prefix.absolutePath, values[1])
+        assertTrue(values[2].startsWith("${fixture.prefix}/bin:/system/bin"))
+        assertTrue(values[3].startsWith("${fixture.prefix}/lib"))
+        assertEquals("${fixture.prefix}/tmp", values[4])
+        assertEquals("termux", values[5])
+    }
+
+    @Test
+    fun androidTargetUsesIndependentSystemShellExecutor() {
+        val executor = TermuxAndroidShellCommandExecutor(
+            workingDirectory = temporaryFolder.root,
+            shell = File("/bin/bash"),
+        )
+        val result = executor.execute("printf android", 5_000L)
+        assertTrue(result.error, result.isSuccess)
+        assertEquals("android", result.stdout)
     }
 
     @Test
@@ -70,7 +80,7 @@ class TermuxOperitHostOperationsTest {
         val fixture = termuxFixture()
         val result = fixture.executor.execute(
             "yes A | head -c 200000; yes B | head -c 200000 >&2",
-            HostTerminalTarget.HOST,
+            HostTerminalTarget.TERMUX,
             10_000L,
         )
         assertTrue(result.error, result.isSuccess)
@@ -83,7 +93,7 @@ class TermuxOperitHostOperationsTest {
         val fixture = termuxFixture()
         val result = fixture.executor.execute(
             "printf before; printf problem >&2; sleep 2",
-            HostTerminalTarget.AUTO,
+            HostTerminalTarget.TERMUX,
             80L,
         )
         assertTrue(result.timedOut)
@@ -91,6 +101,27 @@ class TermuxOperitHostOperationsTest {
         assertTrue(result.stdout.contains("before"))
         assertTrue(result.stderr.contains("problem"))
         assertTrue(result.error.contains("timed out"))
+    }
+
+    @Test
+    fun embeddedTmuxTransportExecutesInternallyAndForwardsStdin() = runBlocking {
+        val fixture = termuxFixture()
+        executable(
+            File(fixture.prefix, "bin/read-stdin"),
+            "#!/bin/sh\nprintf '%s|' \"\$PREFIX\"\ncat\n",
+        )
+        val transport = EmbeddedTermuxSessionTransport(
+            TermuxRuntimeLayout(fixture.prefix, fixture.home),
+        )
+        val result = transport.executeProgram(
+            program = "read-stdin",
+            arguments = emptyList(),
+            stdin = "payload",
+            timeoutMs = 5_000L,
+        )
+        assertEquals(0, result.exitCode)
+        assertEquals(-1, result.errCode)
+        assertEquals("${fixture.prefix.absolutePath}|payload", result.stdout)
     }
 
     @Test

@@ -33,7 +33,7 @@
     <string name="workflow_trigger_fallback">Pemicu</string>
     <string name="workflow_execute_config_title">Konfigurasi Eksekusi</string>
     <string name="workflow_tool_name_label">Nama Alat</string>
-    <string name="workflow_tool_name_placeholder">Contoh: execute_shell</string>
+    <string name="workflow_tool_name_placeholder">Contoh: execute_android_command</string>
     <string name="workflow_tool_params_title">Parameter Alat</string>
     <string name="workflow_param_name_label">Nama Parameter</string>
     <string name="workflow_param_value_label">Nilai Parameter</string>
@@ -5027,7 +5027,6 @@ Sekarang Anda dapat menggunakan mode AutoGLM di antarmuka percakapan.</string>
     <string name="vd_overlay_a11y_stop_automation">Hentikan Otomatisasi</string>
     <string name="toolreg_env_info"> (Lingkungan: %1$s)</string>
     <string name="toolreg_env_arrow_info"> (%1$s → %2$s)</string>
-    <string name="toolreg_execute_shell_desc">Jalankan ADB Shell: %1$s</string>
     <string name="toolreg_close_all_virtual_displays_desc">Tutup semua layar virtual</string>
     <string name="toolreg_unnamed">Tanpa Nama</string>
     <string name="toolreg_create_terminal_session_desc">Buat atau dapatkan sesi terminal: %1$s</string>

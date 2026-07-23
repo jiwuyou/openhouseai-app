@@ -4,6 +4,8 @@ export type ModelProviderApi =
   | "anthropic-messages"
   | "google-generative-ai";
 
+export type ModelProviderApiSelection = ModelProviderApi | "auto";
+
 export interface ModelProviderPreset {
   id: string;
   aliases: string[];
@@ -380,6 +382,20 @@ export function getModelProviderPreset(providerId: string | undefined): ModelPro
 
 export function isSupportedModelProviderApi(api: string | undefined): api is ModelProviderApi {
   return typeof api === "string" && SUPPORTED_MODEL_PROVIDER_APIS.has(api as ModelProviderApi);
+}
+
+export function normalizeModelProviderApi(
+  value: string | undefined,
+  options: { allowAuto?: boolean } = {},
+): ModelProviderApiSelection | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (options.allowAuto && normalized === "auto") return "auto";
+  if (normalized === "claude" || normalized === "anthropic") return "anthropic-messages";
+  if (normalized === "gpt") return "openai-responses";
+  if (normalized === "openai") return "openai-completions";
+  if (normalized === "gemini") return "google-generative-ai";
+  return isSupportedModelProviderApi(normalized) ? normalized : undefined;
 }
 
 export function providerAllowsMissingApiKey(providerId: string | undefined, api?: string): boolean {

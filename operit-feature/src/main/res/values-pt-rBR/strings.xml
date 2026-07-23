@@ -232,7 +232,7 @@
     <string name="workflow_trigger_fallback">acionar</string>
     <string name="workflow_execute_config_title">Executar configuração</string>
     <string name="workflow_tool_name_label">Nome da ferramenta</string>
-    <string name="workflow_tool_name_placeholder">Por exemplo: execute_shell</string>
+    <string name="workflow_tool_name_placeholder">Por exemplo: execute_android_command</string>
     <string name="workflow_tool_params_title">Parâmetros da ferramenta</string>
     <string name="workflow_param_name_label">Nome do parâmetro</string>
     <string name="workflow_param_value_label">Valor do parâmetro</string>
@@ -4680,7 +4680,6 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="vd_overlay_a11y_stop_automation">Pare a automação</string>
     <string name="toolreg_env_info">(Ambiente: %1$s)</string>
     <string name="toolreg_env_arrow_info">(%1$s → %2$s)</string>
-    <string name="toolreg_execute_shell_desc">Executar Shell ADB: %1$s</string>
     <string name="toolreg_close_all_virtual_displays_desc">Feche todas as telas virtuais</string>
     <string name="toolreg_unnamed">Sem nome</string>
     <string name="toolreg_create_terminal_session_desc">Crie ou obtenha sessão de terminal: %1$s</string>

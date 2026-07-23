@@ -7,8 +7,15 @@ data class OperitHostCommandResult(
     val stderr: String,
     val error: String,
     val timedOut: Boolean,
-    val durationMs: Long
+    val durationMs: Long,
+    val transportErrorCode: Int = -1,
+    val transportErrorMessage: String = "",
 ) {
     val isSuccess: Boolean
-        get() = exitCode == 0 && error.isBlank() && !timedOut
+        get() =
+            exitCode == 0 &&
+                error.isBlank() &&
+                transportErrorCode == -1 &&
+                transportErrorMessage.isBlank() &&
+                !timedOut
 }

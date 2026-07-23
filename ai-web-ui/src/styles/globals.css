@@ -873,6 +873,34 @@ button:disabled { cursor: not-allowed !important; opacity: .48; transform: none 
   background: color-mix(in srgb, var(--bg-panel) 94%, var(--bg));
 }
 .models-page-footer > button { flex: 1 1 0; min-height: 42px; }
+.models-mode-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; margin: 0 20px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); }
+.models-mode-switch button { min-height: 34px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 12px; }
+.models-mode-switch button.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 5px rgba(0,0,0,.08); font-weight: 700; }
+.model-setup-easy { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(0, 1.3fr); gap: 16px; }
+.model-provider-picker { display: grid; align-content: start; gap: 6px; }
+.model-provider-picker button { display: flex; flex-direction: column; gap: 3px; min-height: 54px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.model-provider-picker button.active { border-color: color-mix(in srgb, var(--accent) 65%, var(--border)); background: color-mix(in srgb, var(--accent) 7%, var(--bg)); }
+.model-provider-picker small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.model-setup-panel { align-self: start; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.model-setup-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.model-setup-actions > button { min-height: 36px; padding: 7px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text); cursor: pointer; }
+.model-setup-actions > button:disabled { opacity: .45; cursor: not-allowed; }
+.model-default-toggle { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: var(--text-muted); font-size: 11px; }
+.model-discovery-report { height: 220px; margin-top: 12px; padding: 10px 11px; overflow: auto; border: 1px solid transparent; border-radius: 8px; color: var(--text-muted); font-size: 11px; line-height: 1.45; box-sizing: border-box; }
+.model-discovery-report.active { border-color: var(--border); background: var(--bg-panel); }
+.model-discovery-report > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+.model-discovery-modes { display: grid; gap: 4px; }
+.model-discovery-modes > div { display: grid; grid-template-columns: minmax(80px, .45fr) minmax(0, 1fr); gap: 8px; }
+.model-discovery-models { display: grid; gap: 4px; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--border); }
+.model-discovery-models > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.model-discovery-models code { overflow-wrap: anywhere; color: var(--text); }
+.model-discovery-models span { flex: 0 0 auto; color: var(--text-muted); text-align: right; }
+.model-discovery-report .success { color: #16a34a; }
+.model-discovery-report .error { color: #ef4444; }
+.model-provider-editor.settings-card { border-radius: 8px; }
+.model-provider-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.model-provider-add input, .model-provider-add button { min-height: 40px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text); }
+.model-provider-add button { cursor: pointer; }
 
 @media (min-width: 860px) {
   .models-page-backdrop {
@@ -894,4 +922,8 @@ button:disabled { cursor: not-allowed !important; opacity: .48; transform: none 
   .models-page-body { padding: 18px 20px 24px; }
   .models-page-footer { justify-content: flex-end; padding: 12px 20px max(12px, env(safe-area-inset-bottom)); }
   .models-page-footer > button { flex: 0 0 auto; }
+  .model-setup-easy { grid-template-columns: 1fr; }
+  .model-provider-picker { display: flex; overflow-x: auto; }
+  .model-provider-picker button { flex: 0 0 150px; }
+  .models-mode-switch { margin-left: 14px; margin-right: 14px; }
 }

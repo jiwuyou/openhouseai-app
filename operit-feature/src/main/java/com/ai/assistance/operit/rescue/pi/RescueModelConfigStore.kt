@@ -5,6 +5,8 @@ import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
+import com.ai.assistance.operit.data.model.usesAndroidLocalModelEngine
+import com.ai.assistance.operit.data.model.usesPiRuntime
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -18,14 +20,24 @@ class RescueModelConfigStore(context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
 
     fun save(config: ModelConfigData) {
-        require(config.apiEndpoint.isNotBlank()) { "Rescue model API endpoint must not be blank" }
-        require(config.modelName.isNotBlank()) { "Rescue model name must not be blank" }
+        validateDirectConfig(config)
         preferences.edit().putString(KEY_MODEL_CONFIG, json.encodeToString(config)).commit()
+    }
+
+    fun snapshotIfAbsent(config: ModelConfigData): Boolean {
+        validateDirectConfig(config)
+        synchronized(preferences) {
+            if (preferences.contains(KEY_MODEL_CONFIG)) return false
+            check(preferences.edit().putString(KEY_MODEL_CONFIG, json.encodeToString(config)).commit()) {
+                "Failed to persist Rescue model snapshot"
+            }
+            return true
+        }
     }
 
     suspend fun load(): ModelConfigData {
         preferences.getString(KEY_MODEL_CONFIG, null)?.let { encoded ->
-            return json.decodeFromString(encoded)
+            return json.decodeFromString<ModelConfigData>(encoded).also(::validateDirectConfig)
         }
 
         // The first rescue launch snapshots the Android-local Operit setting. Subsequent launches
@@ -43,6 +55,13 @@ class RescueModelConfigStore(context: Context) {
         }
         save(configured)
         return configured
+    }
+
+    private fun validateDirectConfig(config: ModelConfigData) {
+        require(!config.usesPiRuntime()) { "Rescue model must use an Android-owned direct configuration" }
+        require(!config.usesAndroidLocalModelEngine()) { "Rescue model does not use Android local model engines" }
+        require(config.apiEndpoint.isNotBlank()) { "Rescue model API endpoint must not be blank" }
+        require(config.modelName.isNotBlank()) { "Rescue model name must not be blank" }
     }
 
     companion object {

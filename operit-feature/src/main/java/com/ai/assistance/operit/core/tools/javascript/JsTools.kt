@@ -799,7 +799,7 @@ fun getJsToolsDefinition(): String {
                         }
                     }
                 },
-                shell: (command) => toolCall("execute_shell", { command }),
+                shell: (command) => toolCall("execute_android_command", { command }),
                 // 执行终端命令 - 一次性收集输出
                 terminal: {
                     create: (sessionName) => toolCall("create_terminal_session", { session_name: sessionName }),

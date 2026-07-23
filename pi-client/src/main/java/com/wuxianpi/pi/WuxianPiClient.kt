@@ -70,7 +70,7 @@ internal val PROMPT_ACCEPT_TIMEOUT_MILLIS: Long? = null
  */
 class WuxianPiClient(
     private val config: PiServiceConfig,
-    private val http: OkHttpClient = OkHttpClient(),
+    private val http: OkHttpClient = PiHttpTransport.sharedClient,
     parentScope: CoroutineScope? = null,
     private val diagnostics: PiDiagnosticSink = NoOpPiDiagnosticSink,
 ) : AutoCloseable {
@@ -97,6 +97,9 @@ class WuxianPiClient(
     val connection: StateFlow<PiConnectionState> = _connection.asStateFlow()
     val agentActive: StateFlow<Boolean> = _agentActive.asStateFlow()
     val runtimeReady: StateFlow<PiRuntimeReady?> = _runtimeReady.asStateFlow()
+    val models: WuxianPiModelClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        WuxianPiModelClient(config, http)
+    }
 
     @Volatile private var socket: WebSocket? = null
     @Volatile private var explicitClose = false

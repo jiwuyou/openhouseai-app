@@ -265,17 +265,13 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
         )
     }
 
-    // 不在提示词加入的工具
     handler.registerTool(
-            name = "execute_shell",
+            name = "execute_android_command",
             descriptionGenerator = { tool ->
                 val command = tool.parameters.find { it.name == "command" }?.value ?: ""
-                s(R.string.toolreg_execute_shell_desc, command)
+                s(R.string.toolreg_execute_android_command_desc, command)
             },
-            executor = { tool ->
-                val adbTool = ToolGetter.getShellToolExecutor(context)
-                adbTool.invoke(tool)
-            }
+            executor = { tool -> ToolGetter.getShellToolExecutor(context).invoke(tool) }
     )
 
     handler.registerTool(
@@ -297,6 +293,19 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
                             error = e.message
                     )
                 }
+            }
+    )
+
+    handler.registerTool(
+            name = "execute_termux_command",
+            descriptionGenerator = { tool ->
+                val command = tool.parameters.find { it.name == "command" }?.value ?: ""
+                val packageName =
+                        tool.parameters.find { it.name == "package_name" }?.value ?: "com.termux"
+                s(R.string.toolreg_execute_termux_command_desc, packageName, command)
+            },
+            executor = { tool ->
+                ToolGetter.getTerminalCommandExecutor(context).executeTermuxCommand(tool)
             }
     )
 

@@ -256,7 +256,7 @@
 
     <string name="workflow_execute_config_title">执行配置</string>
     <string name="workflow_tool_name_label">工具名称</string>
-    <string name="workflow_tool_name_placeholder">例如: execute_shell</string>
+    <string name="workflow_tool_name_placeholder">例如: execute_android_command</string>
     <string name="workflow_tool_params_title">工具参数</string>
     <string name="workflow_param_name_label">参数名</string>
     <string name="workflow_param_value_label">参数值</string>
@@ -5713,7 +5713,9 @@
 
     <string name="toolreg_env_info"> (环境: %1$s)</string>
     <string name="toolreg_env_arrow_info"> (%1$s → %2$s)</string>
-    <string name="toolreg_execute_shell_desc">执行ADB Shell: %1$s</string>
+    <string name="toolreg_execute_android_command_desc">通过 Android /system/bin/sh 执行: %1$s</string>
+    <string name="toolreg_execute_termux_command_desc">通过 Termux「%1$s」执行: %2$s</string>
+    <string name="termux_error_execute_command">Termux 命令执行失败: %1$s</string>
     <string name="toolreg_close_all_virtual_displays_desc">关闭所有虚拟屏幕</string>
     <string name="toolreg_unnamed">未命名</string>
     <string name="toolreg_create_terminal_session_desc">创建或获取终端会话: %1$s</string>

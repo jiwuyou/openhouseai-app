@@ -13,14 +13,47 @@ object SystemToolPromptsInternal {
                 tools =
                     listOf(
                         ToolPrompt(
-                            name = "execute_shell",
-                            description = "Execute a device shell command.",
+                            name = "execute_termux_command",
+                            description = "Execute a one-shot command in the active host's Termux user space.",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
                                         name = "command",
                                         type = "string",
-                                        description = "shell command to execute",
+                                        description = "command to execute with Termux bash -lc",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "package_name",
+                                        type = "string",
+                                        description = "Termux package name; the shared host currently supports com.termux",
+                                        required = false,
+                                        default = "com.termux"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "working_directory",
+                                        type = "string",
+                                        description = "optional working directory inside Termux",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "optional command timeout in milliseconds",
+                                        required = false,
+                                        default = "120000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "execute_android_command",
+                            description = "Execute a one-shot command with the active host's Android /system/bin/sh runner.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "command",
+                                        type = "string",
+                                        description = "command to execute in Android shell",
                                         required = true
                                     )
                                 )
@@ -95,7 +128,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "execute_hidden_terminal_command",
-                            description = "Execute a command in a hidden non-PTY terminal executor. Commands using the same executor_key reuse the same hidden login context and are not shown in the visible terminal UI.",
+                            description = "Execute a command in a hidden Ubuntu tmux session. Commands using the same executor_key reuse the same hidden login context and are not shown in the visible terminal UI.",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -2999,14 +3032,47 @@ object SystemToolPromptsInternal {
                 tools =
                     listOf(
                         ToolPrompt(
-                            name = "execute_shell",
-                            description = "执行设备 Shell 命令。",
+                            name = "execute_termux_command",
+                            description = "在当前 Host 的 Termux 用户空间中执行一次性命令。",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
                                         name = "command",
                                         type = "string",
-                                        description = "要执行的命令",
+                                        description = "通过 Termux bash -lc 执行的命令",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "package_name",
+                                        type = "string",
+                                        description = "Termux 包名；共享 Host 当前支持 com.termux",
+                                        required = false,
+                                        default = "com.termux"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "working_directory",
+                                        type = "string",
+                                        description = "可选，Termux 内的工作目录",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "可选，命令超时时间（毫秒）",
+                                        required = false,
+                                        default = "120000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "execute_android_command",
+                            description = "通过当前 Host 的 Android /system/bin/sh 执行一次性命令。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "command",
+                                        type = "string",
+                                        description = "要在 Android shell 中执行的命令",
                                         required = true
                                     )
                                 )
@@ -3081,7 +3147,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "execute_hidden_terminal_command",
-                            description = "在隐藏的非 PTY 终端执行器中执行命令。使用相同 executor_key 的命令会复用同一个后台登录上下文，且不会显示在可见终端 UI 中。",
+                            description = "在隐藏的 Ubuntu tmux 会话中执行命令。使用相同 executor_key 的命令会复用同一个后台登录上下文，且不会显示在可见终端 UI 中。",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
+import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.wuxianpi.openhouse.core.HostActionResult
 import com.wuxianpi.openhouse.core.HostCapabilities
 import com.wuxianpi.openhouse.core.ProductRoute
@@ -61,7 +62,12 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
                 "com.wuxianpi.openhouse.feature.OpenHouseActivity",
             )
             ProductRoute.ADVANCED -> OpenHouseFeature.createAdvancedUiIntent(activity)
-            ProductRoute.REPAIR -> OperitAiLauncher.repairIntent(activity)
+            ProductRoute.REPAIR -> OperitAiLauncher.repairIntent(activity).apply {
+                putExtra(
+                    RescueActivity.EXTRA_HOST_RETURN_ACTIVITY,
+                    "com.wuxianpi.openhouse.feature.OpenHouseActivity",
+                )
+            }
             else -> return
         }
         activity.startActivity(intent)

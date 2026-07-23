@@ -6,6 +6,7 @@ import com.ai.assistance.operit.host.terminal.HostTerminalHiddenResult
 import com.ai.assistance.operit.host.terminal.HostTerminalState
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.ai.assistance.operit.host.terminal.HostTerminalAdapter
+import com.ai.assistance.operit.host.terminal.HostTerminalScreenSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -34,7 +35,7 @@ class Terminal private constructor(private val context: Context) {
 
     suspend fun initialize(): Boolean = adapter.initialize()
 
-    fun destroy() {
+    suspend fun destroy() {
         adapter.destroy()
     }
 
@@ -49,6 +50,10 @@ class Terminal private constructor(private val context: Context) {
 
     fun closeSession(sessionId: String) {
         adapter.closeSession(sessionId)
+    }
+
+    suspend fun closeSessionAndWait(sessionId: String) {
+        adapter.closeSessionAndWait(sessionId)
     }
 
     suspend fun executeCommand(sessionId: String, command: String): String? {
@@ -72,17 +77,35 @@ class Terminal private constructor(private val context: Context) {
         return adapter.executeHiddenCommand(command, executorKey, timeoutMs, target)
     }
 
-    fun executeCommandFlow(sessionId: String, command: String): Flow<HostTerminalCommandEvent> {
-        return adapter.executeCommandFlow(sessionId, command)
+    fun executeCommandFlow(
+        sessionId: String,
+        command: String,
+        timeoutMs: Long = 120000L,
+    ): Flow<HostTerminalCommandEvent> {
+        return adapter.executeCommandFlow(sessionId, command, timeoutMs)
     }
 
     fun sendInput(sessionId: String, input: String) {
         adapter.sendInput(sessionId, input)
     }
 
+    suspend fun sendInputAndWait(
+        sessionId: String,
+        hasInput: Boolean,
+        input: String,
+        control: String? = null
+    ): Int = adapter.sendInputAndWait(sessionId, hasInput, input, control)
+
     fun sendInterruptSignal(sessionId: String) {
         adapter.sendInterruptSignal(sessionId)
     }
+
+    suspend fun sendInterruptSignalAndWait(sessionId: String) {
+        adapter.sendInterruptSignalAndWait(sessionId)
+    }
+
+    suspend fun getSessionScreen(sessionId: String): HostTerminalScreenSnapshot =
+        adapter.getSessionScreen(sessionId)
 
     fun isConnected(): Boolean = adapter.isConnected()
 }

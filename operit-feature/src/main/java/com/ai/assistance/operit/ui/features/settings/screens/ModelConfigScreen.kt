@@ -35,12 +35,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.api.chat.llmprovider.ModelConfigConnectionTester
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigData
+import com.ai.assistance.operit.data.model.usesAndroidLocalModelEngine
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
-import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.pi.PiModelSettingsAdapter
+import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.ui.features.settings.DebouncedModelConfigAutoSaveEffect
 import com.ai.assistance.operit.ui.features.settings.RegisterModelConfigSaveAction
 import com.ai.assistance.operit.ui.features.settings.rememberModelConfigSaveCoordinator
@@ -51,6 +53,7 @@ import com.ai.assistance.operit.ui.features.settings.sections.SettingsInfoBanner
 import com.ai.assistance.operit.ui.features.settings.sections.SettingsSectionHeader
 import com.ai.assistance.operit.ui.features.settings.sections.SettingsSwitchRow
 import com.ai.assistance.operit.ui.features.settings.sections.SettingsTextField
+import com.ai.assistance.operit.util.AppLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -149,6 +152,7 @@ fun ModelConfigScreen(
     val listState = rememberLazyListState()
     val saveCoordinator = rememberModelConfigSaveCoordinator()
     val piModelSettings = remember { PiModelSettingsAdapter.instance }
+    val rescueContext = remember(context) { RescueActivity.isRescueContext(context) }
 
     // 配置状态
     val configList = configManager.configListFlow.collectAsState(initial = listOf("default")).value
@@ -177,6 +181,19 @@ fun ModelConfigScreen(
     LaunchedEffect(Unit) {
         configManager.initializeIfNeeded()
         functionalConfigManager.initializeIfNeeded()
+
+        if (!rescueContext) {
+            runCatching { piModelSettings.migrateLegacyConfigs(context, configManager) }
+                .onSuccess { report ->
+                    if (report.failures.isNotEmpty()) {
+                        confirmMessage = "部分旧模型配置迁移失败，可保持页面打开后重试：${report.failures.keys.joinToString()}"
+                        showSaveSuccessMessage = true
+                    }
+                }
+                .onFailure { error ->
+                    AppLogger.w("ModelConfigScreen", "Pi model migration unavailable", error)
+                }
+        }
 
         val chatConfigId = functionalConfigManager.getConfigIdForFunction(FunctionType.CHAT)
         val availableConfigIds = configManager.configListFlow.first()
@@ -401,25 +418,32 @@ fun ModelConfigScreen(
                                                     configManager.getModelConfig(selectedConfigId)
 
                                                 latestConfig?.let { config ->
-                                                    val tested =
-                                                        piModelSettings.test(
-                                                            operitProviderId = config.apiProviderTypeId,
-                                                            modelId = config.modelName,
-                                                            apiKey = config.apiKey.takeUnless {
-                                                                it.isBlank() || it == ApiPreferences.DEFAULT_API_KEY
-                                                            },
-                                                        )
+                                                    val testResult =
+                                                        if (!rescueContext && !config.usesAndroidLocalModelEngine()) {
+                                                            val binding = requireNotNull(config.piModelBinding) {
+                                                                "当前命名配置尚未绑定 Pi 模型，请先保存并启用"
+                                                            }
+                                                            val tested = piModelSettings.testSavedBinding(binding)
+                                                            if (tested.ok) Result.success(Unit)
+                                                            else Result.failure(Exception(tested.message ?: "Pi model test failed"))
+                                                        } else {
+                                                            val report = ModelConfigConnectionTester.run(
+                                                                context = context,
+                                                                modelConfigManager = configManager,
+                                                                config = config,
+                                                            )
+                                                            if (report.success) Result.success(Unit)
+                                                            else Result.failure(
+                                                                Exception(
+                                                                    report.items.firstOrNull { !it.success }?.error
+                                                                        ?: "Local model test failed"
+                                                                )
+                                                            )
+                                                        }
                                                     results.add(
                                                         ConnectionTestItem(
                                                             labelResId = R.string.test_item_chat,
-                                                            result =
-                                                                if (tested.ok) Result.success(Unit)
-                                                                else Result.failure(
-                                                                    Exception(
-                                                                        tested.status
-                                                                            ?: tested.text.ifBlank { "Pi model test failed" }
-                                                                    )
-                                                                ),
+                                                            result = testResult,
                                                         )
                                                     )
                                                 } ?: run {
@@ -646,13 +670,15 @@ fun ModelConfigScreen(
                     )
                 }
 
-                item {
-                    CustomHeadersSettingsSection(
-                        config = config,
-                        configManager = configManager,
-                        saveCoordinator = saveCoordinator,
-                        showNotification = { message -> showNotification(message) }
-                    )
+                if (rescueContext || config.usesAndroidLocalModelEngine()) {
+                    item {
+                        CustomHeadersSettingsSection(
+                            config = config,
+                            configManager = configManager,
+                            saveCoordinator = saveCoordinator,
+                            showNotification = { message -> showNotification(message) }
+                        )
+                    }
                 }
 
                 item {

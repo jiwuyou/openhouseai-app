@@ -2,9 +2,12 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Required for the rescue runtime to invoke Termux commands through its
-         documented external-command service. -->
+    <!-- External Termux tools and Ubuntu sessions use the installed Termux userspace. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
 
     <application
         android:name="com.openhouse.host.nativeapp.NativeOpenHouseApplication"
@@ -38,6 +41,30 @@
             android:name="com.ai.assistance.operit.provider.OperitDataDocumentsProvider"
             android:authorities="${applicationId}.documents.data"
             tools:replace="android:authorities" />
+
+        <receiver
+            android:name="com.openhouse.host.nativeapp.NativeDefaultTermuxCommandResultReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name="com.openhouse.host.nativeapp.NativeOpenHouseTermuxCommandResultReceiver"
+            android:exported="false"
+            android:process=":openhouse" />
+
+        <receiver
+            android:name="com.openhouse.host.nativeapp.NativeOperitTermuxCommandResultReceiver"
+            android:exported="false"
+            android:process=":operit" />
+
+        <receiver
+            android:name="com.openhouse.host.nativeapp.NativeRescueTermuxCommandResultReceiver"
+            android:exported="false"
+            android:process=":rescue_ui" />
+
+        <receiver
+            android:name="com.openhouse.host.nativeapp.NativeAdvancedUiTermuxCommandResultReceiver"
+            android:exported="false"
+            android:process=":advanced_ui" />
 
         <activity
             android:name="com.wuxianpi.openhouse.feature.OpenHouseActivity"

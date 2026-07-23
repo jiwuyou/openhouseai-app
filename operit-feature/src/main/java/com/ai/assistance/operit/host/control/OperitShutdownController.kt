@@ -54,10 +54,39 @@ object OperitShutdownController {
                 reason = reason,
                 requestedBy = requestedBy,
                 anrMonitor = anrMonitor,
-                beforeFinish = beforeFinish
+                beforeFinish = beforeFinish,
+                updateControlState = true,
+                stopApplicationServices = true,
             )
-            finishActivity(activity)
-            killCurrentOperitProcess(activity.applicationContext)
+            finishActivity(activity, removeTask = true)
+            killCurrentProcess(
+                activity.applicationContext,
+                OperitControlProtocol.OPERIT_PROCESS_SUFFIX,
+                "Operit",
+            )
+        }
+    }
+
+    /** Close an isolated Rescue UI process without changing the main :operit control state. */
+    fun shutdownRescueFromActivity(
+        activity: Activity,
+        rescueProcessSuffix: String,
+        beforeFinish: (() -> Unit)? = null,
+    ) {
+        if (!ensureProcessSuffix(activity, rescueProcessSuffix, "Rescue")) return
+        if (!shutdownStarted.compareAndSet(false, true)) return
+
+        shutdownScope.launch {
+            performShutdownCleanup(
+                context = activity.applicationContext,
+                reason = OperitControlProtocol.SHUTDOWN_REASON_USER,
+                requestedBy = "rescue",
+                beforeFinish = beforeFinish,
+                updateControlState = false,
+                stopApplicationServices = false,
+            )
+            finishActivity(activity, removeTask = false)
+            killCurrentProcess(activity.applicationContext, rescueProcessSuffix, "Rescue")
         }
     }
 
@@ -74,9 +103,11 @@ object OperitShutdownController {
             performShutdownCleanup(
                 context = appContext,
                 reason = reason,
-                requestedBy = requestedBy
+                requestedBy = requestedBy,
+                updateControlState = true,
+                stopApplicationServices = true,
             )
-            killCurrentOperitProcess(appContext)
+            killCurrentProcess(appContext, OperitControlProtocol.OPERIT_PROCESS_SUFFIX, "Operit")
         }
     }
 
@@ -88,23 +119,40 @@ object OperitShutdownController {
         return isOperitProcess
     }
 
+    private fun ensureProcessSuffix(context: Context, suffix: String, label: String): Boolean {
+        val processName = OperitControlProtocol.resolveCurrentProcessName(context)
+        val matches = isExpectedProcessName(context.packageName, suffix, processName)
+        if (!matches) AppLogger.w(TAG, "Ignoring $label shutdown outside expected process: $processName")
+        return matches
+    }
+
+    internal fun isExpectedProcessName(
+        packageName: String,
+        processSuffix: String,
+        processName: String?,
+    ): Boolean = processName == packageName + processSuffix
+
     private suspend fun performShutdownCleanup(
         context: Context,
         reason: String,
         requestedBy: String,
         anrMonitor: AnrMonitor? = null,
-        beforeFinish: (() -> Unit)? = null
+        beforeFinish: (() -> Unit)? = null,
+        updateControlState: Boolean,
+        stopApplicationServices: Boolean,
     ) {
         AppLogger.d(TAG, "Shutdown started: reason=$reason requestedBy=$requestedBy")
-        OperitControlStateStore.markStopping(context)
+        if (updateControlState) OperitControlStateStore.markStopping(context)
 
         runCleanupStep("cancel AI operations") {
             AIMessageManager.cancelAllOperations()
         }
-        runCleanupStep("stop plugin package runtime") {
-            PackageManager.getInstance(context, AIToolHandler.getInstance(context)).destroy()
+        if (stopApplicationServices) {
+            runCleanupStep("stop plugin package runtime") {
+                PackageManager.getInstance(context, AIToolHandler.getInstance(context)).destroy()
+            }
         }
-        runCleanupStep("stop terminal runtime") {
+        runSuspendCleanupStep("stop terminal runtime") {
             Terminal.getInstance(context).destroy()
         }
         runCleanupStep("stop phone agents") {
@@ -122,12 +170,14 @@ object OperitShutdownController {
                 VoiceServiceFactory.getInstance(context).stop()
             }
         }
-        runCleanupStep("stop foreground services") {
-            AIForegroundService.stopExternalHttp(context)
-            stopService(context, AIForegroundService::class.java)
-            stopService(context, FloatingChatService::class.java)
-            stopService(context, UIDebuggerService::class.java)
-            stopService(context, ScreenCaptureService::class.java)
+        if (stopApplicationServices) {
+            runCleanupStep("stop foreground services") {
+                AIForegroundService.stopExternalHttp(context)
+                stopService(context, AIForegroundService::class.java)
+                stopService(context, FloatingChatService::class.java)
+                stopService(context, UIDebuggerService::class.java)
+                stopService(context, ScreenCaptureService::class.java)
+            }
         }
         runCleanupStep("stop ANR monitor") {
             anrMonitor?.stop()
@@ -136,7 +186,7 @@ object OperitShutdownController {
             beforeFinish?.invoke()
         }
 
-        OperitControlStateStore.markStopped(context)
+        if (updateControlState) OperitControlStateStore.markStopped(context)
         AppLogger.d(TAG, "Shutdown cleanup finished")
     }
 
@@ -164,10 +214,10 @@ object OperitShutdownController {
         }
     }
 
-    private fun finishActivity(activity: Activity) {
+    private fun finishActivity(activity: Activity, removeTask: Boolean) {
         val finishAction = {
             runCatching {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                if (removeTask && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     activity.finishAndRemoveTask()
                 } else {
                     @Suppress("DEPRECATION")
@@ -185,13 +235,18 @@ object OperitShutdownController {
         }
     }
 
-    private suspend fun killCurrentOperitProcess(context: Context) {
+    private suspend fun killCurrentProcess(
+        context: Context,
+        expectedSuffix: String,
+        label: String,
+    ) {
         delay(120)
-        if (!OperitControlProtocol.isCurrentOperitProcess(context)) {
-            AppLogger.w(TAG, "Refusing to kill non-Operit process")
+        val processName = OperitControlProtocol.resolveCurrentProcessName(context)
+        if (!isExpectedProcessName(context.packageName, expectedSuffix, processName)) {
+            AppLogger.w(TAG, "Refusing to kill unexpected $label process: $processName")
             return
         }
-        AppLogger.d(TAG, "Killing :operit process pid=${Process.myPid()}")
+        AppLogger.d(TAG, "Killing $label process pid=${Process.myPid()}")
         Process.killProcess(Process.myPid())
         exitProcess(0)
     }

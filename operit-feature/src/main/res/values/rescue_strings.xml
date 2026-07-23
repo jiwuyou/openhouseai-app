@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="rescue_ai_close">关闭救援助手</string>
     <string name="rescue_ai_title">Rescue AI</string>
     <string name="rescue_ai_open">救援助手</string>
 </resources>

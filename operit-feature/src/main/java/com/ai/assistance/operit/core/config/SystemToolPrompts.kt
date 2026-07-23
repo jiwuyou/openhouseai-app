@@ -12,6 +12,8 @@ import com.ai.assistance.operit.data.model.ToolParameterSchema
  */
 object SystemToolPrompts {
     private val hostTerminalToolNames = linkedSetOf(
+        "execute_android_command",
+        "execute_termux_command",
         "create_terminal_session",
         "execute_in_terminal_session",
         "execute_hidden_terminal_command",

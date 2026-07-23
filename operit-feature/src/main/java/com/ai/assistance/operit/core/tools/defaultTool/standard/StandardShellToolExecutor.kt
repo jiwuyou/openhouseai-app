@@ -2,12 +2,12 @@ package com.ai.assistance.operit.core.tools.defaultTool.standard
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
-import com.ai.assistance.operit.core.tools.ADBResultData
+import com.ai.assistance.operit.core.tools.AndroidCommandResultData
 import com.ai.assistance.operit.core.tools.StringResultData
-import com.ai.assistance.operit.core.tools.system.Terminal
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.model.ToolValidationResult
+import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.host.terminal.HostTerminalPolicy
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import kotlinx.coroutines.runBlocking
@@ -35,8 +35,6 @@ open class StandardShellToolExecutor(private val context: Context) {
         }
 
         val command = tool.parameters.find { it.name == "command" }?.value ?: ""
-        val target = HostTerminalTarget.HOST
-
         HostTerminalPolicy.rejectionReason(command)?.let { reason ->
             return ToolResult(
                     toolName = tool.name,
@@ -49,45 +47,47 @@ open class StandardShellToolExecutor(private val context: Context) {
         return try {
             val result =
                     runBlocking {
-                        Terminal.getInstance(context).executeHiddenCommand(
+                        OperitHostProvider.operationsOrUnsupported().executeCommand(
                                 command = command,
-                                executorKey = "execute-shell-host",
-                                timeoutMs = DEFAULT_TIMEOUT,
-                                target = target
+                                target = HostTerminalTarget.ANDROID,
+                                timeoutMs = DEFAULT_TIMEOUT
                         )
                     }
 
-            if (result.isOk) {
+            if (result.isSuccess) {
                 ToolResult(
                         toolName = tool.name,
                         success = true,
                         result =
-                                ADBResultData(
+                                AndroidCommandResultData(
                                         command = command,
-                                        output = result.output,
-                                        exitCode = result.exitCode
+                                        stdout = result.stdout,
+                                        stderr = result.stderr,
+                                        exitCode = result.exitCode,
+                                        timedOut = result.timedOut,
+                                        durationMs = result.durationMs,
                                 )
                 )
             } else {
                 // Combine stdout and stderr for error reporting
                 val errorOutput =
-                        result.error.ifBlank { result.rawOutputPreview }.trim()
+                        result.error.ifBlank { result.stderr.ifBlank { result.stdout } }.trim()
 
                 ToolResult(
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
                         error =
-                                "Host shell command failed (exit code: ${result.exitCode}): $errorOutput"
+                                "Android shell command failed (exit code: ${result.exitCode}): $errorOutput"
                 )
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Error executing host shell command", e)
+            AppLogger.e(TAG, "Error executing Android shell command", e)
             ToolResult(
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "Host shell command failed: ${e.message}"
+                    error = "Android shell command failed: ${e.message}"
             )
         }
     }

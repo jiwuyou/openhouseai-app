@@ -40,6 +40,7 @@ import androidx.compose.ui.zIndex
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavigationTransitionSource
 import com.ai.assistance.operit.ui.main.TopBarTitleContent
+import com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
 import com.ai.assistance.operit.ui.main.navigation.NavigationEntrySpec
 import com.ai.assistance.operit.ui.main.navigation.RouteEntry
 import com.ai.assistance.operit.ui.main.components.AppContent
@@ -76,6 +77,7 @@ fun PhoneLayout(
         isHostedMode: Boolean = false,
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
+        hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
         navigateToTokenConfig: () -> Unit,
         canGoBack: Boolean,
         onGoBack: () -> Unit,
@@ -304,7 +306,8 @@ fun PhoneLayout(
                                 onNavigationEntrySelected = onNavigationEntrySelected,
                                 isHostedMode = isHostedMode,
                                 onReturnToHostMainMenu = onReturnToHostMainMenu,
-                                onCloseHostedOperit = onCloseHostedOperit
+                                onCloseHostedOperit = onCloseHostedOperit,
+                                hostedCloseLabel = hostedCloseLabel
                         )
                 }
 

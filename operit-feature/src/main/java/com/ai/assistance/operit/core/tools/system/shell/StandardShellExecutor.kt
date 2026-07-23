@@ -6,31 +6,28 @@ import com.ai.assistance.operit.core.tools.system.ShellIdentity
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.ai.assistance.operit.host.terminal.HostTerminalPolicy
-import com.ai.assistance.operit.host.terminal.HostTerminalAdapter
 import com.ai.assistance.operit.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 
-/** STANDARD shell executor backed by SmallPhoneAI/Termux host short-command execution. */
+/** STANDARD shell executor backed explicitly by the active host's Android shell runner. */
 class StandardShellExecutor(private val context: Context) : ShellExecutor {
     companion object {
         private const val TAG = "StandardShellExecutor"
         private const val COMMAND_TIMEOUT_MS = 30_000L
     }
 
-    private val terminalAdapter = HostTerminalAdapter()
-
     override fun getPermissionLevel(): AndroidPermissionLevel = AndroidPermissionLevel.STANDARD
 
-    override fun isAvailable(): Boolean = OperitHostProvider.currentOrNull() != null
+    override fun isAvailable(): Boolean = OperitHostProvider.currentOperationsOrNull() != null
 
     override fun hasPermission(): ShellExecutor.PermissionStatus =
         if (isAvailable()) {
             ShellExecutor.PermissionStatus.granted()
         } else {
-            ShellExecutor.PermissionStatus.denied("SmallPhoneAI host terminal is not installed.")
+            ShellExecutor.PermissionStatus.denied("SmallPhoneAI Android shell host is not installed.")
         }
 
     override fun initialize() {
@@ -52,16 +49,15 @@ class StandardShellExecutor(private val context: Context) : ShellExecutor {
 
             try {
                 val result =
-                    terminalAdapter.executeHiddenCommand(
+                    OperitHostProvider.operationsOrUnsupported().executeCommand(
                         command = command,
-                        executorKey = "standard-shell",
+                        target = HostTerminalTarget.ANDROID,
                         timeoutMs = COMMAND_TIMEOUT_MS,
-                        target = HostTerminalTarget.HOST
                     )
                 ShellExecutor.CommandResult(
-                    success = result.isOk,
-                    stdout = result.output,
-                    stderr = result.error,
+                    success = result.isSuccess,
+                    stdout = result.stdout,
+                    stderr = listOf(result.error, result.stderr).filter(String::isNotBlank).joinToString("\n"),
                     exitCode = result.exitCode
                 )
             } catch (e: Exception) {

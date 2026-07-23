@@ -241,7 +241,7 @@
     <string name="web_session_dialog_empty_message">(빈 메시지)</string>
     <string name="workflow_execute_config_title">실행 구성</string>
     <string name="workflow_tool_name_label">도구 이름</string>
-    <string name="workflow_tool_name_placeholder">예: execute_shell</string>
+    <string name="workflow_tool_name_placeholder">예: execute_android_command</string>
     <string name="workflow_tool_params_title">도구 매개변수</string>
     <string name="workflow_param_name_label">매개변수 이름</string>
     <string name="workflow_param_value_label">매개변수 값</string>
@@ -5102,7 +5102,6 @@
     <string name="vd_overlay_a11y_stop_automation">자동화 중지</string>
     <string name="toolreg_env_info">(환경: %1$s)</string>
     <string name="toolreg_env_arrow_info">(%1$s → %2$s)</string>
-    <string name="toolreg_execute_shell_desc">ADB 쉘 실행: %1$s</string>
     <string name="toolreg_close_all_virtual_displays_desc">모든 가상 디스플레이 닫기</string>
     <string name="toolreg_unnamed">이름 없음</string>
     <string name="toolreg_create_terminal_session_desc">터미널 세션 생성 또는 가져오기: %1$s</string>

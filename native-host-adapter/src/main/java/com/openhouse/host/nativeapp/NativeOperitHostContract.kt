@@ -24,7 +24,7 @@ class NativeOperitHostContract(
     override suspend fun executeTermuxCommand(
         command: String,
         timeoutMs: Long,
-    ): OperitHostCommandResult = operations.executeCommand(command, HostTerminalTarget.HOST, timeoutMs)
+    ): OperitHostCommandResult = operations.executeCommand(command, HostTerminalTarget.TERMUX, timeoutMs)
 
     override suspend fun executeUbuntuCommand(
         command: String,
@@ -34,7 +34,7 @@ class NativeOperitHostContract(
     override suspend fun executePersistentShellCommand(
         command: String,
         timeoutMs: Long,
-    ): OperitHostCommandResult = operations.executeCommand(command, HostTerminalTarget.HOST, timeoutMs)
+    ): OperitHostCommandResult = operations.executeCommand(command, HostTerminalTarget.UBUNTU, timeoutMs)
 
     override suspend fun queryServiceManagerHealth(): OperitHostServiceManagerResult = withContext(Dispatchers.IO) {
         val result = ServiceManagerClient(openHouseHost.runtimeConnection()).healthCheck()

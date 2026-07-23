@@ -6,5 +6,6 @@ data class HostTerminalCommandEvent(
     val outputChunk: String,
     val isCompleted: Boolean,
     val exitCode: Int,
-    val target: HostTerminalTarget = HostTerminalTarget.DEFAULT
+    val target: HostTerminalTarget = HostTerminalTarget.DEFAULT,
+    val timedOut: Boolean = false,
 )

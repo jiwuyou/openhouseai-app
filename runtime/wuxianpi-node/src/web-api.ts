@@ -37,7 +37,8 @@ export class WebApi {
         return true;
       }
       const status = error instanceof RequestError
-        ? error.code.endsWith("_not_found") || error.code === "session_not_found" ? 404 : 400
+        ? error.code === "model_revision_conflict" || error.code === "model_concurrent_write" ? 409
+          : error.code.endsWith("_not_found") || error.code === "session_not_found" ? 404 : 400
         : 500;
       json(response, status, {
         ok: false,
@@ -118,31 +119,46 @@ export class WebApi {
       return;
     }
     if (path === "/models" && method === "GET") {
-      json(response, 200, { ok: true, data: await this.modelCatalog(url.searchParams.get("provider") ?? undefined) }); return;
+      const setup = await this.options.registry.modelSetup().setup(url.searchParams.get("provider") ?? undefined);
+      json(response, 200, { ok: true, data: {
+        providers: setup.providers,
+        models: setup.models,
+        defaultModel: setup.defaultModel,
+        ...(setup.availabilityError ? { availabilityError: setup.availabilityError } : {}),
+      } }); return;
+    }
+    if (path === "/models/setup" && method === "GET") {
+      json(response, 200, { ok: true, data: await this.options.registry.modelSetup().setup() }); return;
+    }
+    if (path === "/models/fetch" && method === "POST") {
+      json(response, 200, { ok: true, data: await this.options.registry.modelSetup().fetchModels(await readJsonBody(request)) }); return;
+    }
+    if (path === "/models/apply" && method === "POST") {
+      json(response, 200, { ok: true, data: await this.options.registry.modelSetup().apply(await readJsonBody(request)) }); return;
     }
     if (path === "/models/login" && method === "POST") {
       const body = await readJsonBody(request);
       const provider = requireString(body, "provider");
       const apiKey = requireString(body, "apiKey");
-      const runtime = await this.options.registry.models();
-      if (!runtime.getProvider(provider)) throw new RequestError("provider_not_found", `Provider not found: ${provider}`);
-      await runtime.login(provider, "api_key", { prompt: async () => apiKey, notify: () => {} });
-      json(response, 200, { ok: true, data: { provider, authenticated: runtime.getProviderAuthStatus(provider).configured } }); return;
+      json(response, 200, { ok: true, data: await this.options.registry.modelSetup().login(provider, apiKey) }); return;
     }
     if (path === "/models/logout" && method === "POST") {
       const body = await readJsonBody(request);
       const provider = requireString(body, "provider");
-      await (await this.options.registry.models()).logout(provider);
-      json(response, 200, { ok: true, data: { provider, authenticated: false } }); return;
+      json(response, 200, { ok: true, data: await this.options.registry.modelSetup().logout(provider) }); return;
     }
     if (path === "/models/default" && method === "PATCH") {
       const body = await readJsonBody(request);
+      if (body.setGlobalDefault !== undefined && typeof body.setGlobalDefault !== "boolean") {
+        throw new RequestError("invalid_payload", "setGlobalDefault must be a boolean");
+      }
       json(response, 200, { ok: true, data: await this.options.registry.setDefaultModel(
         requireString(body, "provider"), requireString(body, "modelId"), optionalString(body, "sessionId"),
+        body.setGlobalDefault as boolean | undefined,
       ) }); return;
     }
     if (path === "/models/test" && method === "POST") {
-      json(response, 200, { ok: true, data: await this.testModel(await readJsonBody(request)) }); return;
+      json(response, 200, { ok: true, data: await this.options.registry.modelSetup().testModel(await readJsonBody(request)) }); return;
     }
     if (path === "/assistants" && method === "GET") {
       json(response, 200, { ok: true, data: { assistants: await this.options.services.listAssistants(url.searchParams.get("includeArchived") === "true") } }); return;
@@ -385,51 +401,6 @@ export class WebApi {
       cleanup();
       response.end();
     }
-  }
-
-  private async modelCatalog(providerFilter?: string) {
-    const runtime = await this.options.registry.models();
-    const providers = runtime.getProviders().filter((provider) => !providerFilter || provider.id === providerFilter);
-    if (providerFilter && providers.length === 0) throw new RequestError("provider_not_found", `Provider not found: ${providerFilter}`);
-    let available = new Set<string>();
-    let availabilityError: string | undefined;
-    try { available = new Set((await runtime.getAvailable(providerFilter)).map((model) => `${model.provider}\0${model.id}`)); }
-    catch (error) { availabilityError = errorMessage(error); }
-    const providerRows = await Promise.all(providers.map(async (provider) => {
-      const configured = runtime.getProviderAuthStatus(provider.id);
-      const check = await runtime.checkAuth(provider.id).catch(() => undefined);
-      return {
-        id: provider.id, name: provider.name, authenticated: configured.configured || check !== undefined,
-        authType: check?.type, authSource: check?.source ?? configured.source, authLabel: configured.label,
-      };
-    }));
-    const models = providers.flatMap((provider) => runtime.getModels(provider.id).map((model) => ({
-      provider: model.provider, id: model.id, name: model.name,
-      available: available.has(`${model.provider}\0${model.id}`), reasoning: model.reasoning,
-      input: model.input, contextWindow: model.contextWindow, maxTokens: model.maxTokens,
-    })));
-    const settings = this.options.registry.settings();
-    const defaultProvider = settings.getDefaultProvider();
-    const defaultModelId = settings.getDefaultModel();
-    return { providers: providerRows, models, defaultModel: defaultProvider && defaultModelId ? { provider: defaultProvider, modelId: defaultModelId } : null, availabilityError };
-  }
-
-  private async testModel(body: Record<string, unknown>) {
-    const provider = requireString(body, "provider");
-    const modelId = requireString(body, "modelId");
-    const runtime = await this.options.registry.models();
-    const model = runtime.getModel(provider, modelId);
-    if (!model) throw new RequestError("model_not_found", `Model not found: ${provider}/${modelId}`);
-    const timeoutMs = Math.max(1000, boundedInteger(body, "timeoutMs", 20_000, 60_000));
-    const startedAt = Date.now();
-    const response = await runtime.completeSimple(model, {
-      messages: [{ role: "user", content: "Reply with OK only.", timestamp: Date.now() }],
-    }, { maxTokens: 16, timeoutMs, maxRetries: 0, cacheRetention: "none" });
-    if (response.stopReason === "error" || response.errorMessage) throw new RequestError("model_test_failed", response.errorMessage ?? "Model test failed");
-    return {
-      ok: true, provider, modelId, latencyMs: Date.now() - startedAt,
-      text: response.content.filter((part) => part.type === "text").map((part) => part.text).join(""),
-    };
   }
 
   private async streamRawFile(request: IncomingMessage, response: ServerResponse, filePath: string): Promise<void> {

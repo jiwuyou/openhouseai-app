@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -41,6 +42,10 @@ internal class OrderedQueue<T>(
 internal enum class QueueOfferResult {
     ACCEPTED,
     OVERFLOW_REQUIRES_RECOVERY,
+}
+
+internal object PiHttpTransport {
+    val sharedClient: OkHttpClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED, ::OkHttpClient)
 }
 
 internal class PromptGate {
@@ -90,6 +95,16 @@ internal fun resolveServiceWebSocketUrl(base: HttpUrl): HttpUrl {
     requireLoopbackService(base)
     return base.newBuilder()
         .encodedPath("/v1/ws")
+        .query(null)
+        .fragment(null)
+        .build()
+}
+
+internal fun resolveServiceHttpUrl(base: HttpUrl, absolutePath: String): HttpUrl {
+    requireLoopbackService(base)
+    require(absolutePath.startsWith('/')) { "Pi service HTTP path must be absolute" }
+    return base.newBuilder()
+        .encodedPath(absolutePath)
         .query(null)
         .fragment(null)
         .build()

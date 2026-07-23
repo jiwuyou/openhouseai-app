@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.pi
 
 import com.ai.assistance.operit.services.core.planTurnCompletion
+import com.ai.assistance.operit.data.model.PiModelBinding
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -90,6 +91,23 @@ class PiChatEngineBindingTest {
             wireEvents.emit("prompt_completed")
             second.join()
         }
+    }
+
+    @Test
+    fun `session model binder covers create open fork and config override`() = runBlocking {
+        val coding = PiModelBinding("anthropic", "claude-sonnet")
+        val daily = PiModelBinding("deepseek", "deepseek-chat")
+        val applied = mutableListOf<PiModelBinding>()
+        val binder = PiSessionModelBinder()
+
+        listOf("create", "open", "fork").forEach {
+            binder.onSessionAttached()
+            binder.ensure(coding, applied::add)
+        }
+        binder.ensure(daily, applied::add)
+        binder.ensure(daily, applied::add)
+
+        assertEquals(listOf(coding, coding, coding, daily), applied)
     }
 
     private fun userEntry(id: String, text: String): JSONObject =

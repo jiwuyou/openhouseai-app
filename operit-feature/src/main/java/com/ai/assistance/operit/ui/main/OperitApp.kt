@@ -71,6 +71,7 @@ enum class NavigationTransitionSource {
 }
 
 private const val TAG = "OperitApp"
+const val DEFAULT_HOSTED_CLOSE_LABEL = "关闭 Operit"
 
 private data class NetworkStateSnapshot(
     val isAvailable: Boolean,
@@ -89,6 +90,7 @@ fun OperitApp(
     isHostedMode: Boolean = false,
     onReturnToHostMainMenu: () -> Unit = {},
     onCloseHostedOperit: () -> Unit = {},
+    hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
     onShortcutNavHandled: (Long) -> Unit = {},
     onCurrentNavItemChanged: (NavItem) -> Unit = {},
     onRouteNavHandled: (Long) -> Unit = {}
@@ -454,6 +456,7 @@ fun OperitApp(
                     isHostedMode = isHostedMode,
                     onReturnToHostMainMenu = onReturnToHostMainMenu,
                     onCloseHostedOperit = onCloseHostedOperit,
+                    hostedCloseLabel = hostedCloseLabel,
                     onToggleSidebar = {
                         isTabletSidebarExpanded = !isTabletSidebarExpanded
                     },
@@ -491,6 +494,7 @@ fun OperitApp(
                     isHostedMode = isHostedMode,
                     onReturnToHostMainMenu = onReturnToHostMainMenu,
                     onCloseHostedOperit = onCloseHostedOperit,
+                    hostedCloseLabel = hostedCloseLabel,
                     navigateToTokenConfig = ::navigateToTokenConfig,
                     canGoBack = canGoBack,
                     onGoBack = ::goBack,

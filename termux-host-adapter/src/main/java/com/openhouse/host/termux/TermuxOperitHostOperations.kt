@@ -6,12 +6,15 @@ import android.net.Uri
 import com.ai.assistance.operit.host.OperitHostOperationResult
 import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostOperations
+import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
+import com.ai.assistance.operit.host.terminal.tmux.TmuxHostTerminalBackend
 import com.wuxianpi.openhouse.core.service.ServiceAction
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
@@ -23,17 +26,27 @@ import org.json.JSONObject
 class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
     private val appContext = context.applicationContext
     private val host = TermuxOpenHouseHost(appContext)
+    private val runtimeLayout = TermuxRuntimeLayout.defaults()
+    private val androidShellExecutor = TermuxAndroidShellCommandExecutor(
+        workingDirectory = appContext.filesDir,
+    )
     private val commandExecutor = TermuxHostCommandExecutor(
-        TermuxRuntimeLayout.defaults(),
+        runtimeLayout,
         host.runtimeConnection().serviceManagerBaseUrl,
     )
+    override val terminalSessionBackend: HostTerminalSessionBackend =
+        TmuxHostTerminalBackend(EmbeddedTermuxSessionTransport(runtimeLayout))
 
     override suspend fun executeCommand(
         command: String,
         target: HostTerminalTarget,
         timeoutMs: Long,
     ): OperitHostCommandResult = withContext(Dispatchers.IO) {
-        commandExecutor.execute(command, target, timeoutMs)
+        when (target) {
+            HostTerminalTarget.ANDROID -> androidShellExecutor.execute(command, timeoutMs)
+            HostTerminalTarget.TERMUX,
+            HostTerminalTarget.UBUNTU -> commandExecutor.execute(command, target, timeoutMs)
+        }
     }
 
     override fun openPermissions(context: Context): Boolean = runCatching {
@@ -165,6 +178,9 @@ internal class TermuxHostCommandExecutor(
         val startedAt = System.currentTimeMillis()
         val cleanCommand = command.trim()
         if (cleanCommand.isEmpty()) return failure(command, 2, "command is empty", startedAt)
+        require(target != HostTerminalTarget.ANDROID) {
+            "Android commands must use TermuxAndroidShellCommandExecutor"
+        }
         if (!layout.bash.isFile) {
             return failure(command, 127, "Termux bash is not installed: ${layout.bash.absolutePath}", startedAt)
         }
@@ -311,12 +327,15 @@ internal class ConcurrentProcessRunner {
         processBuilder: ProcessBuilder,
         timeoutMs: Long,
         startedAt: Long = System.currentTimeMillis(),
+        stdin: String? = null,
     ): OperitHostCommandResult = runCatching {
         val process = processBuilder.start()
         val stdout = StreamDrainer(process.inputStream, "host-command-stdout")
         val stderr = StreamDrainer(process.errorStream, "host-command-stderr")
+        val input = StreamFeeder(process.outputStream, stdin, "host-command-stdin")
         stdout.start()
         stderr.start()
+        input.start()
         val finished = process.waitFor(timeoutMs.coerceAtLeast(1L), TimeUnit.MILLISECONDS)
         if (!finished) {
             process.destroy()
@@ -324,8 +343,11 @@ internal class ConcurrentProcessRunner {
         }
         val stdoutCapture = stdout.await()
         val stderrCapture = stderr.await()
+        val inputError = input.await()
         val exitCode = if (finished) process.exitValue() else 124
-        val streamError = listOf(stdoutCapture.error, stderrCapture.error).filter(String::isNotBlank).joinToString("\n")
+        val streamError = listOf(stdoutCapture.error, stderrCapture.error, inputError)
+            .filter(String::isNotBlank)
+            .joinToString("\n")
         val error = when {
             !finished -> listOf("command timed out after ${timeoutMs.coerceAtLeast(1L)} ms", streamError)
                 .filter(String::isNotBlank).joinToString("\n")
@@ -352,6 +374,35 @@ internal class ConcurrentProcessRunner {
             timedOut = false,
             durationMs = System.currentTimeMillis() - startedAt,
         )
+    }
+}
+
+private class StreamFeeder(
+    private val stream: OutputStream,
+    private val input: String?,
+    name: String,
+) {
+    private var failure: Throwable? = null
+    private val thread = Thread({
+        try {
+            stream.use { output ->
+                input?.let { output.write(it.toByteArray(Charsets.UTF_8)) }
+                output.flush()
+            }
+        } catch (error: Throwable) {
+            failure = error
+        }
+    }, name).apply { isDaemon = true }
+
+    fun start() = thread.start()
+
+    fun await(): String {
+        thread.join(2_000L)
+        if (thread.isAlive) {
+            runCatching { stream.close() }
+            thread.join(250L)
+        }
+        return failure?.message.orEmpty()
     }
 }
 

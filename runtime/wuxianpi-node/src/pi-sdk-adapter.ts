@@ -9,21 +9,27 @@ export class PiSdkAdapter {
     const payload = request.payload ?? {};
     switch (request.type) {
       case "model.status":
-        return this.modelStatus(optionalString(payload, "provider"));
-      case "model.login":
-        return this.modelLogin(payload);
+        return this.registry.modelSetup().setup(optionalString(payload, "provider"));
+      case "model.login": {
+        const method = optionalString(payload, "method") ?? "api_key";
+        if (method !== "api_key") throw new RequestError("unsupported_auth_type", "Only api_key login is supported by this client");
+        return this.registry.modelSetup().login(requireString(payload, "provider"), requireString(payload, "apiKey"));
+      }
       case "model.logout":
-        return this.modelLogout(requireString(payload, "provider"));
+        return this.registry.modelSetup().logout(requireString(payload, "provider"));
       case "model.test":
-        return this.modelTest(payload);
+        return this.registry.modelSetup().testModel(payload);
       case "model.reload":
-        await this.registry.reloadModelConfiguration();
-        return this.modelStatus();
+        return this.registry.modelSetup().reload();
       case "model.setDefault":
+        if (payload.setGlobalDefault !== undefined && typeof payload.setGlobalDefault !== "boolean") {
+          throw new RequestError("invalid_payload", "setGlobalDefault must be a boolean");
+        }
         return this.registry.setDefaultModel(
           requireString(payload, "provider"),
           requireString(payload, "modelId"),
           request.sessionId,
+          payload.setGlobalDefault as boolean | undefined,
         );
       case "runtime.status":
         return { protocol: PROTOCOL_NAME, ...this.registry.status() };
@@ -113,110 +119,6 @@ export class PiSdkAdapter {
         cancelled: payload.cancelled === true,
       }); return {};
       default: throw new RequestError("unknown_command", `Unknown command: ${request.type}`);
-    }
-  }
-
-  private async modelStatus(providerFilter?: string) {
-    const runtime = await this.registry.models();
-    const providers = runtime.getProviders().filter((provider) => !providerFilter || provider.id === providerFilter);
-    if (providerFilter && providers.length === 0) {
-      throw new RequestError("provider_not_found", `Provider not found: ${providerFilter}`);
-    }
-    let available = new Set<string>();
-    let availabilityError: string | undefined;
-    try {
-      available = new Set((await runtime.getAvailable(providerFilter)).map((model) => `${model.provider}\u0000${model.id}`));
-    } catch (error) {
-      availabilityError = error instanceof Error ? error.message : String(error);
-    }
-    const providerRows = await Promise.all(providers.map(async (provider) => {
-      const configured = runtime.getProviderAuthStatus(provider.id);
-      const check = await runtime.checkAuth(provider.id).catch(() => undefined);
-      return {
-        id: provider.id,
-        name: provider.name,
-        authenticated: configured.configured || check !== undefined,
-        authType: check?.type,
-        authSource: check?.source ?? configured.source,
-        authLabel: configured.label,
-      };
-    }));
-    const models = providers.flatMap((provider) => runtime.getModels(provider.id).map((model) => ({
-      provider: model.provider,
-      id: model.id,
-      name: model.name,
-      available: available.has(`${model.provider}\u0000${model.id}`),
-      reasoning: model.reasoning,
-      input: model.input,
-      contextWindow: model.contextWindow,
-      maxTokens: model.maxTokens,
-    })));
-    const settings = this.registry.settings();
-    const defaultProvider = settings.getDefaultProvider();
-    const defaultModelId = settings.getDefaultModel();
-    return {
-      providers: providerRows,
-      models,
-      defaultModel: defaultProvider && defaultModelId ? { provider: defaultProvider, modelId: defaultModelId } : null,
-      availabilityError,
-    };
-  }
-
-  private async modelLogin(payload: Record<string, unknown>) {
-    const provider = requireString(payload, "provider");
-    const method = optionalString(payload, "method") ?? "api_key";
-    if (method !== "api_key") throw new RequestError("unsupported_auth_type", "Only api_key login is supported by this client");
-    const apiKey = requireString(payload, "apiKey").trim();
-    const runtime = await this.registry.models();
-    if (!runtime.getProvider(provider)) throw new RequestError("provider_not_found", `Provider not found: ${provider}`);
-    await runtime.login(provider, "api_key", {
-      prompt: async () => apiKey,
-      notify: () => {},
-    });
-    const auth = runtime.getProviderAuthStatus(provider);
-    return { provider, authenticated: auth.configured, authSource: auth.source, authLabel: auth.label };
-  }
-
-  private async modelLogout(provider: string) {
-    const runtime = await this.registry.models();
-    if (!runtime.getProvider(provider)) throw new RequestError("provider_not_found", `Provider not found: ${provider}`);
-    await runtime.logout(provider);
-    return { provider, authenticated: false };
-  }
-
-  private async modelTest(payload: Record<string, unknown>) {
-    const provider = requireString(payload, "provider");
-    const modelId = requireString(payload, "modelId");
-    const runtime = await this.registry.models();
-    const model = runtime.getModel(provider, modelId);
-    if (!model) throw new RequestError("model_not_found", `Model not found: ${provider}/${modelId}`);
-    const timeoutMs = Math.max(1_000, boundedInteger(payload, "timeoutMs", 20_000, 60_000));
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    timer.unref();
-    let responseStatus: number | undefined;
-    const startedAt = Date.now();
-    try {
-      const response = await runtime.completeSimple(model, {
-        messages: [{ role: "user", content: "Reply with OK only.", timestamp: Date.now() }],
-      }, {
-        maxTokens: 16,
-        timeoutMs,
-        maxRetries: 0,
-        cacheRetention: "none",
-        signal: controller.signal,
-        onResponse: (providerResponse) => { responseStatus = providerResponse.status; },
-      });
-      if (response.stopReason === "error" || response.errorMessage) {
-        throw new RequestError("model_test_failed", response.errorMessage ?? "Model test failed");
-      }
-      const text = response.content
-        .filter((part): part is Extract<(typeof response.content)[number], { type: "text" }> => part.type === "text")
-        .map((part) => part.text)
-        .join("");
-      return { ok: true, provider, modelId, latencyMs: Date.now() - startedAt, status: responseStatus, text };
-    } finally {
-      clearTimeout(timer);
     }
   }
 

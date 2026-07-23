@@ -18,6 +18,10 @@ import com.ai.assistance.operit.data.model.ParameterValueType
 import com.ai.assistance.operit.data.model.StandardModelParameters
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ApiKeyInfo
+import com.ai.assistance.operit.data.model.LegacyCloudModelBackup
+import com.ai.assistance.operit.data.model.PiModelBinding
+import com.ai.assistance.operit.data.model.usesPiRuntime
+import com.ai.assistance.operit.data.model.withoutAndroidCloudCredentialAuthority
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -48,9 +52,8 @@ class ModelConfigManager(private val context: Context) {
         // 默认值
         const val DEFAULT_CONFIG_ID = "default"
         const val DEFAULT_CONFIG_NAME = "model_config_default_name"
+        const val PI_RUNTIME_PROVIDER_TYPE_ID = "PI_RUNTIME"
 
-        // Default API provider type
-        private val DEFAULT_API_PROVIDER_TYPE = ApiProviderType.DEEPSEEK
     }
 
     // Json解析器，支持宽松模式
@@ -87,16 +90,13 @@ class ModelConfigManager(private val context: Context) {
         }
     }
 
-    // 从原有ApiPreferences创建默认配置
+    // 新安装直接以 Pi Runtime 为云端模型配置所有者。
     private fun createFreshDefaultConfig(): ModelConfigData {
         return ModelConfigData(
                 id = DEFAULT_CONFIG_ID,
                 name = context.getString(R.string.model_config_default_name),
-                apiKey = ApiPreferences.DEFAULT_API_KEY,
-                apiEndpoint = ApiPreferences.DEFAULT_API_ENDPOINT,
-                modelName = ApiPreferences.DEFAULT_MODEL_NAME,
-                apiProviderType = DEFAULT_API_PROVIDER_TYPE,
-                apiProviderTypeId = DEFAULT_API_PROVIDER_TYPE.name,
+                apiProviderType = ApiProviderType.OTHER,
+                apiProviderTypeId = PI_RUNTIME_PROVIDER_TYPE_ID,
                 hasCustomParameters = false,
                 maxTokensEnabled = false,
                 temperatureEnabled = false,
@@ -208,6 +208,9 @@ class ModelConfigManager(private val context: Context) {
         return loadConfigFromDataStore(configId)
     }
 
+    suspend fun getAllModelConfigs(): List<ModelConfigData> =
+            configListFlow.first().mapNotNull { configId -> loadConfigFromDataStore(configId) }
+
     // 更新API Key池的当前索引
     suspend fun updateConfigKeyIndex(configId: String, newIndex: Int) {
         updateConfigInternal(configId) { it.copy(currentKeyIndex = newIndex) }
@@ -224,8 +227,9 @@ class ModelConfigManager(private val context: Context) {
                     ModelConfigSummary(
                             id = config.id,
                             name = config.name,
-                            modelName = config.modelName,
-                            apiEndpoint = config.apiEndpoint
+                            modelName = config.piModelBinding?.modelId ?: config.modelName,
+                            apiEndpoint = if (config.piModelBinding == null) config.apiEndpoint else "",
+                            apiProviderType = config.apiProviderType,
                     )
             )
         }
@@ -242,8 +246,8 @@ class ModelConfigManager(private val context: Context) {
                 ModelConfigData(
                         id = configId,
                         name = name,
-                        apiProviderType = ApiProviderType.OPENAI_GENERIC,
-                        apiProviderTypeId = ApiProviderType.OPENAI_GENERIC.name,
+                        apiProviderType = ApiProviderType.OTHER,
+                        apiProviderTypeId = PI_RUNTIME_PROVIDER_TYPE_ID,
                         enableToolCall = true
                 )
 
@@ -281,6 +285,45 @@ class ModelConfigManager(private val context: Context) {
     // 更新配置基本信息（名称等）
     suspend fun updateConfigBase(configId: String, name: String): ModelConfigData {
         return updateConfigInternal(configId) { it.copy(name = name) }
+    }
+
+    suspend fun updatePiModelBinding(
+            configId: String,
+            binding: PiModelBinding,
+            legacyBackup: LegacyCloudModelBackup? = null,
+    ): ModelConfigData =
+            updateConfigInternal(configId) { current ->
+                current.withoutAndroidCloudCredentialAuthority().copy(
+                        piModelBinding = binding,
+                        legacyCloudBackup = legacyBackup ?: current.legacyCloudBackup,
+                        apiProviderType = ApiProviderType.OTHER,
+                        apiProviderTypeId = PI_RUNTIME_PROVIDER_TYPE_ID,
+                )
+            }
+
+    suspend fun switchToPiRuntime(configId: String): ModelConfigData =
+            updateConfigInternal(configId) { current ->
+                current.withoutAndroidCloudCredentialAuthority().copy(
+                        apiProviderType = ApiProviderType.OTHER,
+                        apiProviderTypeId = PI_RUNTIME_PROVIDER_TYPE_ID,
+                        piModelBinding = null,
+                )
+            }
+
+    suspend fun switchToLocalModelEngine(
+            configId: String,
+            providerType: ApiProviderType,
+    ): ModelConfigData {
+        require(providerType == ApiProviderType.MNN || providerType == ApiProviderType.LLAMA_CPP) {
+            "Only Android-local engines can be selected here"
+        }
+        return updateConfigInternal(configId) { current ->
+            current.copy(
+                    apiProviderType = providerType,
+                    apiProviderTypeId = providerType.name,
+                    piModelBinding = null,
+            )
+        }
     }
 
     // 更新模型配置
@@ -405,10 +448,14 @@ class ModelConfigManager(private val context: Context) {
             apiKeyPool: List<ApiKeyInfo>
     ): ModelConfigData {
         return updateConfigInternal(configId) {
-            it.copy(
-                    useMultipleApiKeys = useMultipleApiKeys,
-                    apiKeyPool = apiKeyPool
-            )
+            if (it.usesPiRuntime()) {
+                it.withoutAndroidCloudCredentialAuthority()
+            } else {
+                it.copy(
+                        useMultipleApiKeys = useMultipleApiKeys,
+                        apiKeyPool = apiKeyPool
+                )
+            }
         }
     }
 
