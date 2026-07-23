@@ -11,6 +11,9 @@ import com.ai.assistance.operit.host.terminal.HostTerminalChar
 import com.ai.assistance.operit.host.terminal.HostTerminalHiddenResult
 import com.ai.assistance.operit.host.terminal.HostTerminalPolicy
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
+import com.ai.assistance.operit.host.terminal.HostTermuxExecResult
+import com.ai.assistance.operit.host.terminal.HostTermuxExecSession
+import com.ai.assistance.operit.host.terminal.HostTermuxExecState
 import com.ai.assistance.operit.host.OperitHostProvider
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
@@ -30,7 +33,71 @@ class StandardTerminalCommandExecutor(private val context: Context) {
         private const val COMMAND_BACKEND_SETTLE_TIMEOUT_MS = 30_000L
         private const val DEFAULT_TERMUX_TIMEOUT_MS = 120_000L
         private const val MAX_TERMUX_TIMEOUT_MS = 86_400_000L
+        private const val DEFAULT_TERMUX_YIELD_MS = 10_000L
+        private const val DEFAULT_TERMUX_STDIN_YIELD_MS = 5_000L
+        private const val MAX_TERMUX_YIELD_MS = 300_000L
         private const val DEFAULT_TERMUX_PACKAGE = "com.termux"
+
+        internal fun buildManagedTermuxToolResult(
+            toolName: String,
+            command: String?,
+            result: HostTermuxExecResult
+        ): ToolResult {
+            val setupCommand =
+                result.setupCommand?.takeIf { it.isNotBlank() } ?: "pkg install -y tmux"
+            val missingDependencies =
+                result.missingDependencies.ifEmpty { listOf("tmux") }
+            val successful =
+                when (result.state) {
+                    HostTermuxExecState.RUNNING -> true
+                    HostTermuxExecState.COMPLETED -> result.exitCode == 0
+                    else -> false
+                }
+            val failure =
+                when {
+                    successful -> null
+                    result.state == HostTermuxExecState.SETUP_REQUIRED ->
+                        buildString {
+                            append("setup_required: managed Termux execution cannot start. ")
+                            append("missingDependencies=")
+                            append(missingDependencies.joinToString(","))
+                            append("; setupCommand=")
+                            append(setupCommand)
+                            append(". Run setupCommand with execute_termux_command, verify tmux, then retry termux_exec_command.")
+                            result.error.takeIf { it.isNotBlank() }?.let {
+                                append(" Details: ")
+                                append(it)
+                            }
+                        }
+                    result.error.isNotBlank() -> result.error
+                    result.state == HostTermuxExecState.COMPLETED ->
+                        "Termux command exited with code ${result.exitCode ?: -1}"
+                    result.state == HostTermuxExecState.LOST -> "Managed Termux session was lost"
+                    result.state == HostTermuxExecState.CLOSED -> "Managed Termux session is closed"
+                    else -> "Managed Termux execution failed"
+                }
+            return ToolResult(
+                toolName = toolName,
+                success = successful,
+                result =
+                    TermuxExecResultData(
+                        command = command,
+                        sessionId = result.sessionId,
+                        sessionName = result.sessionName,
+                        target = result.target.wireName,
+                        state = result.state.name.lowercase(),
+                        output = result.output,
+                        cursor = result.cursor.toString(),
+                        exitCode = result.exitCode,
+                        persistent = result.persistent,
+                        setupRequired = result.state == HostTermuxExecState.SETUP_REQUIRED,
+                        setupCommand = setupCommand,
+                        missingDependencies = missingDependencies,
+                        error = result.error.takeIf { it.isNotBlank() }
+                    ),
+                error = failure
+            )
+        }
     }
 
     /** Execute a one-shot command in the active host's Termux user space. */
@@ -99,6 +166,131 @@ class StandardTerminalCommandExecutor(private val context: Context) {
             )
         } catch (error: Exception) {
             AppLogger.e(TAG, "Failed to execute Termux command", error)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = context.getString(R.string.termux_error_execute_command, error.message.orEmpty())
+            )
+        }
+    }
+
+    /** Execute a command in the reconnectable tmux-backed Termux PTY. */
+    fun executeManagedTermuxCommand(tool: AITool): ToolResult = runBlocking(Dispatchers.IO) {
+        try {
+            val command = tool.parameters.find { it.name == "command" }?.value.orEmpty()
+            if (command.isBlank()) {
+                return@runBlocking ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = context.getString(R.string.terminal_error_missing_command)
+                )
+            }
+
+            val workingDirectory =
+                tool.parameters.find { it.name == "working_directory" }?.value?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+            val sessionName =
+                tool.parameters.find { it.name == "session_name" }?.value?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+            val yieldTimeMs =
+                parseYieldTimeMs(tool, DEFAULT_TERMUX_YIELD_MS)
+
+            val result =
+                Terminal.getInstance(context).executeTermuxCommand(
+                    command = command,
+                    workingDirectory = workingDirectory,
+                    yieldTimeMs = yieldTimeMs,
+                    sessionName = sessionName
+                )
+            buildManagedTermuxToolResult(tool.name, command, result)
+        } catch (error: Exception) {
+            AppLogger.e(TAG, "Failed to execute managed Termux command", error)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = context.getString(R.string.termux_error_execute_command, error.message.orEmpty())
+            )
+        }
+    }
+
+    /** Poll or write to a reconnectable managed Termux PTY. */
+    fun writeManagedTermuxStdin(tool: AITool): ToolResult = runBlocking(Dispatchers.IO) {
+        val sessionId = tool.parameters.find { it.name == "session_id" }?.value?.trim()
+        try {
+            if (sessionId.isNullOrEmpty()) {
+                return@runBlocking ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = context.getString(R.string.terminal_error_missing_session_id)
+                )
+            }
+
+            val chars = tool.parameters.find { it.name == "chars" }?.value.orEmpty()
+            val control = normalizeControl(tool.parameters.find { it.name == "control" }?.value)
+            val afterCursorRaw =
+                tool.parameters.find { it.name == "after_cursor" }?.value?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+            val afterCursor = afterCursorRaw?.toLongOrNull()
+            if (afterCursorRaw != null && afterCursor == null) {
+                return@runBlocking ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "after_cursor must be a non-negative integer"
+                )
+            }
+            if (afterCursor != null && afterCursor < 0L) {
+                return@runBlocking ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "after_cursor must be a non-negative integer"
+                )
+            }
+
+            val result =
+                Terminal.getInstance(context).writeTermuxStdin(
+                    sessionId = sessionId,
+                    chars = chars,
+                    control = control,
+                    yieldTimeMs = parseYieldTimeMs(tool, DEFAULT_TERMUX_STDIN_YIELD_MS),
+                    afterCursor = afterCursor
+                )
+            buildManagedTermuxToolResult(tool.name, command = null, result = result)
+        } catch (error: Exception) {
+            AppLogger.e(TAG, "Failed to access managed Termux session $sessionId", error)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = context.getString(R.string.termux_error_execute_command, error.message.orEmpty())
+            )
+        }
+    }
+
+    /** List managed Termux sessions from the host's persistent tmux state. */
+    fun listManagedTermuxSessions(tool: AITool): ToolResult = runBlocking(Dispatchers.IO) {
+        try {
+            val includeCompleted =
+                tool.parameters.find { it.name == "include_completed" }?.value
+                    ?.trim()
+                    ?.equals("true", ignoreCase = true)
+                    ?: false
+            val sessions = Terminal.getInstance(context).listTermuxSessions(includeCompleted)
+            ToolResult(
+                toolName = tool.name,
+                success = true,
+                result =
+                    TermuxExecSessionListResultData(
+                        sessions = sessions.map(::toTermuxSessionResultData)
+                    )
+            )
+        } catch (error: Exception) {
+            AppLogger.e(TAG, "Failed to list managed Termux sessions", error)
             ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -535,17 +727,6 @@ class StandardTerminalCommandExecutor(private val context: Context) {
 
                 val terminal = Terminal.getInstance(context)
 
-                // 检查会话是否存在
-                if (terminal.terminalState.value.sessions.none { it.id == sessionId }) {
-                    sessionNameToIdMap.entries.removeIf { it.value == sessionId }
-                    return@runBlocking ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = StringResultData(""),
-                        error = context.getString(R.string.terminal_error_session_not_exist, sessionId)
-                    )
-                }
-
                 val acceptedChars = applyTerminalInput(
                     terminal = terminal,
                     sessionId = sessionId,
@@ -640,16 +821,6 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                 }
 
                 val terminal = Terminal.getInstance(context)
-                if (terminal.terminalState.value.sessions.none { it.id == sessionId }) {
-                    sessionNameToIdMap.entries.removeIf { it.value == sessionId }
-                    return@runBlocking ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = StringResultData(""),
-                        error = context.getString(R.string.terminal_error_session_not_exist, sessionId)
-                    )
-                }
-
                 val screen = terminal.getSessionScreen(sessionId)
 
                 ToolResult(
@@ -726,6 +897,26 @@ class StandardTerminalCommandExecutor(private val context: Context) {
             summary
         }
     }
+
+    private fun parseYieldTimeMs(tool: AITool, defaultValue: Long): Long {
+        return tool.parameters.find { it.name == "yield_time_ms" }?.value?.toLongOrNull()
+            ?.coerceIn(0L, MAX_TERMUX_YIELD_MS)
+            ?: defaultValue
+    }
+
+    private fun toTermuxSessionResultData(
+        session: HostTermuxExecSession
+    ): TermuxExecSessionResultData =
+        TermuxExecSessionResultData(
+            sessionId = session.sessionId,
+            sessionName = session.sessionName,
+            workingDirectory = session.workingDirectory,
+            state = session.state.name.lowercase(),
+            cursor = session.cursor.toString(),
+            exitCode = session.exitCode,
+            persistent = session.persistent,
+            startedAtMs = session.startedAtEpochMs
+        )
 
     private fun sessionMapKey(target: HostTerminalTarget, sessionName: String): String {
         return "${target.wireName}:$sessionName"

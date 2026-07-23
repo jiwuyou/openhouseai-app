@@ -5,9 +5,9 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Host-owned persistent terminal implementation used by the shared Operit terminal tools.
  *
- * This contract is Ubuntu-only. Native hosts back it with RUN_COMMAND -> Termux tmux -> Ubuntu;
- * the embedded Termux host executes the same protocol directly. It must never fall back to either
- * Android shell or a plain Termux shell.
+ * Ubuntu interactive sessions and managed Termux unified-exec sessions share this host boundary.
+ * Native hosts back it with RUN_COMMAND -> Termux tmux; embedded hosts execute the same protocol
+ * directly. Neither path may fall back to the Android shell.
  */
 interface HostTerminalSessionBackend {
     val terminalState: StateFlow<HostTerminalState>
@@ -41,6 +41,23 @@ interface HostTerminalSessionBackend {
     ): Int
 
     suspend fun getSessionScreen(sessionId: String): HostTerminalScreenSnapshot
+
+    suspend fun executeTermuxCommand(
+        command: String,
+        workingDirectory: String?,
+        yieldTimeMs: Long,
+        sessionName: String?,
+    ): HostTermuxExecResult
+
+    suspend fun writeTermuxStdin(
+        sessionId: String,
+        chars: String,
+        control: String?,
+        yieldTimeMs: Long,
+        afterCursor: Long?,
+    ): HostTermuxExecResult
+
+    suspend fun listTermuxSessions(includeCompleted: Boolean): List<HostTermuxExecSession>
 
     fun isConnected(): Boolean
 }

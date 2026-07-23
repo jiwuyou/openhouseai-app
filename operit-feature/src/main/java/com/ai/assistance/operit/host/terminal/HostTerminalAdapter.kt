@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 
-/** Strict Ubuntu-session facade. Android and Termux one-shot commands use explicit tools. */
+/** Ubuntu-session and managed Termux unified-exec facade. Raw one-shot commands stay explicit. */
 class HostTerminalAdapter(
     private val backendProvider: () -> HostTerminalSessionBackend? = {
         OperitHostProvider.currentOperationsOrNull()?.terminalSessionBackend
@@ -143,6 +143,41 @@ class HostTerminalAdapter(
     suspend fun getSessionScreen(sessionId: String): HostTerminalScreenSnapshot =
         requireBackend().getSessionScreen(sessionId)
 
+    suspend fun executeTermuxCommand(
+        command: String,
+        workingDirectory: String? = null,
+        yieldTimeMs: Long = DEFAULT_TERMUX_YIELD_MS,
+        sessionName: String? = null,
+    ): HostTermuxExecResult {
+        require(command.isNotBlank()) { "command must not be blank" }
+        val backend = requireBackend()
+        ensureBackendMirrored(backend)
+        return backend.executeTermuxCommand(
+            command = command,
+            workingDirectory = workingDirectory,
+            yieldTimeMs = normalizeYieldTimeMs(yieldTimeMs),
+            sessionName = sessionName,
+        )
+    }
+
+    suspend fun writeTermuxStdin(
+        sessionId: String,
+        chars: String = "",
+        control: String? = null,
+        yieldTimeMs: Long = DEFAULT_TERMUX_YIELD_MS,
+        afterCursor: Long? = null,
+    ): HostTermuxExecResult = requireBackend().writeTermuxStdin(
+        sessionId = sessionId,
+        chars = chars,
+        control = control,
+        yieldTimeMs = normalizeYieldTimeMs(yieldTimeMs),
+        afterCursor = afterCursor,
+    )
+
+    suspend fun listTermuxSessions(
+        includeCompleted: Boolean = false,
+    ): List<HostTermuxExecSession> = requireBackend().listTermuxSessions(includeCompleted)
+
     fun isConnected(): Boolean = currentBackend()?.isConnected() == true
 
     private suspend fun execute(
@@ -168,7 +203,7 @@ class HostTerminalAdapter(
     private fun requireBackend(): HostTerminalSessionBackend =
         currentBackend()
             ?: error(
-                "Ubuntu terminal backend is unavailable. The active host must provide a tmux-backed Ubuntu session transport.",
+                "Hosted terminal backend is unavailable. The active host must provide a tmux-backed Termux transport.",
             )
 
     private fun requireUbuntuTarget(target: HostTerminalTarget) {
@@ -204,6 +239,9 @@ class HostTerminalAdapter(
     private fun normalizeTimeoutMs(timeoutMs: Long): Long =
         timeoutMs.takeIf { it > 0L }?.coerceAtMost(MAX_HOSTED_TIMEOUT_MS) ?: DEFAULT_TIMEOUT_MS
 
+    private fun normalizeYieldTimeMs(yieldTimeMs: Long): Long =
+        yieldTimeMs.coerceIn(MIN_TERMUX_YIELD_MS, MAX_TERMUX_YIELD_MS)
+
     private fun buildOutput(result: HostTerminalHiddenResult): String =
         buildString {
             if (result.output.isNotBlank()) append(result.output)
@@ -216,5 +254,8 @@ class HostTerminalAdapter(
     private companion object {
         const val DEFAULT_TIMEOUT_MS = 60_000L
         const val MAX_HOSTED_TIMEOUT_MS = 86_400_000L
+        const val DEFAULT_TERMUX_YIELD_MS = 10_000L
+        const val MIN_TERMUX_YIELD_MS = 0L
+        const val MAX_TERMUX_YIELD_MS = 300_000L
     }
 }

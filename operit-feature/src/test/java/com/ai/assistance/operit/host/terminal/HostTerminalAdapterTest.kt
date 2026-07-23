@@ -29,6 +29,32 @@ class HostTerminalAdapterTest {
         assertTrue(backend.destroyed)
     }
 
+    @Test
+    fun managedTermuxApiDelegatesNormalizedYieldAndCursor() = runBlocking {
+        val backend = RecordingBackend()
+        val adapter = HostTerminalAdapter { backend }
+
+        val started = adapter.executeTermuxCommand(
+            command = "sleep 30",
+            workingDirectory = "\$HOME/work",
+            yieldTimeMs = 999_999L,
+            sessionName = "repair",
+        )
+        val continued = adapter.writeTermuxStdin(
+            sessionId = started.sessionId!!,
+            chars = "status",
+            control = "enter",
+            yieldTimeMs = 5_000L,
+            afterCursor = 12L,
+        )
+
+        assertEquals(300_000L, backend.lastTermuxYieldMs)
+        assertEquals("\$HOME/work", backend.lastWorkingDirectory)
+        assertEquals("repair", backend.lastSessionName)
+        assertEquals(12L, backend.lastCursor)
+        assertEquals("next", continued.output)
+    }
+
     private class RecordingBackend : HostTerminalSessionBackend {
         override val terminalState = MutableStateFlow(HostTerminalState())
         var lastTimeoutMs: Long? = null
@@ -77,6 +103,48 @@ class HostTerminalAdapterTest {
 
         override suspend fun getSessionScreen(sessionId: String): HostTerminalScreenSnapshot =
             error("not used")
+
+        var lastTermuxYieldMs: Long? = null
+        var lastWorkingDirectory: String? = null
+        var lastSessionName: String? = null
+        var lastCursor: Long? = null
+
+        override suspend fun executeTermuxCommand(
+            command: String,
+            workingDirectory: String?,
+            yieldTimeMs: Long,
+            sessionName: String?,
+        ): HostTermuxExecResult {
+            lastTermuxYieldMs = yieldTimeMs
+            lastWorkingDirectory = workingDirectory
+            lastSessionName = sessionName
+            return HostTermuxExecResult(
+                state = HostTermuxExecState.RUNNING,
+                sessionId = "operit_v_t_0123456789abcdef01234567",
+                persistent = true,
+            )
+        }
+
+        override suspend fun writeTermuxStdin(
+            sessionId: String,
+            chars: String,
+            control: String?,
+            yieldTimeMs: Long,
+            afterCursor: Long?,
+        ): HostTermuxExecResult {
+            lastCursor = afterCursor
+            return HostTermuxExecResult(
+                state = HostTermuxExecState.RUNNING,
+                sessionId = sessionId,
+                output = "next",
+                cursor = 16L,
+                persistent = true,
+            )
+        }
+
+        override suspend fun listTermuxSessions(
+            includeCompleted: Boolean,
+        ): List<HostTermuxExecSession> = emptyList()
 
         override fun isConnected(): Boolean = true
     }

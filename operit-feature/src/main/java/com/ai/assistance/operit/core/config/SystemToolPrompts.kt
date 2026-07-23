@@ -14,6 +14,9 @@ object SystemToolPrompts {
     private val hostTerminalToolNames = linkedSetOf(
         "execute_android_command",
         "execute_termux_command",
+        "termux_exec_command",
+        "termux_write_stdin",
+        "list_termux_exec_sessions",
         "create_terminal_session",
         "execute_in_terminal_session",
         "execute_hidden_terminal_command",

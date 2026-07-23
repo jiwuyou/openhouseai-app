@@ -14,7 +14,7 @@ object SystemToolPromptsInternal {
                     listOf(
                         ToolPrompt(
                             name = "execute_termux_command",
-                            description = "Execute a one-shot command in the active host's Termux user space.",
+                            description = "Execute a direct, unrestricted one-shot command in the active host's Termux user space without requiring tmux. timeout_ms only stops waiting for the result; it does not terminate the Termux process. Use this tool to inspect or install tmux when the managed Termux executor reports that setup is required.",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -39,9 +39,93 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "timeout_ms",
                                         type = "integer",
-                                        description = "optional command timeout in milliseconds",
+                                        description = "optional maximum wait time in milliseconds; reaching it does not terminate the command",
                                         required = false,
                                         default = "120000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "termux_exec_command",
+                            description = "Execute a command in a managed Termux PTY with Codex-style yield semantics. A quick command returns output and an exit code; a command still running after yield_time_ms returns a persistent session_id that can be polled or controlled. This requires tmux. If setup_required is returned, run `pkg install -y tmux` with execute_termux_command and retry. Never fall back to Android or Ubuntu.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "command",
+                                        type = "string",
+                                        description = "command to execute in Termux",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "working_directory",
+                                        type = "string",
+                                        description = "optional working directory inside Termux",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "yield_time_ms",
+                                        type = "integer",
+                                        description = "optional initial wait before returning a running session; this is not a command timeout",
+                                        required = false,
+                                        default = "10000"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "session_name",
+                                        type = "string",
+                                        description = "optional human-readable session label",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "termux_write_stdin",
+                            description = "Poll incremental output from, or write input/control keys to, a managed Termux exec session. Omit chars and control to poll. Use control=enter to submit input and control=interrupt for Ctrl+C.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "managed Termux session ID returned by termux_exec_command",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "chars",
+                                        type = "string",
+                                        description = "optional characters to write to the PTY",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "control",
+                                        type = "string",
+                                        description = "optional control key such as enter, interrupt, tab, esc, up, down, left, or right",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "yield_time_ms",
+                                        type = "integer",
+                                        description = "optional wait for additional output before returning",
+                                        required = false,
+                                        default = "5000"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "after_cursor",
+                                        type = "string",
+                                        description = "optional output cursor from the previous result; returns only newer output",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "list_termux_exec_sessions",
+                            description = "List managed Termux exec sessions, including sessions rediscovered after the Rescue AI or APK process restarts.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "include_completed",
+                                        type = "boolean",
+                                        description = "include completed sessions whose final output has not yet been cleaned up",
+                                        required = false,
+                                        default = "false"
                                     )
                                 )
                         ),
@@ -89,7 +173,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "create_terminal_session",
-                            description = "Create or get a terminal session.",
+                            description = "Create or get an Ubuntu terminal session. Managed Termux commands use termux_exec_command instead.",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -175,7 +259,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "input_in_terminal_session",
-                            description = "Write input to a terminal session. At least one of input or control is required. Typical usage is sending input first, then control=enter to submit.",
+                            description = "Write input to an Ubuntu or managed Termux terminal session. At least one of input or control is required. Typical usage is sending input first, then control=enter to submit.",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -200,7 +284,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "close_terminal_session",
-                            description = "Close a terminal session.",
+                            description = "Explicitly close an Ubuntu or managed Termux terminal session. Managed Termux sessions otherwise survive Rescue AI and APK process shutdown.",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -213,7 +297,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "get_terminal_session_screen",
-                            description = "Get only the current visible PTY screen content for a terminal session (single screen, no scrollback/history).",
+                            description = "Get only the current visible PTY screen content for an Ubuntu or managed Termux terminal session (single screen, no scrollback/history).",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -3033,7 +3117,7 @@ object SystemToolPromptsInternal {
                     listOf(
                         ToolPrompt(
                             name = "execute_termux_command",
-                            description = "在当前 Host 的 Termux 用户空间中执行一次性命令。",
+                            description = "在当前 Host 的 Termux 用户空间中直接、无限制地执行一次性命令，不依赖 tmux。timeout_ms 只停止等待结果，不会终止 Termux 进程。当受管 Termux 执行器提示需要准备环境时，使用本工具检查或安装 tmux。",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -3058,9 +3142,93 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "timeout_ms",
                                         type = "integer",
-                                        description = "可选，命令超时时间（毫秒）",
+                                        description = "可选，等待结果的最长时间（毫秒）；到达后不会终止命令",
                                         required = false,
                                         default = "120000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "termux_exec_command",
+                            description = "在受管 Termux PTY 中以 Codex 式 yield 语义执行命令。快速命令返回输出和退出码；超过 yield_time_ms 仍在运行的命令返回可持久恢复的 session_id，可继续轮询或交互。本工具依赖 tmux；若返回 setup_required，使用 execute_termux_command 执行 `pkg install -y tmux` 后重试。禁止隐式回退到 Android 或 Ubuntu。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "command",
+                                        type = "string",
+                                        description = "要在 Termux 中执行的命令",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "working_directory",
+                                        type = "string",
+                                        description = "可选，Termux 内的工作目录",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "yield_time_ms",
+                                        type = "integer",
+                                        description = "可选，首次返回前的等待时间；不是命令超时",
+                                        required = false,
+                                        default = "10000"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "session_name",
+                                        type = "string",
+                                        description = "可选，便于识别的会话名称",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "termux_write_stdin",
+                            description = "轮询受管 Termux 执行会话的增量输出，或向其写入文本/控制键。省略 chars 和 control 表示仅轮询；control=enter 提交输入，control=interrupt 发送 Ctrl+C。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "termux_exec_command 返回的受管 Termux 会话 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "chars",
+                                        type = "string",
+                                        description = "可选，写入 PTY 的字符",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "control",
+                                        type = "string",
+                                        description = "可选，enter、interrupt、tab、esc、up、down、left、right 等控制键",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "yield_time_ms",
+                                        type = "integer",
+                                        description = "可选，返回前等待新增输出的时间",
+                                        required = false,
+                                        default = "5000"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "after_cursor",
+                                        type = "string",
+                                        description = "可选，上次结果返回的输出游标；只返回其后的新输出",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "list_termux_exec_sessions",
+                            description = "列出受管 Termux 执行会话，包括救援助手或 APK 进程重启后重新发现的会话。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "include_completed",
+                                        type = "boolean",
+                                        description = "是否包含尚未清理最终输出的已完成会话",
+                                        required = false,
+                                        default = "false"
                                     )
                                 )
                         ),
@@ -3108,7 +3276,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "create_terminal_session",
-                            description = "创建或获取终端会话。",
+                            description = "创建或获取 Ubuntu 终端会话。受管 Termux 命令请使用 termux_exec_command。",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -3194,7 +3362,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "input_in_terminal_session",
-                            description = "向终端会话写入输入。input 与 control 至少传一个。通常先发送 input，再发送 control=enter 提交内容。",
+                            description = "向 Ubuntu 或受管 Termux 终端会话写入输入。input 与 control 至少传一个。通常先发送 input，再发送 control=enter 提交内容。",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -3219,7 +3387,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "close_terminal_session",
-                            description = "关闭终端会话。",
+                            description = "显式关闭 Ubuntu 或受管 Termux 终端会话。受管 Termux 会话默认不会因救援助手或 APK 进程退出而关闭。",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -3232,7 +3400,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "get_terminal_session_screen",
-                            description = "获取终端会话当前可见 PTY 屏幕内容（仅一屏，不包含历史滚动缓冲）。",
+                            description = "获取 Ubuntu 或受管 Termux 终端会话当前可见 PTY 屏幕内容（仅一屏，不包含历史滚动缓冲）。",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(

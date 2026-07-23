@@ -106,63 +106,36 @@ class NativeOperitHostOperationsTest {
     }
 
     @Test
-    fun managedRunCommandTimeoutTerminatesAndConfirmsRemoteExecution() = runBlocking {
+    fun managedRunCommandTimeoutStopsWaitingWithoutTerminatingRemoteExecution() = runBlocking {
         val requests = mutableListOf<NativeTermuxCommandRequest>()
         val timeouts = mutableListOf<Long>()
-        val token = "timeout_execution"
         val transport = NativeTermuxManagedCommandTransport(
             rawTransport = NativeTermuxRawCommandTransport { request, timeoutMs ->
                 requests += request
                 timeouts += timeoutMs
-                if (requests.size == 1) {
-                    null
-                } else {
-                    successfulRawResponse("OPERIT_REMOTE_TERMINATED:$token:confirmed:143\n")
-                }
+                null
             },
-            tokenFactory = { token },
-            terminationTimeoutMs = 4_000L,
         )
+        val request = buildNativeTermuxCommandRequest("sleep 30", ExternalTermuxCommandTarget.TERMUX)
 
-        val result = transport.execute(
-            buildNativeTermuxCommandRequest("sleep 30", ExternalTermuxCommandTarget.TERMUX),
-            80L,
-        )
+        val result = transport.execute(request, 80L)
 
         assertTrue(result.timedOut)
-        assertTrue(result.errorMessage.contains("termination confirmed"))
-        assertEquals(listOf(80L, 4_000L), timeouts)
-        assertEquals(2, requests.size)
-        assertTrue(requests[0].arguments.single { it.contains("OPERIT_RUN_COMMAND_ID") }.contains("set -m"))
-        val terminationScript = requests[1].arguments.single { it.contains("REMOTE_TERMINATED") }
-        assertTrue(terminationScript.contains("token='$token'"))
-        assertTrue(terminationScript.contains("pid_file=\"\$control_dir/\$token.pid\""))
-        assertTrue(terminationScript.contains("kill -TERM -- \"-\$command_pgid\""))
-        assertTrue(terminationScript.contains("/proc/\$command_pid/environ"))
-        assertFalse(terminationScript.contains("pkill"))
-        assertFalse(terminationScript.contains("killall"))
-        assertFalse(terminationScript.contains("kill-server"))
+        assertTrue(result.errorMessage.contains("remote execution continues"))
+        assertEquals(listOf(80L), timeouts)
+        assertEquals(listOf(request), requests)
     }
 
     @Test
-    fun managedRunCommandCancellationTerminatesBeforePropagatingCancellation() = runBlocking {
+    fun managedRunCommandCancellationPropagatesWithoutTerminatingRemoteExecution() = runBlocking {
         val firstRequestStarted = CompletableDeferred<Unit>()
-        val terminationCompleted = CompletableDeferred<Unit>()
         val requests = mutableListOf<NativeTermuxCommandRequest>()
-        val token = "cancel_execution"
         val transport = NativeTermuxManagedCommandTransport(
             rawTransport = NativeTermuxRawCommandTransport { request, _ ->
                 requests += request
-                if (requests.size == 1) {
-                    firstRequestStarted.complete(Unit)
-                    awaitCancellation()
-                } else {
-                    terminationCompleted.complete(Unit)
-                    successfulRawResponse("OPERIT_REMOTE_TERMINATED:$token:gone\n")
-                }
+                firstRequestStarted.complete(Unit)
+                awaitCancellation()
             },
-            tokenFactory = { token },
-            terminationTimeoutMs = 4_000L,
         )
         val execution = async {
             transport.execute(
@@ -180,12 +153,8 @@ class NativeOperitHostOperationsTest {
             Unit
         }
 
-        assertTrue(terminationCompleted.isCompleted)
-        assertEquals(2, requests.size)
-        assertTrue(requests[1].command.contains(token))
-        val terminationScript = requests[1].arguments.single { it.contains("REMOTE_TERMINATED") }
-        assertTrue(terminationScript.contains("token='$token'"))
-        assertTrue(terminationScript.contains("cancel_file=\"\$control_dir/\$token.cancel\""))
+        assertEquals(1, requests.size)
+        assertEquals("sleep 30", requests.single().command)
     }
 
     @Test
@@ -274,14 +243,6 @@ class NativeOperitHostOperationsTest {
             NativeTermuxReceiverSelector.receiverClassFor("$packageName:advanced_ui", packageName),
         )
     }
-
-    private fun successfulRawResponse(stdout: String) = NativeTermuxCommandResponse(
-        stdout = stdout,
-        stderr = "",
-        exitCode = 0,
-        errorCode = TERMUX_SUCCESS_ERROR_CODE,
-        errorMessage = "",
-    )
 
     @Test
     fun backgroundRegistryPreservesCacheFallbackAndDynamicEntry() {

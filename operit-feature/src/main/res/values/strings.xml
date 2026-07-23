@@ -5714,16 +5714,19 @@
     <string name="toolreg_env_info"> (环境: %1$s)</string>
     <string name="toolreg_env_arrow_info"> (%1$s → %2$s)</string>
     <string name="toolreg_execute_android_command_desc">通过 Android /system/bin/sh 执行: %1$s</string>
-    <string name="toolreg_execute_termux_command_desc">通过 Termux「%1$s」执行: %2$s</string>
+    <string name="toolreg_execute_termux_command_desc">通过 Termux「%1$s」直接执行（等待超时不会终止进程）: %2$s</string>
+    <string name="toolreg_termux_exec_command_desc">在受管 Termux PTY 中执行（yield=%1$s ms）: %2$s</string>
+    <string name="toolreg_termux_write_stdin_desc">轮询或写入受管 Termux 会话「%1$s」（control=%2$s）</string>
+    <string name="toolreg_list_termux_exec_sessions_desc">列出受管 Termux 执行会话（包含已完成=%1$s）</string>
     <string name="termux_error_execute_command">Termux 命令执行失败: %1$s</string>
     <string name="toolreg_close_all_virtual_displays_desc">关闭所有虚拟屏幕</string>
     <string name="toolreg_unnamed">未命名</string>
     <string name="toolreg_create_terminal_session_desc">创建或获取终端会话: %1$s</string>
     <string name="toolreg_execute_in_terminal_session_desc">在终端会话「%1$s」中执行: %2$s</string>
     <string name="toolreg_execute_hidden_terminal_command_desc">在隐藏终端执行器「%1$s」中执行: %2$s</string>
-    <string name="toolreg_close_terminal_session_desc">关闭终端会话: %1$s</string>
-    <string name="toolreg_input_in_terminal_session_desc">向终端会话「%1$s」写入输入（control=%2$s）</string>
-    <string name="toolreg_get_terminal_session_screen_desc">获取终端会话「%1$s」当前屏幕内容（单屏）</string>
+    <string name="toolreg_close_terminal_session_desc">关闭 Ubuntu 或受管 Termux 终端会话: %1$s</string>
+    <string name="toolreg_input_in_terminal_session_desc">向 Ubuntu 或受管 Termux 终端会话「%1$s」写入输入（control=%2$s）</string>
+    <string name="toolreg_get_terminal_session_screen_desc">获取 Ubuntu 或受管 Termux 终端会话「%1$s」当前屏幕内容（单屏）</string>
     <string name="toolreg_query_memory_desc">查询记忆库: %1$s</string>
     <string name="toolreg_get_memory_by_title_desc">根据标题获取记忆: %1$s</string>
 

@@ -23,6 +23,9 @@ class HostTerminalTargetContractTest {
         val names = SystemToolPrompts.getHostTerminalToolCategoryEn().tools.map { it.name }
         assertTrue("execute_android_command" in names)
         assertTrue("execute_termux_command" in names)
+        assertTrue("termux_exec_command" in names)
+        assertTrue("termux_write_stdin" in names)
+        assertTrue("list_termux_exec_sessions" in names)
         assertTrue("create_terminal_session" in names)
         assertFalse("execute_shell" in names)
         assertFalse(
@@ -35,6 +38,21 @@ class HostTerminalTargetContractTest {
                 .flatMap { it.tools }
                 .any { it.name == "execute_shell" },
         )
+    }
+
+    @Test
+    fun managedTermuxContractKeepsRawCommandAndUbuntuSessionSemanticsSeparate() {
+        val tools = SystemToolPrompts.getHostTerminalToolCategoryEn().tools.associateBy { it.name }
+        val raw = requireNotNull(tools["execute_termux_command"])
+        val managed = requireNotNull(tools["termux_exec_command"])
+        val ubuntu = requireNotNull(tools["create_terminal_session"])
+
+        assertTrue(raw.description.contains("unrestricted"))
+        assertTrue(raw.description.contains("does not terminate"))
+        assertTrue(managed.description.contains("setup_required"))
+        assertTrue(managed.description.contains("pkg install -y tmux"))
+        assertTrue(managed.description.contains("Never fall back"))
+        assertTrue(ubuntu.description.contains("Ubuntu"))
     }
 
     @Test

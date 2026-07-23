@@ -7,6 +7,8 @@ import com.ai.assistance.operit.host.terminal.HostTerminalState
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.ai.assistance.operit.host.terminal.HostTerminalAdapter
 import com.ai.assistance.operit.host.terminal.HostTerminalScreenSnapshot
+import com.ai.assistance.operit.host.terminal.HostTermuxExecResult
+import com.ai.assistance.operit.host.terminal.HostTermuxExecSession
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -106,6 +108,27 @@ class Terminal private constructor(private val context: Context) {
 
     suspend fun getSessionScreen(sessionId: String): HostTerminalScreenSnapshot =
         adapter.getSessionScreen(sessionId)
+
+    suspend fun executeTermuxCommand(
+        command: String,
+        workingDirectory: String? = null,
+        yieldTimeMs: Long = 10_000L,
+        sessionName: String? = null
+    ): HostTermuxExecResult =
+        adapter.executeTermuxCommand(command, workingDirectory, yieldTimeMs, sessionName)
+
+    suspend fun writeTermuxStdin(
+        sessionId: String,
+        chars: String = "",
+        control: String? = null,
+        yieldTimeMs: Long = 5_000L,
+        afterCursor: Long? = null
+    ): HostTermuxExecResult =
+        adapter.writeTermuxStdin(sessionId, chars, control, yieldTimeMs, afterCursor)
+
+    suspend fun listTermuxSessions(
+        includeCompleted: Boolean = false
+    ): List<HostTermuxExecSession> = adapter.listTermuxSessions(includeCompleted)
 
     fun isConnected(): Boolean = adapter.isConnected()
 }

@@ -19,6 +19,13 @@ data class TermuxTransportResult(
 interface TermuxSessionTransport {
     val termuxPrefix: String
 
+    val termuxHome: String
+        get() = if (termuxPrefix.endsWith("/usr")) {
+            termuxPrefix.removeSuffix("/usr") + "/home"
+        } else {
+            "$termuxPrefix/../home"
+        }
+
     suspend fun executeProgram(
         program: String,
         arguments: List<String>,

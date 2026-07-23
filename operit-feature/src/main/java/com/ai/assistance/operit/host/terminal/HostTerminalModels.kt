@@ -4,6 +4,40 @@ data class HostTerminalState(
     val sessions: List<HostTerminalSession> = emptyList()
 )
 
+enum class HostTermuxExecState {
+    SETUP_REQUIRED,
+    RUNNING,
+    COMPLETED,
+    FAILED,
+    CLOSED,
+    LOST,
+}
+
+data class HostTermuxExecResult(
+    val state: HostTermuxExecState,
+    val sessionId: String? = null,
+    val sessionName: String? = null,
+    val output: String = "",
+    val cursor: Long = 0L,
+    val exitCode: Int? = null,
+    val error: String = "",
+    val target: HostTerminalTarget = HostTerminalTarget.TERMUX,
+    val persistent: Boolean = false,
+    val setupCommand: String? = null,
+    val missingDependencies: List<String> = emptyList(),
+)
+
+data class HostTermuxExecSession(
+    val sessionId: String,
+    val sessionName: String,
+    val workingDirectory: String,
+    val state: HostTermuxExecState,
+    val cursor: Long = 0L,
+    val exitCode: Int? = null,
+    val startedAtEpochMs: Long = 0L,
+    val persistent: Boolean = true,
+)
+
 data class HostTerminalSession(
     val id: String,
     val title: String,

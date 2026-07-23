@@ -309,6 +309,43 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
+    handler.registerTool(
+            name = "termux_exec_command",
+            descriptionGenerator = { tool ->
+                val command = tool.parameters.find { it.name == "command" }?.value ?: ""
+                val yieldTimeMs =
+                        tool.parameters.find { it.name == "yield_time_ms" }?.value ?: "10000"
+                s(R.string.toolreg_termux_exec_command_desc, yieldTimeMs, command)
+            },
+            executor = { tool ->
+                ToolGetter.getTerminalCommandExecutor(context).executeManagedTermuxCommand(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "termux_write_stdin",
+            descriptionGenerator = { tool ->
+                val sessionId = tool.parameters.find { it.name == "session_id" }?.value ?: ""
+                val control = tool.parameters.find { it.name == "control" }?.value ?: ""
+                s(R.string.toolreg_termux_write_stdin_desc, sessionId, control)
+            },
+            executor = { tool ->
+                ToolGetter.getTerminalCommandExecutor(context).writeManagedTermuxStdin(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "list_termux_exec_sessions",
+            descriptionGenerator = { tool ->
+                val includeCompleted =
+                        tool.parameters.find { it.name == "include_completed" }?.value ?: "false"
+                s(R.string.toolreg_list_termux_exec_sessions_desc, includeCompleted)
+            },
+            executor = { tool ->
+                ToolGetter.getTerminalCommandExecutor(context).listManagedTermuxSessions(tool)
+            }
+    )
+
     // 终端命令执行工具 - 一次性收集输出
     handler.registerTool(
             name = "create_terminal_session",

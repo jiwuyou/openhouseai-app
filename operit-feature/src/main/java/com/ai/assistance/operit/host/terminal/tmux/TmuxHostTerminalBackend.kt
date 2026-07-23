@@ -7,7 +7,11 @@ import com.ai.assistance.operit.host.terminal.HostTerminalSession
 import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
 import com.ai.assistance.operit.host.terminal.HostTerminalState
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
+import com.ai.assistance.operit.host.terminal.HostTermuxExecResult
+import com.ai.assistance.operit.host.terminal.HostTermuxExecSession
+import com.ai.assistance.operit.host.terminal.HostTermuxExecState
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -17,6 +21,7 @@ class TmuxHostTerminalBackend(
     transport: TermuxSessionTransport,
 ) : HostTerminalSessionBackend {
     private val manager = TermuxSessionManager(transport)
+    private val termuxExecManager = TermuxUnifiedExecManager(transport)
     private val sessions = ConcurrentHashMap<String, SessionRecord>()
     private val ownedSessionIds = ConcurrentHashMap.newKeySet<String>()
     private val _terminalState = MutableStateFlow(HostTerminalState())
@@ -62,7 +67,11 @@ class TmuxHostTerminalBackend(
     }
 
     override suspend fun closeSession(sessionId: String) {
-        manager.close(sessionId)
+        if (TermuxSessionProtocol.isTermuxSessionId(sessionId)) {
+            termuxExecManager.close(sessionId)
+        } else {
+            manager.close(sessionId)
+        }
         ownedSessionIds.remove(sessionId)
         sessions.remove(sessionId)
         refreshState()
@@ -112,9 +121,16 @@ class TmuxHostTerminalBackend(
         hasInput: Boolean,
         input: String,
         control: String?,
-    ): Int = manager.input(sessionId, hasInput, input, control)
+    ): Int = if (TermuxSessionProtocol.isTermuxSessionId(sessionId)) {
+        termuxExecManager.input(sessionId, hasInput, input, control)
+    } else {
+        manager.input(sessionId, hasInput, input, control)
+    }
 
     override suspend fun getSessionScreen(sessionId: String): HostTerminalScreenSnapshot {
+        if (TermuxSessionProtocol.isTermuxSessionId(sessionId)) {
+            return termuxExecManager.screen(sessionId)
+        }
         val screen = manager.screen(sessionId)
         sessions[sessionId]?.let { session ->
             session.lastOutput = screen.content.takeLast(MAX_SCREEN_CHARS)
@@ -122,6 +138,45 @@ class TmuxHostTerminalBackend(
         }
         return HostTerminalScreenSnapshot(screen.sessionId, screen.rows, screen.cols, screen.content)
     }
+
+    override suspend fun executeTermuxCommand(
+        command: String,
+        workingDirectory: String?,
+        yieldTimeMs: Long,
+        sessionName: String?,
+    ): HostTermuxExecResult = try {
+        termuxExecManager.execute(command, workingDirectory, yieldTimeMs, sessionName)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        HostTermuxExecResult(
+            state = HostTermuxExecState.FAILED,
+            error = error.message ?: error.javaClass.simpleName,
+        )
+    }
+
+    override suspend fun writeTermuxStdin(
+        sessionId: String,
+        chars: String,
+        control: String?,
+        yieldTimeMs: Long,
+        afterCursor: Long?,
+    ): HostTermuxExecResult = try {
+        termuxExecManager.writeStdin(sessionId, chars, control, yieldTimeMs, afterCursor)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        HostTermuxExecResult(
+            state = HostTermuxExecState.FAILED,
+            sessionId = sessionId,
+            error = error.message ?: error.javaClass.simpleName,
+            persistent = true,
+        )
+    }
+
+    override suspend fun listTermuxSessions(
+        includeCompleted: Boolean,
+    ): List<HostTermuxExecSession> = termuxExecManager.list(includeCompleted)
 
     override fun isConnected(): Boolean = connected
 

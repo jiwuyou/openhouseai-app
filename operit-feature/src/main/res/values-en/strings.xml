@@ -5364,16 +5364,19 @@
     <string name="toolreg_env_info"> (env: %1$s)</string>
     <string name="toolreg_env_arrow_info"> (%1$s → %2$s)</string>
     <string name="toolreg_execute_android_command_desc">Execute with Android /system/bin/sh: %1$s</string>
-    <string name="toolreg_execute_termux_command_desc">Execute through Termux "%1$s": %2$s</string>
+    <string name="toolreg_execute_termux_command_desc">Execute directly through Termux "%1$s" (wait timeout does not terminate the process): %2$s</string>
+    <string name="toolreg_termux_exec_command_desc">Execute in a managed Termux PTY (yield=%1$s ms): %2$s</string>
+    <string name="toolreg_termux_write_stdin_desc">Poll or write managed Termux session [%1$s] (control=%2$s)</string>
+    <string name="toolreg_list_termux_exec_sessions_desc">List managed Termux exec sessions (include completed=%1$s)</string>
     <string name="termux_error_execute_command">Failed to execute Termux command: %1$s</string>
     <string name="toolreg_close_all_virtual_displays_desc">Close all virtual displays</string>
     <string name="toolreg_unnamed">Unnamed</string>
     <string name="toolreg_create_terminal_session_desc">Create or get terminal session: %1$s</string>
     <string name="toolreg_execute_in_terminal_session_desc">Execute in terminal session [%1$s]: %2$s</string>
     <string name="toolreg_execute_hidden_terminal_command_desc">Execute in hidden terminal executor [%1$s]: %2$s</string>
-    <string name="toolreg_close_terminal_session_desc">Close terminal session: %1$s</string>
-    <string name="toolreg_input_in_terminal_session_desc">Write input to terminal session [%1$s] (control=%2$s)</string>
-    <string name="toolreg_get_terminal_session_screen_desc">Get current terminal screen content for session [%1$s] (single screen)</string>
+    <string name="toolreg_close_terminal_session_desc">Close Ubuntu or managed Termux terminal session: %1$s</string>
+    <string name="toolreg_input_in_terminal_session_desc">Write input to Ubuntu or managed Termux terminal session [%1$s] (control=%2$s)</string>
+    <string name="toolreg_get_terminal_session_screen_desc">Get current terminal screen content for Ubuntu or managed Termux session [%1$s] (single screen)</string>
     <string name="toolreg_query_memory_desc">Query memory library: %1$s</string>
     <string name="toolreg_get_memory_by_title_desc">Get memory by title: %1$s</string>
 

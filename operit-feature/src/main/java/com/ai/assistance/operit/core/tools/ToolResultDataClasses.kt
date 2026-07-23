@@ -313,6 +313,78 @@ data class TermuxCommandResultData(
     }
 }
 
+/** Managed Termux PTY result with Codex-style yield and reconnect semantics. */
+@Serializable
+data class TermuxExecResultData(
+        val command: String? = null,
+        val sessionId: String? = null,
+        val sessionName: String? = null,
+        val target: String = "termux",
+        val state: String,
+        val output: String = "",
+        val cursor: String? = null,
+        val exitCode: Int? = null,
+        val persistent: Boolean = false,
+        val setupRequired: Boolean = false,
+        val setupCommand: String? = null,
+        val missingDependencies: List<String> = emptyList(),
+        val error: String? = null
+) : ToolResultData() {
+    override fun toString(): String {
+        val sb = StringBuilder()
+        sb.appendLine("Managed Termux Execution Result:")
+        sb.appendLine("State: $state")
+        sessionId?.let { sb.appendLine("Session: $it") }
+        sessionName?.let { sb.appendLine("Session Name: $it") }
+        command?.let { sb.appendLine("Command: $it") }
+        exitCode?.let { sb.appendLine("Exit Code: $it") }
+        cursor?.let { sb.appendLine("Cursor: $it") }
+        sb.appendLine("Persistent: $persistent")
+        if (setupRequired) {
+            sb.appendLine("Setup Required: true")
+            if (missingDependencies.isNotEmpty()) {
+                sb.appendLine("Missing Dependencies: ${missingDependencies.joinToString(", ")}")
+            }
+            sb.appendLine(
+                "Install with execute_termux_command: ${setupCommand ?: "pkg install -y tmux"}"
+            )
+        }
+        if (output.isNotEmpty()) sb.appendLine("\nOutput:").appendLine(output)
+        error?.takeIf { it.isNotBlank() }?.let { sb.appendLine("\nError:").appendLine(it) }
+        return sb.toString()
+    }
+}
+
+@Serializable
+data class TermuxExecSessionResultData(
+        val sessionId: String,
+        val sessionName: String? = null,
+        val workingDirectory: String? = null,
+        val state: String,
+        val cursor: String? = null,
+        val exitCode: Int? = null,
+        val persistent: Boolean = true,
+        val startedAtMs: Long? = null
+)
+
+@Serializable
+data class TermuxExecSessionListResultData(
+        val sessions: List<TermuxExecSessionResultData>
+) : ToolResultData() {
+    override fun toString(): String {
+        if (sessions.isEmpty()) return "No managed Termux exec sessions found."
+        return buildString {
+            appendLine("Managed Termux Exec Sessions: ${sessions.size}")
+            sessions.forEach { session ->
+                append("- ${session.sessionId}: ${session.state}")
+                session.sessionName?.let { append(" ($it)") }
+                session.exitCode?.let { append(", exit=$it") }
+                appendLine()
+            }
+        }.trimEnd()
+    }
+}
+
 /** 终端命令执行结果数据 */
 @Serializable
 data class TerminalCommandResultData(

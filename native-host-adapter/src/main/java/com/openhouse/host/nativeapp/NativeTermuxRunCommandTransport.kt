@@ -11,13 +11,10 @@ import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.terminal.tmux.TermuxSessionTransport
 import com.ai.assistance.operit.host.terminal.tmux.TermuxTransportResult
 import java.io.File
-import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal const val EXTERNAL_TERMUX_PACKAGE = "com.termux"
@@ -156,218 +153,25 @@ internal fun interface NativeTermuxRawCommandTransport {
     ): NativeTermuxCommandResponse?
 }
 
-internal data class NativeTermuxManagedExecution(
-    val token: String,
-    val commandRequest: NativeTermuxCommandRequest,
-    val terminationRequest: NativeTermuxCommandRequest,
-    val terminationConfirmationPrefix: String,
-)
-
-internal data class NativeTermuxTerminationResult(
-    val confirmed: Boolean,
-    val detail: String,
-)
-
-internal fun buildManagedNativeTermuxExecution(
-    request: NativeTermuxCommandRequest,
-    token: String,
-    termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
-): NativeTermuxManagedExecution {
-    require(token.matches(Regex("^[A-Za-z0-9_-]{8,128}$"))) {
-        "RUN_COMMAND execution token is invalid"
-    }
-    val prefix = "/data/data/$termuxPackage/files/usr"
-    val controlDirectory = "$prefix/tmp/operit-run-command"
-    val commandLine = (listOf(request.executable) + request.arguments)
-        .joinToString(" ") { shellQuote(it) }
-    val commandScript = """
-        set -u
-        export PATH=${shellQuote("$prefix/bin:/system/bin")}
-        control_dir=${shellQuote(controlDirectory)}
-        token=${shellQuote(token)}
-        pid_file="${'$'}control_dir/${'$'}token.pid"
-        cancel_file="${'$'}control_dir/${'$'}token.cancel"
-        done_file="${'$'}control_dir/${'$'}token.done"
-        mkdir -p "${'$'}control_dir"
-        rm -f "${'$'}pid_file" "${'$'}done_file"
-        finish_managed_command() {
-          status="${'$'}1"
-          if [ -e "${'$'}cancel_file" ]; then
-            printf '%s\n' "${'$'}status" > "${'$'}done_file"
-            sleep 1
-            rm -f "${'$'}cancel_file" "${'$'}done_file"
-          else
-            rm -f "${'$'}done_file"
-          fi
-          rm -f "${'$'}pid_file"
-        }
-        if [ -e "${'$'}cancel_file" ]; then
-          finish_managed_command 143
-          exit 143
-        fi
-        set -m
-        OPERIT_RUN_COMMAND_ID="${'$'}token" $commandLine &
-        command_pid="${'$'}!"
-        command_pgid="${'$'}command_pid"
-        printf '%s %s\n' "${'$'}command_pgid" "${'$'}command_pid" > "${'$'}pid_file"
-        if [ -e "${'$'}cancel_file" ]; then
-          kill -TERM -- "-${'$'}command_pgid" 2>/dev/null || true
-        fi
-        wait "${'$'}command_pid"
-        status="${'$'}?"
-        finish_managed_command "${'$'}status"
-        exit "${'$'}status"
-    """.trimIndent()
-    val confirmationPrefix = "$REMOTE_TERMINATION_MARKER_PREFIX$token:"
-    val terminationScript = """
-        set -u
-        export PATH=${shellQuote("$prefix/bin:/system/bin")}
-        control_dir=${shellQuote(controlDirectory)}
-        token=${shellQuote(token)}
-        pid_file="${'$'}control_dir/${'$'}token.pid"
-        cancel_file="${'$'}control_dir/${'$'}token.cancel"
-        done_file="${'$'}control_dir/${'$'}token.done"
-        mkdir -p "${'$'}control_dir"
-        : > "${'$'}cancel_file"
-        iteration=0
-        term_sent=0
-        term_iteration=0
-        while [ "${'$'}iteration" -lt 100 ]; do
-          if [ -f "${'$'}done_file" ]; then
-            status="${'$'}(cat "${'$'}done_file" 2>/dev/null || true)"
-            rm -f "${'$'}pid_file" "${'$'}cancel_file" "${'$'}done_file"
-            printf '%s%s\n' ${shellQuote(confirmationPrefix)} "confirmed:${'$'}status"
-            exit 0
-          fi
-          if [ -s "${'$'}pid_file" ]; then
-            command_pgid=''
-            command_pid=''
-            read -r command_pgid command_pid < "${'$'}pid_file" || true
-            if [[ ! "${'$'}command_pgid" =~ ^[0-9]+${'$'} || ! "${'$'}command_pid" =~ ^[0-9]+${'$'} ]]; then
-              printf 'Invalid managed RUN_COMMAND pid record for %s\n' "${'$'}token" >&2
-              exit 65
-            fi
-            if ! kill -0 -- "-${'$'}command_pgid" 2>/dev/null; then
-              rm -f "${'$'}pid_file" "${'$'}cancel_file" "${'$'}done_file"
-              printf '%s%s\n' ${shellQuote(confirmationPrefix)} 'gone'
-              exit 0
-            fi
-            if [ "${'$'}term_sent" -eq 0 ]; then
-              if ! grep -a -F -q "OPERIT_RUN_COMMAND_ID=${'$'}token" "/proc/${'$'}command_pid/environ" 2>/dev/null; then
-                printf 'Managed RUN_COMMAND marker mismatch for %s\n' "${'$'}token" >&2
-                exit 66
-              fi
-              kill -TERM -- "-${'$'}command_pgid" 2>/dev/null || true
-              term_sent=1
-              term_iteration="${'$'}iteration"
-            elif [ "${'$'}((iteration - term_iteration))" -ge 20 ]; then
-              kill -KILL -- "-${'$'}command_pgid" 2>/dev/null || true
-            fi
-          elif [ "${'$'}iteration" -ge 10 ]; then
-            printf '%s%s\n' ${shellQuote(confirmationPrefix)} 'armed-before-start'
-            exit 0
-          fi
-          sleep 0.1
-          iteration="${'$'}((iteration + 1))"
-        done
-        printf 'Timed out terminating managed RUN_COMMAND %s\n' "${'$'}token" >&2
-        exit 124
-    """.trimIndent()
-    return NativeTermuxManagedExecution(
-        token = token,
-        commandRequest = NativeTermuxCommandRequest(
-            command = request.command,
-            executable = "$prefix/bin/bash",
-            arguments = listOf("-lc", commandScript),
-            workingDirectory = request.workingDirectory,
-            stdin = request.stdin,
-        ),
-        terminationRequest = NativeTermuxCommandRequest(
-            command = "terminate managed RUN_COMMAND $token",
-            executable = "$prefix/bin/bash",
-            arguments = listOf("-lc", terminationScript),
-            workingDirectory = "/data/data/$termuxPackage/files/home",
-        ),
-        terminationConfirmationPrefix = confirmationPrefix,
-    )
-}
-
 internal class NativeTermuxManagedCommandTransport(
     private val rawTransport: NativeTermuxRawCommandTransport,
-    private val termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
-    private val tokenFactory: () -> String = {
-        UUID.randomUUID().toString().replace("-", "")
-    },
-    private val terminationTimeoutMs: Long = DEFAULT_REMOTE_TERMINATION_TIMEOUT_MS,
 ) : NativeTermuxCommandTransport {
+    // The Android wait is bounded, but the RUN_COMMAND process remains owned by Termux.
     override suspend fun execute(
         request: NativeTermuxCommandRequest,
         timeoutMs: Long,
     ): NativeTermuxCommandResponse {
         val effectiveTimeout = timeoutMs.coerceAtLeast(1L)
-        val execution = buildManagedNativeTermuxExecution(
-            request = request,
-            token = tokenFactory(),
-            termuxPackage = termuxPackage,
-        )
-        val response = try {
-            rawTransport.execute(execution.commandRequest, effectiveTimeout)
-        } catch (error: CancellationException) {
-            val termination = withContext(NonCancellable) { terminate(execution) }
-            if (!termination.confirmed) {
-                error.addSuppressed(
-                    NativeTermuxTransportException(
-                        124,
-                        "Remote Termux cancellation was not confirmed: ${termination.detail}",
-                    ),
-                )
-            }
-            throw error
-        }
+        val response = rawTransport.execute(request, effectiveTimeout)
         if (response != null) return response
 
-        val termination = withContext(NonCancellable) { terminate(execution) }
         return NativeTermuxCommandResponse(
             stdout = "",
             stderr = "",
             exitCode = 124,
             errorCode = 1,
-            errorMessage = buildString {
-                append("Timed out waiting for Termux command result after ${effectiveTimeout}ms; ")
-                if (termination.confirmed) {
-                    append("remote execution termination confirmed")
-                } else {
-                    append("remote execution termination was not confirmed: ${termination.detail}")
-                }
-            },
+            errorMessage = "Timed out waiting for Termux command result after ${effectiveTimeout}ms; remote execution continues",
             timedOut = true,
-        )
-    }
-
-    private suspend fun terminate(execution: NativeTermuxManagedExecution): NativeTermuxTerminationResult {
-        val response = try {
-            rawTransport.execute(
-                execution.terminationRequest,
-                terminationTimeoutMs.coerceAtLeast(1L),
-            )
-        } catch (error: Throwable) {
-            return NativeTermuxTerminationResult(
-                confirmed = false,
-                detail = error.message ?: error.javaClass.simpleName,
-            )
-        }
-        if (response == null) {
-            return NativeTermuxTerminationResult(false, "termination command timed out")
-        }
-        val marker = response.stdout.lineSequence()
-            .map(String::trim)
-            .firstOrNull { it.startsWith(execution.terminationConfirmationPrefix) }
-        val confirmed = response.errorCode == TERMUX_SUCCESS_ERROR_CODE &&
-            response.exitCode == 0 && marker != null
-        return NativeTermuxTerminationResult(
-            confirmed = confirmed,
-            detail = marker
-                ?: response.errorMessage.ifBlank { response.stderr.ifBlank { "missing termination confirmation" } },
         )
     }
 }
@@ -383,7 +187,6 @@ internal class NativeTermuxRunCommandTransport(
             termuxPackage = termuxPackage,
             processNameProvider = processNameProvider,
         ),
-        termuxPackage = termuxPackage,
     )
 
     override suspend fun execute(
@@ -479,18 +282,12 @@ private class AndroidNativeTermuxRawCommandTransport(
     }
 }
 
-private fun shellQuote(value: String): String =
-    "'${value.replace("'", "'\"'\"'")}'"
-
-private const val REMOTE_TERMINATION_MARKER_PREFIX = "OPERIT_REMOTE_TERMINATED:"
-private const val DEFAULT_REMOTE_TERMINATION_TIMEOUT_MS = 12_000L
-
 internal class NativeTermuxSessionTransport(
     private val transport: NativeTermuxCommandTransport,
     private val termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
 ) : TermuxSessionTransport {
     override val termuxPrefix: String = "/data/data/$termuxPackage/files/usr"
-    private val termuxHome = "/data/data/$termuxPackage/files/home"
+    override val termuxHome: String = "/data/data/$termuxPackage/files/home"
 
     override suspend fun executeProgram(
         program: String,

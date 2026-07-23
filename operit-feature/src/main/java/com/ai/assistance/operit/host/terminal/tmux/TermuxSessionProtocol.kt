@@ -7,7 +7,7 @@ import java.util.UUID
 
 internal object TermuxSessionProtocol {
     private val sessionNamePattern = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-    private val sessionIdPattern = Regex("^operit_[vh]_u_[0-9a-f]{24}$")
+    private val sessionIdPattern = Regex("^operit_[vh]_[tu]_[0-9a-f]{24}$")
 
     const val DEFAULT_TIMEOUT_MS = 1_800_000L
     const val DEFAULT_HIDDEN_TIMEOUT_MS = 120_000L
@@ -40,8 +40,15 @@ internal object TermuxSessionProtocol {
 
     fun targetForSessionId(sessionId: String): HostTerminalTarget {
         requireSessionId(sessionId)
-        return HostTerminalTarget.UBUNTU
+        return when (sessionId.substringAfter("operit_").substringAfter('_').substringBefore('_')) {
+            "t" -> HostTerminalTarget.TERMUX
+            "u" -> HostTerminalTarget.UBUNTU
+            else -> error("Invalid terminal session target")
+        }
     }
+
+    fun isTermuxSessionId(sessionId: String): Boolean =
+        runCatching { targetForSessionId(sessionId) == HostTerminalTarget.TERMUX }.getOrDefault(false)
 
     fun newCommandToken(): String = UUID.randomUUID().toString().replace("-", "")
 

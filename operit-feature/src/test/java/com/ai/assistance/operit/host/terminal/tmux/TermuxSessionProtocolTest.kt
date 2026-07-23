@@ -35,6 +35,17 @@ class TermuxSessionProtocolTest {
     }
 
     @Test
+    fun sessionIdsDistinguishUbuntuAndManagedTermuxTargets() {
+        val termux = "operit_v_t_0123456789abcdef01234567"
+        val ubuntu = "operit_v_u_0123456789abcdef01234567"
+
+        assertEquals(HostTerminalTarget.TERMUX, TermuxSessionProtocol.targetForSessionId(termux))
+        assertEquals(HostTerminalTarget.UBUNTU, TermuxSessionProtocol.targetForSessionId(ubuntu))
+        assertTrue(TermuxSessionProtocol.isTermuxSessionId(termux))
+        assertFalse(TermuxSessionProtocol.isTermuxSessionId(ubuntu))
+    }
+
+    @Test
     fun payloadEncodesCommandAndCaptureParserPreservesExitCode() {
         val command = "printf '%s\\n' \"a'b\"; cd \"\$HOME/work dir\""
         val payload = TermuxSessionProtocol.commandPayload(command, "token123")

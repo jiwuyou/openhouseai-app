@@ -800,6 +800,57 @@ fun getJsToolsDefinition(): String {
                     }
                 },
                 shell: (command) => toolCall("execute_android_command", { command }),
+                termux: {
+                    execRaw: (command, options = {}) => {
+                        const params = { command };
+                        if (options && typeof options === "object") {
+                            if (options.workingDirectory !== undefined && options.workingDirectory !== null) {
+                                params.working_directory = String(options.workingDirectory);
+                            }
+                            if (options.timeoutMs !== undefined && options.timeoutMs !== null) {
+                                params.timeout_ms = String(options.timeoutMs);
+                            }
+                        }
+                        return toolCall("execute_termux_command", params);
+                    },
+                    exec: (command, options = {}) => {
+                        const params = { command };
+                        if (options && typeof options === "object") {
+                            if (options.workingDirectory !== undefined && options.workingDirectory !== null) {
+                                params.working_directory = String(options.workingDirectory);
+                            }
+                            if (options.yieldTimeMs !== undefined && options.yieldTimeMs !== null) {
+                                params.yield_time_ms = String(options.yieldTimeMs);
+                            }
+                            if (options.sessionName !== undefined && options.sessionName !== null) {
+                                params.session_name = String(options.sessionName);
+                            }
+                        }
+                        return toolCall("termux_exec_command", params);
+                    },
+                    writeStdin: (sessionId, options = {}) => {
+                        const params = { session_id: sessionId };
+                        if (options && typeof options === "object") {
+                            if (options.chars !== undefined && options.chars !== null) {
+                                params.chars = String(options.chars);
+                            }
+                            if (options.control !== undefined && options.control !== null) {
+                                params.control = String(options.control);
+                            }
+                            if (options.yieldTimeMs !== undefined && options.yieldTimeMs !== null) {
+                                params.yield_time_ms = String(options.yieldTimeMs);
+                            }
+                            if (options.afterCursor !== undefined && options.afterCursor !== null) {
+                                params.after_cursor = String(options.afterCursor);
+                            }
+                        }
+                        return toolCall("termux_write_stdin", params);
+                    },
+                    listSessions: (includeCompleted = false) => toolCall(
+                        "list_termux_exec_sessions",
+                        { include_completed: !!includeCompleted }
+                    )
+                },
                 // 执行终端命令 - 一次性收集输出
                 terminal: {
                     create: (sessionName) => toolCall("create_terminal_session", { session_name: sessionName }),
