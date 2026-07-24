@@ -31,7 +31,9 @@ import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.WaifuPreferences
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
+import com.ai.assistance.operit.data.preferences.ModelConfigStorageScope
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceBackupManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -99,10 +101,39 @@ class MessageProcessingDelegate(
     private val isRescueRuntime: Boolean = runtimeSlot == ChatRuntimeSlot.RESCUE
 
     // 模型配置管理器
-    private val modelConfigManager = ModelConfigManager(context)
+    private val modelConfigManager =
+        ModelConfigManager(
+            context,
+            if (isRescueRuntime) ModelConfigStorageScope.RESCUE else ModelConfigStorageScope.MAIN,
+        )
+    private val rescueModelConfigStore by lazy { RescueModelConfigStore(context) }
 
     // 功能配置管理器，用于获取正确的模型配置ID
     private val functionalConfigManager = FunctionalConfigManager(context)
+
+    private data class ActiveTurnModelConfig(
+        val configId: String,
+        val config: ModelConfigData,
+    )
+
+    private suspend fun loadActiveTurnModelConfig(
+        chatModelConfigIdOverride: String?,
+    ): ActiveTurnModelConfig {
+        if (isRescueRuntime) {
+            val resolved = rescueModelConfigStore.loadResolved()
+            return ActiveTurnModelConfig(
+                configId = resolved.selection.configId,
+                config = resolved.selectedConfig,
+            )
+        }
+        val configId =
+            chatModelConfigIdOverride?.takeIf { it.isNotBlank() }
+                ?: functionalConfigManager.getConfigIdForFunction(FunctionType.CHAT)
+        return ActiveTurnModelConfig(
+            configId = configId,
+            config = modelConfigManager.getModelConfigFlow(configId).first(),
+        )
+    }
 
     private val _userMessage = MutableStateFlow(TextFieldValue(""))
     val userMessage: StateFlow<TextFieldValue> = _userMessage.asStateFlow()
@@ -642,21 +673,22 @@ class MessageProcessingDelegate(
             AppLogger.d(TAG, "开始处理用户消息：附件数量=${attachments.size}")
 
             // 获取当前模型配置以检查是否启用直接图片处理
-            val configId = chatModelConfigIdOverride?.takeIf { it.isNotBlank() }
-                ?: functionalConfigManager.getConfigIdForFunction(FunctionType.CHAT)
             val loadModelConfigStartTime = messageTimingNow()
-            val initialModelConfig = modelConfigManager.getModelConfigFlow(configId).first()
-            val modelRoute = try {
-                resolveModelTurnRoute(
-                    isRescueRuntime = isRescueRuntime,
-                    initialConfig = initialModelConfig,
-                    ensureMigrated = {
-                        piModelSettings.ensureLegacyConfigsMigrated(context, modelConfigManager)
-                    },
-                    reloadConfig = { modelConfigManager.getModelConfigFlow(configId).first() },
-                )
+            val (activeTurnModelConfig, modelRoute) = try {
+                val activeConfig = loadActiveTurnModelConfig(chatModelConfigIdOverride)
+                activeConfig to
+                    resolveModelTurnRoute(
+                        isRescueRuntime = isRescueRuntime,
+                        initialConfig = activeConfig.config,
+                        ensureMigrated = {
+                            piModelSettings.ensureLegacyConfigsMigrated(context, modelConfigManager)
+                        },
+                        reloadConfig = {
+                            modelConfigManager.getModelConfigFlow(activeConfig.configId).first()
+                        },
+                    )
             } catch (error: Exception) {
-                val message = error.message ?: "旧模型配置迁移失败，请重试"
+                val message = error.message ?: "模型配置加载失败，请重试"
                 chatRuntime.isLoading.value = false
                 chatRuntime.modelBackend = null
                 updateGlobalLoadingState()
@@ -665,6 +697,7 @@ class MessageProcessingDelegate(
                 withContext(Dispatchers.Main) { showErrorMessage(message) }
                 return@launch
             }
+            val configId = activeTurnModelConfig.configId
             val currentModelConfig = modelRoute.config
             val currentPiModelBinding = modelRoute.binding
             chatRuntime.modelBackend = modelRoute.backend
@@ -1521,20 +1554,21 @@ class MessageProcessingDelegate(
             chatId,
             EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing)),
         )
-        val configId = chatModelConfigIdOverride?.takeIf { it.isNotBlank() }
-            ?: functionalConfigManager.getConfigIdForFunction(FunctionType.CHAT)
-        val initialModelConfig = modelConfigManager.getModelConfigFlow(configId).first()
-        val modelRoute = try {
-            resolveModelTurnRoute(
-                isRescueRuntime = isRescueRuntime,
-                initialConfig = initialModelConfig,
-                ensureMigrated = {
-                    piModelSettings.ensureLegacyConfigsMigrated(context, modelConfigManager)
-                },
-                reloadConfig = { modelConfigManager.getModelConfigFlow(configId).first() },
-            )
+        val (activeTurnModelConfig, modelRoute) = try {
+            val activeConfig = loadActiveTurnModelConfig(chatModelConfigIdOverride)
+            activeConfig to
+                resolveModelTurnRoute(
+                    isRescueRuntime = isRescueRuntime,
+                    initialConfig = activeConfig.config,
+                    ensureMigrated = {
+                        piModelSettings.ensureLegacyConfigsMigrated(context, modelConfigManager)
+                    },
+                    reloadConfig = {
+                        modelConfigManager.getModelConfigFlow(activeConfig.configId).first()
+                    },
+                )
         } catch (error: Exception) {
-            val message = error.message ?: "旧模型配置迁移失败，请重试"
+            val message = error.message ?: "模型配置加载失败，请重试"
             chatRuntime.sendJob = null
             chatRuntime.isLoading.value = false
             chatRuntime.modelBackend = null
@@ -1543,6 +1577,7 @@ class MessageProcessingDelegate(
             setChatInputProcessingState(chatId, EnhancedInputProcessingState.Error(message))
             throw error
         }
+        val configId = activeTurnModelConfig.configId
         val currentPiModelBinding = modelRoute.binding
         chatRuntime.modelBackend = modelRoute.backend
         var terminalState: EnhancedInputProcessingState? = null

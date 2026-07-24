@@ -87,7 +87,9 @@ fun AdvancedSettingsSection(
                 useMultipleApiKeys = useApiKeyPool,
                 apiKeyPool = apiKeyPool
             )
-            EnhancedAIService.refreshAllServices(configManager.appContext)
+            if (!configManager.isRescueStore) {
+                EnhancedAIService.refreshAllServices(configManager.appContext)
+            }
             showNotification(context.getString(R.string.advanced_settings_saved))
         }
     }
@@ -103,7 +105,9 @@ fun AdvancedSettingsSection(
             requestLimitPerMinute = state.requestLimitPerMinute,
             maxConcurrentRequests = state.maxConcurrentRequests
         )
-        EnhancedAIService.refreshAllServices(configManager.appContext)
+        if (!configManager.isRescueStore) {
+            EnhancedAIService.refreshAllServices(configManager.appContext)
+        }
     }
 
     LaunchedEffect(config.id) {

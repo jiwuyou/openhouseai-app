@@ -128,9 +128,12 @@ import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.FunctionConfigMapping
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
+import com.ai.assistance.operit.data.preferences.ModelConfigStorageScope
 import com.ai.assistance.operit.data.preferences.MemorySearchSettingsPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.repository.MemoryAutoSaveCandidateRepository
+import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
+import com.ai.assistance.operit.rescue.pi.RescueModelSelection
 import com.ai.assistance.operit.ui.common.icons.MaterialIconNameResolver
 import com.ai.assistance.operit.ui.common.animations.SimpleAnimatedVisibility
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
@@ -233,6 +236,7 @@ fun AgentChatInputSection(
     val showTokenLimitDialog = remember { mutableStateOf(false) }
     val showFullscreenInput = remember { mutableStateOf(false) }
     val showModelSelectorPopup = remember { mutableStateOf(false) }
+    var isRescueModelSelectionPending by remember { mutableStateOf(false) }
     val showExtraSettingsPopup = remember { mutableStateOf(false) }
     var showCharacterCardBindingSwitchConfirm by remember { mutableStateOf(false) }
     var pendingCharacterCardModelSelection by remember { mutableStateOf<Pair<String, Int>?>(null) }
@@ -240,10 +244,22 @@ fun AgentChatInputSection(
     var pendingCharacterCardMemorySelection by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isRescueModelSelection = inputMenuRuntime == "rescue"
     val characterCardManager = remember(context) { CharacterCardManager.getInstance(context) }
     val activePromptManager = remember(context) { ActivePromptManager.getInstance(context) }
     val functionalConfigManager = remember(context) { FunctionalConfigManager(context) }
-    val modelConfigManager = remember(context) { ModelConfigManager(context) }
+    val modelConfigManager =
+        remember(context, isRescueModelSelection) {
+            ModelConfigManager(
+                context,
+                if (isRescueModelSelection) {
+                    ModelConfigStorageScope.RESCUE
+                } else {
+                    ModelConfigStorageScope.MAIN
+                },
+            )
+        }
+    val rescueModelConfigStore = remember(context) { RescueModelConfigStore(context) }
     val userPreferencesManager = remember(context) { UserPreferencesManager.getInstance(context) }
     val isProcessing =
         isLoading ||
@@ -358,12 +374,26 @@ fun AgentChatInputSection(
     val configMappingWithIndex by
         functionalConfigManager.functionConfigMappingWithIndexFlow.collectAsState(initial = emptyMap())
     var configSummaries by remember { mutableStateOf<List<ModelConfigSummary>>(emptyList()) }
+    var rescueModelSelection by
+        remember {
+            mutableStateOf(
+                RescueModelSelection(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
+            )
+        }
     val activeProfileId by userPreferencesManager.activeProfileIdFlow.collectAsState(initial = "default")
     var preferenceProfiles by remember { mutableStateOf<List<PreferenceProfile>>(emptyList()) }
     val currentConfigMapping =
-        configMappingWithIndex[FunctionType.CHAT]
-            ?: FunctionConfigMapping(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
-    val isModelSelectionLockedByCharacterCard = !characterCardBoundChatModelConfigId.isNullOrBlank()
+        if (isRescueModelSelection) {
+            FunctionConfigMapping(
+                rescueModelSelection.configId,
+                rescueModelSelection.modelIndex,
+            )
+        } else {
+            configMappingWithIndex[FunctionType.CHAT]
+                ?: FunctionConfigMapping(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
+        }
+    val isModelSelectionLockedByCharacterCard =
+        !isRescueModelSelection && !characterCardBoundChatModelConfigId.isNullOrBlank()
     val isMemorySelectionLockedByCharacterCard = !characterCardBoundMemoryProfileId.isNullOrBlank()
     val effectiveConfigMapping =
         if (isModelSelectionLockedByCharacterCard) {
@@ -386,6 +416,14 @@ fun AgentChatInputSection(
         val profileIds = userPreferencesManager.profileListFlow.first()
         preferenceProfiles =
             profileIds.map { profileId -> userPreferencesManager.getUserPreferencesFlow(profileId).first() }
+    }
+
+    LaunchedEffect(isRescueModelSelection) {
+        if (isRescueModelSelection) {
+            rescueModelConfigStore.activeSelectionFlow().collect { selection ->
+                rescueModelSelection = selection
+            }
+        }
     }
 
     LaunchedEffect(showModelSelectorPopup.value) {
@@ -540,7 +578,10 @@ fun AgentChatInputSection(
             }
         }
 
-    val onSelectModel: (String, Int) -> Unit = { selectedId, modelIndex ->
+    val onSelectModel: (String, Int) -> Unit = onSelectModel@ { selectedId, modelIndex ->
+        if (isRescueModelSelection && isRescueModelSelectionPending) {
+            return@onSelectModel
+        }
         if (isModelSelectionLockedByCharacterCard) {
             val currentModelIndex = configSummaries.find { it.id == effectiveConfigMapping.configId }?.let { config ->
                 getValidModelIndex(config.modelName, effectiveConfigMapping.modelIndex)
@@ -555,21 +596,35 @@ fun AgentChatInputSection(
                 showCharacterCardBindingSwitchConfirm = true
             }
         } else {
-            scope.launch {
-                functionalConfigManager.setConfigForFunction(
-                    FunctionType.CHAT,
-                    selectedId,
-                    modelIndex,
-                )
-                EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
-                showModelSelectorPopup.value = false
+            if (isRescueModelSelection) {
+                isRescueModelSelectionPending = true
+                scope.launch {
+                    try {
+                        rescueModelConfigStore.setActiveSelection(selectedId, modelIndex)
+                        showModelSelectorPopup.value = false
+                    } finally {
+                        isRescueModelSelectionPending = false
+                    }
+                }
+            } else {
+                scope.launch {
+                    functionalConfigManager.setConfigForFunction(
+                        FunctionType.CHAT,
+                        selectedId,
+                        modelIndex,
+                    )
+                    EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
+                    showModelSelectorPopup.value = false
+                }
             }
         }
     }
 
     val onModelSelectorClick = {
-        showExtraSettingsPopup.value = false
-        showModelSelectorPopup.value = !showModelSelectorPopup.value
+        if (!isRescueModelSelectionPending) {
+            showExtraSettingsPopup.value = false
+            showModelSelectorPopup.value = !showModelSelectorPopup.value
+        }
     }
 
     val onSelectMemory: (String) -> Unit = { selectedId ->
@@ -1410,10 +1465,16 @@ fun AgentChatInputSection(
                 inputMenuRuntime = inputMenuRuntime,
                 onSelectModel = onSelectModel,
                 onManageModels = {
-                    showModelSelectorPopup.value = false
-                    onNavigateToModelConfig()
+                    if (!isRescueModelSelectionPending) {
+                        showModelSelectorPopup.value = false
+                        onNavigateToModelConfig()
+                    }
                 },
-                onDismiss = { showModelSelectorPopup.value = false },
+                onDismiss = {
+                    if (!isRescueModelSelectionPending) {
+                        showModelSelectorPopup.value = false
+                    }
+                },
             )
 
             AgentExtraSettingsPopup(

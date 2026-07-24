@@ -38,10 +38,13 @@ import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.llmprovider.ModelConfigConnectionTester
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigData
+import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.usesAndroidLocalModelEngine
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
+import com.ai.assistance.operit.data.preferences.ModelConfigStorageScope
 import com.ai.assistance.operit.pi.PiModelSettingsAdapter
+import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
 import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.ui.features.settings.DebouncedModelConfigAutoSaveEffect
 import com.ai.assistance.operit.ui.features.settings.RegisterModelConfigSaveAction
@@ -146,13 +149,21 @@ fun ModelConfigScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val configManager = remember { ModelConfigManager(context) }
+    val rescueContext = remember(context) { RescueActivity.isRescueContext(context) }
+    val configManager =
+        remember(context, rescueContext) {
+            ModelConfigManager(
+                context,
+                if (rescueContext) ModelConfigStorageScope.RESCUE
+                else ModelConfigStorageScope.MAIN,
+            )
+        }
+    val rescueConfigStore = remember(context) { RescueModelConfigStore(context) }
     val functionalConfigManager = remember { FunctionalConfigManager(context) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val saveCoordinator = rememberModelConfigSaveCoordinator()
     val piModelSettings = remember { PiModelSettingsAdapter.instance }
-    val rescueContext = remember(context) { RescueActivity.isRescueContext(context) }
 
     // 配置状态
     val configList = configManager.configListFlow.collectAsState(initial = listOf("default")).value
@@ -176,13 +187,20 @@ fun ModelConfigScreen(
     var isTestingConnection by remember { mutableStateOf(false) }
     var testResults by remember { mutableStateOf<List<ConnectionTestItem>?>(null) }
     var connectionTestJob by remember { mutableStateOf<Job?>(null) }
+    var selectedApiDraft by remember { mutableStateOf<ModelConfigData?>(null) }
+    var selectedHeadersDraft by remember { mutableStateOf<String?>(null) }
+    var selectedParametersDraft by remember { mutableStateOf<List<ModelParameter<*>>?>(null) }
+    var rescueRegistryReady by remember { mutableStateOf(false) }
 
     // 初始化配置，并默认定位到“对话功能模型”所使用的配置
     LaunchedEffect(Unit) {
         configManager.initializeIfNeeded()
-        functionalConfigManager.initializeIfNeeded()
 
-        if (!rescueContext) {
+        if (rescueContext) {
+            selectedConfigId = rescueConfigStore.getActiveConfigId()
+            rescueRegistryReady = true
+        } else {
+            functionalConfigManager.initializeIfNeeded()
             runCatching { piModelSettings.migrateLegacyConfigs(context, configManager) }
                 .onSuccess { report ->
                     if (report.failures.isNotEmpty()) {
@@ -193,14 +211,19 @@ fun ModelConfigScreen(
                 .onFailure { error ->
                     AppLogger.w("ModelConfigScreen", "Pi model migration unavailable", error)
                 }
+            val chatConfigId = functionalConfigManager.getConfigIdForFunction(FunctionType.CHAT)
+            val availableConfigIds = configManager.configListFlow.first()
+            selectedConfigId =
+                availableConfigIds.firstOrNull { it == chatConfigId }
+                    ?: availableConfigIds.firstOrNull()
+                    ?: ModelConfigManager.DEFAULT_CONFIG_ID
         }
+    }
 
-        val chatConfigId = functionalConfigManager.getConfigIdForFunction(FunctionType.CHAT)
-        val availableConfigIds = configManager.configListFlow.first()
-        selectedConfigId =
-            availableConfigIds.firstOrNull { it == chatConfigId }
-                ?: availableConfigIds.firstOrNull()
-                ?: ModelConfigManager.DEFAULT_CONFIG_ID
+    LaunchedEffect(rescueRegistryReady, selectedConfigId) {
+        if (rescueContext && rescueRegistryReady) {
+            rescueConfigStore.setActiveConfigId(selectedConfigId)
+        }
     }
 
     // 加载所有配置名称
@@ -214,6 +237,9 @@ fun ModelConfigScreen(
     // 加载选中的配置
     LaunchedEffect(selectedConfigId) {
         testResults = null
+        selectedApiDraft = null
+        selectedHeadersDraft = null
+        selectedParametersDraft = null
         configManager.getModelConfigFlow(selectedConfigId).collect { config ->
             selectedConfig.value = config
         }
@@ -379,7 +405,9 @@ fun ModelConfigScreen(
                                     onClick = {
                                         scope.launch {
                                             configManager.deleteConfig(selectedConfigId)
-                                            selectedConfigId = configList.firstOrNull() ?: "default"
+                                            selectedConfigId =
+                                                configManager.configListFlow.first().firstOrNull()
+                                                    ?: ModelConfigManager.DEFAULT_CONFIG_ID
                                             showNotification(context.getString(R.string.config_deleted))
                                         }
                                     },
@@ -412,10 +440,16 @@ fun ModelConfigScreen(
                                             isTestingConnection = true
                                             val results = mutableListOf<ConnectionTestItem>()
                                             try {
-                                                saveCoordinator.flushAll(showSuccess = false)
+                                                if (!rescueContext) {
+                                                    saveCoordinator.flushAll(showSuccess = false)
+                                                }
 
                                                 val latestConfig =
-                                                    configManager.getModelConfig(selectedConfigId)
+                                                    if (rescueContext) {
+                                                        selectedApiDraft ?: selectedConfig.value
+                                                    } else {
+                                                        configManager.getModelConfig(selectedConfigId)
+                                                    }
 
                                                 latestConfig?.let { config ->
                                                     val testResult =
@@ -430,7 +464,15 @@ fun ModelConfigScreen(
                                                             val report = ModelConfigConnectionTester.run(
                                                                 context = context,
                                                                 modelConfigManager = configManager,
-                                                                config = config,
+                                                                config =
+                                                                    config.copy(
+                                                                        customHeaders =
+                                                                            selectedHeadersDraft
+                                                                                ?: config.customHeaders
+                                                                    ),
+                                                                parametersOverride =
+                                                                    if (rescueContext) selectedParametersDraft
+                                                                    else null,
                                                             )
                                                             if (report.success) Result.success(Unit)
                                                             else Result.failure(
@@ -649,6 +691,13 @@ fun ModelConfigScreen(
                         configManager = configManager,
                         saveCoordinator = saveCoordinator,
                         showNotification = { message -> showNotification(message) },
+                        customHeadersDraft = selectedHeadersDraft ?: config.customHeaders,
+                        modelParametersDraft = selectedParametersDraft,
+                        onDraftChanged = { draft ->
+                            if (rescueContext && draft.id == selectedConfigId) {
+                                selectedApiDraft = draft
+                            }
+                        },
                         navigateToMnnModelDownload = navigateToMnnModelDownload
                     )
                 }
@@ -666,7 +715,12 @@ fun ModelConfigScreen(
                     ModelParametersSection(
                         config = config,
                         configManager = configManager,
-                        showNotification = { message -> showNotification(message) }
+                        showNotification = { message -> showNotification(message) },
+                        onDraftChanged = { parameters ->
+                            if (rescueContext && config.id == selectedConfigId) {
+                                selectedParametersDraft = parameters
+                            }
+                        },
                     )
                 }
 
@@ -676,7 +730,12 @@ fun ModelConfigScreen(
                             config = config,
                             configManager = configManager,
                             saveCoordinator = saveCoordinator,
-                            showNotification = { message -> showNotification(message) }
+                            showNotification = { message -> showNotification(message) },
+                            onDraftChanged = { headersJson ->
+                                if (config.id == selectedConfigId) {
+                                    selectedHeadersDraft = headersJson
+                                }
+                            },
                         )
                     }
                 }
@@ -872,7 +931,8 @@ private fun CustomHeadersSettingsSection(
     config: ModelConfigData,
     configManager: ModelConfigManager,
     saveCoordinator: com.ai.assistance.operit.ui.features.settings.ModelConfigSaveCoordinator,
-    showNotification: (String) -> Unit
+    showNotification: (String) -> Unit,
+    onDraftChanged: (String) -> Unit = {},
 ) {
     val latestConfig by rememberUpdatedState(config)
     var headers by remember(config.id) { mutableStateOf(parseHeaderEntries(config.customHeaders)) }
@@ -885,11 +945,17 @@ private fun CustomHeadersSettingsSection(
         headers = parseHeaderEntries(config.customHeaders)
     }
 
+    LaunchedEffect(headers) {
+        onDraftChanged(serializeHeaderEntries(headers))
+    }
+
     suspend fun persistHeaders(serializedHeaders: String) {
         saveMutex.withLock {
             withContext(Dispatchers.IO) {
                 configManager.updateCustomHeaders(latestConfig.id, serializedHeaders)
-                EnhancedAIService.refreshAllServices(configManager.appContext)
+                if (!configManager.isRescueStore) {
+                    EnhancedAIService.refreshAllServices(configManager.appContext)
+                }
             }
         }
     }

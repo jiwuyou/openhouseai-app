@@ -109,53 +109,6 @@ class PiModelConfigMigrationTest {
         assertTrue(coding.provider != daily.provider)
     }
 
-    @Test
-    fun `chat config snapshots Rescue before Runtime apply`() = runBlocking {
-        val cloud = legacyOpenAiConfig("chat", "rescue-key")
-        val configs = FakeMigrationConfigs(mutableListOf(cloud), rescueConfigId = "chat")
-        val rescue = FakeMigrationRescueStore()
-        val gateway = MigrationGateway().apply {
-            beforeApply = { assertEquals("rescue-key", rescue.snapshot?.apiKey) }
-        }
-        val migration = PiModelConfigMigration(
-            PiModelSetupRepository(gateway),
-            configs,
-            FakeMigrationState(),
-            rescue,
-        )
-
-        val report = migration.migrateIfNeeded()
-
-        assertTrue(report.failures.toString(), report.complete)
-        assertEquals("chat", rescue.snapshot?.id)
-        assertEquals(1, rescue.snapshotCount)
-    }
-
-    @Test
-    fun `failed Rescue snapshot prevents migration completion and remains retryable`() = runBlocking {
-        val configs = FakeMigrationConfigs(
-            mutableListOf(legacyOpenAiConfig("chat", "rescue-key")),
-            rescueConfigId = "chat",
-        )
-        val rescue = FakeMigrationRescueStore().apply { fail = true }
-        val gateway = MigrationGateway()
-        val state = FakeMigrationState()
-        val migration = PiModelConfigMigration(
-            PiModelSetupRepository(gateway),
-            configs,
-            state,
-            rescue,
-        )
-
-        val failed = migration.migrateIfNeeded()
-        assertFalse(failed.complete)
-        assertEquals(0, gateway.applyCount)
-
-        rescue.fail = false
-        val retried = migration.migrateIfNeeded()
-        assertTrue(retried.complete)
-        assertEquals(1, gateway.applyCount)
-    }
 }
 
 private fun legacyOpenAiConfig(id: String, key: String): ModelConfigData = ModelConfigData(
@@ -185,13 +138,10 @@ private fun openAiPreset(): PiModelProviderPreset = PiModelProviderPreset(
 
 private class FakeMigrationConfigs(
     private val values: MutableList<ModelConfigData>,
-    private val rescueConfigId: String? = null,
 ) : PiModelMigrationConfigStore {
     val saved = linkedMapOf<String, Pair<PiModelBinding, LegacyCloudModelBackup>>()
 
     override suspend fun allConfigs(): List<ModelConfigData> = values.toList()
-    override suspend fun rescueSourceConfigId(): String? = rescueConfigId
-
     override suspend fun saveBinding(
         configId: String,
         binding: PiModelBinding,
@@ -200,20 +150,6 @@ private class FakeMigrationConfigs(
         saved[configId] = binding to backup
         val index = values.indexOfFirst { it.id == configId }
         values[index] = values[index].copy(piModelBinding = binding, legacyCloudBackup = backup)
-    }
-}
-
-private class FakeMigrationRescueStore : PiModelMigrationRescueStore {
-    var snapshot: ModelConfigData? = null
-    var snapshotCount = 0
-    var fail = false
-
-    override fun snapshotIfAbsent(config: ModelConfigData) {
-        if (fail) error("snapshot failed")
-        if (snapshot == null) {
-            snapshot = config
-            snapshotCount++
-        }
     }
 }
 

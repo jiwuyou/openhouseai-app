@@ -8,9 +8,6 @@ import com.ai.assistance.operit.data.model.PiModelBinding
 import com.ai.assistance.operit.data.model.legacyCloudBackupSnapshot
 import com.ai.assistance.operit.data.model.usesAndroidLocalModelEngine
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
-import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
-import com.ai.assistance.operit.data.model.FunctionType
-import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
 import com.ai.assistance.operit.util.AppLogger
 import com.wuxianpi.pi.PiDiscoveredModel
 import com.wuxianpi.pi.PiModelApi
@@ -28,7 +25,6 @@ data class PiModelMigrationReport(
 
 internal interface PiModelMigrationConfigStore {
     suspend fun allConfigs(): List<ModelConfigData>
-    suspend fun rescueSourceConfigId(): String? = null
     suspend fun saveBinding(
         configId: String,
         binding: PiModelBinding,
@@ -41,34 +37,12 @@ internal class AndroidPiModelMigrationConfigStore(
 ) : PiModelMigrationConfigStore {
     override suspend fun allConfigs(): List<ModelConfigData> = manager.getAllModelConfigs()
 
-    override suspend fun rescueSourceConfigId(): String {
-        val functionalConfigs = FunctionalConfigManager(manager.appContext)
-        functionalConfigs.initializeIfNeeded()
-        return functionalConfigs.getConfigIdForFunction(FunctionType.CHAT)
-    }
-
     override suspend fun saveBinding(
         configId: String,
         binding: PiModelBinding,
         backup: LegacyCloudModelBackup,
     ) {
         manager.updatePiModelBinding(configId, binding, backup)
-    }
-}
-
-internal interface PiModelMigrationRescueStore {
-    fun snapshotIfAbsent(config: ModelConfigData)
-}
-
-internal object NoOpPiModelMigrationRescueStore : PiModelMigrationRescueStore {
-    override fun snapshotIfAbsent(config: ModelConfigData) = Unit
-}
-
-internal class AndroidPiModelMigrationRescueStore(context: Context) : PiModelMigrationRescueStore {
-    private val store = RescueModelConfigStore(context.applicationContext)
-
-    override fun snapshotIfAbsent(config: ModelConfigData) {
-        store.snapshotIfAbsent(config)
     }
 }
 
@@ -116,7 +90,6 @@ class PiModelConfigMigration internal constructor(
     private val repository: PiModelSetupRepository,
     private val configs: PiModelMigrationConfigStore,
     private val state: PiModelMigrationStateStore,
-    private val rescueStore: PiModelMigrationRescueStore = NoOpPiModelMigrationRescueStore,
 ) {
     suspend fun migrateIfNeeded(): PiModelMigrationReport {
         if (state.isComplete()) {
@@ -127,7 +100,6 @@ class PiModelConfigMigration internal constructor(
         val skipped = mutableListOf<String>()
         val failures = linkedMapOf<String, String>()
         val allConfigs = configs.allConfigs()
-        val rescueSourceConfigId = configs.rescueSourceConfigId()
         val forceCustomProviderIds = conflictingPresetConfigIds(allConfigs, setup.presets)
         allConfigs.forEach { config ->
             when {
@@ -143,9 +115,6 @@ class PiModelConfigMigration internal constructor(
                 }
                 else -> {
                     try {
-                        if (config.id == rescueSourceConfigId) {
-                            rescueStore.snapshotIfAbsent(config)
-                        }
                         val draft = migrationDraft(
                             config = config,
                             setup = setup,

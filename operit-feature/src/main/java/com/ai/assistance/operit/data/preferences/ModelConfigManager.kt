@@ -34,11 +34,31 @@ import kotlinx.serialization.json.Json
 private val Context.modelConfigDataStore: DataStore<Preferences> by
         preferencesDataStore(name = "model_configs")
 
+private val Context.rescueModelConfigDataStore: DataStore<Preferences> by
+        preferencesDataStore(name = "rescue_model_configs")
+
 // 获取ApiPreferences的DataStore
 private val Context.apiDataStore: DataStore<Preferences> by
         preferencesDataStore(name = "api_settings")
 
-class ModelConfigManager(private val context: Context) {
+enum class ModelConfigStorageScope {
+    MAIN,
+    RESCUE,
+}
+
+class ModelConfigManager(
+        private val context: Context,
+        val storageScope: ModelConfigStorageScope = ModelConfigStorageScope.MAIN,
+) {
+
+    private val dataStore: DataStore<Preferences> =
+            when (storageScope) {
+                ModelConfigStorageScope.MAIN -> context.modelConfigDataStore
+                ModelConfigStorageScope.RESCUE -> context.rescueModelConfigDataStore
+            }
+
+    val isRescueStore: Boolean
+        get() = storageScope == ModelConfigStorageScope.RESCUE
 
     // 提供context访问器
     val appContext: Context
@@ -64,7 +84,7 @@ class ModelConfigManager(private val context: Context) {
 
     // 获取所有配置ID列表
     val configListFlow: Flow<List<String>> =
-            context.modelConfigDataStore.data.map { preferences ->
+            dataStore.data.map { preferences ->
                 val configList = preferences[CONFIG_LIST_KEY] ?: ""
                 if (configList.isEmpty()) emptyList()
                 else json.decodeFromString<List<String>>(configList)
@@ -82,7 +102,7 @@ class ModelConfigManager(private val context: Context) {
             saveConfigToDataStore(defaultConfig)
 
             // 保存配置列表，移除活跃ID
-            context.modelConfigDataStore.edit { preferences ->
+            dataStore.edit { preferences ->
                 preferences[CONFIG_LIST_KEY] = json.encodeToString(listOf(DEFAULT_CONFIG_ID))
             }
         } else {
@@ -92,6 +112,15 @@ class ModelConfigManager(private val context: Context) {
 
     // 新安装直接以 Pi Runtime 为云端模型配置所有者。
     private fun createFreshDefaultConfig(): ModelConfigData {
+        if (isRescueStore) {
+            return ModelConfigData(
+                    id = DEFAULT_CONFIG_ID,
+                    name = context.getString(R.string.model_config_default_name),
+                    apiProviderType = ApiProviderType.OPENAI_GENERIC,
+                    apiProviderTypeId = ApiProviderType.OPENAI_GENERIC.name,
+                    enableToolCall = true,
+            )
+        }
         return ModelConfigData(
                 id = DEFAULT_CONFIG_ID,
                 name = context.getString(R.string.model_config_default_name),
@@ -120,7 +149,7 @@ class ModelConfigManager(private val context: Context) {
     // 保存配置
     suspend fun saveModelConfig(config: ModelConfigData) {
         val configKey = stringPreferencesKey("config_${config.id}")
-        context.modelConfigDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[configKey] = json.encodeToString(config)
         }
     }
@@ -128,7 +157,7 @@ class ModelConfigManager(private val context: Context) {
     // 从DataStore加载配置
     private suspend fun loadConfigFromDataStore(configId: String): ModelConfigData? {
         val configKey = stringPreferencesKey("config_${configId}")
-        return context.modelConfigDataStore.data.first().let { preferences ->
+        return dataStore.data.first().let { preferences ->
             val configJson = preferences[configKey]
             if (configJson != null) {
                 try {
@@ -154,7 +183,7 @@ class ModelConfigManager(private val context: Context) {
     // 将配置保存到DataStore
     private suspend fun saveConfigToDataStore(config: ModelConfigData) {
         val configKey = stringPreferencesKey("config_${config.id}")
-        context.modelConfigDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[configKey] = json.encodeToString(config)
         }
     }
@@ -165,7 +194,7 @@ class ModelConfigManager(private val context: Context) {
     ): ModelConfigData {
         val configKey = stringPreferencesKey("config_${configId}")
         var updated: ModelConfigData? = null
-        context.modelConfigDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             val current =
                     run {
                         val configJson = preferences[configKey]
@@ -197,7 +226,7 @@ class ModelConfigManager(private val context: Context) {
 
     // 获取指定ID的配置
     fun getModelConfigFlow(configId: String): Flow<ModelConfigData> {
-        return context.modelConfigDataStore.data.map { preferences ->
+        return dataStore.data.map { preferences ->
             val config = loadConfigFromDataStore(configId) ?: ModelConfigData(id = configId, name = context.getString(R.string.model_config_config_id, configId))
             config
         }
@@ -246,8 +275,12 @@ class ModelConfigManager(private val context: Context) {
                 ModelConfigData(
                         id = configId,
                         name = name,
-                        apiProviderType = ApiProviderType.OTHER,
-                        apiProviderTypeId = PI_RUNTIME_PROVIDER_TYPE_ID,
+                        apiProviderType =
+                                if (isRescueStore) ApiProviderType.OPENAI_GENERIC
+                                else ApiProviderType.OTHER,
+                        apiProviderTypeId =
+                                if (isRescueStore) ApiProviderType.OPENAI_GENERIC.name
+                                else PI_RUNTIME_PROVIDER_TYPE_ID,
                         enableToolCall = true
                 )
 
@@ -256,7 +289,7 @@ class ModelConfigManager(private val context: Context) {
 
         // 更新配置列表
         configList.add(configId)
-        context.modelConfigDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[CONFIG_LIST_KEY] = json.encodeToString(configList)
         }
 
@@ -274,7 +307,7 @@ class ModelConfigManager(private val context: Context) {
 
         // 从列表中移除
         configList.remove(configId)
-        context.modelConfigDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             // 删除配置记录 - 修复null赋值问题
             preferences.remove(stringPreferencesKey("config_${configId}"))
             // 更新配置列表
@@ -293,6 +326,7 @@ class ModelConfigManager(private val context: Context) {
             legacyBackup: LegacyCloudModelBackup? = null,
     ): ModelConfigData =
             updateConfigInternal(configId) { current ->
+                check(!isRescueStore) { "Rescue configurations cannot bind Pi Runtime models" }
                 current.withoutAndroidCloudCredentialAuthority().copy(
                         piModelBinding = binding,
                         legacyCloudBackup = legacyBackup ?: current.legacyCloudBackup,
@@ -303,6 +337,7 @@ class ModelConfigManager(private val context: Context) {
 
     suspend fun switchToPiRuntime(configId: String): ModelConfigData =
             updateConfigInternal(configId) { current ->
+                check(!isRescueStore) { "Rescue configurations cannot use Pi Runtime" }
                 current.withoutAndroidCloudCredentialAuthority().copy(
                         apiProviderType = ApiProviderType.OTHER,
                         apiProviderTypeId = PI_RUNTIME_PROVIDER_TYPE_ID,
@@ -796,7 +831,7 @@ class ModelConfigManager(private val context: Context) {
 
             // 更新配置列表
             if (newCount > 0) {
-                context.modelConfigDataStore.edit { preferences ->
+                dataStore.edit { preferences ->
                     preferences[CONFIG_LIST_KEY] = json.encodeToString(existingConfigList)
                 }
             }

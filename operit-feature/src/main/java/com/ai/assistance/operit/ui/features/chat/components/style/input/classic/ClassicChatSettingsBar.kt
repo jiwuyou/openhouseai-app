@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
@@ -68,12 +69,15 @@ import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.FunctionConfigMapping
 import com.ai.assistance.operit.data.preferences.MemorySearchSettingsPreferences
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
+import com.ai.assistance.operit.data.preferences.ModelConfigStorageScope
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.model.getModelByIndex
 import com.ai.assistance.operit.data.model.getModelList
 import com.ai.assistance.operit.data.model.getValidModelIndex
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.repository.MemoryAutoSaveCandidateRepository
+import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
+import com.ai.assistance.operit.rescue.pi.RescueModelSelection
 import com.ai.assistance.operit.ui.common.icons.MaterialIconNameResolver
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuToggleHookParams
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuToggleDefinition
@@ -142,6 +146,7 @@ fun ClassicChatSettingsBar(
     var showBehaviorSection by remember { mutableStateOf(false) }
     var showPluginsSection by remember { mutableStateOf(false) }
     var showModelDropdown by remember { mutableStateOf(false) }
+    var isRescueModelSelectionPending by remember { mutableStateOf(false) }
     var showMemoryDropdown by remember { mutableStateOf(false) }
     var showThinkingDropdown by remember { mutableStateOf(false) }
     var showToolPromptManagerDialog by remember { mutableStateOf(false) }
@@ -153,17 +158,44 @@ fun ClassicChatSettingsBar(
     // 将模型选择逻辑封装到组件内部
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isRescueModelSelection = inputMenuRuntime == "rescue"
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
     val activePromptManager = remember { ActivePromptManager.getInstance(context) }
     val functionalConfigManager = remember { FunctionalConfigManager(context) }
-    val modelConfigManager = remember { ModelConfigManager(context) }
+    val modelConfigManager =
+        remember(context, isRescueModelSelection) {
+            ModelConfigManager(
+                context,
+                if (isRescueModelSelection) {
+                    ModelConfigStorageScope.RESCUE
+                } else {
+                    ModelConfigStorageScope.MAIN
+                },
+            )
+        }
+    val rescueModelConfigStore = remember(context) { RescueModelConfigStore(context) }
     val configMappingWithIndex by
             functionalConfigManager.functionConfigMappingWithIndexFlow.collectAsState(initial = emptyMap())
     var configSummaries by remember { mutableStateOf<List<ModelConfigSummary>>(emptyList()) }
+    var rescueModelSelection by
+        remember {
+            mutableStateOf(
+                RescueModelSelection(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
+            )
+        }
     LaunchedEffect(Unit) { configSummaries = modelConfigManager.getAllConfigSummaries() }
     val currentConfigMapping =
-            configMappingWithIndex[FunctionType.CHAT] ?: FunctionConfigMapping(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
-    val isModelSelectionLockedByCharacterCard = !characterCardBoundChatModelConfigId.isNullOrBlank()
+        if (isRescueModelSelection) {
+            FunctionConfigMapping(
+                rescueModelSelection.configId,
+                rescueModelSelection.modelIndex,
+            )
+        } else {
+            configMappingWithIndex[FunctionType.CHAT]
+                ?: FunctionConfigMapping(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
+        }
+    val isModelSelectionLockedByCharacterCard =
+        !isRescueModelSelection && !characterCardBoundChatModelConfigId.isNullOrBlank()
     val isMemorySelectionLockedByCharacterCard = !characterCardBoundMemoryProfileId.isNullOrBlank()
     val effectiveCurrentConfigMapping =
             if (isModelSelectionLockedByCharacterCard) {
@@ -192,6 +224,18 @@ fun ClassicChatSettingsBar(
         val profileIds = userPreferencesManager.profileListFlow.first()
         preferenceProfiles =
                 profileIds.map { id -> userPreferencesManager.getUserPreferencesFlow(id).first() }
+    }
+    LaunchedEffect(isRescueModelSelection) {
+        if (isRescueModelSelection) {
+            rescueModelConfigStore.activeSelectionFlow().collect { selection ->
+                rescueModelSelection = selection
+            }
+        }
+    }
+    LaunchedEffect(showModelDropdown) {
+        if (showModelDropdown) {
+            configSummaries = modelConfigManager.getAllConfigSummaries()
+        }
     }
 
     // 获取聊天设置按钮右边距设置
@@ -247,7 +291,10 @@ fun ClassicChatSettingsBar(
         )
     }
 
-    val onSelectModel: (String, Int) -> Unit = { selectedId, modelIndex ->
+    val onSelectModel: (String, Int) -> Unit = onSelectModel@ { selectedId, modelIndex ->
+        if (isRescueModelSelection && isRescueModelSelectionPending) {
+            return@onSelectModel
+        }
         if (isModelSelectionLockedByCharacterCard) {
             val currentModelIndex =
                 configSummaries.find { it.id == effectiveCurrentConfigMapping.configId }?.let { config ->
@@ -263,9 +310,25 @@ fun ClassicChatSettingsBar(
                 showCharacterCardBindingSwitchConfirm = true
             }
         } else {
-            scope.launch {
-                functionalConfigManager.setConfigForFunction(FunctionType.CHAT, selectedId, modelIndex)
-                EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
+            if (isRescueModelSelection) {
+                isRescueModelSelectionPending = true
+                scope.launch {
+                    try {
+                        rescueModelConfigStore.setActiveSelection(selectedId, modelIndex)
+                        showModelDropdown = false
+                    } finally {
+                        isRescueModelSelectionPending = false
+                    }
+                }
+            } else {
+                scope.launch {
+                    functionalConfigManager.setConfigForFunction(
+                        FunctionType.CHAT,
+                        selectedId,
+                        modelIndex,
+                    )
+                    EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
+                }
             }
         }
     }
@@ -361,6 +424,9 @@ fun ClassicChatSettingsBar(
     Box(modifier = modifier.padding(end = chatSettingsBarRightMargin.dp)) {
         IconButton(
             onClick = {
+                if (isRescueModelSelectionPending && showMenu) {
+                    return@IconButton
+                }
                 showMenu = !showMenu
                 if (showMenu) {
                     return@IconButton
@@ -391,21 +457,23 @@ fun ClassicChatSettingsBar(
             Popup(
                 alignment = Alignment.TopEnd,
                 onDismissRequest = {
-                    showMenu = false
-                    showModelDropdown = false // 关闭主菜单时也关闭模型菜单
-                    showMemoryDropdown = false
-                    showThinkingDropdown = false
-                    showMemorySection = false
-                    showModelSection = false
-                    showToolsSection = false
-                    showBehaviorSection = false
-                    showPluginsSection = false
+                    if (!isRescueModelSelectionPending) {
+                        showMenu = false
+                        showModelDropdown = false // 关闭主菜单时也关闭模型菜单
+                        showMemoryDropdown = false
+                        showThinkingDropdown = false
+                        showMemorySection = false
+                        showModelSection = false
+                        showToolsSection = false
+                        showBehaviorSection = false
+                        showPluginsSection = false
+                    }
                 },
                     properties =
                             PopupProperties(
                     focusable = true,
-                    dismissOnBackPress = true,
-                    dismissOnClickOutside = true
+                    dismissOnBackPress = !isRescueModelSelectionPending,
+                    dismissOnClickOutside = !isRescueModelSelectionPending
                 )
             ) {
                 Box(modifier = Modifier.padding(top = 0.dp, bottom = 76.dp)) {
@@ -538,10 +606,17 @@ fun ClassicChatSettingsBar(
                                 currentConfigMapping = effectiveCurrentConfigMapping,
                                 onSelectModel = onSelectModel,
                                 expanded = showModelDropdown,
-                                    onExpandedChange = { showModelDropdown = it },
+                                closeImmediatelyOnSelection = !isRescueModelSelection,
+                                    onExpandedChange = {
+                                        if (!isRescueModelSelectionPending || it) {
+                                            showModelDropdown = it
+                                        }
+                                    },
                                     onManageClick = {
-                                        onNavigateToModelConfig()
-                                        showMenu = false
+                                        if (!isRescueModelSelectionPending) {
+                                            onNavigateToModelConfig()
+                                            showMenu = false
+                                        }
                                     },
                                     onInfoClick = {
                                         infoPopupContent =
@@ -712,6 +787,18 @@ fun ClassicChatSettingsBar(
                             }
                             }
                         }
+                    }
+                    if (isRescueModelSelectionPending) {
+                        Box(
+                            modifier =
+                                Modifier.matchParentSize()
+                                    .clickable(
+                                        interactionSource =
+                                            remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {},
+                                    )
+                        )
                     }
                 }
             }
@@ -1543,6 +1630,7 @@ private fun ModelSelectorItem(
     currentConfigMapping: FunctionConfigMapping,
     onSelectModel: (String, Int) -> Unit,
     expanded: Boolean,
+    closeImmediatelyOnSelection: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onManageClick: () -> Unit,
     onInfoClick: () -> Unit
@@ -1682,7 +1770,9 @@ private fun ModelSelectorItem(
                                             showAutoGlmError()
                                         } else {
                                             onSelectModel(config.id, 0)
-                                            onExpandedChange(false)
+                                            if (closeImmediatelyOnSelection) {
+                                                onExpandedChange(false)
+                                            }
                                         }
                                     }
                                 }
@@ -1757,7 +1847,9 @@ private fun ModelSelectorItem(
                                                     showAutoGlmError()
                                                 } else {
                                                     onSelectModel(config.id, index)
-                                                    onExpandedChange(false)
+                                                    if (closeImmediatelyOnSelection) {
+                                                        onExpandedChange(false)
+                                                    }
                                                     expandedConfigId = null
                                                 }
                                             }

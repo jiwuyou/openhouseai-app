@@ -46,13 +46,20 @@ import kotlinx.serialization.json.Json
 fun ModelParametersSection(
         config: ModelConfigData,
         configManager: ModelConfigManager,
-        showNotification: (String) -> Unit
+        showNotification: (String) -> Unit,
+        onDraftChanged: (List<ModelParameter<*>>) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var showAddParameterDialog by remember { mutableStateOf(false) }
 
     // 参数状态
     var parameters by remember { mutableStateOf<List<ModelParameter<*>>>(emptyList()) }
+
+    LaunchedEffect(parameters) {
+        if (parameters.isNotEmpty()) {
+            onDraftChanged(parameters)
+        }
+    }
 
     // 参数错误状态
     val parameterErrors = remember { mutableStateMapOf<String, String>() }

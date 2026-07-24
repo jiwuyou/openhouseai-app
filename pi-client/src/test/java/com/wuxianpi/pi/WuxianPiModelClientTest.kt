@@ -1,5 +1,7 @@
 package com.wuxianpi.pi
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -13,9 +15,12 @@ import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okio.Buffer
+import okio.BufferedSource
+import okio.buffer
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,6 +33,9 @@ import java.io.IOException
 import java.io.InterruptedIOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.CoroutineContext
 
 class WuxianPiModelClientTest {
     @Test
@@ -420,6 +428,61 @@ class WuxianPiModelClientTest {
     }
 
     @Test
+    fun `response body is consumed away from the caller thread`() = runBlocking {
+        val callerThread = Thread.currentThread()
+        val responseBody = ThreadRecordingResponseBody(success(emptySetup("io-thread")))
+        val http = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(responseBody)
+                    .build()
+            }
+            .build()
+
+        try {
+            assertEquals("io-thread", WuxianPiModelClient(serviceConfig(), http).getSetup().revision)
+            assertTrue(responseBody.readThread.get() != null)
+            assertFalse(callerThread === responseBody.readThread.get())
+        } finally {
+            http.dispatcher.executorService.shutdown()
+            http.connectionPool.evictAll()
+        }
+    }
+
+    @Test
+    fun `response closes when cancelled after delivery but before parsing`() = runBlocking {
+        val dispatcher = QueuedDispatcher()
+        val responseBody = CloseTrackingResponseBody(success(emptySetup("never-parsed")))
+        val response =
+            Response.Builder()
+                .request(Request.Builder().url("http://127.0.0.1/").build())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(responseBody)
+                .build()
+
+        val request = launch(start = CoroutineStart.UNDISPATCHED) {
+            response.consumeOn(dispatcher) { delivered ->
+                delivered.body?.string()
+            }
+        }
+        assertTrue(dispatcher.dispatched.await(2, TimeUnit.SECONDS))
+
+        request.cancel()
+        dispatcher.runPending()
+        request.join()
+
+        assertTrue(request.isCancelled)
+        assertTrue(responseBody.closed.await(2, TimeUnit.SECONDS))
+        assertFalse(responseBody.readStarted.get())
+    }
+
+    @Test
     fun `coroutine cancellation cancels the real okhttp call`() = runBlocking {
         val interceptor = CancelAwareInterceptor()
         val http = OkHttpClient.Builder().addInterceptor(interceptor).build()
@@ -520,6 +583,56 @@ class WuxianPiModelClientTest {
         }
 
         fun singleRequest(): Request = synchronized(requests) { requests.single() }
+    }
+
+    private class ThreadRecordingResponseBody(private val content: String) : ResponseBody() {
+        val readThread = AtomicReference<Thread?>()
+
+        override fun contentType() = "application/json".toMediaType()
+
+        override fun contentLength(): Long = content.toByteArray().size.toLong()
+
+        override fun source(): BufferedSource {
+            readThread.compareAndSet(null, Thread.currentThread())
+            return Buffer().writeUtf8(content)
+        }
+    }
+
+    private class CloseTrackingResponseBody(content: String) : ResponseBody() {
+        val closed = CountDownLatch(1)
+        val readStarted = AtomicBoolean(false)
+        private val trackedSource =
+            object : okio.ForwardingSource(Buffer().writeUtf8(content)) {
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                    readStarted.set(true)
+                    return super.read(sink, byteCount)
+                }
+
+                override fun close() {
+                    closed.countDown()
+                    super.close()
+                }
+            }.buffer()
+
+        override fun contentType() = "application/json".toMediaType()
+
+        override fun contentLength(): Long = -1L
+
+        override fun source(): BufferedSource = trackedSource
+    }
+
+    private class QueuedDispatcher : CoroutineDispatcher() {
+        val dispatched = CountDownLatch(1)
+        private val pending = AtomicReference<Runnable?>()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            check(pending.compareAndSet(null, block)) { "Only one dispatch is expected" }
+            dispatched.countDown()
+        }
+
+        fun runPending() {
+            requireNotNull(pending.getAndSet(null)) { "No dispatched block is pending" }.run()
+        }
     }
 
     private class CancelAwareInterceptor : Interceptor {

@@ -114,13 +114,10 @@ class RescuePiChatEngine private constructor(context: Context) {
 
     fun getUsage(chatId: String): Usage = usageByChatId[chatId] ?: Usage()
 
-    /** Persist a model copy that remains available when Termux and the Node runtime are down. */
-    fun configureModel(config: ModelConfigData) {
+    /** Persist an Android-private Rescue model configuration without changing the active ID. */
+    suspend fun configureModel(config: ModelConfigData) {
         modelConfigStore.save(config)
     }
-
-    /** Explicitly refresh the independent rescue model copy from Operit's Android settings. */
-    suspend fun syncModelFromOperit(): ModelConfigData = modelConfigStore.syncFromOperit()
 
     suspend fun defaultModelDisplay(): Pair<String, String> {
         val config = modelConfigStore.load()

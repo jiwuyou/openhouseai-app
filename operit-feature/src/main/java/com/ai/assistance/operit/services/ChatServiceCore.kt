@@ -80,6 +80,7 @@ class ChatServiceCore(
         apiConfigDelegate = ApiConfigDelegate(
             context = context,
             coroutineScope = coroutineScope,
+            runtimeSlot = runtimeSlot,
             onConfigChanged = { service ->
                 enhancedAiService = service
                 // 当服务初始化后，设置 token 统计收集器

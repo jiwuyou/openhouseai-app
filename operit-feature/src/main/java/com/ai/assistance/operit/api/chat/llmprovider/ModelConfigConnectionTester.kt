@@ -3,6 +3,7 @@ package com.ai.assistance.operit.api.chat.llmprovider
 import android.content.Context
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ModelConfigData
+import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.ToolParameterSchema
 import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.data.model.getModelByIndex
@@ -49,6 +50,7 @@ object ModelConfigConnectionTester {
         context: Context,
         modelConfigManager: ModelConfigManager,
         config: ModelConfigData,
+        parametersOverride: List<ModelParameter<*>>? = null,
         requestedModelIndex: Int = 0,
         onActiveServiceChanged: (AIService?) -> Unit = {}
     ): ModelConnectionTestReport {
@@ -66,7 +68,8 @@ object ModelConfigConnectionTester {
         onActiveServiceChanged(service)
 
         try {
-            val parameters = modelConfigManager.getModelParametersForConfig(configForTest.id)
+            val parameters =
+                parametersOverride ?: modelConfigManager.getModelParametersForConfig(configForTest.id)
 
             suspend fun runCase(type: ModelConnectionTestType, block: suspend () -> Unit) {
                 val result =

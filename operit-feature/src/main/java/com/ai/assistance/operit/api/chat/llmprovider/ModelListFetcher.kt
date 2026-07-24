@@ -60,10 +60,7 @@ object ModelListFetcher {
      * @return 用于获取模型列表的URL
      */
     fun getModelsListUrl(apiEndpoint: String, apiProviderType: ApiProviderType): String {
-        AppLogger.d(TAG, "生成模型列表URL，API端点: ${sanitizeUrlForLog(apiEndpoint)}, 提供商类型: $apiProviderType")
-
-        val modelsUrl =
-                when (apiProviderType) {
+        return when (apiProviderType) {
                     ApiProviderType.OPENAI,
                     ApiProviderType.OPENAI_RESPONSES,
                     ApiProviderType.OPENAI_RESPONSES_GENERIC,
@@ -71,8 +68,7 @@ object ModelListFetcher {
                     ApiProviderType.OPENAI_LOCAL -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.ANTHROPIC,
                     ApiProviderType.ANTHROPIC_GENERIC -> "${extractBaseUrl(apiEndpoint)}/v1/models"
-                    ApiProviderType.GOOGLE,
-                    ApiProviderType.GEMINI_GENERIC -> {
+                    ApiProviderType.GOOGLE -> {
                         // 对于Gemini API，直接使用提供的端点或默认端点
                         if (apiEndpoint.contains("generativelanguage.googleapis.com")) {
                             // 如果端点已经是模型列表URL，直接使用
@@ -102,6 +98,17 @@ object ModelListFetcher {
                             "https://generativelanguage.googleapis.com/v1beta/models"
                         }
                     }
+                    ApiProviderType.GEMINI_GENERIC -> {
+                        if (apiEndpoint.contains("generativelanguage.googleapis.com")) {
+                            if (apiEndpoint.endsWith("/models")) apiEndpoint
+                            else {
+                                val version = if (apiEndpoint.contains("/v1/")) "v1" else "v1beta"
+                                "https://generativelanguage.googleapis.com/$version/models"
+                            }
+                        } else {
+                            "${extractBaseUrl(apiEndpoint)}/v1beta/models"
+                        }
+                    }
                     ApiProviderType.ZHIPU -> "${extractBaseUrl(apiEndpoint)}/v4/models"
                     ApiProviderType.DEEPSEEK -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.OPENROUTER -> "${extractBaseUrl(apiEndpoint)}/v1/models"
@@ -122,9 +129,6 @@ object ModelListFetcher {
                     // 其他API提供商可能需要特殊处理
                     else -> "${extractBaseUrl(apiEndpoint)}/v1/models" // 默认尝试OpenAI兼容格式
                 }
-
-        AppLogger.d(TAG, "生成的模型列表URL: ${sanitizeUrlForLog(modelsUrl)}")
-        return modelsUrl
     }
 
     private fun sanitizeUrlForLog(rawUrl: String, apiKey: String = ""): String {
@@ -140,6 +144,17 @@ object ModelListFetcher {
                             }
         }
         return sanitizedUrl
+    }
+
+    private fun applyCustomHeaders(builder: Request.Builder, headersJson: String) {
+        if (headersJson.isBlank() || headersJson == "{}") return
+        val headers = JSONObject(headersJson)
+        for (name in headers.keys()) {
+            val normalizedName = name.trim()
+            if (normalizedName.isNotEmpty()) {
+                builder.header(normalizedName, headers.getString(name))
+            }
+        }
     }
 
     private fun isKimiCodingEndpoint(apiEndpoint: String): Boolean {
@@ -165,17 +180,12 @@ object ModelListFetcher {
             if (match != null) {
                 // 截取到版本路径之前的部分
                 val pathBeforeVersion = path.substring(0, match.range.first)
-                val finalUrl = "${url.protocol}://${url.authority}$pathBeforeVersion"
-                AppLogger.d(TAG, "从 ${sanitizeUrlForLog(fullUrl)} 提取基本URL: ${sanitizeUrlForLog(finalUrl)} (找到版本路径 ${match.value})")
-                finalUrl
+                "${url.protocol}://${url.authority}$pathBeforeVersion"
             } else {
                 // 如果找不到版本路径，则返回原始URL的主机部分，这通常是安全的备选方案
-                val finalUrl = "${url.protocol}://${url.authority}"
-                AppLogger.d(TAG, "从 ${sanitizeUrlForLog(fullUrl)} 提取基本URL: ${sanitizeUrlForLog(finalUrl)} (未找到版本路径)")
-                finalUrl
+                "${url.protocol}://${url.authority}"
             }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "URL解析错误: $e")
+        } catch (_: Exception) {
             fullUrl
         }
     }
@@ -193,12 +203,14 @@ object ModelListFetcher {
             context: Context,
             apiKey: String,
             apiEndpoint: String,
-            apiProviderType: ApiProviderType = ApiProviderType.OPENAI
+            apiProviderType: ApiProviderType = ApiProviderType.OPENAI,
+            customHeadersJson: String = "{}",
+            reload: Boolean = false,
+            maxRetries: Int = 2,
     ): Result<List<ModelOption>> {
-        AppLogger.d(TAG, "开始获取模型列表: 端点=${sanitizeUrlForLog(apiEndpoint, apiKey)}, 提供商=${apiProviderType.name}")
+        AppLogger.d(TAG, "开始获取模型列表: 端点=${sanitizeUrlForLog(apiEndpoint, apiKey)}, 提供商=${apiProviderType.name}, reload=$reload")
 
         return withContext(Dispatchers.IO) {
-            val maxRetries = 2
             var retryCount = 0
             var lastException: Exception? = null
 
@@ -283,6 +295,8 @@ object ModelListFetcher {
                             }
                         }
                     }
+
+                    applyCustomHeaders(requestBuilder, customHeadersJson)
 
                     val request = requestBuilder.get().build()
 

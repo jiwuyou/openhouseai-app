@@ -42,6 +42,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ApiProviderType
@@ -325,7 +326,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val hasNewerDisplayHistory by actualViewModel.hasNewerDisplayHistory.collectAsState()
     val isLoadingDisplayWindow by actualViewModel.isLoadingDisplayWindow.collectAsState()
     val popupMessage by actualViewModel.popupMessage.collectAsState()
-    val chatViewRuntime = if (isFloatingMode) "floating" else "main"
+    val chatViewRuntime =
+        when {
+            RescueActivity.isRescueContext(context) -> "rescue"
+            isFloatingMode -> "floating"
+            else -> "main"
+        }
     val chatViewId = rememberSaveable { UUID.randomUUID().toString() }
     val currentChatView = remember(chatHistories, currentChatId) {
         chatHistories.find { it.id == currentChatId }
@@ -2090,4 +2096,3 @@ private fun MentionSuggestionOverlay(
         }
     }
 }
-

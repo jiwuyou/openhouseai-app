@@ -1,6 +1,9 @@
 package com.wuxianpi.pi
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
@@ -136,7 +139,9 @@ class WuxianPiModelClient(
                 cause = error,
             )
         }
-        return response.use { parseResponse(it, sensitiveValues, parser) }
+        return response.consumeOn(Dispatchers.IO) {
+            parseResponse(it, sensitiveValues, parser)
+        }
     }
 
     private fun <T> parseResponse(
@@ -199,6 +204,17 @@ class WuxianPiModelClient(
     }
 }
 
+internal suspend fun <T> Response.consumeOn(
+    dispatcher: CoroutineDispatcher,
+    consumer: (Response) -> T,
+): T {
+    try {
+        return withContext(dispatcher) { consumer(this@consumeOn) }
+    } finally {
+        close()
+    }
+}
+
 private suspend fun Call.awaitResponse(): Response {
     val pendingResponse = AtomicReference<Response?>()
     return suspendCancellableCoroutine { continuation ->
@@ -220,7 +236,7 @@ private suspend fun Call.awaitResponse(): Response {
                 }
             }
         })
-    }.also { response -> pendingResponse.compareAndSet(response, null) }
+    }
 }
 
 private fun IOException.isTimeoutFailure(): Boolean =

@@ -47,11 +47,13 @@ import com.ai.assistance.operit.api.chat.llmprovider.EndpointCompleter
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.llmprovider.AIServiceFactory
 import com.ai.assistance.operit.api.chat.llmprovider.LlamaProvider
+import com.ai.assistance.operit.api.chat.llmprovider.ModelDiscoveryCoordinator
 import com.ai.assistance.operit.api.chat.llmprovider.ModelListFetcher
 import com.ai.assistance.operit.data.collects.ApiProviderConfigs
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.model.ModelOption
+import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.usesAndroidLocalModelEngine
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
@@ -65,6 +67,8 @@ import com.ai.assistance.operit.ui.features.settings.RegisterModelConfigSaveActi
 import com.ai.assistance.operit.util.LocationUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -86,6 +90,9 @@ fun ModelApiSettingsSection(
         configManager: ModelConfigManager,
         saveCoordinator: ModelConfigSaveCoordinator,
         showNotification: (String) -> Unit,
+        customHeadersDraft: String = config.customHeaders,
+        modelParametersDraft: List<ModelParameter<*>>? = null,
+        onDraftChanged: (ModelConfigData) -> Unit = {},
         navigateToMnnModelDownload: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -101,6 +108,9 @@ fun ModelApiSettingsSection(
             configManager = configManager,
             saveCoordinator = saveCoordinator,
             showNotification = showNotification,
+            customHeadersDraft = customHeadersDraft,
+            modelParametersDraft = modelParametersDraft,
+            onDraftChanged = onDraftChanged,
             navigateToMnnModelDownload = navigateToMnnModelDownload,
         )
     }
@@ -113,6 +123,9 @@ private fun LocalModelApiSettingsSection(
         configManager: ModelConfigManager,
         saveCoordinator: ModelConfigSaveCoordinator,
         showNotification: (String) -> Unit,
+        customHeadersDraft: String,
+        modelParametersDraft: List<ModelParameter<*>>?,
+        onDraftChanged: (ModelConfigData) -> Unit,
         navigateToMnnModelDownload: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -248,6 +261,34 @@ private fun LocalModelApiSettingsSection(
         )
     }
 
+    fun ApiAutoSaveState.toDraft(): ModelConfigData =
+        config.copy(
+            apiKey = apiKey,
+            apiEndpoint = apiEndpoint,
+            modelName = modelName,
+            apiProviderType = provider,
+            apiProviderTypeId = providerTypeId,
+            piModelBinding = null,
+            customHeaders = customHeadersDraft,
+            mnnForwardType = mnnForwardType,
+            mnnThreadCount = mnnThreadCount,
+            llamaThreadCount = llamaThreadCount,
+            llamaContextSize = llamaContextSize,
+            llamaGpuLayers = llamaGpuLayers,
+            enableDirectImageProcessing = enableDirectImageProcessing,
+            enableDirectAudioProcessing = enableDirectAudioProcessing,
+            enableDirectVideoProcessing = enableDirectVideoProcessing,
+            enableGoogleSearch = enableGoogleSearch,
+            enableClaude1hPromptCache = enableClaude1hPromptCache,
+            enableToolCall = enableToolCall,
+        )
+
+    LaunchedEffect(config.id, customHeadersDraft) {
+        snapshotFlow { buildAutoSaveState() }
+            .distinctUntilChanged()
+            .collectLatest { state -> onDraftChanged(state.toDraft()) }
+    }
+
     suspend fun flushSettings(showSuccess: Boolean) {
         val state = buildAutoSaveState()
         try {
@@ -256,8 +297,7 @@ private fun LocalModelApiSettingsSection(
                 "保存API设置: apiKey=${state.apiKey.take(5)}..., endpoint=${state.apiEndpoint}, model=${state.modelName}, providerType=${state.provider.name}"
             )
             persist(state)
-            // Rescue has an independent Android-local model snapshot.  Refresh it only after an
-            // explicit settings save; never mirror the main config on every chat turn.
+            // Rescue stores this configuration without changing the explicitly selected active ID.
             if (RescueActivity.isRescueContext(context)) {
                 configManager.getModelConfig(config.id)?.let { savedConfig ->
                     RescuePiChatEngine.getInstance(context).configureModel(savedConfig)
@@ -325,12 +365,8 @@ private fun LocalModelApiSettingsSection(
         if (
             selectedApiProvider == ApiProviderType.OPENAI ||
                 selectedApiProvider == ApiProviderType.OPENAI_RESPONSES ||
-                selectedApiProvider == ApiProviderType.OPENAI_RESPONSES_GENERIC ||
-                selectedApiProvider == ApiProviderType.OPENAI_GENERIC ||
                 selectedApiProvider == ApiProviderType.GOOGLE ||
-                selectedApiProvider == ApiProviderType.GEMINI_GENERIC ||
                 selectedApiProvider == ApiProviderType.ANTHROPIC ||
-                selectedApiProvider == ApiProviderType.ANTHROPIC_GENERIC ||
                 selectedApiProvider == ApiProviderType.MISTRAL ||
                 selectedApiProvider == ApiProviderType.NVIDIA ||
                 selectedApiProvider == ApiProviderType.NOUS_PORTAL
@@ -392,7 +428,15 @@ private fun LocalModelApiSettingsSection(
         !isMnnProvider &&
             !isLlamaProvider &&
             (canUseKeylessModelUi || !isUsingDefaultApiKey)
-    val canRequestModelList = !isMnnProvider && !isLlamaProvider
+    val canRequestModelList =
+        isToolPkgProvider ||
+            isMnnProvider ||
+            isLlamaProvider ||
+            (
+                apiEndpointInput.isNotBlank() &&
+                    (!providerRequiresApiKey ||
+                        (!isUsingDefaultApiKey && apiKeyInput.isNotBlank()))
+            )
     val endpointOptions = getEndpointOptions(selectedProviderTypeId)
     val selectableEndpointOptions =
         when {
@@ -408,8 +452,57 @@ private fun LocalModelApiSettingsSection(
             else -> emptyList()
         }
 
-    suspend fun fetchAvailableModels(reload: Boolean = false): Result<List<ModelOption>> =
-        Result.success(emptyList())
+    suspend fun fetchAvailableModels(reload: Boolean = false): Result<List<ModelOption>> {
+        return when {
+            isMnnProvider -> ModelListFetcher.getMnnLocalModels(context)
+            isLlamaProvider -> ModelListFetcher.getLlamaLocalModels(context)
+            selectedApiProvider == ApiProviderType.OTHER -> {
+                ModelDiscoveryCoordinator.discover(
+                    context = context,
+                    modelConfigManager = configManager,
+                    draft = buildAutoSaveState().toDraft(),
+                    reload = reload,
+                ).map { discovery ->
+                    selectedProviderTypeId = discovery.providerType.name
+                    discovery.models
+                }
+            }
+            isToolPkgProvider -> runCatching {
+                val service =
+                    AIServiceFactory.createService(
+                        config =
+                            config.copy(
+                                apiKey = apiKeyInput,
+                                apiEndpoint = apiEndpointInput,
+                                modelName = modelNameInput,
+                                apiProviderType = ApiProviderType.OTHER,
+                                apiProviderTypeId = selectedProviderTypeId,
+                                enableDirectImageProcessing = enableDirectImageProcessingInput,
+                                enableDirectAudioProcessing = enableDirectAudioProcessingInput,
+                                enableDirectVideoProcessing = enableDirectVideoProcessingInput,
+                                enableGoogleSearch = enableGoogleSearchInput,
+                                enableToolCall = enableToolCallInput,
+                            ),
+                        modelConfigManager = configManager,
+                        context = context,
+                    )
+                try {
+                    service.getModelsList(context).getOrThrow()
+                } finally {
+                    service.release()
+                }
+            }
+            else ->
+                ModelListFetcher.getModelsList(
+                    context = context,
+                    apiKey = apiKeyInput,
+                    apiEndpoint = apiEndpointInput,
+                    apiProviderType = selectedApiProvider ?: ApiProviderType.OPENAI_GENERIC,
+                    customHeadersJson = customHeadersDraft,
+                    reload = reload,
+                )
+        }
+    }
     // 移除了强制锁定模型名称的逻辑，允许用户自由修改
 
     Card(
@@ -441,6 +534,7 @@ private fun LocalModelApiSettingsSection(
             if (showApiProviderDialog) {
                 ApiProviderDialog(
                         onDismissRequest = { showApiProviderDialog = false },
+                        rescueDirectOnly = configManager.isRescueStore,
                         onProviderSelected = { provider ->
                             selectedProviderTypeId = provider.id
 
@@ -648,7 +742,13 @@ private fun LocalModelApiSettingsSection(
                             val fillEndpointKeyText = context.getString(R.string.fill_endpoint_and_key)
                             val modelsListSuccessText = context.getString(R.string.models_list_success)
 
-                            showNotification(gettingModelsText)
+                            showNotification(
+                                if (selectedApiProvider == ApiProviderType.OTHER) {
+                                    "正在尝试 OpenAI、Responses、Claude 和 Gemini 多种协议，请耐心等待"
+                                } else {
+                                    gettingModelsText
+                                }
+                            )
 
                             scope.launch {
                                 if (canRequestModelList) {
@@ -1563,10 +1663,20 @@ private fun forwardTypeName(type: Int): String {
 @Composable
 private fun ApiProviderDialog(
         onDismissRequest: () -> Unit,
+        rescueDirectOnly: Boolean,
         onProviderSelected: (ProviderSelectionOption) -> Unit
 ) {
     val context = LocalContext.current
-    val providers = remember { getProviderSelectionOptions(context) }
+    val providers =
+        remember(context, rescueDirectOnly) {
+            getProviderSelectionOptions(context).filter { provider ->
+                if (!rescueDirectOnly) return@filter true
+                val providerType = ApiProviderType.fromProviderTypeId(provider.id)
+                providerType != null &&
+                    providerType != ApiProviderType.MNN &&
+                    providerType != ApiProviderType.LLAMA_CPP
+            }
+        }
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredProviders = remember(searchQuery) {

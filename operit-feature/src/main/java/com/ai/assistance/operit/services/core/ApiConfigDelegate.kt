@@ -2,20 +2,22 @@ package com.ai.assistance.operit.services.core
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
 import com.ai.assistance.operit.api.chat.EnhancedAIService
-import com.ai.assistance.operit.pi.RescuePiChatEngine
-import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.model.ModelConfigDefaults
+import com.ai.assistance.operit.data.model.getModelByIndex
 import com.ai.assistance.operit.data.preferences.ActivePromptManager
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
+import com.ai.assistance.operit.data.preferences.ModelConfigStorageScope
+import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +47,7 @@ data class ChatContextSettings(
 class ApiConfigDelegate(
         private val context: Context,
         private val coroutineScope: CoroutineScope,
+        private val runtimeSlot: ChatRuntimeSlot = ChatRuntimeSlot.MAIN,
         private val onConfigChanged: (EnhancedAIService) -> Unit
 ) {
     companion object {
@@ -53,7 +56,13 @@ class ApiConfigDelegate(
 
     // Preferences
     private val apiPreferences = ApiPreferences.getInstance(context)
-    private val modelConfigManager = ModelConfigManager(context)
+    private val isRescueRuntime = runtimeSlot == ChatRuntimeSlot.RESCUE
+    private val modelConfigManager =
+        ModelConfigManager(
+            context,
+            if (isRescueRuntime) ModelConfigStorageScope.RESCUE else ModelConfigStorageScope.MAIN,
+        )
+    private val rescueModelConfigStore by lazy { RescueModelConfigStore(context) }
     private val functionalConfigManager = FunctionalConfigManager(context)
     private val characterCardManager = CharacterCardManager.getInstance(context)
     private val activePromptManager = ActivePromptManager.getInstance(context)
@@ -152,9 +161,13 @@ class ApiConfigDelegate(
     private val _activeConfigId =
             MutableStateFlow(FunctionalConfigManager.DEFAULT_CONFIG_ID)
     val activeConfigId: StateFlow<String> = _activeConfigId.asStateFlow()
+    private val _activeModelIndex = MutableStateFlow(0)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val effectiveChatConfigId: StateFlow<String> =
+        if (isRescueRuntime) {
+            activeConfigId
+        } else {
             activePromptManager.activePromptFlow
                 .flatMapLatest { prompt ->
                     when (prompt) {
@@ -183,11 +196,22 @@ class ApiConfigDelegate(
                     kotlinx.coroutines.flow.SharingStarted.Eagerly,
                     FunctionalConfigManager.DEFAULT_CONFIG_ID
                 )
+        }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val effectiveChatConfig: StateFlow<ModelConfigData> =
-            effectiveChatConfigId
-                .flatMapLatest { configId -> modelConfigManager.getModelConfigFlow(configId) }
+            combine(effectiveChatConfigId, _activeModelIndex) { configId, modelIndex ->
+                configId to modelIndex
+            }
+                .flatMapLatest { (configId, modelIndex) ->
+                    modelConfigManager.getModelConfigFlow(configId).map { config ->
+                        if (isRescueRuntime) {
+                            config.copy(modelName = getModelByIndex(config.modelName, modelIndex))
+                        } else {
+                            config
+                        }
+                    }
+                }
                 .stateIn(
                     coroutineScope,
                     kotlinx.coroutines.flow.SharingStarted.Eagerly,
@@ -278,12 +302,19 @@ class ApiConfigDelegate(
         coroutineScope.launch {
             try {
                 modelConfigManager.initializeIfNeeded()
-                functionalConfigManager.initializeIfNeeded()
-
-                functionalConfigManager.functionConfigMappingFlow.collect { mapping ->
-                    val chatConfigId =
-                            mapping[FunctionType.CHAT] ?: FunctionalConfigManager.DEFAULT_CONFIG_ID
-                    _activeConfigId.value = chatConfigId
+                if (isRescueRuntime) {
+                    rescueModelConfigStore.activeSelectionFlow().collect { selection ->
+                        _activeConfigId.value = selection.configId
+                        _activeModelIndex.value = selection.modelIndex
+                    }
+                } else {
+                    functionalConfigManager.initializeIfNeeded()
+                    functionalConfigManager.functionConfigMappingFlow.collect { mapping ->
+                        val chatConfigId =
+                                mapping[FunctionType.CHAT]
+                                    ?: FunctionalConfigManager.DEFAULT_CONFIG_ID
+                        _activeConfigId.value = chatConfigId
+                    }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 AppLogger.d(TAG, "初始化功能配置映射监听已取消")
@@ -297,9 +328,19 @@ class ApiConfigDelegate(
                 modelConfigManager.initializeIfNeeded()
 
                 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-                _activeConfigId
-                        .flatMapLatest { configId ->
-                            modelConfigManager.getModelConfigFlow(configId)
+                combine(_activeConfigId, _activeModelIndex) { configId, modelIndex ->
+                    configId to modelIndex
+                }
+                        .flatMapLatest { (configId, modelIndex) ->
+                            modelConfigManager.getModelConfigFlow(configId).map { config ->
+                                if (isRescueRuntime) {
+                                    config.copy(
+                                        modelName = getModelByIndex(config.modelName, modelIndex)
+                                    )
+                                } else {
+                                    config
+                                }
+                            }
                         }
                         .collect { config ->
                             updateStateFromConfig(config)
@@ -360,6 +401,13 @@ class ApiConfigDelegate(
 
     suspend fun resolveChatContextSettings(configIdOverride: String? = null): ChatContextSettings {
         modelConfigManager.initializeIfNeeded()
+        if (isRescueRuntime) {
+            val resolved = rescueModelConfigStore.loadResolved()
+            return buildChatContextSettings(
+                resolved.selection.configId,
+                resolved.selectedConfig,
+            )
+        }
         val configId =
             configIdOverride?.trim()?.takeIf { it.isNotEmpty() } ?: effectiveChatConfigId.value
         val config = requireNotNull(modelConfigManager.getModelConfig(configId)) {
@@ -486,25 +534,23 @@ class ApiConfigDelegate(
     fun saveApiSettings() {
         coroutineScope.launch {
             try {
-                val configId = _activeConfigId.value
+                val rescueConfig =
+                    if (isRescueRuntime) rescueModelConfigStore.loadActiveRegistryConfig() else null
+                val configId = rescueConfig?.selection?.configId ?: _activeConfigId.value
+                val modelName =
+                    rescueConfig
+                        ?.configWithSelectedModelName(_modelName.value)
+                        ?.modelName
+                        ?: _modelName.value
 
                 // 更新所有API相关配置
                 modelConfigManager.updateModelConfig(
                         configId,
                         _apiKey.value,
                         _apiEndpoint.value,
-                        _modelName.value,
+                        modelName,
                         _apiProviderType.value
                 )
-
-                // Rescue persists a private model snapshot.  Keep it in sync when the user
-                // explicitly saves settings from the Rescue UI, without overwriting it on every
-                // subsequent turn.
-                if (RescueActivity.isRescueContext(context)) {
-                    modelConfigManager.getModelConfig(configId)?.let { savedConfig ->
-                        RescuePiChatEngine.getInstance(context).configureModel(savedConfig)
-                    }
-                }
 
                 AppLogger.d(TAG, "API配置已保存到ModelConfigManager")
 

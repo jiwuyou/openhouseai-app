@@ -44,7 +44,6 @@ class PiModelSettingsAdapter private constructor() {
             repository = repository,
             configs = AndroidPiModelMigrationConfigStore(manager),
             state = AndroidPiModelMigrationStateStore(context.applicationContext),
-            rescueStore = AndroidPiModelMigrationRescueStore(context.applicationContext),
         ).migrateIfNeeded()
     }
 
