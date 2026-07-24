@@ -394,14 +394,26 @@ internal class TermuxSessionManager(
     private suspend fun setSessionOption(sessionId: String, option: String, value: String) {
         runTmuxChecked(
             "store terminal session metadata",
-            listOf("set-option", "-t", target(sessionId), option, value),
+            listOf(
+                "set-option",
+                "-t",
+                TermuxSessionProtocol.tmuxSessionOptionTarget(sessionId),
+                option,
+                value,
+            ),
         )
     }
 
     private suspend fun readSessionOption(sessionId: String, option: String): String =
         runTmuxChecked(
             "read terminal session metadata",
-            listOf("show-options", "-v", "-t", target(sessionId), option),
+            listOf(
+                "show-options",
+                "-v",
+                "-t",
+                TermuxSessionProtocol.tmuxSessionOptionTarget(sessionId),
+                option,
+            ),
         ).stdout.trimEnd('\r', '\n')
 
     private suspend fun requireSessionExists(sessionId: String) {
@@ -523,7 +535,7 @@ internal class TermuxSessionManager(
 
     private fun target(sessionId: String): String = TermuxSessionProtocol.tmuxTarget(sessionId)
 
-    private fun paneTarget(sessionId: String): String = "${target(sessionId)}:0.0"
+    private fun paneTarget(sessionId: String): String = TermuxSessionProtocol.tmuxPaneTarget(sessionId)
 
     private companion object {
         const val COMMAND_INTERRUPT_GRACE_MS = 3_000L

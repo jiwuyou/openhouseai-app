@@ -43,10 +43,16 @@ class StandardTerminalCommandExecutor(private val context: Context) {
             command: String?,
             result: HostTermuxExecResult
         ): ToolResult {
+            val setupRequired = result.state == HostTermuxExecState.SETUP_REQUIRED
             val setupCommand =
-                result.setupCommand?.takeIf { it.isNotBlank() } ?: "pkg install -y tmux"
+                if (setupRequired) {
+                    result.setupCommand?.takeIf { it.isNotBlank() } ?: "pkg install -y tmux"
+                } else {
+                    null
+                }
             val missingDependencies =
-                result.missingDependencies.ifEmpty { listOf("tmux") }
+                if (setupRequired) result.missingDependencies.ifEmpty { listOf("tmux") }
+                else emptyList()
             val successful =
                 when (result.state) {
                     HostTermuxExecState.RUNNING -> true
@@ -56,7 +62,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
             val failure =
                 when {
                     successful -> null
-                    result.state == HostTermuxExecState.SETUP_REQUIRED ->
+                    setupRequired ->
                         buildString {
                             append("setup_required: managed Termux execution cannot start. ")
                             append("missingDependencies=")
@@ -90,7 +96,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         cursor = result.cursor.toString(),
                         exitCode = result.exitCode,
                         persistent = result.persistent,
-                        setupRequired = result.state == HostTermuxExecState.SETUP_REQUIRED,
+                        setupRequired = setupRequired,
                         setupCommand = setupCommand,
                         missingDependencies = missingDependencies,
                         error = result.error.takeIf { it.isNotBlank() }

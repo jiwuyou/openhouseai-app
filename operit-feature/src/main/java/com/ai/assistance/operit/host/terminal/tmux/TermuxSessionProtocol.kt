@@ -59,6 +59,10 @@ internal object TermuxSessionProtocol {
 
     fun tmuxTarget(sessionId: String): String = "=$sessionId"
 
+    fun tmuxSessionOptionTarget(sessionId: String): String = "${tmuxTarget(sessionId)}:"
+
+    fun tmuxPaneTarget(sessionId: String): String = "${tmuxTarget(sessionId)}:0.0"
+
     fun ubuntuShellCommand(termuxPrefix: String): String {
         val bootstrap =
             "stty -echo; export PS1='' PROMPT_COMMAND=''; printf '%s\\n' '__OPERIT_READY__'; " +

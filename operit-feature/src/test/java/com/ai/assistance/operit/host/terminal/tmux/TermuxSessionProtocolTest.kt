@@ -43,6 +43,9 @@ class TermuxSessionProtocolTest {
         assertEquals(HostTerminalTarget.UBUNTU, TermuxSessionProtocol.targetForSessionId(ubuntu))
         assertTrue(TermuxSessionProtocol.isTermuxSessionId(termux))
         assertFalse(TermuxSessionProtocol.isTermuxSessionId(ubuntu))
+        assertEquals("=$termux", TermuxSessionProtocol.tmuxTarget(termux))
+        assertEquals("=$termux:", TermuxSessionProtocol.tmuxSessionOptionTarget(termux))
+        assertEquals("=$termux:0.0", TermuxSessionProtocol.tmuxPaneTarget(termux))
     }
 
     @Test

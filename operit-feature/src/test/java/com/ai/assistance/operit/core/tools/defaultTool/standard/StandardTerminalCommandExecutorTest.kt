@@ -100,6 +100,24 @@ class StandardTerminalCommandExecutorTest {
         assertTrue(visibleContent.contains("tmux executable was not found under PREFIX"))
     }
 
+    @Test
+    fun ordinaryFailureDoesNotClaimTmuxSetupIsRequired() {
+        val result =
+            map(
+                HostTermuxExecResult(
+                    state = HostTermuxExecState.FAILED,
+                    error = "Failed to store managed Termux metadata",
+                )
+            )
+
+        assertFalse(result.success)
+        assertEquals("Failed to store managed Termux metadata", result.error)
+        val content = result.result as TermuxExecResultData
+        assertFalse(content.setupRequired)
+        assertNull(content.setupCommand)
+        assertTrue(content.missingDependencies.isEmpty())
+    }
+
     private fun map(result: HostTermuxExecResult) =
         StandardTerminalCommandExecutor.buildManagedTermuxToolResult(
             toolName = "termux_exec_command",

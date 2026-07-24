@@ -150,10 +150,21 @@ class TermuxSessionManagerTest {
                     success()
                 }
                 "set-option" -> {
-                    if (!arguments.contains("-w")) options[arguments[arguments.size - 2]] = arguments.last()
-                    success()
+                    val target = arguments.getOrNull(arguments.indexOf("-t") + 1).orEmpty()
+                    if (!arguments.contains("-w") && !target.endsWith(':')) {
+                        failure(1)
+                    } else {
+                        if (!arguments.contains("-w")) {
+                            options[arguments[arguments.size - 2]] = arguments.last()
+                        }
+                        success()
+                    }
                 }
-                "show-options" -> success(stdout = options.getValue(arguments.last()) + "\n")
+                "show-options" -> {
+                    val target = arguments.getOrNull(arguments.indexOf("-t") + 1).orEmpty()
+                    if (!target.endsWith(':')) failure(1)
+                    else success(stdout = options.getValue(arguments.last()) + "\n")
+                }
                 "capture-pane" -> success(stdout = paneCapture)
                 "pipe-pane" -> success()
                 "load-buffer" -> {

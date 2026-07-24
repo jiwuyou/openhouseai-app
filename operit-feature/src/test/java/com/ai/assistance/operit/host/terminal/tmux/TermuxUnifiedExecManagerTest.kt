@@ -197,7 +197,17 @@ class TermuxUnifiedExecManagerTest {
         assertEquals("tail", completed.output)
         assertEquals(8L, completed.cursor)
         assertTrue(sleepCalls.isEmpty())
-        assertFalse(transport.tmuxCommands.any { command -> "remain-on-exit" in command })
+        assertTrue(transport.tmuxCommands.any { command ->
+            command ==
+                listOf(
+                    "set-option",
+                    "-w",
+                    "-t",
+                    "=$SESSION_ID:0.0",
+                    "remain-on-exit",
+                    "off",
+                )
+        })
         assertTrue(transport.writtenExecutableBodies.values.any { body ->
             body.contains("output-size") && body.indexOf("output-size") < body.indexOf("completed")
         })
@@ -273,7 +283,15 @@ class TermuxUnifiedExecManagerTest {
                 workingDirectory = arguments[arguments.indexOf("-c") + 1]
                 success()
             }
-            "set-option", "pipe-pane" -> success()
+            "set-option" -> {
+                val target = arguments.getOrNull(arguments.indexOf("-t") + 1).orEmpty()
+                if (!arguments.contains("-w") && !target.endsWith(':')) {
+                    failure(1, "no such session: $target")
+                } else {
+                    success()
+                }
+            }
+            "pipe-pane" -> success()
             "has-session" -> if (sessionExists) success() else failure(1)
             "kill-session" -> {
                 sessionExists = false

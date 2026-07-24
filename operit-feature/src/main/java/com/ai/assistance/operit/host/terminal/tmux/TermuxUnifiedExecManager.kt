@@ -249,6 +249,10 @@ internal class TermuxUnifiedExecManager(
             setSessionOption(sessionId, "@operit_source_name", sessionName)
             setSessionOption(sessionId, "@operit_persistent", "1")
             runTmuxChecked(
+                "disable managed Termux pane retention",
+                listOf("set-option", "-w", "-t", paneTarget(sessionId), "remain-on-exit", "off"),
+            )
+            runTmuxChecked(
                 "configure managed Termux history",
                 listOf("set-option", "-w", "-t", paneTarget(sessionId), "history-limit", TermuxSessionProtocol.HISTORY_LIMIT),
             )
@@ -659,7 +663,13 @@ internal class TermuxUnifiedExecManager(
     private suspend fun setSessionOption(sessionId: String, option: String, value: String) {
         runTmuxChecked(
             "store managed Termux metadata",
-            listOf("set-option", "-t", tmuxTarget(sessionId), option, value),
+            listOf(
+                "set-option",
+                "-t",
+                TermuxSessionProtocol.tmuxSessionOptionTarget(sessionId),
+                option,
+                value,
+            ),
         )
     }
 
@@ -734,7 +744,7 @@ internal class TermuxUnifiedExecManager(
 
     private fun tmuxTarget(sessionId: String): String = TermuxSessionProtocol.tmuxTarget(sessionId)
 
-    private fun paneTarget(sessionId: String): String = "${tmuxTarget(sessionId)}:0.0"
+    private fun paneTarget(sessionId: String): String = TermuxSessionProtocol.tmuxPaneTarget(sessionId)
 
     private fun quote(value: String): String = TermuxSessionProtocol.shellQuote(value)
 
