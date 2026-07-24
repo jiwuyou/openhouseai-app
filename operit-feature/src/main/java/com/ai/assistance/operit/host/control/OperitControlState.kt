@@ -30,10 +30,7 @@ data class OperitControlStateSnapshot(
     val processName: String,
     val pid: Int,
     val updatedAtMs: Long,
-    val heartbeatAtMs: Long,
-    val stoppedAtMs: Long,
-    val stale: Boolean,
-    val staleTimeoutMs: Long
+    val stoppedAtMs: Long
 ) {
     fun isRunning(): Boolean =
         effectiveState == OperitProcessState.FOREGROUND || effectiveState == OperitProcessState.BACKGROUND
@@ -55,8 +52,6 @@ object OperitControlProtocol {
     const val SHUTDOWN_REASON_USER = "user"
     const val SHUTDOWN_REQUESTED_BY_HOME = "home"
     const val SHUTDOWN_REQUESTED_BY_OPERIT = "operit"
-    const val DEFAULT_HEARTBEAT_STALE_TIMEOUT_MS = 15_000L
-
     @JvmStatic
     fun operitProcessName(packageName: String): String = packageName + OPERIT_PROCESS_SUFFIX
 
@@ -127,23 +122,20 @@ object OperitControlStateStore {
     private const val KEY_PROCESS_NAME = "process_name"
     private const val KEY_PID = "pid"
     private const val KEY_UPDATED_AT_MS = "updated_at_ms"
-    private const val KEY_HEARTBEAT_AT_MS = "heartbeat_at_ms"
     private const val KEY_STOPPED_AT_MS = "stopped_at_ms"
 
     @JvmStatic
-    @JvmOverloads
-    fun read(
-        context: Context,
-        staleTimeoutMs: Long = OperitControlProtocol.DEFAULT_HEARTBEAT_STALE_TIMEOUT_MS
-    ): OperitControlStateSnapshot {
+    fun read(context: Context): OperitControlStateSnapshot {
         val preferences = preferences(context)
         val rawState = preferences.getString(KEY_STATE, null).orEmpty()
         val storedState = OperitProcessState.fromWireName(rawState)
-        val heartbeatAtMs = preferences.getLong(KEY_HEARTBEAT_AT_MS, 0L)
-        val now = System.currentTimeMillis()
-        val stale = isStale(storedState, heartbeatAtMs, now, staleTimeoutMs)
+        val processName = preferences.getString(KEY_PROCESS_NAME, null).orEmpty()
+        val pid = preferences.getInt(KEY_PID, -1)
+        val processAlive =
+            storedState.isRunningLike() && isProcessAlive(context, pid, processName)
+        // Keep reads side-effect free so an old host snapshot cannot overwrite a newly started process.
         val effectiveState =
-            if (stale && storedState.isRunningLike()) {
+            if (storedState.isRunningLike() && !processAlive) {
                 OperitProcessState.NOT_RUNNING
             } else {
                 storedState
@@ -153,27 +145,24 @@ object OperitControlStateStore {
             storedState = storedState,
             effectiveState = effectiveState,
             rawState = rawState.ifBlank { storedState.wireName },
-            processName = preferences.getString(KEY_PROCESS_NAME, null).orEmpty(),
-            pid = preferences.getInt(KEY_PID, -1),
+            processName = processName,
+            pid = pid,
             updatedAtMs = preferences.getLong(KEY_UPDATED_AT_MS, 0L),
-            heartbeatAtMs = heartbeatAtMs,
-            stoppedAtMs = preferences.getLong(KEY_STOPPED_AT_MS, 0L),
-            stale = stale,
-            staleTimeoutMs = staleTimeoutMs
+            stoppedAtMs = preferences.getLong(KEY_STOPPED_AT_MS, 0L)
         )
     }
 
     @JvmStatic
     fun markForeground(context: Context): OperitControlStateSnapshot =
-        mark(context, OperitProcessState.FOREGROUND, includeHeartbeat = true)
+        mark(context, OperitProcessState.FOREGROUND)
 
     @JvmStatic
     fun markBackground(context: Context): OperitControlStateSnapshot =
-        mark(context, OperitProcessState.BACKGROUND, includeHeartbeat = true)
+        mark(context, OperitProcessState.BACKGROUND)
 
     @JvmStatic
     fun markStopping(context: Context): OperitControlStateSnapshot =
-        mark(context, OperitProcessState.STOPPING, includeHeartbeat = true)
+        mark(context, OperitProcessState.STOPPING)
 
     @JvmStatic
     fun markStopped(context: Context): OperitControlStateSnapshot {
@@ -185,27 +174,11 @@ object OperitControlStateStore {
             .putString(KEY_PROCESS_NAME, "")
             .putInt(KEY_PID, -1)
             .putLong(KEY_UPDATED_AT_MS, now)
-            .putLong(KEY_HEARTBEAT_AT_MS, 0L)
             .putLong(KEY_STOPPED_AT_MS, now)
             .commit()
         sendStateChanged(appContext, OperitProcessState.NOT_RUNNING)
         return read(appContext)
     }
-
-    @JvmStatic
-    fun heartbeat(context: Context): OperitControlStateSnapshot {
-        val current = read(context, Long.MAX_VALUE)
-        val state =
-            if (current.storedState.isRunningLike()) {
-                current.storedState
-            } else {
-                OperitProcessState.BACKGROUND
-            }
-        return mark(context, state, includeHeartbeat = true)
-    }
-
-    @JvmStatic
-    fun isStale(snapshot: OperitControlStateSnapshot): Boolean = snapshot.stale
 
     @JvmStatic
     fun isRunning(context: Context): Boolean = read(context).isRunning()
@@ -218,8 +191,7 @@ object OperitControlStateStore {
 
     private fun mark(
         context: Context,
-        state: OperitProcessState,
-        includeHeartbeat: Boolean
+        state: OperitProcessState
     ): OperitControlStateSnapshot {
         val appContext = context.applicationContext ?: context
         val now = System.currentTimeMillis()
@@ -231,22 +203,45 @@ object OperitControlStateStore {
                 .putString(KEY_PROCESS_NAME, processName)
                 .putInt(KEY_PID, Process.myPid())
                 .putLong(KEY_UPDATED_AT_MS, now)
-        if (includeHeartbeat) {
-            editor.putLong(KEY_HEARTBEAT_AT_MS, now)
-        }
         editor.commit()
         sendStateChanged(appContext, state)
         return read(appContext)
     }
 
-    private fun isStale(
-        state: OperitProcessState,
-        heartbeatAtMs: Long,
-        now: Long,
-        staleTimeoutMs: Long
-    ): Boolean =
-        state.isRunningLike() &&
-            (heartbeatAtMs <= 0L || (staleTimeoutMs > 0L && now - heartbeatAtMs > staleTimeoutMs))
+    private fun isProcessAlive(context: Context, expectedPid: Int, expectedProcessName: String): Boolean {
+        if (expectedPid <= 0 || expectedProcessName.isBlank()) return false
+
+        val expectedUid = context.applicationInfo.uid
+        val runningProcesses =
+            runCatching {
+                val activityManager =
+                    context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                activityManager?.runningAppProcesses
+            }.getOrNull()
+        if (runningProcesses.orEmpty().any { process ->
+                process.pid == expectedPid &&
+                    process.uid == expectedUid &&
+                    process.processName == expectedProcessName
+            }
+        ) {
+            return true
+        }
+
+        return runCatching {
+            val processName =
+                File("/proc/$expectedPid/cmdline").readText()
+                    .trim { it <= ' ' || it == '\u0000' }
+            val processUid =
+                File("/proc/$expectedPid/status").useLines { lines ->
+                    lines.firstOrNull { it.startsWith("Uid:") }
+                        ?.substringAfter("Uid:")
+                        ?.trim()
+                        ?.takeWhile { !it.isWhitespace() }
+                        ?.toIntOrNull()
+                }
+            processName == expectedProcessName && processUid == expectedUid
+        }.getOrDefault(false)
+    }
 
     private fun sendStateChanged(context: Context, state: OperitProcessState) {
         runCatching {

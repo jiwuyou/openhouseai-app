@@ -69,8 +69,6 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.ai.assistance.operit.data.mcp.MCPRepository
@@ -125,7 +123,7 @@ class MainActivity : ComponentActivity() {
     private var showPermissionGuide by mutableStateOf(false)
 
     // 是否已完成初始检查
-    private var initialChecksDone = false
+    private var initialChecksDone by mutableStateOf(false)
 
     // 存储待处理的分享文件URIs
     private var pendingSharedFileUris: List<Uri>? = null
@@ -140,7 +138,6 @@ class MainActivity : ComponentActivity() {
     private var pendingRouteRequestId: Long = 0L
     private var isHostedMode by mutableStateOf(false)
     private var isHostedHelpMode by mutableStateOf(false)
-    private var hostedHeartbeatJob: Job? = null
     private var hostedShutdownReceiverRegistered = false
     private val hostedShutdownReceiver =
         object : BroadcastReceiver() {
@@ -410,27 +407,10 @@ class MainActivity : ComponentActivity() {
         hostedShutdownReceiverRegistered = false
     }
 
-    private fun startHostedHeartbeatIfNeeded() {
-        if (!isHostedControlProcess()) return
-        if (hostedHeartbeatJob?.isActive == true) return
-        hostedHeartbeatJob =
-            lifecycleScope.launch {
-                while (isActive) {
-                    if (OperitShutdownController.isShutdownInProgress()) {
-                        OperitControlStateStore.markStopping(applicationContext)
-                    } else {
-                        OperitControlStateStore.heartbeat(applicationContext)
-                    }
-                    delay(5_000L)
-                }
-            }
-    }
-
     override fun onResume() {
         super.onResume()
         if (isHostedControlProcess()) {
             OperitControlStateStore.markForeground(applicationContext)
-            startHostedHeartbeatIfNeeded()
         }
     }
 
@@ -706,8 +686,6 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         AppLogger.d(TAG, "onDestroy called")
-        hostedHeartbeatJob?.cancel()
-        hostedHeartbeatJob = null
         unregisterHostedShutdownReceiverIfNeeded()
 
         PluginLoadingStateRegistry.unbind(pluginLoadingState)

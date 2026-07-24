@@ -87,12 +87,7 @@ public final class OperitHomeIntegration {
         }
         try {
             OperitControlStateSnapshot snapshot = OperitControlStateStore.read(context);
-            OperitProcessState effectiveState = snapshot.getEffectiveState();
-            if (isMissingLiveOperitProcess(context, snapshot, effectiveState)) {
-                OperitControlStateStore.markStopped(context);
-                effectiveState = OperitProcessState.NOT_RUNNING;
-            }
-            return toDisplayState(effectiveState);
+            return toDisplayState(snapshot.getEffectiveState());
         } catch (Throwable throwable) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read Operit control state", throwable);
             return DisplayState.NOT_RUNNING;
@@ -104,7 +99,7 @@ public final class OperitHomeIntegration {
             return false;
         }
         try {
-            return OperitControlStateStore.read(context).isBackground();
+            return readDisplayState(context) == DisplayState.BACKGROUND;
         } catch (Throwable throwable) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to read Operit background state", throwable);
             return false;
@@ -186,20 +181,6 @@ public final class OperitHomeIntegration {
             || Intent.ACTION_SEND_MULTIPLE.equals(action);
     }
 
-    private static boolean isMissingLiveOperitProcess(
-        Context context,
-        OperitControlStateSnapshot snapshot,
-        OperitProcessState effectiveState
-    ) {
-        if (snapshot == null || !effectiveState.isRunningLike()) {
-            return false;
-        }
-        if (snapshot.getPid() <= 0 && isBlank(snapshot.getProcessName())) {
-            return false;
-        }
-        return !isOperitProcessAlive(context, snapshot.getPid());
-    }
-
     private static DisplayState toDisplayState(OperitProcessState state) {
         if (state == OperitProcessState.FOREGROUND) {
             return DisplayState.FOREGROUND;
@@ -213,7 +194,4 @@ public final class OperitHomeIntegration {
         return DisplayState.NOT_RUNNING;
     }
 
-    private static boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
-    }
 }
