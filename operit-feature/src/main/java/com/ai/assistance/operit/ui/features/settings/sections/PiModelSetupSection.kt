@@ -53,10 +53,12 @@ import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.pi.PiModelEditorDraft
 import com.ai.assistance.operit.pi.PiModelRevisionConflictException
 import com.ai.assistance.operit.pi.PiModelSettingsAdapter
+import com.ai.assistance.operit.util.AppLogger
 import com.wuxianpi.pi.PiDiscoveredModel
 import com.wuxianpi.pi.PiModelApi
 import com.wuxianpi.pi.PiModelDraftResult
 import com.wuxianpi.pi.PiModelSetupState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -126,7 +128,10 @@ internal fun PiModelSetupSection(
         try {
             hydrate(adapter.setup(), config.piModelBinding)
             if (showMessage) showNotification("已刷新 Pi 模型配置")
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
+            AppLogger.w("PiModelSetupSection", "Unable to refresh Pi model setup", error)
             errorText = error.message ?: "无法读取 Pi 模型配置"
         } finally {
             loadingSetup = false
