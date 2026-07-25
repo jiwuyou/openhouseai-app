@@ -1,6 +1,6 @@
 # service-manager 操作手册
 
-service-manager 是安装完成后的运行期控制平面。AI agent 管理后台服务时，默认通过 service-manager，而不是直接后台启动进程。本文以 `service-manager 0.3.2` 的正式契约为基线。
+service-manager 是安装完成后的运行期控制平面。AI agent 管理后台服务时，默认通过 service-manager，而不是直接后台启动进程。本文以 `service-manager 0.3.3` 的正式契约为基线。
 
 OpenHouseAI 的正式部署基线是：service-manager daemon 运行在 Termux native 层，使用 OpenHouse 专用配置和 token。Ubuntu/proot 里的长期服务由 Termux native service-manager 通过 provider 管理，不在 Ubuntu 内另起一个常驻 service-manager。
 
@@ -254,8 +254,9 @@ $HOME/.config/openhouseai/service-manager/config.json
 ```bash
 SM_CONFIG="$HOME/.config/openhouseai/service-manager/config.json"
 SM_BIND="$(sed -n 's/.*"listen_addr"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SM_CONFIG" | head -n 1)"
+SM_LOG="$HOME/.smallphoneai/logs/service-manager.log"
 [ -n "$SM_BIND" ] || { echo "OpenHouse canonical config 缺少 listen_addr" >&2; exit 1; }
-service-manager serve --config "$SM_CONFIG" --bind "$SM_BIND"
+service-manager serve --config "$SM_CONFIG" --bind "$SM_BIND" --log-file "$SM_LOG"
 ```
 
 读取 token 也必须显式使用同一份配置：
@@ -274,6 +275,11 @@ Android、bootstrap 和 AI 使用 canonical token 时持续收到 `401`。日常
 ```text
 $HOME/.smallphoneai/logs/service-manager.log
 ```
+
+正式日志由 service-manager 自己写入并按大小轮转，默认单文件 16 MiB，保留
+`service-manager.log.1` 和 `service-manager.log.2`，权限为 `0600`。Android 启动脚本只把
+日志路径通过 `--log-file` 传给进程；`service-manager-bootstrap.log` 每次启动覆盖，仅记录
+正式日志初始化之前的 CLI/启动错误。
 
 ## 运行时 endpoint 快照
 
@@ -435,7 +441,7 @@ curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg \
 
 ## 常驻设置与取消
 
-`service-manager 0.3.2` 把常驻意图保存在独立策略中：
+`service-manager 0.3.3` 把常驻意图保存在独立策略中：
 
 ```text
 <data_dir>/residency.json

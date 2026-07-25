@@ -14,18 +14,38 @@
       "id": "service-manager",
       "archive": "service-manager.tar",
       "targetDir": "service-manager",
-      "sha256": "3c96b49d7c4150acef854166b482bb8081445131b0d7ed7e8fa7c5410db93dc4",
-      "size": 7905280,
-      "binarySha256": "e865da469768e894ef60a85df197d95d41da7caba4ad5c4de1309852404d483d",
+      "sha256": "e665a3d01f3aae1d005f6525155c7b80e9bff8c8aef3625f62c46f6fd553c0a9",
+      "size": 8325120,
+      "binarySha256": "8630c27f4b05a9bb8ab6d3682a4cc2dae8e58c43abe1f40ce31bcfae200f30fd",
       "platform": "termux-arm64",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "registryApiVersion": 2,
       "provides": {
         "registryApiVersion": 2,
         "registryApply": true,
         "stableServiceIds": true,
         "residency": true
-      }
+      },
+      "buildPlatform": "android-arm64",
+      "binaryInterpreter": "/system/bin/linker64",
+      "sourceRepo": "https://github.com/jiwuyou/service-manager",
+      "sourceCommit": "2df91968a1813f141acde8aa6f64dba623b54b2f",
+      "sourceTreeSha256": "78c20659dd6a1178307865e075de1515fc612eade2603393079d932c7ed5add2",
+      "buildToolchain": {
+        "method": "local-android-ndk-cross",
+        "rustTarget": "aarch64-linux-android",
+        "rustToolchain": "nightly-2026-07-05",
+        "androidApiLevel": 24,
+        "androidNdkVersion": "29.0.14206865",
+        "rustc": "rustc 1.98.0-nightly (c397dae80 2026-07-02)",
+        "cargo": "cargo 1.98.0-nightly (a335d47ff 2026-06-26)",
+        "linker": "/root/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang",
+        "buildCommand": "rustup run nightly-2026-07-05 cargo clean --manifest-path /root/projects/service-manager/Cargo.toml --target-dir /root/projects/service-manager/target/service-manager-payload-build && CARGO_TARGET_DIR=/root/projects/service-manager/target/service-manager-payload-build CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=/root/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang CC_aarch64_linux_android=/root/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang AR_aarch64_linux_android=/root/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar rustup run nightly-2026-07-05 cargo build --manifest-path /root/projects/service-manager/Cargo.toml --target aarch64-linux-android --release --locked"
+      },
+      "sourceDirty": false,
+      "sourceStatusSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceTreeId": "sha256:78c20659dd6a1178307865e075de1515fc612eade2603393079d932c7ed5add2",
+      "payloadSourceTreeSha256": "c4b2b137a335ddbf272f4c554ff041d1e5d44cd0e21ce4be54c33166d92c21f7"
     },
     {
       "id": "openhouse-web",

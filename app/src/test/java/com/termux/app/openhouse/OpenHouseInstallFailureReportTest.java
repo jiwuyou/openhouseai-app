@@ -4,19 +4,20 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
 public class OpenHouseInstallFailureReportTest {
 
     @Test
-    public void serviceManagerReadyTimeoutIsReportedBeforeCompleteLogs() throws Exception {
+    public void serviceManagerReadyTimeoutIsReportedBeforeBoundedLogTails() throws Exception {
         File directory = Files.createTempDirectory("openhouse-install-report").toFile();
         File manifest = new File(directory, "manifest_full.log");
         File serviceManager = new File(directory, "service-manager.log");
         File rescue = new File(directory, "pi-web-rescue-30142.log");
         File binary = executable(new File(directory, "service-manager"));
-        String longPrefix = repeat("安装输出行\n", 30000);
+        String longPrefix = "PREFIX_MUST_NOT_APPEAR\n" + repeat("安装输出行\n", 50000);
         write(manifest, longPrefix + "service-manager 在优先时间内未就绪\nLOG_END_MARKER\n");
         write(serviceManager, "health check timed out\n");
 
@@ -27,11 +28,126 @@ public class OpenHouseInstallFailureReportTest {
 
         String report = OpenHouseInstallFailureReport.build(null, state, manifest, serviceManager, rescue);
         Assert.assertTrue(report.indexOf("诊断代码：SERVICE_MANAGER_READY_TIMEOUT")
-            < report.indexOf("===== manifest_full.log（完整） ====="));
+            < report.indexOf("===== manifest_full.log 日志末尾摘录 ====="));
         Assert.assertTrue(report.contains("LOG_END_MARKER"));
-        Assert.assertTrue("report must contain the full log, not the legacy 120k tail",
-            report.length() > 120000);
-        Assert.assertTrue(report.contains("[日志文件不存在] " + rescue.getAbsolutePath()));
+        Assert.assertFalse(report.contains("PREFIX_MUST_NOT_APPEAR"));
+        Assert.assertTrue(report.contains("截断：是（仅保留文件末尾"));
+        Assert.assertTrue(report.contains("状态：日志文件不存在"));
+        Assert.assertFalse(report.contains("（完整）"));
+    }
+
+    @Test
+    public void sparseHugeLogsRetainTailMarkersAndReportExactBounds() throws Exception {
+        File directory = Files.createTempDirectory("openhouse-install-huge-report").toFile();
+        File manifest = new File(directory, "manifest_full.log");
+        File serviceManager = new File(directory, "service-manager.log");
+        File rescue = new File(directory, "pi-web-rescue-30142.log");
+        long manifestBytes = 128L * 1024L * 1024L;
+        long serviceManagerBytes = 1024L * 1024L * 1024L;
+        writeSparseWithTail(manifest, manifestBytes,
+            "MANIFEST_PREFIX_MUST_NOT_APPEAR\n", "MANIFEST_TAIL_MARKER\n");
+        writeSparseWithTail(serviceManager, serviceManagerBytes,
+            "SERVICE_PREFIX_MUST_NOT_APPEAR\n", "SERVICE_TAIL_MARKER\n");
+        write(rescue, "RESCUE_TAIL_MARKER\n");
+
+        String report = OpenHouseInstallFailureReport.build(
+            null,
+            failedState("install_service_manager", "service-manager Address already in use"),
+            manifest,
+            serviceManager,
+            rescue);
+
+        Assert.assertTrue(report.contains("诊断代码：SERVICE_MANAGER_PORT_OCCUPIED"));
+        Assert.assertTrue(report.contains("MANIFEST_TAIL_MARKER"));
+        Assert.assertTrue(report.contains("SERVICE_TAIL_MARKER"));
+        Assert.assertTrue(report.contains("RESCUE_TAIL_MARKER"));
+        Assert.assertFalse(report.contains("MANIFEST_PREFIX_MUST_NOT_APPEAR"));
+        Assert.assertFalse(report.contains("SERVICE_PREFIX_MUST_NOT_APPEAR"));
+        Assert.assertTrue(report.contains("原文件大小：" + manifestBytes + " 字节"));
+        Assert.assertTrue(report.contains("原文件大小：" + serviceManagerBytes + " 字节"));
+        Assert.assertTrue(report.contains(
+            "包含字节数：" + OpenHouseInstallFailureReport.MAX_LOG_TAIL_BYTES + " 字节"));
+        Assert.assertTrue(report.getBytes(StandardCharsets.UTF_8).length
+            <= OpenHouseInstallFailureReport.MAX_REPORT_BYTES);
+    }
+
+    @Test
+    public void reportHardCapKeepsDiagnosisBeforePathologicalLogData() throws Exception {
+        File directory = Files.createTempDirectory("openhouse-install-report-cap").toFile();
+        File manifest = new File(directory, "manifest_full.log");
+        File serviceManager = new File(directory, "service-manager.log");
+        File rescue = new File(directory, "pi-web-rescue-30142.log");
+        writeInvalidUtf8Tail(manifest);
+        writeInvalidUtf8Tail(serviceManager);
+        writeInvalidUtf8Tail(rescue);
+
+        String report = OpenHouseInstallFailureReport.build(
+            null,
+            failedState("install_service_manager", "service-manager Address already in use"),
+            manifest,
+            serviceManager,
+            rescue);
+
+        Assert.assertTrue(report.startsWith("OpenHouse AI 首次安装错误报告"));
+        Assert.assertTrue(report.contains("诊断代码：SERVICE_MANAGER_PORT_OCCUPIED"));
+        Assert.assertTrue(report.contains("[报告已达到 2 MiB 上限"));
+        Assert.assertTrue(report.getBytes(StandardCharsets.UTF_8).length
+            <= OpenHouseInstallFailureReport.MAX_REPORT_BYTES);
+    }
+
+    @Test
+    public void utf8TailBoundaryDoesNotEmitReplacementForCutContinuationByte() throws Exception {
+        File directory = Files.createTempDirectory("openhouse-install-utf8-tail").toFile();
+        File manifest = new File(directory, "manifest_full.log");
+        byte[] marker = "UTF8_TAIL_MARKER\n".getBytes(StandardCharsets.UTF_8);
+        try (RandomAccessFile file = new RandomAccessFile(manifest, "rw")) {
+            file.write("中".getBytes(StandardCharsets.UTF_8));
+            file.setLength(OpenHouseInstallFailureReport.MAX_LOG_TAIL_BYTES + 2L);
+            file.seek(file.length() - marker.length);
+            file.write(marker);
+        }
+
+        String report = OpenHouseInstallFailureReport.build(
+            null,
+            failedState("prepare", "初始化失败"),
+            manifest,
+            new File(directory, "missing-sm.log"),
+            new File(directory, "missing-rescue.log"));
+
+        Assert.assertTrue(report.contains("UTF8_TAIL_MARKER"));
+        Assert.assertFalse(report.contains("\uFFFD"));
+        Assert.assertTrue(report.contains("包含字节数："
+            + (OpenHouseInstallFailureReport.MAX_LOG_TAIL_BYTES - 1) + " 字节"));
+    }
+
+    @Test
+    public void missingAndNonRegularLogsHaveExplicitMetadata() throws Exception {
+        File directory = Files.createTempDirectory("openhouse-install-unavailable-log").toFile();
+        File missing = new File(directory, "missing.log");
+        File nonRegular = new File(directory, "not-a-file");
+        File unreadable = new File(directory, "unreadable.log") {
+            @Override public boolean exists() { return true; }
+            @Override public boolean isFile() { return true; }
+            @Override public boolean canRead() { return false; }
+            @Override public long length() { return 123L; }
+        };
+        Assert.assertTrue(nonRegular.mkdir());
+
+        String report = OpenHouseInstallFailureReport.build(
+            null,
+            failedState("prepare", "初始化失败"),
+            missing,
+            nonRegular,
+            unreadable);
+
+        Assert.assertTrue(report.contains("路径：" + missing.getAbsolutePath()));
+        Assert.assertTrue(report.contains("原文件大小：未知"));
+        Assert.assertTrue(report.contains("状态：日志文件不存在"));
+        Assert.assertTrue(report.contains("路径：" + nonRegular.getAbsolutePath()));
+        Assert.assertTrue(report.contains("状态：读取失败：路径不是普通文件"));
+        Assert.assertTrue(report.contains("路径：" + unreadable.getAbsolutePath()));
+        Assert.assertTrue(report.contains("原文件大小：123 字节"));
+        Assert.assertTrue(report.contains("状态：读取失败：日志文件不可读"));
     }
 
     @Test
@@ -73,10 +189,44 @@ public class OpenHouseInstallFailureReportTest {
         Assert.assertFalse(report.contains("sk-example-secret-key-123456"));
         Assert.assertTrue(report.contains("password=***"));
 
+        write(latest, "stale report");
         OpenHouseInstallFailureReport.writeLatestFailureReport(report, latest);
         Assert.assertTrue(latest.isFile());
         Assert.assertEquals(report, read(latest));
         Assert.assertTrue(read(latest).contains("PI_WEB_INSTALL_FAILED"));
+        File[] temporaryFiles = latest.getParentFile().listFiles(
+            file -> file.getName().startsWith("." + latest.getName() + "-")
+                && file.getName().endsWith(".tmp"));
+        Assert.assertNotNull(temporaryFiles);
+        Assert.assertEquals(0, temporaryFiles.length);
+    }
+
+    @Test
+    public void secretsCrossingFinalSizeBoundaryAreRedactedBeforeTruncation() throws Exception {
+        File directory = Files.createTempDirectory("openhouse-install-boundary-redaction").toFile();
+        File tokenReport = new File(directory, "token-report.txt");
+        String tokenPrefix = repeat("x", OpenHouseInstallFailureReport.MAX_REPORT_BYTES - 11) + "\n";
+        String token = "sk-" + repeat("A", 64);
+
+        Assert.assertTrue(OpenHouseInstallFailureReport.writeLatestFailureReport(
+            tokenPrefix + token, tokenReport));
+        String writtenTokenReport = read(tokenReport);
+        Assert.assertFalse(writtenTokenReport.contains("sk-AAAAAAA"));
+        Assert.assertTrue(writtenTokenReport.contains("sk-***"));
+        Assert.assertTrue(tokenReport.length() <= OpenHouseInstallFailureReport.MAX_REPORT_BYTES);
+
+        File privateKeyReport = new File(directory, "private-key-report.txt");
+        String privateKeyPrefix = repeat("y", OpenHouseInstallFailureReport.MAX_REPORT_BYTES - 80);
+        String privateKey = "-----BEGIN TEST PRIVATE KEY-----\n"
+            + repeat("PRIVATE_SECRET_BODY", 20)
+            + "\n-----END TEST PRIVATE KEY-----\n";
+
+        Assert.assertTrue(OpenHouseInstallFailureReport.writeLatestFailureReport(
+            privateKeyPrefix + privateKey, privateKeyReport));
+        String writtenPrivateKeyReport = read(privateKeyReport);
+        Assert.assertFalse(writtenPrivateKeyReport.contains("PRIVATE_SECRET_BODY"));
+        Assert.assertTrue(writtenPrivateKeyReport.contains("***"));
+        Assert.assertTrue(privateKeyReport.length() <= OpenHouseInstallFailureReport.MAX_REPORT_BYTES);
     }
 
     @Test
@@ -165,6 +315,29 @@ public class OpenHouseInstallFailureReportTest {
             Assert.assertTrue(parent.mkdirs() || parent.isDirectory());
         }
         Files.write(file.toPath(), content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void writeSparseWithTail(File file,
+                                            long length,
+                                            String prefix,
+                                            String tail) throws Exception {
+        byte[] tailBytes = tail.getBytes(StandardCharsets.UTF_8);
+        try (RandomAccessFile randomAccessFile = new RandomAccessFile(file, "rw")) {
+            randomAccessFile.write(prefix.getBytes(StandardCharsets.UTF_8));
+            randomAccessFile.setLength(length);
+            randomAccessFile.seek(length - tailBytes.length);
+            randomAccessFile.write(tailBytes);
+        }
+    }
+
+    private static void writeInvalidUtf8Tail(File file) throws Exception {
+        byte[] invalidTail = new byte[OpenHouseInstallFailureReport.MAX_LOG_TAIL_BYTES];
+        java.util.Arrays.fill(invalidTail, (byte) 0xFF);
+        try (RandomAccessFile randomAccessFile = new RandomAccessFile(file, "rw")) {
+            randomAccessFile.setLength(128L * 1024L * 1024L);
+            randomAccessFile.seek(randomAccessFile.length() - invalidTail.length);
+            randomAccessFile.write(invalidTail);
+        }
     }
 
     private static String read(File file) throws Exception {

@@ -24,9 +24,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -106,9 +108,12 @@ public final class OpenHouseInstallController {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
     private final Object processLock = new Object();
+    private final Object failureReportGenerationLock = new Object();
+    private final Object failureReportCommitGate = new Object();
     private final AtomicBoolean initialStateLoadInFlight = new AtomicBoolean(false);
     private final AtomicBoolean runningStatePollInFlight = new AtomicBoolean(false);
     private final AtomicBoolean finishedStateRecoveryInFlight = new AtomicBoolean(false);
+    private final FailureReportGenerator failureReportGenerator;
     private final Runnable pollRunnable = new Runnable() {
         @Override
         public void run() {
@@ -126,7 +131,11 @@ public final class OpenHouseInstallController {
     private volatile int preparingAttempt = 0;
     private volatile boolean initialStateLoaded;
     private volatile boolean piWebRescueAvailable;
-    private volatile String cachedFailureReportText = "";
+    private long failureReportRevision;
+    private String cachedFailureReportText = "";
+    private long cachedFailureReportRevision = -1L;
+    private FutureTask<String> failureReportTask;
+    private long failureReportTaskRevision = -1L;
 
     public interface Listener {
         void onInstallStateChanged(OpenHouseInstallState state);
@@ -134,6 +143,14 @@ public final class OpenHouseInstallController {
 
     interface RecoveryVerifier {
         boolean verifyOnce(OpenHouseInstallState.TaskScope taskScope);
+    }
+
+    interface FailureReportGenerator {
+        String build(Context context,
+                     OpenHouseInstallState state,
+                     File manifestLog,
+                     File serviceManagerLog,
+                     File piWebRescueLog);
     }
 
     public static OpenHouseInstallController getInstance(Context context) {
@@ -154,6 +171,13 @@ public final class OpenHouseInstallController {
     OpenHouseInstallController(Context context,
                                Executor recoveryExecutor,
                                RecoveryVerifier recoveryVerifier) {
+        this(context, recoveryExecutor, recoveryVerifier, OpenHouseInstallFailureReport::build);
+    }
+
+    OpenHouseInstallController(Context context,
+                               Executor recoveryExecutor,
+                               RecoveryVerifier recoveryVerifier,
+                               FailureReportGenerator failureReportGenerator) {
         this.context = context.getApplicationContext();
         this.statusRepository = new OpenHouseStatusRepository(this.context);
         this.recoveryExecutor = recoveryExecutor == null
@@ -162,6 +186,9 @@ public final class OpenHouseInstallController {
         this.recoveryVerifier = recoveryVerifier == null
             ? taskScope -> verifyTaskComplete(taskScope, VerificationMode.CHECK_ONCE)
             : recoveryVerifier;
+        this.failureReportGenerator = failureReportGenerator == null
+            ? OpenHouseInstallFailureReport::build
+            : failureReportGenerator;
         this.state = OpenHouseInstallState.idle();
         syncCurrentMetadata(this.state);
         scheduleInitialStateLoad(this.state);
@@ -895,28 +922,60 @@ public final class OpenHouseInstallController {
         return redactSecrets(readLogTail(charLimit));
     }
 
-    /**
-     * Returns the complete, redacted first-install failure report. The report starts with the
-     * diagnosed error and evidence, then includes every available source log in full.
-     */
+    /** Returns a redacted, size-bounded report with diagnosis first and bounded log tails. */
     public String getFailureReportText() {
-        String cached = cachedFailureReportText;
-        if (!cached.isEmpty()) {
-            return cached;
-        }
+        while (true) {
+            OpenHouseInstallState snapshot;
+            long reportRevision;
+            FailureReportTaskRequest request;
+            synchronized (failureReportCommitGate) {
+                snapshot = state == null ? OpenHouseInstallState.idle() : state;
+                reportRevision = failureReportRevision;
+                if (snapshot.failed && cachedFailureReportRevision == reportRevision
+                    && !cachedFailureReportText.isEmpty()) {
+                    return cachedFailureReportText;
+                }
+                request = snapshot.failed
+                    ? getOrCreateFailureReportTaskLocked(snapshot, reportRevision)
+                    : null;
+            }
+            if (request == null) {
+                return failureReportGenerator.build(
+                    context,
+                    snapshot,
+                    getManifestLogFile(),
+                    getServiceManagerLogFile(),
+                    getPiWebRescueLogFile());
+            }
 
-        OpenHouseInstallState snapshot = state == null ? OpenHouseInstallState.idle() : state;
-        String report = OpenHouseInstallFailureReport.build(
-            context,
-            snapshot,
-            getManifestLogFile(),
-            getServiceManagerLogFile(),
-            getPiWebRescueLogFile());
-        if (snapshot.failed) {
-            cachedFailureReportText = report;
-            OpenHouseInstallFailureReport.writeLatestFailureReport(report, getLatestFailureReportFile());
+            request.task.run();
+            String report;
+            try {
+                report = request.task.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return "错误报告生成被中断，请重试。";
+            } catch (ExecutionException e) {
+                synchronized (failureReportCommitGate) {
+                    if (failureReportTask == request.task) {
+                        failureReportTask = null;
+                        failureReportTaskRevision = -1L;
+                    }
+                }
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to generate first-install failure report", e);
+                return "错误报告生成失败，请重试。";
+            }
+
+            synchronized (failureReportCommitGate) {
+                if (state == snapshot && failureReportRevision == reportRevision) {
+                    if (cachedFailureReportRevision == reportRevision
+                        && !cachedFailureReportText.isEmpty()) {
+                        return cachedFailureReportText;
+                    }
+                    return report;
+                }
+            }
         }
-        return report;
     }
 
     /**
@@ -1565,24 +1624,92 @@ public final class OpenHouseInstallController {
         OpenHouseInstallState resolvedState = nextState == null ? OpenHouseInstallState.idle() : nextState;
         syncCurrentMetadata(resolvedState);
         updatePiWebRescueAvailability(resolvedState);
-        if (resolvedState.failed) {
-            String report = OpenHouseInstallFailureReport.build(
-                context,
-                resolvedState,
-                getManifestLogFile(),
-                getServiceManagerLogFile(),
-                getPiWebRescueLogFile());
-            cachedFailureReportText = report;
-            OpenHouseInstallFailureReport.writeLatestFailureReport(report, getLatestFailureReportFile());
-        } else if (resolvedState.running || resolvedState.status == OpenHouseInstallState.Status.PENDING) {
+        FailureReportTaskRequest reportRequest = null;
+        synchronized (failureReportCommitGate) {
+            long reportRevision = ++failureReportRevision;
+            state = resolvedState;
+            cachedFailureReportRevision = -1L;
             cachedFailureReportText = "";
+            failureReportTask = null;
+            failureReportTaskRevision = -1L;
+            if (resolvedState.failed) {
+                reportRequest = getOrCreateFailureReportTaskLocked(resolvedState, reportRevision);
+            }
         }
-        state = resolvedState;
+        if (reportRequest != null) {
+            scheduleFailureReport(reportRequest);
+        }
         mainHandler.post(() -> {
             for (Listener listener : listeners) {
                 listener.onInstallStateChanged(state);
             }
         });
+    }
+
+    private FailureReportTaskRequest getOrCreateFailureReportTaskLocked(
+        OpenHouseInstallState failedSnapshot,
+        long reportRevision) {
+        if (failureReportTask != null && failureReportTaskRevision == reportRevision) {
+            return new FailureReportTaskRequest(failureReportTask, false);
+        }
+        FutureTask<String> task = new FutureTask<>(
+            () -> generateAndCommitFailureReport(failedSnapshot, reportRevision));
+        failureReportTask = task;
+        failureReportTaskRevision = reportRevision;
+        return new FailureReportTaskRequest(task, true);
+    }
+
+    private void scheduleFailureReport(FailureReportTaskRequest request) {
+        if (request == null || !request.created) {
+            return;
+        }
+        try {
+            executor.execute(request.task);
+        } catch (RuntimeException e) {
+            synchronized (failureReportCommitGate) {
+                if (failureReportTask == request.task) {
+                    failureReportTask = null;
+                    failureReportTaskRevision = -1L;
+                }
+            }
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to schedule first-install failure report", e);
+        }
+    }
+
+    private String generateAndCommitFailureReport(OpenHouseInstallState failedSnapshot,
+                                                  long reportRevision) {
+        synchronized (failureReportGenerationLock) {
+            synchronized (failureReportCommitGate) {
+                if (state != failedSnapshot || !failedSnapshot.failed
+                    || failureReportRevision != reportRevision) {
+                    return "";
+                }
+                if (cachedFailureReportRevision == reportRevision
+                    && !cachedFailureReportText.isEmpty()) {
+                    return cachedFailureReportText;
+                }
+            }
+
+            String report = OpenHouseInstallFailureReport.sanitizeAndLimitReport(
+                failureReportGenerator.build(
+                    context,
+                    failedSnapshot,
+                    getManifestLogFile(),
+                    getServiceManagerLogFile(),
+                    getPiWebRescueLogFile()));
+
+            synchronized (failureReportCommitGate) {
+                if (state != failedSnapshot || failureReportRevision != reportRevision) {
+                    return "";
+                }
+                if (OpenHouseInstallFailureReport.writePreparedFailureReport(
+                    report, getLatestFailureReportFile())) {
+                    cachedFailureReportText = report;
+                    cachedFailureReportRevision = reportRevision;
+                }
+                return report;
+            }
+        }
     }
 
     private void updatePiWebRescueAvailability(OpenHouseInstallState installState) {
@@ -2360,6 +2487,16 @@ public final class OpenHouseInstallController {
             return "''";
         }
         return "'" + value.replace("'", "'\"'\"'") + "'";
+    }
+
+    private static final class FailureReportTaskRequest {
+        final FutureTask<String> task;
+        final boolean created;
+
+        FailureReportTaskRequest(FutureTask<String> task, boolean created) {
+            this.task = task;
+            this.created = created;
+        }
     }
 
     private static final class StageMarkerInfo {

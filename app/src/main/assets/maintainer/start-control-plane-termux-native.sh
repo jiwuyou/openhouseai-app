@@ -166,7 +166,7 @@ wait_for_canonical_service_manager() {
 }
 
 start_control_plane() {
-  local config bind url binary existing_pids log_dir log_file started_pid
+  local config bind url binary existing_pids log_dir log_file bootstrap_log started_pid
 
   is_termux_native || {
     warn "运行中枢只允许从 Termux native 环境启动。"
@@ -222,15 +222,16 @@ start_control_plane() {
   mkdir -p "$log_dir"
   chmod 700 "$log_dir" >/dev/null 2>&1 || true
   log_file="$log_dir/service-manager.log"
-  touch "$log_file"
-  chmod 600 "$log_file" >/dev/null 2>&1 || true
+  bootstrap_log="$log_dir/service-manager-bootstrap.log"
+  : > "$bootstrap_log"
+  chmod 600 "$bootstrap_log" >/dev/null 2>&1 || true
 
   log "正在使用当前已安装 binary 和 canonical config 启动运行中枢：binary=$binary bind=$bind"
   nohup env \
     -u SERVICE_MANAGER_TOKEN \
     -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
-    "$binary" serve --config "$config" --bind "$bind" \
-    </dev/null >> "$log_file" 2>&1 &
+    "$binary" serve --config "$config" --bind "$bind" --log-file "$log_file" \
+    </dev/null > "$bootstrap_log" 2>&1 &
   started_pid=$!
 
   if wait_for_canonical_service_manager "$config" "$url" \
@@ -241,7 +242,7 @@ start_control_plane() {
 
   kill "$started_pid" >/dev/null 2>&1 || true
   wait "$started_pid" >/dev/null 2>&1 || true
-  warn "本次启动的 service-manager 未能通过有限等待与 canonical 认证，已停止该新进程；日志：$log_file"
+  warn "本次启动的 service-manager 未能通过有限等待与 canonical 认证，已停止该新进程；正式日志：$log_file；启动日志：$bootstrap_log"
   return 1
 }
 

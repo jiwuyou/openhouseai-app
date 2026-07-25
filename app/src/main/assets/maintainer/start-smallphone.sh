@@ -162,7 +162,7 @@ wait_for_termux_service_manager() {
 }
 
 ensure_termux_native_service_manager() {
-  local config bind url token binary log_dir log_file existing_pids started_pid=""
+  local config bind url token binary log_dir log_file bootstrap_log existing_pids started_pid=""
 
   config="$(find_termux_canonical_service_manager_config || true)"
   if [ -z "$config" ]; then
@@ -217,17 +217,21 @@ ensure_termux_native_service_manager() {
 
   log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
   log_file="$log_dir/service-manager.log"
+  bootstrap_log="$log_dir/service-manager-bootstrap.log"
+  umask 077
   mkdir -p "$log_dir"
+  : > "$bootstrap_log"
+  chmod 600 "$bootstrap_log" >/dev/null 2>&1 || true
   log "正在使用 OpenHouse canonical config 启动 Termux native service-manager：bind=$bind"
   nohup env \
     -u SERVICE_MANAGER_TOKEN \
     -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
-    "$binary" serve --config "$config" --bind "$bind" </dev/null >> "$log_file" 2>&1 &
+    "$binary" serve --config "$config" --bind "$bind" --log-file "$log_file" </dev/null > "$bootstrap_log" 2>&1 &
   started_pid=$!
 
   if ! wait_for_termux_service_manager "$url" "${SMALLPHONEAI_SERVICE_MANAGER_READY_ATTEMPTS:-30}"; then
     kill "$started_pid" >/dev/null 2>&1 || true
-    log "Termux native service-manager 在有限等待时间内未就绪；日志：$log_file"
+    log "Termux native service-manager 在有限等待时间内未就绪；正式日志：$log_file；启动日志：$bootstrap_log"
     return 1
   fi
   if ! termux_service_manager_auth_ready "$config" "$url"; then
@@ -531,6 +535,9 @@ write_openhouse_service_manager_config() {
   local tmp
   local token_json
   local listen_json
+  local config_home
+  local log_path
+  local log_path_json
 
   case "$target" in
     */.config/service-manager/config.json)
@@ -547,11 +554,19 @@ write_openhouse_service_manager_config() {
 
   token_json="$(json_escape "$token")"
   listen_json="$(json_escape "$listen_addr")"
+  config_home="${target%/.config/openhouseai/service-manager/config.json}"
+  log_path="$config_home/.smallphoneai/logs/service-manager.log"
+  log_path_json="$(json_escape "$log_path")"
   tmp="$target.tmp.$$"
   if ! cat > "$tmp" <<EOF
 {
   "auth_token": "$token_json",
-  "listen_addr": "$listen_json"
+  "listen_addr": "$listen_json",
+  "logging": {
+    "path": "$log_path_json",
+    "max_bytes": 16777216,
+    "retain_files": 2
+  }
 }
 EOF
   then

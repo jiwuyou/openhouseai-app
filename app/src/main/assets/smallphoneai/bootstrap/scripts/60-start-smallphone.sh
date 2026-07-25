@@ -169,7 +169,7 @@ find_termux_service_manager_binary() {
   local candidate
   if command -v service-manager >/dev/null 2>&1; then
     candidate="$(command -v service-manager)"
-    if [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]; then
+    if [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.3" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -180,7 +180,7 @@ find_termux_service_manager_binary() {
     "$HOME/smallphoneai-repos/service-manager/target/release/service-manager" \
     "$HOME/smallphoneai-repos/service-manager/target/debug/service-manager"; do
     if [ -x "$candidate" ] \
-      && [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]; then
+      && [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.3" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -286,10 +286,12 @@ stop_stale_termux_service_manager() {
 }
 
 ensure_termux_service_manager() {
-  local bind url cfg sm_bin
+  local bind url cfg sm_bin log_file bootstrap_log
   bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
   url="${SERVICE_MANAGER_URL:-http://$bind}"
   cfg="$(termux_service_manager_config_path)"
+  log_file="$HOME/.smallphoneai/logs/service-manager.log"
+  bootstrap_log="$HOME/.smallphoneai/logs/service-manager-bootstrap.log"
 
   if termux_service_manager_ready_for_registration; then
     log "Termux native service-manager 已可访问：$url"
@@ -308,7 +310,7 @@ ensure_termux_service_manager() {
 
   if command -v sv >/dev/null 2>&1 && [ -d "${PREFIX:-/data/data/com.termux/files/usr}/var/service" ]; then
     log "正在通过 termux-services 拉起 service-manager。"
-    "$sm_bin" install-service --config "$cfg" --bind "$bind" >/dev/null 2>&1 || true
+    "$sm_bin" install-service --config "$cfg" --bind "$bind" --log-file "$log_file" >/dev/null 2>&1 || true
     sv up service-manager >/dev/null 2>&1 || true
     for _ in $(seq 1 10); do
       termux_service_manager_ready_for_registration && {
@@ -322,8 +324,11 @@ ensure_termux_service_manager() {
   fi
 
   mkdir -p "$HOME/.smallphoneai/logs" "$(dirname "$cfg")"
+  umask 077
+  : > "$bootstrap_log"
+  chmod 600 "$bootstrap_log" >/dev/null 2>&1 || true
   log "正在 Termux native 后台启动 service-manager：$bind"
-  nohup "$sm_bin" serve --config "$cfg" --bind "$bind" > "$HOME/.smallphoneai/logs/service-manager.log" 2>&1 < /dev/null &
+  nohup "$sm_bin" serve --config "$cfg" --bind "$bind" --log-file "$log_file" > "$bootstrap_log" 2>&1 < /dev/null &
   for _ in $(seq 1 30); do
     termux_service_manager_ready_for_registration && {
       log "Termux native service-manager 已启动：$url"
@@ -332,7 +337,7 @@ ensure_termux_service_manager() {
     sleep 1
   done
 
-  warn "Termux native service-manager 未能启动。日志：$HOME/.smallphoneai/logs/service-manager.log"
+  warn "Termux native service-manager 未能启动。正式日志：$log_file；启动日志：$bootstrap_log"
   return 1
 }
 
@@ -575,7 +580,7 @@ find_service_manager() {
   local candidate
   if command -v service-manager >/dev/null 2>&1; then
     candidate="$(command -v service-manager)"
-    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]; then
+    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.3" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -585,7 +590,7 @@ find_service_manager() {
     "$service_manager_dir/target/release/service-manager" \
     "$service_manager_dir/target/debug/service-manager"; do
     [ -x "$candidate" ] || continue
-    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]; then
+    if ! is_termux || [ "$("$candidate" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.3" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -768,6 +773,8 @@ else
 fi
 
 mkdir -p "$log_dir"
+service_manager_log_file="$log_dir/service-manager.log"
+service_manager_bootstrap_log="$log_dir/service-manager-bootstrap.log"
 if is_service_manager_ready; then
   log "service-manager 已可访问：$sm_url"
 else
@@ -779,6 +786,9 @@ else
     warn "service-manager 不可访问，且没有本地二进制可启动。"
     exit 1
   fi
+  umask 077
+  : > "$service_manager_bootstrap_log"
+  chmod 600 "$service_manager_bootstrap_log" >/dev/null 2>&1 || true
   log "正在启动 service-manager：$bind"
   if is_termux; then
     stop_stale_termux_service_manager || exit 1
@@ -787,9 +797,9 @@ else
     service_manager_config_path="${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-${SERVICE_MANAGER_CONFIG_PATH:-}}"
   fi
   if [ -n "$service_manager_config_path" ]; then
-    nohup "$service_manager_bin" serve --config "$service_manager_config_path" --bind "$bind" > "$log_dir/service-manager.log" 2>&1 < /dev/null &
+    nohup "$service_manager_bin" serve --config "$service_manager_config_path" --bind "$bind" --log-file "$service_manager_log_file" > "$service_manager_bootstrap_log" 2>&1 < /dev/null &
   else
-    nohup "$service_manager_bin" serve --bind "$bind" > "$log_dir/service-manager.log" 2>&1 < /dev/null &
+    nohup "$service_manager_bin" serve --bind "$bind" --log-file "$service_manager_log_file" > "$service_manager_bootstrap_log" 2>&1 < /dev/null &
   fi
   for _ in $(seq 1 30); do
     if is_service_manager_ready; then
@@ -801,10 +811,11 @@ else
 fi
 
 if ! is_service_manager_ready; then
-  warn "service-manager 未能启动。日志：$log_dir/service-manager.log"
-  if [ -f "$log_dir/service-manager.log" ]; then
-    tail -n 80 "$log_dir/service-manager.log" >&2 || true
+  warn "service-manager 未能启动。正式日志：$service_manager_log_file；启动日志：$service_manager_bootstrap_log"
+  if [ -f "$service_manager_log_file" ]; then
+    tail -n 80 "$service_manager_log_file" >&2 || true
   fi
+  [ -f "$service_manager_bootstrap_log" ] && tail -n 80 "$service_manager_bootstrap_log" >&2 || true
   exit 1
 fi
 

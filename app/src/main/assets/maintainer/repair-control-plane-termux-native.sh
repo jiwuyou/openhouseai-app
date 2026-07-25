@@ -152,7 +152,7 @@ termux_service_manager_log() {
 service_manager_is_current() {
   local binary="$1"
   [ -x "$binary" ] || return 1
-  [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]
+  [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.3" ]
 }
 
 find_termux_service_manager() {
@@ -633,7 +633,7 @@ EOF
 }
 
 repair_termux_native_control_plane() {
-  local bind sm_url sm_bin config log_file token
+  local bind sm_url sm_bin config log_file bootstrap_log token
 
   is_termux || {
     log "当前不是 Termux；拒绝在 Ubuntu/proot 内拉起长期 service-manager。"
@@ -644,6 +644,7 @@ repair_termux_native_control_plane() {
   sm_url="$(configured_service_manager_url)"
   config="$(termux_service_manager_config)"
   log_file="$(termux_service_manager_log)"
+  bootstrap_log="$(dirname "$log_file")/service-manager-bootstrap.log"
 
   quarantine_empty_service_specs
 
@@ -658,6 +659,9 @@ repair_termux_native_control_plane() {
   fi
 
   mkdir -p "$(dirname "$config")" "$(dirname "$log_file")"
+  umask 077
+  : > "$bootstrap_log"
+  chmod 600 "$bootstrap_log" >/dev/null 2>&1 || true
   if [ -n "$(termux_service_manager_serve_pids)" ] || service_manager_ready; then
     log "正在停止旧 service-manager，并统一切换到 OpenHouse 专用 config。"
     stop_termux_service_manager_instances || return 1
@@ -665,9 +669,9 @@ repair_termux_native_control_plane() {
 
   log "正在启动 Termux native service-manager：$bind"
   if command -v setsid >/dev/null 2>&1; then
-    (trap '' HUP; setsid -f "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null) || true
+    (trap '' HUP; setsid -f "$sm_bin" serve --config "$config" --bind "$bind" --log-file "$log_file" > "$bootstrap_log" 2>&1 < /dev/null) || true
   else
-    (trap '' HUP; nohup "$sm_bin" serve --config "$config" --bind "$bind" > "$log_file" 2>&1 < /dev/null &)
+    (trap '' HUP; nohup "$sm_bin" serve --config "$config" --bind "$bind" --log-file "$log_file" > "$bootstrap_log" 2>&1 < /dev/null &)
   fi
   for _ in $(seq 1 30); do
     service_manager_ready && service_manager_instance_matches_openhouse && break
@@ -677,6 +681,7 @@ repair_termux_native_control_plane() {
   if ! service_manager_ready || ! service_manager_instance_matches_openhouse; then
     log "Termux native service-manager health 检查失败：$sm_url/api/v1/health"
     [ -f "$log_file" ] && tail -n 80 "$log_file" | while IFS= read -r line; do log "$line"; done
+    [ -f "$bootstrap_log" ] && tail -n 80 "$bootstrap_log" | while IFS= read -r line; do log "$line"; done
     return 1
   fi
 

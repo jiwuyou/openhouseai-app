@@ -7,12 +7,13 @@ import android.os.Build;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -27,6 +28,10 @@ import java.util.regex.Pattern;
 final class OpenHouseInstallFailureReport {
 
     private static final String LOG_TAG = "OpenHouseInstallReport";
+    static final int MAX_LOG_TAIL_BYTES = 512 * 1024;
+    static final int MAX_REPORT_BYTES = 2 * 1024 * 1024;
+    private static final String REPORT_TRUNCATED_NOTICE =
+        "\n\n[报告已达到 2 MiB 上限，后续日志摘录已省略。]\n";
     private static final Pattern EXPLICIT_FAILURE_PATTERN = Pattern.compile(
         "__OPENHOUSE_INSTALL_FAILURE__:([A-Z0-9_]+):([^:]*):(.*)");
     private static final Pattern NAMED_SECRET_PATTERN = Pattern.compile(
@@ -73,11 +78,12 @@ final class OpenHouseInstallFailureReport {
                         File serviceManagerLog,
                         File piWebRescueLog) {
         OpenHouseInstallState snapshot = state == null ? OpenHouseInstallState.idle() : state;
-        String manifest = readWholeFile(manifestLog);
-        String serviceManager = readWholeFile(serviceManagerLog);
-        String piWebRescue = readWholeFile(piWebRescueLog);
+        BoundedLogRead manifest = readLogTail(manifestLog);
+        BoundedLogRead serviceManager = readLogTail(serviceManagerLog);
+        BoundedLogRead piWebRescue = readLogTail(piWebRescueLog);
         File[] serviceManagerBinaries = serviceManagerBinaryCandidates();
-        Diagnosis diagnosis = diagnose(snapshot, manifest, serviceManager, serviceManagerBinaries);
+        Diagnosis diagnosis = diagnose(
+            snapshot, manifest.content, serviceManager.content, serviceManagerBinaries);
         AppVersion version = readAppVersion(context);
 
         StringBuilder builder = new StringBuilder();
@@ -89,13 +95,14 @@ final class OpenHouseInstallFailureReport {
         builder.append("失败阶段：").append(friendlyStage(snapshot.currentStageSlug)).append('\n');
         builder.append("错误原因：").append(diagnosis.reason).append('\n');
         if (!snapshot.safeError.isEmpty()) {
-            builder.append("界面错误：").append(snapshot.safeError).append('\n');
+            builder.append("界面错误：").append(abbreviate(snapshot.safeError, 16 * 1024)).append('\n');
         }
 
         builder.append("\n二、关键证据\n");
-        List<String> evidence = collectEvidence(snapshot, manifest, serviceManager, serviceManagerBinaries);
+        List<String> evidence = collectEvidence(
+            snapshot, manifest.content, serviceManager.content, serviceManagerBinaries);
         if (evidence.isEmpty()) {
-            builder.append("- 没有提取到明确错误行，请查看下方完整原始日志。\n");
+            builder.append("- 没有提取到明确错误行，请查看下方日志末尾摘录。\n");
         } else {
             for (String line : evidence) {
                 builder.append("- ").append(line).append('\n');
@@ -130,25 +137,48 @@ final class OpenHouseInstallFailureReport {
         builder.append("service-manager：").append(fileStatus(serviceManagerLog)).append('\n');
         builder.append("pi-web rescue：").append(fileStatus(piWebRescueLog)).append('\n');
 
-        appendFullLog(builder, "manifest_full.log（完整）", manifestLog, manifest);
-        appendFullLog(builder, "service-manager.log（完整）", serviceManagerLog, serviceManager);
-        appendFullLog(builder, "pi-web-rescue-30142.log（完整）", piWebRescueLog, piWebRescue);
-        return redactSecrets(builder.toString());
+        appendLogExcerpt(builder, "manifest_full.log", manifestLog, manifest);
+        appendLogExcerpt(builder, "service-manager.log", serviceManagerLog, serviceManager);
+        appendLogExcerpt(builder, "pi-web-rescue-30142.log", piWebRescueLog, piWebRescue);
+        return sanitizeAndLimitReport(builder.toString());
     }
 
-    static void writeLatestFailureReport(String report, File target) {
+    static boolean writeLatestFailureReport(String report, File target) {
+        return writePreparedFailureReport(sanitizeAndLimitReport(report), target);
+    }
+
+    static String sanitizeAndLimitReport(String report) {
+        return enforceReportLimit(redactSecrets(report));
+    }
+
+    static boolean writePreparedFailureReport(String preparedReport, File target) {
         if (target == null) {
-            return;
+            return false;
         }
-        File parent = target.getParentFile();
+        File absoluteTarget = target.getAbsoluteFile();
+        File parent = absoluteTarget.getParentFile();
         if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.isDirectory()) {
             Logger.logError(LOG_TAG, "Failed to create rescue report directory: " + parent);
-            return;
+            return false;
         }
-        try (FileOutputStream outputStream = new FileOutputStream(target, false)) {
-            outputStream.write(redactSecrets(report).getBytes(StandardCharsets.UTF_8));
+        File temporary = null;
+        try {
+            String boundedReport = enforceReportLimit(preparedReport);
+            temporary = File.createTempFile("." + absoluteTarget.getName() + "-", ".tmp", parent);
+            try (FileOutputStream outputStream = new FileOutputStream(temporary, false)) {
+                outputStream.write(boundedReport.getBytes(StandardCharsets.UTF_8));
+                outputStream.flush();
+                outputStream.getFD().sync();
+            }
+            replaceAtomicallyWithFallback(temporary, absoluteTarget);
+            return true;
         } catch (IOException e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to write latest first-install failure report", e);
+            return false;
+        } finally {
+            if (temporary != null && temporary.exists() && !temporary.delete()) {
+                Logger.logError(LOG_TAG, "Failed to delete temporary rescue report: " + temporary);
+            }
         }
     }
 
@@ -214,7 +244,7 @@ final class OpenHouseInstallFailureReport {
             return new Diagnosis("OPENHOUSE_WEB_INSTALL_FAILED", "OpenHouse Web 安装或注册失败。");
         }
         return new Diagnosis("UNKNOWN_WITH_DIAGNOSTICS",
-            "暂时无法仅凭错误摘要准确分类，请根据关键证据和下方完整日志继续定位。");
+            "暂时无法仅凭错误摘要准确分类，请根据关键证据和下方日志摘录继续定位。");
     }
 
     private static Diagnosis diagnoseServiceManagerEvidence(String evidence, boolean binaryExists) {
@@ -236,7 +266,7 @@ final class OpenHouseInstallFailureReport {
         if (containsAny(normalized, "进程提前退出", "process exited", "exited unexpectedly",
             "panic", "fatal", "permission denied", "权限不足", "segmentation fault")) {
             return new Diagnosis("SERVICE_MANAGER_PROCESS_EXITED",
-                "service-manager 进程启动后退出；具体退出信息见关键证据和 service-manager.log。");
+                "service-manager 进程启动后退出；具体退出信息见关键证据和 service-manager.log 摘录。");
         }
         if (containsAny(normalized, "无法启动 service-manager", "service-manager 启动失败",
             "service-manager start failed", "service-manager 未能启动")) {
@@ -336,24 +366,36 @@ final class OpenHouseInstallFailureReport {
         }
     }
 
-    private static void appendFullLog(StringBuilder builder,
-                                      String title,
-                                      File file,
-                                      String content) {
-        builder.append("\n===== ").append(title).append(" =====\n");
-        if (content == null) {
-            builder.append("[日志文件不存在] ")
-                .append(file == null ? "unknown" : file.getAbsolutePath()).append('\n');
-        } else if (content.isEmpty()) {
-            builder.append("[日志文件为空] ")
-                .append(file == null ? "unknown" : file.getAbsolutePath()).append('\n');
+    private static void appendLogExcerpt(StringBuilder builder,
+                                         String title,
+                                         File file,
+                                         BoundedLogRead logRead) {
+        builder.append("\n===== ").append(title).append(" 日志末尾摘录 =====\n");
+        builder.append("路径：")
+            .append(file == null ? "unknown" : file.getAbsolutePath()).append('\n');
+        builder.append("原文件大小：");
+        if (logRead.originalBytes < 0L) {
+            builder.append("未知");
         } else {
-            builder.append(content);
-            if (!content.endsWith("\n")) {
+            builder.append(logRead.originalBytes).append(" 字节");
+        }
+        builder.append('\n');
+        builder.append("包含字节数：").append(logRead.includedBytes).append(" 字节\n");
+        builder.append("截断：").append(logRead.truncated
+            ? "是（仅保留文件末尾，单日志上限 " + MAX_LOG_TAIL_BYTES + " 字节）"
+            : "否").append('\n');
+        if (!logRead.status.isEmpty()) {
+            builder.append("状态：").append(logRead.status).append('\n');
+        }
+        if (!logRead.content.isEmpty()) {
+            builder.append("--- 摘录开始 ---\n");
+            builder.append(logRead.content);
+            if (!logRead.content.endsWith("\n")) {
                 builder.append('\n');
             }
+            builder.append("--- 摘录结束 ---\n");
         }
-        builder.append("===== ").append(title).append(" 结束 =====\n");
+        builder.append("===== ").append(title).append(" 日志末尾摘录结束 =====\n");
     }
 
     private static File[] serviceManagerBinaryCandidates() {
@@ -378,23 +420,117 @@ final class OpenHouseInstallFailureReport {
         return false;
     }
 
-    private static String readWholeFile(File file) {
-        if (file == null || !file.isFile()) {
-            return null;
+    private static BoundedLogRead readLogTail(File file) {
+        if (file == null || !file.exists()) {
+            return BoundedLogRead.unavailable(-1L, "日志文件不存在");
         }
-        try (FileInputStream inputStream = new FileInputStream(file);
-             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[32 * 1024];
-            int count;
-            while ((count = inputStream.read(buffer)) >= 0) {
-                if (count > 0) {
-                    outputStream.write(buffer, 0, count);
+        if (!file.isFile()) {
+            return BoundedLogRead.unavailable(file.length(), "读取失败：路径不是普通文件");
+        }
+        if (!file.canRead()) {
+            return BoundedLogRead.unavailable(file.length(), "读取失败：日志文件不可读");
+        }
+        try (RandomAccessFile randomAccessFile = new RandomAccessFile(file, "r")) {
+            long originalBytes = randomAccessFile.length();
+            int requestedBytes = (int) Math.min(originalBytes, MAX_LOG_TAIL_BYTES);
+            long start = Math.max(0L, originalBytes - requestedBytes);
+            byte[] buffer = new byte[requestedBytes];
+            randomAccessFile.seek(start);
+            int totalRead = 0;
+            while (totalRead < requestedBytes) {
+                int count = randomAccessFile.read(buffer, totalRead, requestedBytes - totalRead);
+                if (count < 0) {
+                    break;
                 }
+                totalRead += count;
             }
-            return outputStream.toString(StandardCharsets.UTF_8.name());
+            int contentOffset = start > 0L ? skipLeadingUtf8ContinuationBytes(buffer, totalRead) : 0;
+            int includedBytes = Math.max(0, totalRead - contentOffset);
+            String content = new String(buffer, contentOffset, includedBytes, StandardCharsets.UTF_8);
+            return new BoundedLogRead(
+                content,
+                originalBytes,
+                includedBytes,
+                start > 0L || contentOffset > 0,
+                originalBytes == 0L ? "日志文件为空" : "");
         } catch (IOException e) {
-            return "[读取日志失败] " + e.getClass().getSimpleName() + ": " + e.getMessage();
+            return BoundedLogRead.unavailable(
+                file.length(),
+                "读取失败：" + e.getClass().getSimpleName() + ": " + emptyFallback(e.getMessage(), "unknown"));
         }
+    }
+
+    private static int skipLeadingUtf8ContinuationBytes(byte[] bytes, int length) {
+        int offset = 0;
+        while (offset < length && (bytes[offset] & 0xC0) == 0x80) {
+            offset++;
+        }
+        return offset;
+    }
+
+    private static void replaceAtomicallyWithFallback(File source, File target) throws IOException {
+        try {
+            Files.move(source.toPath(), target.toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException atomicMoveFailure) {
+            try {
+                Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException fallbackFailure) {
+                fallbackFailure.addSuppressed(atomicMoveFailure);
+                throw fallbackFailure;
+            }
+        }
+    }
+
+    private static String enforceReportLimit(String report) {
+        String value = report == null ? "" : report;
+        if (utf8Length(value) <= MAX_REPORT_BYTES) {
+            return value;
+        }
+        int noticeBytes = utf8Length(REPORT_TRUNCATED_NOTICE);
+        return utf8Prefix(value, Math.max(0, MAX_REPORT_BYTES - noticeBytes))
+            + REPORT_TRUNCATED_NOTICE;
+    }
+
+    private static String utf8Prefix(String value, int maxBytes) {
+        if (value == null || value.isEmpty() || maxBytes <= 0) {
+            return "";
+        }
+        int bytes = 0;
+        int offset = 0;
+        while (offset < value.length()) {
+            int codePoint = value.codePointAt(offset);
+            int codePointBytes = utf8Length(codePoint);
+            if (bytes + codePointBytes > maxBytes) {
+                break;
+            }
+            bytes += codePointBytes;
+            offset += Character.charCount(codePoint);
+        }
+        return value.substring(0, offset);
+    }
+
+    private static int utf8Length(String value) {
+        if (value == null || value.isEmpty()) {
+            return 0;
+        }
+        int bytes = 0;
+        for (int offset = 0; offset < value.length();) {
+            int codePoint = value.codePointAt(offset);
+            bytes += utf8Length(codePoint);
+            offset += Character.charCount(codePoint);
+        }
+        return bytes;
+    }
+
+    private static int utf8Length(int codePoint) {
+        if (codePoint <= 0x7F) {
+            return 1;
+        }
+        if (codePoint <= 0x7FF) {
+            return 2;
+        }
+        return codePoint <= 0xFFFF ? 3 : 4;
     }
 
     private static String fileStatus(File file) {
@@ -477,6 +613,30 @@ final class OpenHouseInstallFailureReport {
         Diagnosis(String code, String reason) {
             this.code = code;
             this.reason = reason;
+        }
+    }
+
+    private static final class BoundedLogRead {
+        final String content;
+        final long originalBytes;
+        final int includedBytes;
+        final boolean truncated;
+        final String status;
+
+        BoundedLogRead(String content,
+                       long originalBytes,
+                       int includedBytes,
+                       boolean truncated,
+                       String status) {
+            this.content = content == null ? "" : content;
+            this.originalBytes = originalBytes;
+            this.includedBytes = Math.max(0, includedBytes);
+            this.truncated = truncated;
+            this.status = status == null ? "" : status;
+        }
+
+        static BoundedLogRead unavailable(long originalBytes, String status) {
+            return new BoundedLogRead("", originalBytes, 0, false, status);
         }
     }
 

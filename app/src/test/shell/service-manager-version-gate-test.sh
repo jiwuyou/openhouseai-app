@@ -31,13 +31,13 @@ for index in "${!targets[@]}"; do
   target="${targets[$index]}"
   expected_count="${expected_counts[$index]}"
 
-  if grep -Eq 'service-manager 0\.(2\.1|3\.[01])' "$target"; then
+  if grep -Eq 'service-manager 0\.(2\.1|3\.[012])' "$target"; then
     fail "legacy service-manager gate remains in $target"
   fi
 
-  actual_count="$(grep -Fc 'service-manager 0.3.2' "$target" || true)"
+  actual_count="$(grep -Fc 'service-manager 0.3.3' "$target" || true)"
   if [ "$actual_count" -ne "$expected_count" ]; then
-    fail "$target has $actual_count service-manager 0.3.2 gates; expected $expected_count"
+    fail "$target has $actual_count service-manager 0.3.3 gates; expected $expected_count"
   fi
 done
 
@@ -83,8 +83,12 @@ start_target="${targets[2]}"
     fail 'repair gate accepted previous 0.3.1'
   fi
   export FAKE_SERVICE_MANAGER_VERSION='service-manager 0.3.2'
+  if service_manager_is_current "$work_dir/bin/service-manager"; then
+    fail 'repair gate accepted previous 0.3.2'
+  fi
+  export FAKE_SERVICE_MANAGER_VERSION='service-manager 0.3.3'
   service_manager_is_current "$work_dir/bin/service-manager" \
-    || fail 'repair gate rejected required 0.3.2'
+    || fail 'repair gate rejected required 0.3.3'
 )
 
 (
@@ -98,8 +102,12 @@ start_target="${targets[2]}"
     fail 'install gate accepted previous 0.3.1'
   fi
   export FAKE_SERVICE_MANAGER_VERSION='service-manager 0.3.2'
+  if component_binary_current_env_executable service-manager "$work_dir/bin/service-manager"; then
+    fail 'install gate accepted previous 0.3.2'
+  fi
+  export FAKE_SERVICE_MANAGER_VERSION='service-manager 0.3.3'
   component_binary_current_env_executable service-manager "$work_dir/bin/service-manager" \
-    || fail 'install gate rejected required 0.3.2'
+    || fail 'install gate rejected required 0.3.3'
 )
 
 (
@@ -116,8 +124,12 @@ start_target="${targets[2]}"
     fail 'start gate selected previous 0.3.1'
   fi
   export FAKE_SERVICE_MANAGER_VERSION='service-manager 0.3.2'
+  if find_termux_service_manager_binary >/dev/null; then
+    fail 'start gate selected previous 0.3.2'
+  fi
+  export FAKE_SERVICE_MANAGER_VERSION='service-manager 0.3.3'
   [ "$(find_termux_service_manager_binary)" = "$work_dir/bin/service-manager" ] \
-    || fail 'start gate did not select required 0.3.2'
+    || fail 'start gate did not select required 0.3.3'
 )
 
 assert_auth_wrapper_safe() {

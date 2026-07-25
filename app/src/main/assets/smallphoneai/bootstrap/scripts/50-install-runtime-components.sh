@@ -326,7 +326,7 @@ component_binary_current_env_executable() {
 
   case "$payload_name" in
     service-manager)
-      [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ]
+      [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.3" ]
       ;;
     openhouse-connect)
       "$binary" --version >/dev/null 2>&1 || "$binary" --help >/dev/null 2>&1
@@ -465,7 +465,7 @@ stop_stale_termux_service_manager() {
 }
 
 start_termux_service_manager_for_registration() {
-  local bind url cfg sm_bin
+  local bind url cfg sm_bin log_file bootstrap_log
   bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
   url="${SERVICE_MANAGER_URL:-http://$bind}"
   cfg="$(termux_service_manager_config_path)"
@@ -480,9 +480,11 @@ start_termux_service_manager_for_registration() {
 
   sm_bin="$(find_termux_service_manager_binary || true)"
   [ -n "$sm_bin" ] || return 1
+  log_file="$HOME/.smallphoneai/logs/service-manager.log"
+  bootstrap_log="$HOME/.smallphoneai/logs/service-manager-bootstrap.log"
 
   if command -v sv >/dev/null 2>&1 && [ -d "${PREFIX:-/data/data/com.termux/files/usr}/var/service" ]; then
-    "$sm_bin" install-service --config "$cfg" --bind "$bind" >/dev/null 2>&1 || true
+    "$sm_bin" install-service --config "$cfg" --bind "$bind" --log-file "$log_file" >/dev/null 2>&1 || true
     sv up service-manager >/dev/null 2>&1 || true
     for _ in $(seq 1 10); do
       termux_service_manager_ready_for_registration && return 0
@@ -493,8 +495,11 @@ start_termux_service_manager_for_registration() {
   fi
 
   mkdir -p "$HOME/.smallphoneai/logs" "$(dirname "$cfg")"
+  umask 077
+  : > "$bootstrap_log"
+  chmod 600 "$bootstrap_log" >/dev/null 2>&1 || true
   log "正在 Termux native 启动 service-manager 以注册组件：$url"
-  nohup "$sm_bin" serve --config "$cfg" --bind "$bind" > "$HOME/.smallphoneai/logs/service-manager.log" 2>&1 < /dev/null &
+  nohup "$sm_bin" serve --config "$cfg" --bind "$bind" --log-file "$log_file" > "$bootstrap_log" 2>&1 < /dev/null &
   for _ in $(seq 1 20); do
     termux_service_manager_ready_for_registration && return 0
     sleep 1
@@ -1279,7 +1284,7 @@ payload_dir_needs_refresh() {
   case "$payload_name" in
     service-manager)
       [ -x "$source/service-manager" ] \
-        && [ "$("$source/service-manager" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.2" ] \
+        && [ "$("$source/service-manager" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.3" ] \
         || return 0
       ;;
     openhouse-connect)

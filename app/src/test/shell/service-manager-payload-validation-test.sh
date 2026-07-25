@@ -17,7 +17,7 @@ doc = json.load(open(sys.argv[1], encoding="utf-8"))
 items = doc.get("components") or doc.get("payloads") or []
 entry = next((item for item in items if item.get("id") == "service-manager"), None)
 assert entry, "service-manager entry missing"
-assert entry.get("version") == "0.3.2"
+assert entry.get("version") == "0.3.3"
 assert entry.get("provides", {}).get("residency") is True
 PY
 done
@@ -40,10 +40,12 @@ PY
 
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
-fixture="$work_dir/product-payloads"
+fixture="$work_dir/app/src/main/assets/openhouse/product-payloads"
 stage="$work_dir/service-manager"
-mkdir -p "$fixture" "$stage"
+native_fixture="$work_dir/native-app/src/main/assets/openhouse-runtime"
+mkdir -p "$fixture" "$stage" "$native_fixture"
 cp -al "$PAYLOAD_DIR/." "$fixture/"
+cp -al "$REPO_ROOT/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz" "$native_fixture/"
 
 write_archive() {
   local layout="$1"
