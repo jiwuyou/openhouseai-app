@@ -25,7 +25,7 @@ service_manager_bin="$work_dir/bin/service-manager"
 cat > "$service_manager_bin" <<'EOF'
 #!/usr/bin/env sh
 if [ "${1:-}" = "--version" ]; then
-  printf '%s\n' 'service-manager 0.3.3'
+  printf '%s\n' 'service-manager 0.3.4'
   exit 0
 fi
 exit 0
@@ -93,7 +93,7 @@ output="$work_dir/diagnostics.log"
 diagnose_termux_service_manager_readiness test > "$output" 2>&1
 
 for expected in \
-  "binary path=$service_manager_bin version=service-manager 0.3.3" \
+  "binary path=$service_manager_bin version=service-manager 0.3.4" \
   "canonical config path=$config exists=yes permissions=mode=600" \
   'process exited: service-manager serve PID unavailable' \
   'port not listening: configured bind=127.0.0.1:20087' \

@@ -17,7 +17,7 @@ doc = json.load(open(sys.argv[1], encoding="utf-8"))
 items = doc.get("components") or doc.get("payloads") or []
 entry = next((item for item in items if item.get("id") == "service-manager"), None)
 assert entry, "service-manager entry missing"
-assert entry.get("version") == "0.3.3"
+assert entry.get("version") == "0.3.4"
 assert entry.get("provides", {}).get("residency") is True
 PY
 done

@@ -326,7 +326,7 @@ component_binary_current_env_executable() {
 
   case "$payload_name" in
     service-manager)
-      [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.3" ]
+      [ "$("$binary" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.4" ]
       ;;
     openhouse-connect)
       "$binary" --version >/dev/null 2>&1 || "$binary" --help >/dev/null 2>&1
@@ -1284,7 +1284,7 @@ payload_dir_needs_refresh() {
   case "$payload_name" in
     service-manager)
       [ -x "$source/service-manager" ] \
-        && [ "$("$source/service-manager" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.3" ] \
+        && [ "$("$source/service-manager" --version 2>/dev/null | tr -d '\r\n')" = "service-manager 0.3.4" ] \
         || return 0
       ;;
     openhouse-connect)

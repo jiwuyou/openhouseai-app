@@ -106,7 +106,7 @@ with tarfile.open(archive_path, "r:") as archive:
     cargo_toml = archive.extractfile(members["Cargo.toml"]).read().decode()
 
 assert metadata["component"] == "service-manager"
-assert metadata["version"] == "0.3.3"
+assert metadata["version"] == "0.3.4"
 assert metadata["sourceCommit"] == source_commit
 assert metadata["sourceDirty"] is source_dirty
 assert metadata["sourceStatusSha256"] == source_status_sha
@@ -115,12 +115,12 @@ assert metadata["sourceTreeId"] == source_tree_id
 assert metadata["binarySha256"] == binary_sha
 assert hashlib.sha256(payload_binary).hexdigest() == binary_sha
 assert 'name = "service-manager"' in cargo_toml
-assert 'version = "0.3.3"' in cargo_toml
+assert 'version = "0.3.4"' in cargo_toml
 
 for manifest_name, array_name in (("manifest.json", "components"), ("payload-manifest.json", "payloads")):
     document = json.loads((payload_dir / manifest_name).read_text())
     entry = next(item for item in document[array_name] if item.get("id") == "service-manager")
-    assert entry["version"] == "0.3.3"
+    assert entry["version"] == "0.3.4"
     assert entry["sourceCommit"] == source_commit
     assert entry["sourceDirty"] is source_dirty
     assert entry["sourceStatusSha256"] == source_status_sha

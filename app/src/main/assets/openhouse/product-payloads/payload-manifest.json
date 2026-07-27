@@ -12,11 +12,11 @@
     {
       "id": "service-manager",
       "archive": "service-manager.tar",
-      "sha256": "e665a3d01f3aae1d005f6525155c7b80e9bff8c8aef3625f62c46f6fd553c0a9",
+      "sha256": "a3fe8d5e2418ff4958156c1aafad944a1708ae9cd7bbad0bc70939bd59a05ca9",
       "size": 8325120,
-      "binarySha256": "8630c27f4b05a9bb8ab6d3682a4cc2dae8e58c43abe1f40ce31bcfae200f30fd",
+      "binarySha256": "b63134e94de575f69ffda5271d3c3b465637091927d613f2d9a9d60eae2c5574",
       "platform": "termux-arm64",
-      "version": "0.3.3",
+      "version": "0.3.4",
       "registryApiVersion": 2,
       "provides": {
         "registryApiVersion": 2,
@@ -27,8 +27,8 @@
       "buildPlatform": "android-arm64",
       "binaryInterpreter": "/system/bin/linker64",
       "sourceRepo": "https://github.com/jiwuyou/service-manager",
-      "sourceCommit": "2df91968a1813f141acde8aa6f64dba623b54b2f",
-      "sourceTreeSha256": "78c20659dd6a1178307865e075de1515fc612eade2603393079d932c7ed5add2",
+      "sourceCommit": "63648fa3cf5f35cd5dc620abb31803cfd0be0691",
+      "sourceTreeSha256": "c167acd5d03b05b3f7117325d0621b527a7bad1679776c956eefb8cb6af072d0",
       "buildToolchain": {
         "method": "local-android-ndk-cross",
         "rustTarget": "aarch64-linux-android",
@@ -42,8 +42,8 @@
       },
       "sourceDirty": false,
       "sourceStatusSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "sourceTreeId": "sha256:78c20659dd6a1178307865e075de1515fc612eade2603393079d932c7ed5add2",
-      "payloadSourceTreeSha256": "c4b2b137a335ddbf272f4c554ff041d1e5d44cd0e21ce4be54c33166d92c21f7"
+      "sourceTreeId": "sha256:c167acd5d03b05b3f7117325d0621b527a7bad1679776c956eefb8cb6af072d0",
+      "payloadSourceTreeSha256": "b46f9128f53e2aaa182dcd8e44ff46898a8a916911ade664392525cc07f66496"
     },
     {
       "id": "openhouse-web",

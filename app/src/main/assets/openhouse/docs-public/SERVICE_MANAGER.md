@@ -1,6 +1,6 @@
 # service-manager 操作手册
 
-service-manager 是安装完成后的运行期控制平面。AI agent 管理后台服务时，默认通过 service-manager，而不是直接后台启动进程。本文以 `service-manager 0.3.3` 的正式契约为基线。
+service-manager 是安装完成后的运行期控制平面。AI agent 管理后台服务时，默认通过 service-manager，而不是直接后台启动进程。本文以 `service-manager 0.3.4` 的正式契约为基线。
 
 OpenHouseAI 的正式部署基线是：service-manager daemon 运行在 Termux native 层，使用 OpenHouse 专用配置和 token。Ubuntu/proot 里的长期服务由 Termux native service-manager 通过 provider 管理，不在 Ubuntu 内另起一个常驻 service-manager。
 
@@ -441,7 +441,7 @@ curl -q -fsS --max-time 5 -K /tmp/openhouse-sm-curl.cfg \
 
 ## 常驻设置与取消
 
-`service-manager 0.3.3` 把常驻意图保存在独立策略中：
+`service-manager 0.3.4` 把常驻意图保存在独立策略中：
 
 ```text
 <data_dir>/residency.json
