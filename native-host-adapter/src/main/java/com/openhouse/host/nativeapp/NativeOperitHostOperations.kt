@@ -2,10 +2,12 @@ package com.openhouse.host.nativeapp
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import com.ai.assistance.operit.host.OperitHostOperationResult
 import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostOperations
+import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.ai.assistance.operit.host.terminal.tmux.TmuxHostTerminalBackend
@@ -63,6 +65,88 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
 
     override fun openHostApp(context: Context): OperitHostOperationResult =
         host.openTerminal().toOperationResult("open_terminal")
+
+    override suspend fun inspectWuxianPiSetup(): OperitHostOperationResult {
+        val probe = NativeExternalHostInspector.inspect(appContext)
+        val details = JSONObject().putHostProbe(probe)
+            .put("termuxHomeAccess", hasTermuxHomeAccess())
+            .put(
+                "runCommandPermission",
+                appContext.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) ==
+                    PackageManager.PERMISSION_GRANTED,
+            )
+        if (probe.state != NativeExternalHostState.READY ||
+            appContext.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return success("inspect_wuxianpi_setup", details)
+        }
+        return setupCommand("inspect", "inspect_wuxianpi_setup", 20_000L, details)
+    }
+
+    override fun prepareRuntimeHost(context: Context): OperitHostOperationResult {
+        val probe = NativeExternalHostInspector.inspect(context)
+        val details = JSONObject().putHostProbe(probe)
+        return when (probe.state) {
+            NativeExternalHostState.READY -> runCatching {
+                check(NativeExternalHostInspector.launchPreparation(context, probe)) {
+                    "WuxianPi All-in-One does not expose $WUXIANPI_PREPARE_HOST_ACTION"
+                }
+                success(
+                    "prepare_runtime_host",
+                    launchedUserActionDetails(details),
+                )
+            }.getOrElse { failure("prepare_runtime_host", it.message ?: "Unable to prepare host", details) }
+            NativeExternalHostState.ABSENT -> launchCoordinator(
+                context,
+                NativeRuntimeHostPreparationActivity::class.java,
+                "prepare_runtime_host",
+                details.put("downloadRequired", true),
+            )
+            NativeExternalHostState.INCOMPATIBLE_TERMUX ->
+                failure("prepare_runtime_host", probe.message, details)
+        }
+    }
+
+    override fun requestTermuxHomeAccess(context: Context): OperitHostOperationResult {
+        val probe = NativeExternalHostInspector.inspect(context)
+        val details = JSONObject().putHostProbe(probe)
+        if (probe.state != NativeExternalHostState.READY) {
+            return failure("request_termux_home_access", probe.message, details)
+        }
+        if (hasTermuxHomeAccess()) {
+            return success("request_termux_home_access", details.put("alreadyGranted", true))
+        }
+        return launchCoordinator(
+            context,
+            NativeTermuxHomeAccessActivity::class.java,
+            "request_termux_home_access",
+            details,
+        )
+    }
+
+    override fun requestTermuxRunCommandPermission(context: Context): OperitHostOperationResult {
+        val probe = NativeExternalHostInspector.inspect(context)
+        val details = JSONObject().putHostProbe(probe)
+        if (probe.state != NativeExternalHostState.READY) {
+            return failure("request_termux_run_command_permission", probe.message, details)
+        }
+        return launchCoordinator(
+            context,
+            NativeTermuxRunCommandPermissionActivity::class.java,
+            "request_termux_run_command_permission",
+            details,
+        )
+    }
+
+    override suspend fun preparePersistentTermux(): OperitHostOperationResult =
+        setupCommand("prepare-tmux", "prepare_persistent_termux", 10 * 60_000L)
+
+    override suspend fun startWuxianPiSetup(): OperitHostOperationResult =
+        setupCommand("install", "start_wuxianpi_setup", 60_000L)
+
+    override suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
+        setupCommand("status", "wuxianpi_setup_status", 20_000L)
 
     override fun pairingInstallerScript(baseUrl: String, token: String): String =
         pairingScript(baseUrl, token)
@@ -130,6 +214,53 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         }.getOrElse { failure(operation, it.message ?: "runtime request failed") }
     }
 
+    private suspend fun setupCommand(
+        subcommand: String,
+        operation: String,
+        timeoutMs: Long,
+        baseDetails: JSONObject = JSONObject(),
+    ): OperitHostOperationResult {
+        val probe = NativeExternalHostInspector.inspect(appContext)
+        baseDetails.putHostProbe(probe).put("setupCommand", "wuxianpi-setup $subcommand")
+        if (probe.state != NativeExternalHostState.READY) {
+            return failure(operation, probe.message, baseDetails)
+        }
+        val result = externalTermuxExecutor.execute(
+            "wuxianpi-setup $subcommand",
+            ExternalTermuxCommandTarget.TERMUX,
+            timeoutMs,
+        )
+        baseDetails.put("exitCode", result.exitCode)
+            .put("stdout", result.stdout)
+            .put("stderr", result.stderr)
+            .put("timedOut", result.timedOut)
+            .put("durationMs", result.durationMs)
+        return if (result.isSuccess) success(operation, baseDetails)
+        else failure(operation, result.error.ifBlank { result.stderr }.ifBlank {
+            "wuxianpi-setup $subcommand failed with exit code ${result.exitCode}"
+        }, baseDetails)
+    }
+
+    private fun hasTermuxHomeAccess(): Boolean =
+        appContext.contentResolver.persistedUriPermissions.any { permission ->
+            permission.isReadPermission && isValidatedTermuxHomeTree(permission.uri)
+        }
+
+    private fun launchCoordinator(
+        context: Context,
+        activityClass: Class<*>,
+        operation: String,
+        details: JSONObject,
+    ): OperitHostOperationResult = runCatching {
+        context.startActivity(Intent(context, activityClass).apply {
+            if (context !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+        success(
+            operation,
+            launchedUserActionDetails(details),
+        )
+    }.getOrElse { failure(operation, it.message ?: "Unable to launch $operation", details) }
+
     private fun pairingScript(baseUrl: String, token: String): String = """
         #!/data/data/com.termux/files/usr/bin/bash
         set -euo pipefail
@@ -155,3 +286,8 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         if (isSuccess()) success(operation, JSONObject().put("message", message))
         else failure(operation, message)
 }
+
+internal fun launchedUserActionDetails(details: JSONObject): JSONObject =
+    details
+        .put("launched", true)
+        .put(WuxianPiSetupContract.DETAIL_USER_ACTION_REQUIRED, true)

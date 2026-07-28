@@ -28,6 +28,16 @@ class RescueToolCatalogTest {
         assertTrue("input_in_terminal_session missing", "input_in_terminal_session" in names)
         assertTrue("close_terminal_session missing", "close_terminal_session" in names)
         assertTrue("get_terminal_session_screen missing", "get_terminal_session_screen" in names)
+        assertTrue("inspect_wuxianpi_setup missing", "inspect_wuxianpi_setup" in names)
+        assertTrue("prepare_runtime_host missing", "prepare_runtime_host" in names)
+        assertTrue("request_termux_home_access missing", "request_termux_home_access" in names)
+        assertTrue(
+            "request_termux_run_command_permission missing",
+            "request_termux_run_command_permission" in names,
+        )
+        assertTrue("prepare_persistent_termux missing", "prepare_persistent_termux" in names)
+        assertTrue("start_wuxianpi_setup missing", "start_wuxianpi_setup" in names)
+        assertTrue("get_wuxianpi_setup_status missing", "get_wuxianpi_setup_status" in names)
     }
 
     @Test
@@ -56,5 +66,33 @@ class RescueToolCatalogTest {
 
         val raw = requireNotNull(byName["execute_termux_command"])
         assertTrue(raw.getString("description").contains("does not terminate"))
+    }
+
+    @Test
+    fun setupToolsAreParameterlessAndDescribeDurableCoreInstallation() {
+        val definitions = RescueToolCatalog.default().toJsonArray()
+        val byName =
+            (0 until definitions.length()).associate { index ->
+                definitions.getJSONObject(index).let { it.getString("name") to it }
+            }
+        val setupNames =
+            listOf(
+                "inspect_wuxianpi_setup",
+                "prepare_runtime_host",
+                "request_termux_home_access",
+                "request_termux_run_command_permission",
+                "prepare_persistent_termux",
+                "start_wuxianpi_setup",
+                "get_wuxianpi_setup_status",
+            )
+
+        setupNames.forEach { name ->
+            val parameters = requireNotNull(byName[name]).getJSONObject("parameters")
+            assertEquals(0, parameters.getJSONObject("properties").length())
+            assertEquals(0, parameters.getJSONArray("required").length())
+        }
+        assertTrue(requireNotNull(byName["prepare_persistent_termux"]).getString("description").contains("tmux"))
+        assertTrue(requireNotNull(byName["start_wuxianpi_setup"]).getString("description").contains("Ubuntu"))
+        assertTrue(requireNotNull(byName["get_wuxianpi_setup_status"]).getString("description").contains("durable"))
     }
 }

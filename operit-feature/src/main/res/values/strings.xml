@@ -863,6 +863,8 @@
     <string name="settings_model_parameters">模型与参数配置</string>
     <string name="settings_model_parameters_desc">配置API设置、模型名称与参数，支持多配置管理</string>
     <string name="settings_configure_model">配置模型</string>
+    <string name="rescue_model_configuration_required">请先配置维修助手模型的 API 地址和模型</string>
+    <string name="chat_model_configuration_unavailable">无法读取聊天模型配置，请检查配置后重试</string>
     <string name="settings_functional_model">功能模型配置</string>
     <string name="settings_functional_model_desc">为不同功能（如对话、总结、记忆库等）配置专用的模型与API设置</string>
     <string name="settings_configure_function">配置功能</string>

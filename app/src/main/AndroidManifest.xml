@@ -75,6 +75,18 @@
         </activity>
 
         <activity
+            android:name=".app.WuxianPiHostPreparationActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar">
+            <intent-filter>
+                <action android:name="com.termux.WUXIANPI_PREPARE_HOST" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".app.TermuxActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|density|screenLayout|keyboard|keyboardHidden|navigation"

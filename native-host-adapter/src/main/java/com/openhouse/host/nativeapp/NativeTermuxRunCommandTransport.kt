@@ -242,28 +242,15 @@ private class AndroidNativeTermuxRawCommandTransport(
     }
 
     private fun ensureAvailable() {
-        if (!isPackageInstalled()) {
-            throw NativeTermuxTransportException(127, "Termux package $termuxPackage is not installed")
+        val host = NativeExternalHostInspector.inspect(appContext)
+        if (host.state != NativeExternalHostState.READY) {
+            val exitCode = if (host.state == NativeExternalHostState.ABSENT) 127 else 126
+            throw NativeTermuxTransportException(exitCode, host.message)
         }
         val permission = "$termuxPackage.permission.RUN_COMMAND"
         if (appContext.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
             throw NativeTermuxTransportException(126, "Missing $permission")
         }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun isPackageInstalled(): Boolean = try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            appContext.packageManager.getPackageInfo(
-                termuxPackage,
-                PackageManager.PackageInfoFlags.of(0L),
-            )
-        } else {
-            appContext.packageManager.getPackageInfo(termuxPackage, 0)
-        }
-        true
-    } catch (_: PackageManager.NameNotFoundException) {
-        false
     }
 
     private fun buildRunCommandIntent(

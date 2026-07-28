@@ -2,6 +2,7 @@ package com.ai.assistance.operit.rescue.pi
 
 import com.ai.assistance.operit.core.config.SystemToolPrompts
 import com.ai.assistance.operit.data.model.ToolPrompt
+import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -26,6 +27,41 @@ class RescueToolCatalog private constructor(
 
         private val RESCUE_DEFINITIONS =
             listOf(
+                definition(
+                    name = WuxianPiSetupContract.TOOL_INSPECT,
+                    description =
+                        "Inspect the real Termux, permissions, persistent tmux, resources, service-manager, WuxianPi, and Ubuntu setup state before changing anything.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_PREPARE_RUNTIME_HOST,
+                    description =
+                        "Prepare the correct Termux runtime host. This may open or install the WuxianPi All-in-One host and can require a user action.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
+                    description =
+                        "Request Termux Home file access when the active host needs SAF. The result states whether the user must complete a system picker action.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION,
+                    description =
+                        "Request external Termux RUN_COMMAND access when needed. The result accurately reports any pending user action.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_PREPARE_PERSISTENT_TERMUX,
+                    description =
+                        "Install only the minimum tmux prerequisites, verify tmux, and prepare the durable managed Termux terminal used by setup. Reuses the host tmux backend.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_START_SETUP,
+                    description =
+                        "Start or resume the deterministic persistent installation of post-tmux packages, bundled resources, service-manager, WuxianPi pi-agent, and Ubuntu. Returns durable host status or task details.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_SETUP_STATUS,
+                    description =
+                        "Read durable WuxianPi setup status from the active host and persistent Termux state. Use it after starting setup and after Rescue AI restarts.",
+                ),
                 definition(
                     name = "runtime_status",
                     description =

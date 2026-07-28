@@ -41,6 +41,7 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
     public static final String DEFAULT_PI_RUNTIME_URL = "http://127.0.0.1:8765";
 
     private static final String RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND";
+    private static final String WUXIANPI_HOST_ACTION = "com.termux.SMALLPHONE_HOST";
     private static final String RUN_COMMAND_SERVICE = "com.termux.app.RunCommandService";
     private static final String EXTRA_COMMAND_PATH = "com.termux.RUN_COMMAND_PATH";
     private static final String EXTRA_ARGUMENTS = "com.termux.RUN_COMMAND_ARGUMENTS";
@@ -72,14 +73,17 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
     }
 
     @Override public HostCapabilities capabilities() {
-        boolean termuxInstalled = isTermuxInstalled();
+        boolean termuxInstalled = isWuxianPiHostInstalled();
         return new HostCapabilities(true, true, true, true, termuxInstalled, true,
             termuxInstalled, termuxInstalled, false);
     }
 
     @Override public SetupState setupState() {
-        if (!isTermuxInstalled()) {
-            return new SetupState(SetupState.Status.NOT_CONFIGURED, 0, "Termux is not installed");
+        if (!isWuxianPiHostInstalled()) {
+            return new SetupState(SetupState.Status.NOT_CONFIGURED, 0,
+                isPackageInstalled(TERMUX_PACKAGE)
+                    ? "Installed com.termux is not WuxianPi All-in-One"
+                    : "WuxianPi All-in-One host is not installed");
         }
         if (findInTermuxHome(".config/openhouseai/service-manager/config.json") == null) {
             return new SetupState(SetupState.Status.NOT_CONFIGURED, 50,
@@ -124,6 +128,12 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
 
     @Override public HostActionResult openTerminal() {
         try {
+            if (!isWuxianPiHostInstalled()) {
+                String message = isPackageInstalled(TERMUX_PACKAGE)
+                    ? "The installed com.termux package is not WuxianPi All-in-One; uninstall it before installing the WuxianPi host because the signatures conflict"
+                    : "WuxianPi All-in-One host is not installed";
+                return new HostActionResult(HostActionResult.Status.USER_ACTION_REQUIRED, message);
+            }
             Intent intent = appContext.getPackageManager().getLaunchIntentForPackage(TERMUX_PACKAGE);
             if (intent == null) {
                 return new HostActionResult(HostActionResult.Status.USER_ACTION_REQUIRED,
@@ -171,9 +181,9 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
 
     private ControlPlaneResult submitTermuxScript(String assetPath, String label,
                                                    ControlPlaneResult.Status successStatus) {
-        if (!isTermuxInstalled()) {
+        if (!isWuxianPiHostInstalled()) {
             return new ControlPlaneResult(ControlPlaneResult.Status.USER_ACTION_REQUIRED,
-                "Termux is not installed");
+                "WuxianPi All-in-One host is not installed or incompatible");
         }
         try {
             Intent intent = new Intent(RUN_COMMAND_ACTION)
@@ -195,9 +205,15 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
         }
     }
 
-    private boolean isTermuxInstalled() {
+    private boolean isWuxianPiHostInstalled() {
+        Intent hostIntent = new Intent(WUXIANPI_HOST_ACTION).setPackage(TERMUX_PACKAGE);
+        return appContext.getPackageManager().resolveActivity(hostIntent, 0) != null;
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean isPackageInstalled(String packageName) {
         try {
-            appContext.getPackageManager().getPackageInfo(TERMUX_PACKAGE, 0);
+            appContext.getPackageManager().getPackageInfo(packageName, 0);
             return true;
         } catch (Exception ignored) {
             return false;
@@ -207,18 +223,13 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
     private DocumentFile termuxHomeTree() {
         List<UriPermission> permissions = new ArrayList<>(
             appContext.getContentResolver().getPersistedUriPermissions());
-        permissions.sort((left, right) -> score(right.getUri()) - score(left.getUri()));
         for (UriPermission permission : permissions) {
             if (!permission.isReadPermission()) continue;
+            if (!NativeExternalRuntimeHostKt.isValidatedTermuxHomeTree(permission.getUri())) continue;
             DocumentFile root = DocumentFile.fromTreeUri(appContext, permission.getUri());
             if (root != null && root.isDirectory()) return root;
         }
         return null;
-    }
-
-    private static int score(Uri uri) {
-        String value = uri == null ? "" : uri.toString().toLowerCase();
-        return value.contains("termux") ? 10 : 0;
     }
 
     private DocumentFile findInTermuxHome(String relativePath) {

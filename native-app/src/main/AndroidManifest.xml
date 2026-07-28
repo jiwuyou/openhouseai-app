@@ -2,11 +2,19 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- External Termux tools and Ubuntu sessions use the installed Termux userspace. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <queries>
         <package android:name="com.termux" />
+        <intent>
+            <action android:name="com.termux.SMALLPHONE_HOST" />
+        </intent>
+        <intent>
+            <action android:name="com.termux.WUXIANPI_PREPARE_HOST" />
+        </intent>
+        <provider android:authorities="com.termux.documents" />
     </queries>
 
     <application
@@ -118,5 +126,17 @@
             android:exported="false"
             android:process=":openhouse"
             tools:replace="android:exported,android:process" />
+
+        <activity
+            android:name="com.openhouse.host.nativeapp.NativeRuntimeHostPreparationActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="com.openhouse.host.nativeapp.NativeTermuxHomeAccessActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="com.openhouse.host.nativeapp.NativeTermuxRunCommandPermissionActivity"
+            android:exported="false" />
     </application>
 </manifest>

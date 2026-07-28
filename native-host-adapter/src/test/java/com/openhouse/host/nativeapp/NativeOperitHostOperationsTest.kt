@@ -31,6 +31,93 @@ class NativeOperitHostOperationsTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
+    fun hostDetectionRequiresWuxianPiHostAction() {
+        assertEquals(
+            NativeExternalHostState.READY,
+            classifyNativeExternalHost(
+                packageInstalled = true,
+                hostActionResolved = true,
+            ),
+        )
+        assertEquals(
+            NativeExternalHostState.INCOMPATIBLE_TERMUX,
+            classifyNativeExternalHost(
+                packageInstalled = true,
+                hostActionResolved = false,
+            ),
+        )
+        assertEquals(
+            NativeExternalHostState.ABSENT,
+            classifyNativeExternalHost(
+                packageInstalled = false,
+                hostActionResolved = false,
+            ),
+        )
+    }
+
+    @Test
+    fun termuxHomeTreeParserAcceptsEncodedRootOnly() {
+        assertEquals(
+            TERMUX_HOME_TREE_ID,
+            extractTreeDocumentId("content://com.termux.documents/tree/termux-home%3A"),
+        )
+        assertEquals(
+            TERMUX_HOME_TREE_ID,
+            extractTreeDocumentId("content://com.termux.documents/tree/termux-home:"),
+        )
+        assertEquals(
+            null,
+            extractTreeDocumentId("content://com.android.externalstorage.documents/tree/primary%3ADownload"),
+        )
+    }
+
+    @Test
+    fun releaseSelectionChoosesArm64AllInOneInsteadOfFirstApk() {
+        val selected = NativeAllInOneReleaseAssetSelector.select(
+            """[
+                {"draft":false,"assets":[
+                    {"name":"WuxianPiNative-debug.apk","browser_download_url":"https://example/native.apk","size":10},
+                    {"name":"termux-app_apt-android-7-main-debug_universal.apk","browser_download_url":"https://example/universal.apk","size":20},
+                    {"name":"termux-app_apt-android-7-main-debug_arm64-v8a.apk","browser_download_url":"https://example/arm64.apk","size":30}
+                ]}
+            ]""".trimIndent(),
+        )
+        assertNotNull(selected)
+        assertEquals("termux-app_apt-android-7-main-debug_arm64-v8a.apk", selected?.name)
+        assertEquals("https://example/arm64.apk", selected?.downloadUrl)
+    }
+
+    @Test
+    fun releaseSelectionSkipsAndroid5Arm64BeforeAndroid7Arm64() {
+        val selected = NativeAllInOneReleaseAssetSelector.select(
+            """[{"draft":false,"assets":[
+                {"name":"termux-app_apt-android-5-main-debug_arm64-v8a.apk","browser_download_url":"https://example/android5.apk"},
+                {"name":"termux-app_apt-android-7-main-debug_arm64-v8a.apk","browser_download_url":"https://example/android7.apk"}
+            ]}]""",
+        )
+        assertNotNull(selected)
+        assertEquals("termux-app_apt-android-7-main-debug_arm64-v8a.apk", selected?.name)
+        assertEquals("https://example/android7.apk", selected?.downloadUrl)
+    }
+
+    @Test
+    fun releaseSelectionDoesNotFallBackToArbitraryApk() {
+        val selected = NativeAllInOneReleaseAssetSelector.select(
+            """[{"draft":false,"assets":[
+                {"name":"termux-app_apt-android-7-main-debug_universal.apk","browser_download_url":"https://example/universal.apk"}
+            ]}]""",
+        )
+        assertEquals(null, selected)
+    }
+
+    @Test
+    fun launchedCoordinatorRequiresUserActionWithoutHidingLaunchSuccess() {
+        val details = launchedUserActionDetails(org.json.JSONObject())
+        assertTrue(details.getBoolean("launched"))
+        assertTrue(details.getBoolean("userActionRequired"))
+    }
+
+    @Test
     fun androidShellExecutorRemainsIndependent() {
         val executor = AndroidShellCommandExecutor(
             shell = File("/bin/bash"),

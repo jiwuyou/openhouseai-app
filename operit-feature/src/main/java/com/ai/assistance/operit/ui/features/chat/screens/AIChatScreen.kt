@@ -43,6 +43,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.rescue.ui.RescueActivity
+import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
+import com.ai.assistance.operit.rescue.ui.RescueFirstUsePrompt
+import com.ai.assistance.operit.rescue.ui.shouldShowRescueFirstUsePrompt
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ApiProviderType
@@ -336,6 +339,14 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val currentChatView = remember(chatHistories, currentChatId) {
         chatHistories.find { it.id == currentChatId }
     }
+    val showRescueFirstUsePrompt =
+        shouldShowRescueFirstUsePrompt(
+            isRescueContext = chatViewRuntime == "rescue",
+            hasCurrentConversation = !currentChatId.isNullOrBlank(),
+            persistedMessageCount = currentChatView?.messages?.size,
+            visibleMessageCount = chatHistory.size,
+            isHistoryLoading = isLoadingDisplayWindow,
+        )
     val latestChatViewParams by rememberUpdatedState(
         ChatViewHookParams(
             context = context,
@@ -1188,6 +1199,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                     showMemoryFolderDialog = true
                                 },
                                 onRequestAutoScrollToBottom = requestAutoScrollToBottom,
+                                showRescueFirstUsePrompt = showRescueFirstUsePrompt,
                         )
                     }
 
@@ -1573,6 +1585,7 @@ private fun ChatInputBottomBar(
     characterCardBoundMemoryProfileId: String?,
     onShowMemoryFolderDialog: () -> Unit,
     onRequestAutoScrollToBottom: () -> Unit,
+    showRescueFirstUsePrompt: Boolean,
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -1821,7 +1834,7 @@ private fun ChatInputBottomBar(
         actualViewModel.showToast(context.getString(R.string.chat_queue_added))
     }
 
-    val sendMessage: () -> Unit = {
+    val sendMessage: (String?) -> Unit = { textOverride ->
         coroutineScope.launch {
             if (currentChatId.isNullOrBlank()) {
                 Toast.makeText(
@@ -1832,10 +1845,14 @@ private fun ChatInputBottomBar(
                 return@launch
             }
 
+            val requestedText = textOverride ?: userMessage.text
             val submitDecision =
                 ChatInputHookRegistry.dispatchSubmitRequested(
                     buildChatInputHookContext(
                         eventName = ChatInputEvents.SUBMIT_REQUESTED,
+                        text = requestedText,
+                        selectionStart = requestedText.length,
+                        selectionEnd = requestedText.length,
                         submitSource = "send"
                     )
                 )
@@ -1854,8 +1871,8 @@ private fun ChatInputBottomBar(
                 }
             }
 
-            val finalText = submitDecision.text ?: userMessage.text
-            if (finalText != userMessage.text) {
+            val finalText = submitDecision.text ?: requestedText
+            if (textOverride == null && finalText != userMessage.text) {
                 actualViewModel.updateUserMessage(
                     TextFieldValue(
                         text = finalText,
@@ -1880,7 +1897,11 @@ private fun ChatInputBottomBar(
                 return@launch
             }
             focusManager.clearFocus()
-            actualViewModel.sendUserMessage()
+            if (textOverride == null) {
+                actualViewModel.sendUserMessage()
+            } else {
+                actualViewModel.sendTextMessage(finalText)
+            }
             actualViewModel.resetAttachmentPanelState()
             onRequestAutoScrollToBottom()
             ChatInputHookRegistry.dispatchNotification(
@@ -1895,13 +1916,24 @@ private fun ChatInputBottomBar(
         }
     }
 
-    if (inputStyle == UserPreferencesManager.INPUT_STYLE_AGENT) {
-        AgentChatInputSection(
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (showRescueFirstUsePrompt) {
+            RescueFirstUsePrompt(
+                onClick = { sendMessage(RESCUE_FIRST_USE_MESSAGE) },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+
+        if (inputStyle == UserPreferencesManager.INPUT_STYLE_AGENT) {
+            AgentChatInputSection(
                 actualViewModel = actualViewModel,
                 userMessage = userMessage,
                 onUserMessageChange = { value -> handleUserMessageChange(value) },
                 enableEnterToSend = enableEnterToSend,
-                onSendMessage = sendMessage,
+                onSendMessage = { sendMessage(null) },
                 onQueueMessage = { enqueueDraftToPendingQueue() },
                 onCancelMessage = actualViewModel::cancelCurrentMessage,
                 isLoading = isLoading,
@@ -1982,14 +2014,14 @@ private fun ChatInputBottomBar(
                         sendQueuedItemNow(queueItem, true)
                     }
                 },
-        )
-    } else {
-        ClassicChatInputSection(
+            )
+        } else {
+            ClassicChatInputSection(
                 actualViewModel = actualViewModel,
                 userMessage = userMessage,
                 onUserMessageChange = { value -> handleUserMessageChange(value) },
                 enableEnterToSend = enableEnterToSend,
-                onSendMessage = sendMessage,
+                onSendMessage = { sendMessage(null) },
                 onQueueMessage = { enqueueDraftToPendingQueue() },
                 onCancelMessage = actualViewModel::cancelCurrentMessage,
                 isLoading = isLoading,
@@ -2039,7 +2071,8 @@ private fun ChatInputBottomBar(
                         sendQueuedItemNow(queueItem, true)
                     }
                 },
-        )
+            )
+        }
     }
 }
 

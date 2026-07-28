@@ -23,6 +23,20 @@ data class RescueModelSelection(
     val modelIndex: Int,
 )
 
+enum class RescueModelConfigurationIssue {
+    EMPTY_REGISTRY,
+    MISSING_CONFIGURATION,
+    PI_RUNTIME_NOT_SUPPORTED,
+    LOCAL_ENGINE_NOT_SUPPORTED,
+    MISSING_API_ENDPOINT,
+    MISSING_MODEL,
+}
+
+class RescueModelConfigurationException(
+    val issue: RescueModelConfigurationIssue,
+    message: String,
+) : IllegalStateException(message)
+
 data class ResolvedRescueModelConfig(
     val selection: RescueModelSelection,
     val config: ModelConfigData,
@@ -31,6 +45,34 @@ data class ResolvedRescueModelConfig(
         getModelByIndex(config.modelName, selection.modelIndex)
 
     val selectedConfig: ModelConfigData = config.copy(modelName = selectedModelName)
+
+    fun requireRunnable(): ResolvedRescueModelConfig {
+        if (config.usesPiRuntime()) {
+            throw RescueModelConfigurationException(
+                RescueModelConfigurationIssue.PI_RUNTIME_NOT_SUPPORTED,
+                "Rescue model must use an Android-owned direct configuration",
+            )
+        }
+        if (config.usesAndroidLocalModelEngine()) {
+            throw RescueModelConfigurationException(
+                RescueModelConfigurationIssue.LOCAL_ENGINE_NOT_SUPPORTED,
+                "Rescue model does not use Android local model engines",
+            )
+        }
+        if (config.apiEndpoint.isBlank()) {
+            throw RescueModelConfigurationException(
+                RescueModelConfigurationIssue.MISSING_API_ENDPOINT,
+                "Rescue model API endpoint must not be blank",
+            )
+        }
+        if (selectedModelName.isBlank()) {
+            throw RescueModelConfigurationException(
+                RescueModelConfigurationIssue.MISSING_MODEL,
+                "Rescue model name must not be blank",
+            )
+        }
+        return this
+    }
 
     fun configWithSelectedModelName(modelName: String): ModelConfigData {
         val models = getModelList(config.modelName).toMutableList()
@@ -61,16 +103,23 @@ class RescueModelConfigStore(context: Context) {
     private suspend fun getActiveSelectionLocked(): RescueModelSelection {
         modelConfigManager.initializeIfNeeded()
         val configIds = modelConfigManager.configListFlow.first()
-        check(configIds.isNotEmpty()) { "Rescue model registry is empty" }
+        if (configIds.isEmpty()) {
+            throw RescueModelConfigurationException(
+                RescueModelConfigurationIssue.EMPTY_REGISTRY,
+                "Rescue model registry is empty",
+            )
+        }
 
         val storedId = preferences.getString(KEY_ACTIVE_CONFIG_ID, null)
         val configId =
             storedId?.takeIf { it in configIds }
                 ?: configIds.firstOrNull { it == ModelConfigManager.DEFAULT_CONFIG_ID }
                 ?: configIds.first()
-        val config = requireNotNull(modelConfigManager.getModelConfig(configId)) {
-            "Unknown Rescue model configuration: $configId"
-        }
+        val config = modelConfigManager.getModelConfig(configId)
+            ?: throw RescueModelConfigurationException(
+                RescueModelConfigurationIssue.MISSING_CONFIGURATION,
+                "Unknown Rescue model configuration: $configId",
+            )
         val storedModelIndex = preferences.getInt(KEY_ACTIVE_MODEL_INDEX, 0)
         val modelIndex = getValidModelIndex(config.modelName, storedModelIndex)
         if (storedId != configId || storedModelIndex != modelIndex) {
@@ -130,20 +179,16 @@ class RescueModelConfigStore(context: Context) {
     suspend fun loadActiveRegistryConfig(): ResolvedRescueModelConfig {
         val selection = getActiveSelection()
         val config =
-            requireNotNull(modelConfigManager.getModelConfig(selection.configId)) {
-                "Configure a model before starting Rescue AI"
-            }
+            modelConfigManager.getModelConfig(selection.configId)
+                ?: throw RescueModelConfigurationException(
+                    RescueModelConfigurationIssue.MISSING_CONFIGURATION,
+                    "Configure a model before starting Rescue AI",
+                )
         return ResolvedRescueModelConfig(selection, config)
     }
 
-    suspend fun loadResolved(): ResolvedRescueModelConfig {
-        return loadActiveRegistryConfig().also {
-            validateDirectConfig(it.config)
-            require(it.selectedModelName.isNotBlank()) {
-                "Rescue model name must not be blank"
-            }
-        }
-    }
+    suspend fun loadResolved(): ResolvedRescueModelConfig =
+        loadActiveRegistryConfig().requireRunnable()
 
     suspend fun load(): ModelConfigData = loadResolved().selectedConfig
 
@@ -160,14 +205,10 @@ class RescueModelConfigStore(context: Context) {
     }
 
     private fun validateDirectConfig(config: ModelConfigData) {
-        require(!config.usesPiRuntime()) {
-            "Rescue model must use an Android-owned direct configuration"
-        }
-        require(!config.usesAndroidLocalModelEngine()) {
-            "Rescue model does not use Android local model engines"
-        }
-        require(config.apiEndpoint.isNotBlank()) { "Rescue model API endpoint must not be blank" }
-        require(config.modelName.isNotBlank()) { "Rescue model name must not be blank" }
+        ResolvedRescueModelConfig(
+            selection = RescueModelSelection(config.id, 0),
+            config = config,
+        ).requireRunnable()
     }
 
     companion object {

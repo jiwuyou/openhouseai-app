@@ -2015,9 +2015,11 @@ else
   log "本次处理默认组件：openhouse-system、wuyou、service-manager、pi-agent、pi-web、github-config-helper、cc-connect/openhouse-connect、SmallPhone、Hermes，最后安装 OpenHouse Web。"
 fi
 
-if ! install_openhouse_system; then
-  warn "OpenHouse 主系统 CLI/主体名片部署失败。"
-  failures=$((failures + 1))
+if [ "${SMALLPHONEAI_SKIP_OPENHOUSE_SYSTEM:-0}" != "1" ]; then
+  if ! install_openhouse_system; then
+    warn "OpenHouse 主系统 CLI/主体名片部署失败。"
+    failures=$((failures + 1))
+  fi
 fi
 
 validate_component_targets

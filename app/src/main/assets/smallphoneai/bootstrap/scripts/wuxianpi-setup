@@ -1,0 +1,361 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
+TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+SETUP_HOME="${WUXIANPI_SETUP_HOME:-$TERMUX_HOME/.local/state/wuxianpi-setup}"
+SESSION_NAME="wuxianpi-setup"
+LOG_FILE="$SETUP_HOME/setup.log"
+STATE_FILE="$SETUP_HOME/state.json"
+EXIT_FILE="$SETUP_HOME/exit-code"
+MAX_LOG_BYTES="${WUXIANPI_SETUP_MAX_LOG_BYTES:-2097152}"
+PI_URL="${WUXIANPI_PI_URL:-http://127.0.0.1:8765}"
+
+log() {
+  printf '[WuxianPi Setup] %s\n' "$*"
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g; s/\n/\\n/g'
+}
+
+json_bool() {
+  if "$@"; then printf true; else printf false; fi
+}
+
+ensure_state_dir() {
+  mkdir -p "$SETUP_HOME"
+}
+
+rotate_log() {
+  ensure_state_dir
+  [ -f "$LOG_FILE" ] || return 0
+  local size
+  size="$(wc -c < "$LOG_FILE" | tr -d '[:space:]')"
+  case "$size" in ''|*[!0-9]*) size=0 ;; esac
+  if [ "$size" -ge "$MAX_LOG_BYTES" ]; then
+    rm -f "$LOG_FILE.2"
+    [ ! -f "$LOG_FILE.1" ] || mv "$LOG_FILE.1" "$LOG_FILE.2"
+    mv "$LOG_FILE" "$LOG_FILE.1"
+  fi
+}
+
+compact_log() {
+  [ -f "$LOG_FILE" ] || return 0
+  local size
+  size="$(wc -c < "$LOG_FILE" | tr -d '[:space:]')"
+  case "$size" in ''|*[!0-9]*) size=0 ;; esac
+  [ "$size" -le "$MAX_LOG_BYTES" ] || {
+    tail -c "$MAX_LOG_BYTES" "$LOG_FILE" > "$LOG_FILE.tmp"
+    mv "$LOG_FILE.tmp" "$LOG_FILE"
+  }
+}
+
+current_resource_dir() {
+  local root="$TERMUX_HOME/.local/share/openhouseai/update-resources"
+  find "$root" -mindepth 2 -maxdepth 2 -type f -name .complete -print 2>/dev/null \
+    | sed 's#/.complete$##' \
+    | while IFS= read -r directory; do
+        [ -f "$directory/bootstrap/bootstrap.sh" ] || continue
+        [ -f "$directory/bootstrap/scripts/wuxianpi-setup" ] || continue
+        [ -f "$directory/product-payloads/manifest.json" ] || continue
+        printf '%s\t%s\n' "$(stat -c %Y "$directory/.complete" 2>/dev/null || printf 0)" "$directory"
+      done \
+    | sort -rn \
+    | awk -F '\t' 'NR == 1 { print $2 }'
+}
+
+resource_dir() {
+  local configured="${WUXIANPI_RESOURCE_DIR:-}"
+  if [ -n "$configured" ] && [ -f "$configured/.complete" ]; then
+    printf '%s\n' "$configured"
+    return 0
+  fi
+  current_resource_dir
+}
+
+bootstrap_file() {
+  local root
+  root="$(resource_dir)"
+  [ -n "$root" ] || return 1
+  printf '%s/bootstrap/bootstrap.sh\n' "$root"
+}
+
+payload_dir() {
+  local root
+  root="$(resource_dir)"
+  [ -n "$root" ] || return 1
+  printf '%s/product-payloads\n' "$root"
+}
+
+run_bootstrap() {
+  local command="$1"
+  shift || true
+  local bootstrap payload root
+  bootstrap="$(bootstrap_file)" || {
+    log '未找到完整的 APK 版本化资源目录。'
+    return 1
+  }
+  root="$(dirname "$(dirname "$bootstrap")")"
+  payload="$(payload_dir)"
+  env \
+    HOME="$TERMUX_HOME" \
+    PREFIX="$TERMUX_PREFIX" \
+    PATH="$TERMUX_PREFIX/bin:/system/bin" \
+    SMALLPHONEAI_ROOT="$root/bootstrap" \
+    SMALLPHONEAI_BOOTSTRAP="$bootstrap" \
+    SMALLPHONEAI_OFFLINE_PAYLOAD_DIR="$payload" \
+    SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT="$payload" \
+    SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle \
+    SMALLPHONEAI_SKIP_OPENHOUSE_SYSTEM=1 \
+    SMALLPHONEAI_COMPONENT_TARGETS="${SMALLPHONEAI_COMPONENT_TARGETS:-}" \
+    SMALLPHONEAI_COMPONENT_ACTION="${SMALLPHONEAI_COMPONENT_ACTION:-}" \
+    SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY="${SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY:-0}" \
+    SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-}" \
+    SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
+    bash "$bootstrap" "$command" "$@"
+}
+
+termux_ready() {
+  [ -x "$TERMUX_PREFIX/bin/bash" ] && { [ -x "$TERMUX_PREFIX/bin/pkg" ] || [ -x "$TERMUX_PREFIX/bin/apt" ]; }
+}
+
+tmux_ready() {
+  [ -x "$TERMUX_PREFIX/bin/tmux" ]
+}
+
+service_manager_ready() {
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsS --max-time 3 http://127.0.0.1:20087/api/v1/health >/dev/null 2>&1 \
+    || curl -fsS --max-time 3 http://127.0.0.1:20087/ >/dev/null 2>&1
+}
+
+pi_health_body() {
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsS --max-time 3 "$PI_URL/health" 2>/dev/null
+}
+
+pi_ready() {
+  local body
+  body="$(pi_health_body)" || return 1
+  printf '%s' "$body" | grep -Fq '"protocol"'
+}
+
+pi_port_state() {
+  local body
+  if body="$(pi_health_body)"; then
+    if printf '%s' "$body" | grep -Fq '"protocol"'; then
+      printf ready
+    else
+      printf conflict
+    fi
+    return 0
+  fi
+  if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | awk '$4 ~ /:8765$/ { found=1 } END { exit(found ? 0 : 1) }'; then
+    printf conflict
+  else
+    printf free
+  fi
+}
+
+ubuntu_ready() {
+  command -v proot-distro >/dev/null 2>&1 \
+    && proot-distro login ubuntu -- true >/dev/null 2>&1
+}
+
+session_running() {
+  tmux_ready && tmux has-session -t "$SESSION_NAME" 2>/dev/null
+}
+
+emit_status() {
+  local resource session state exit_code port_state
+  resource="$(resource_dir || true)"
+  if session_running; then session=running; else session=stopped; fi
+  state=idle
+  [ ! -s "$STATE_FILE" ] || state="$(sed -n 's/.*"state":"\([^"]*\)".*/\1/p' "$STATE_FILE" | head -n 1)"
+  [ -n "$state" ] || state=unknown
+  exit_code="$(sed -n '1p' "$EXIT_FILE" 2>/dev/null || true)"
+  port_state="$(pi_port_state)"
+  printf '{"ok":true,"termuxReady":%s,"tmuxReady":%s,"session":"%s","state":"%s","serviceManagerReady":%s,"piReady":%s,"piPort8765":"%s","ubuntuReady":%s,"resourceDir":"%s","logFile":"%s","exitCode":"%s"}\n' \
+    "$(json_bool termux_ready)" \
+    "$(json_bool tmux_ready)" \
+    "$session" \
+    "$(json_escape "$state")" \
+    "$(json_bool service_manager_ready)" \
+    "$(json_bool pi_ready)" \
+    "$port_state" \
+    "$(json_bool ubuntu_ready)" \
+    "$(json_escape "$resource")" \
+    "$(json_escape "$LOG_FILE")" \
+    "$(json_escape "$exit_code")"
+}
+
+prepare_tmux() {
+  termux_ready || {
+    log 'Termux bootstrap 尚未完成。'
+    return 1
+  }
+  run_bootstrap prepare
+  if tmux_ready; then
+    log 'tmux 已安装。'
+    return 0
+  fi
+  if command -v apt >/dev/null 2>&1; then
+    env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt \
+      -o Dpkg::Options::=--force-confdef \
+      -o Dpkg::Options::=--force-confold update
+    env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt \
+      -o Dpkg::Options::=--force-confdef \
+      -o Dpkg::Options::=--force-confold install -y tmux
+  elif command -v pkg >/dev/null 2>&1; then
+    env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical \
+      DPKG_OPTIONS="--force-confdef --force-confold" pkg update -y \
+      -o Dpkg::Options::=--force-confdef \
+      -o Dpkg::Options::=--force-confold
+    env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical \
+      DPKG_OPTIONS="--force-confdef --force-confold" pkg install -y \
+      -o Dpkg::Options::=--force-confdef \
+      -o Dpkg::Options::=--force-confold tmux
+  else
+    log '缺少 apt/pkg，无法安装 tmux。'
+    return 1
+  fi
+  tmux_ready || {
+    log 'tmux 安装后仍不可用。'
+    return 1
+  }
+  log 'tmux 已准备完成。'
+}
+
+write_state() {
+  local state="$1" stage="$2" message="${3:-}"
+  ensure_state_dir
+  printf '{"state":"%s","stage":"%s","message":"%s","updatedAt":%s}\n' \
+    "$(json_escape "$state")" "$(json_escape "$stage")" "$(json_escape "$message")" "$(date +%s)" \
+    > "$STATE_FILE.tmp"
+  mv "$STATE_FILE.tmp" "$STATE_FILE"
+}
+
+run_core_install() {
+  local port_state
+  rotate_log
+  exec >> "$LOG_FILE" 2>&1
+  set -x
+  write_state running post-tmux-packages '正在安装 Termux 后置基础包'
+  run_bootstrap termux-packages
+  run_bootstrap termux-node
+
+  port_state="$(pi_port_state)"
+  if [ "$port_state" = conflict ]; then
+    write_state failed port-8765-conflict '端口 8765 已被非 WuxianPi 服务占用'
+    log '端口 8765 已被占用，但响应不是 WuxianPi；拒绝静默改端口。'
+    return 18
+  fi
+
+  write_state running service-manager '正在安装并启动 service-manager'
+  SMALLPHONEAI_COMPONENT_TARGETS=service-manager \
+    SMALLPHONEAI_COMPONENT_ACTION=install-register \
+    SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
+    run_bootstrap components
+
+  write_state running pi-agent '正在安装、注册并启动 WuxianPi'
+  SMALLPHONEAI_COMPONENT_TARGETS=pi-agent \
+    SMALLPHONEAI_COMPONENT_ACTION=install-register \
+    SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
+    run_bootstrap components
+  SMALLPHONEAI_START_TARGETS=pi-agent run_bootstrap start
+
+  write_state running ubuntu '正在安装 Ubuntu'
+  run_bootstrap ubuntu
+
+  write_state running verify '正在检查核心状态'
+  verify_core
+  write_state completed complete 'WuxianPi 核心安装完成'
+}
+
+run_install_job() {
+  ensure_state_dir
+  rm -f "$EXIT_FILE"
+  set +e
+  ( set -e; run_core_install )
+  local code=$?
+  set -e
+  compact_log
+  if [ "$code" -eq 0 ]; then
+    printf '0\n' > "$EXIT_FILE"
+  else
+    printf '%s\n' "$code" > "$EXIT_FILE"
+    if ! grep -Fq '"state":"failed"' "$STATE_FILE" 2>/dev/null; then
+      write_state failed install "安装任务退出，代码 $code"
+    fi
+    return "$code"
+  fi
+}
+
+start_install() {
+  prepare_tmux
+  if session_running; then
+    log "安装会话已在运行：$SESSION_NAME"
+    emit_status
+    return 0
+  fi
+  ensure_state_dir
+  rotate_log
+  write_state queued queued '等待持久 Termux 会话启动'
+  tmux new-session -d -s "$SESSION_NAME" \
+    "exec '$TERMUX_PREFIX/bin/bash' --noprofile --norc -lc \"exec '$TERMUX_PREFIX/bin/wuxianpi-setup' _run-install\""
+  sleep 1
+  session_running || {
+    if [ "$(sed -n '1p' "$EXIT_FILE" 2>/dev/null || true)" = 0 ]; then
+      emit_status
+      return 0
+    fi
+    write_state failed tmux '无法创建持久安装会话'
+    return 1
+  }
+  log "已启动持久 Termux 安装会话：$SESSION_NAME"
+  emit_status
+}
+
+verify_core() {
+  local failed=0 port_state
+  termux_ready || { log 'FAIL termux'; failed=1; }
+  tmux_ready || { log 'FAIL tmux'; failed=1; }
+  [ -n "$(resource_dir || true)" ] || { log 'FAIL resources'; failed=1; }
+  service_manager_ready || { log 'FAIL service-manager'; failed=1; }
+  port_state="$(pi_port_state)"
+  case "$port_state" in
+    ready) ;;
+    conflict) log 'FAIL port 8765 conflict'; failed=1 ;;
+    *) log 'FAIL pi-agent'; failed=1 ;;
+  esac
+  ubuntu_ready || { log 'FAIL ubuntu'; failed=1; }
+  [ "$failed" -eq 0 ] || return 1
+  log 'Termux、tmux、service-manager、WuxianPi 和 Ubuntu 均已就绪。'
+}
+
+repair() {
+  if session_running; then
+    log "安装会话已在运行：$SESSION_NAME"
+    emit_status
+    return 0
+  fi
+  rm -f "$EXIT_FILE"
+  start_install
+}
+
+usage() {
+  cat <<'EOF'
+Usage: wuxianpi-setup <inspect|prepare-tmux|install|status|verify|repair>
+EOF
+}
+
+case "${1:-}" in
+  inspect|status) emit_status ;;
+  prepare-tmux) prepare_tmux ;;
+  install) start_install ;;
+  verify) verify_core; emit_status ;;
+  repair) repair ;;
+  _run-install) run_install_job ;;
+  *) usage; exit 2 ;;
+esac

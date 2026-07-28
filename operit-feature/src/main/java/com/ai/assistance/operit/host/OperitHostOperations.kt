@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.host
 
 import android.content.Context
+import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import org.json.JSONObject
@@ -39,6 +40,29 @@ interface OperitHostOperations {
     suspend fun repairJobStatus(jobId: String): OperitHostOperationResult
 
     suspend fun exportDiagnostics(report: String): OperitHostOperationResult
+
+    suspend fun inspectWuxianPiSetup(): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(WuxianPiSetupContract.OPERATION_INSPECT)
+
+    fun prepareRuntimeHost(context: Context): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(WuxianPiSetupContract.OPERATION_PREPARE_RUNTIME_HOST)
+
+    fun requestTermuxHomeAccess(context: Context): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(WuxianPiSetupContract.OPERATION_REQUEST_TERMUX_HOME_ACCESS)
+
+    fun requestTermuxRunCommandPermission(context: Context): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(
+            WuxianPiSetupContract.OPERATION_REQUEST_TERMUX_RUN_COMMAND_PERMISSION
+        )
+
+    suspend fun preparePersistentTermux(): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(WuxianPiSetupContract.OPERATION_PREPARE_PERSISTENT_TERMUX)
+
+    suspend fun startWuxianPiSetup(): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(WuxianPiSetupContract.OPERATION_START_SETUP)
+
+    suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(WuxianPiSetupContract.OPERATION_SETUP_STATUS)
 }
 
 data class OperitHostOperationResult(

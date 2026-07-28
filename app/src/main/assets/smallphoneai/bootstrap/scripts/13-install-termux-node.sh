@@ -49,7 +49,7 @@ run_with_optional_timeout() {
   local timeout_seconds="$1"
   shift
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_seconds" "$@"
+    timeout --foreground "$timeout_seconds" "$@"
   else
     "$@"
   fi
@@ -57,22 +57,27 @@ run_with_optional_timeout() {
 
 install_termux_node_packages() {
   local timeout_seconds="${OPENHOUSEAI_TERMUX_APT_INSTALL_TIMEOUT_SECONDS:-${SMALLPHONEAI_TERMUX_APT_INSTALL_TIMEOUT_SECONDS:-1800}}"
-  local installer
-  if command -v pkg >/dev/null 2>&1; then
-    installer="pkg"
-  elif command -v apt >/dev/null 2>&1; then
-    installer="apt"
+  local -a installer
+  local -a installer_options=()
+  if command -v apt >/dev/null 2>&1; then
+    installer=(env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt
+      -o Dpkg::Options::=--force-confdef
+      -o Dpkg::Options::=--force-confold)
+  elif command -v pkg >/dev/null 2>&1; then
+    installer=(env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical
+      DPKG_OPTIONS="--force-confdef --force-confold" pkg)
+    installer_options=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
   else
     warn "缺少 pkg/apt，无法安装 Termux Node/npm。"
     return 1
   fi
 
-  run_logged run_with_optional_timeout "$timeout_seconds" "$installer" update -y
-  if run_logged run_with_optional_timeout "$timeout_seconds" "$installer" install -y nodejs-lts python make clang pkg-config git; then
+  run_logged run_with_optional_timeout "$timeout_seconds" "${installer[@]}" update -y "${installer_options[@]}"
+  if run_logged run_with_optional_timeout "$timeout_seconds" "${installer[@]}" install -y "${installer_options[@]}" nodejs-lts python make clang pkg-config git; then
     return 0
   fi
   warn "nodejs-lts 安装失败，fallback 到 Termux nodejs；最终仍要求 Node.js major >= 24。"
-  run_logged run_with_optional_timeout "$timeout_seconds" "$installer" install -y nodejs python make clang pkg-config git
+  run_logged run_with_optional_timeout "$timeout_seconds" "${installer[@]}" install -y "${installer_options[@]}" nodejs python make clang pkg-config git
 }
 
 configure_npm_prefix() {

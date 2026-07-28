@@ -15,25 +15,44 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.ai.assistance.operit.host.OperitHostOperationResult
 import com.ai.assistance.operit.host.OperitHostProvider
+import com.ai.assistance.operit.host.OperitHostOperations
+import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
+import com.ai.assistance.operit.host.setup.WuxianPiSetupToolExecutor
 
 /** Executes existing Operit tools plus the fixed WuxianPi repair tools exposed to Rescue Pi. */
-class RescueToolDispatcher(context: Context) {
+class RescueToolDispatcher private constructor(
+    private val appContext: Context,
+    private val toolHandler: AIToolHandler?,
+    operationsProvider: () -> OperitHostOperations,
+) {
     data class Completion(
         val content: String,
         val details: JSONObject,
         val isError: Boolean,
         val error: String?,
+        val userActionRequired: Boolean = false,
     ) {
         fun toJson(): JSONObject =
             JSONObject()
                 .put("content", content)
                 .put("details", details)
                 .put("isError", isError)
+                .put("userActionRequired", userActionRequired)
                 .put("error", error ?: JSONObject.NULL)
     }
 
-    private val appContext = context.applicationContext
-    private val toolHandler = AIToolHandler.getInstance(appContext)
+    constructor(context: Context) : this(
+        appContext = context.applicationContext,
+        toolHandler = AIToolHandler.getInstance(context.applicationContext),
+        operationsProvider = OperitHostProvider::operationsOrUnsupported,
+    )
+
+    internal constructor(
+        context: Context,
+        operationsProvider: () -> OperitHostOperations,
+    ) : this(context, null, operationsProvider)
+
+    private val setupToolExecutor = WuxianPiSetupToolExecutor(operationsProvider)
     private val httpClient =
         OkHttpClient.Builder()
             .connectTimeout(4, TimeUnit.SECONDS)
@@ -42,7 +61,7 @@ class RescueToolDispatcher(context: Context) {
             .build()
 
     init {
-        toolHandler.registerDefaultTools()
+        toolHandler?.registerDefaultTools()
     }
 
     suspend fun execute(
@@ -73,7 +92,8 @@ class RescueToolDispatcher(context: Context) {
                     }.toList(),
             )
         var finalResult: ToolResult? = null
-        toolHandler.executeToolAndStream(tool).collect { result ->
+        requireNotNull(toolHandler) { "Operit tool execution is unavailable in this dispatcher" }
+            .executeToolAndStream(tool).collect { result ->
             finalResult = result
             onUpdate(result)
         }
@@ -100,6 +120,8 @@ class RescueToolDispatcher(context: Context) {
     private suspend fun executeRepairTool(toolName: String, args: JSONObject): Completion =
         try {
             when (toolName) {
+                in WuxianPiSetupContract.toolNames ->
+                    hostCompletion(setupToolExecutor.execute(toolName, appContext))
                 "runtime_status" -> hostCompletion(OperitHostProvider.operationsOrUnsupported().runtimeStatus())
                 "connection_test" -> {
                     val url =
@@ -188,15 +210,16 @@ class RescueToolDispatcher(context: Context) {
     }
 
     private fun hostCompletion(result: OperitHostOperationResult): Completion {
-        val details = JSONObject(result.details.toString())
-        result.message.takeIf(String::isNotBlank)?.let { details.put("message", it) }
-        result.error?.takeIf(String::isNotBlank)?.let { details.put("error", it) }
+        val details = WuxianPiSetupContract.normalizedDetails(result)
+        val userActionRequired = WuxianPiSetupContract.requiresUserAction(result)
+        val isError = !result.success && !userActionRequired
         val content = details.toString()
         return Completion(
             content = content,
             details = details,
-            isError = !result.success,
-            error = result.error ?: result.message.takeIf { !result.success },
+            isError = isError,
+            error = (result.error ?: result.message.takeIf { !result.success }).takeIf { isError },
+            userActionRequired = userActionRequired,
         )
     }
 

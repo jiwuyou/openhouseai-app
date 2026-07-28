@@ -153,7 +153,7 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     )
 }
 
-internal fun serviceControlRequestForDynamicComponent(
+fun serviceControlRequestForDynamicComponent(
     component: OpenHouseComponent,
 ): ServiceControlRequest? {
     val routesToServiceControl = component.entryType == OpenHouseComponent.EntryType.SERVICE_CONTROL ||
@@ -163,7 +163,7 @@ internal fun serviceControlRequestForDynamicComponent(
     return if (routesToServiceControl) serviceControlRequestFor(component) else null
 }
 
-internal fun serviceControlRequestFor(component: OpenHouseComponent): ServiceControlRequest {
+fun serviceControlRequestFor(component: OpenHouseComponent): ServiceControlRequest {
     val referencedIds = component.serviceRefs.mapNotNull { reference ->
         ServiceManagerClient.parseServiceManagerRef(reference).takeIf { it.valid }?.serviceId
     }

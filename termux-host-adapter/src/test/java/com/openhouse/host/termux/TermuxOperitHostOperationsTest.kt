@@ -1,6 +1,7 @@
 package com.openhouse.host.termux
 
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
+import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponentParser
 import com.wuxianpi.openhouse.core.registry.RegistryCache
 import com.wuxianpi.openhouse.core.registry.RegistryCacheEntry
@@ -122,6 +123,48 @@ class TermuxOperitHostOperationsTest {
         assertEquals(0, result.exitCode)
         assertEquals(-1, result.errCode)
         assertEquals("${fixture.prefix.absolutePath}|payload", result.stdout)
+    }
+
+    @Test
+    fun setupCommandPublishesStructuredStatus() {
+        val result = setupOperationResult(
+            operation = "wuxianpi_setup_status",
+            action = "status",
+            result = OperitHostCommandResult(
+                command = "wuxianpi-setup status",
+                exitCode = 0,
+                stdout = "notice\n{\"state\":\"running\",\"tmuxReady\":true}\n",
+                stderr = "",
+                error = "",
+                timedOut = false,
+                durationMs = 3L,
+            ),
+        )
+
+        assertTrue(result.success)
+        assertEquals("running", result.details.getJSONObject("status").getString("state"))
+        assertTrue(result.details.getJSONObject("status").getBoolean("tmuxReady"))
+    }
+
+    @Test
+    fun setupCommandFailureDoesNotHideBackendError() {
+        val result = setupOperationResult(
+            operation = "prepare_persistent_termux",
+            action = "prepare-tmux",
+            result = OperitHostCommandResult(
+                command = "wuxianpi-setup prepare-tmux",
+                exitCode = 127,
+                stdout = "",
+                stderr = "tmux unavailable",
+                error = "tmux unavailable",
+                timedOut = false,
+                durationMs = 4L,
+            ),
+        )
+
+        assertFalse(result.success)
+        assertEquals(127, result.details.getInt("exitCode"))
+        assertTrue(result.error.orEmpty().contains("tmux unavailable"))
     }
 
     @Test

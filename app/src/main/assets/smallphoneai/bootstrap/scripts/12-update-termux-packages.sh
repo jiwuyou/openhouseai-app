@@ -213,7 +213,7 @@ run_with_optional_timeout() {
   local timeout_seconds="$1"
   shift
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_seconds" "$@"
+    timeout --foreground "$timeout_seconds" "$@"
   else
     "$@"
   fi
@@ -221,7 +221,11 @@ run_with_optional_timeout() {
 
 run_termux_apt_update() {
   local timeout_seconds="${OPENHOUSEAI_TERMUX_APT_UPDATE_TIMEOUT_SECONDS:-${SMALLPHONEAI_TERMUX_APT_UPDATE_TIMEOUT_SECONDS:-300}}"
-  run_logged run_with_optional_timeout "$timeout_seconds" apt \
+  run_logged run_with_optional_timeout "$timeout_seconds" env \
+    DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical \
+    apt \
+    -o Dpkg::Options::=--force-confdef \
+    -o Dpkg::Options::=--force-confold \
     -o Acquire::Retries=2 \
     -o Acquire::http::Timeout=30 \
     -o Acquire::https::Timeout=30 \
@@ -230,7 +234,11 @@ run_termux_apt_update() {
 
 run_termux_apt_install() {
   local timeout_seconds="${OPENHOUSEAI_TERMUX_APT_INSTALL_TIMEOUT_SECONDS:-${SMALLPHONEAI_TERMUX_APT_INSTALL_TIMEOUT_SECONDS:-1800}}"
-  run_logged run_with_optional_timeout "$timeout_seconds" apt \
+  run_logged run_with_optional_timeout "$timeout_seconds" env \
+    DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical \
+    apt \
+    -o Dpkg::Options::=--force-confdef \
+    -o Dpkg::Options::=--force-confold \
     -o Acquire::Retries=2 \
     -o Acquire::http::Timeout=30 \
     -o Acquire::https::Timeout=30 \
@@ -241,10 +249,16 @@ repair_termux_package_state() {
   local timeout_seconds="${OPENHOUSEAI_TERMUX_APT_REPAIR_TIMEOUT_SECONDS:-${SMALLPHONEAI_TERMUX_APT_REPAIR_TIMEOUT_SECONDS:-300}}"
   if command -v dpkg >/dev/null 2>&1; then
     log "尝试修复 dpkg 半配置状态。"
-    run_with_optional_timeout "$timeout_seconds" dpkg --configure -a || true
+    run_with_optional_timeout "$timeout_seconds" env \
+      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical \
+      dpkg --force-confdef --force-confold --configure -a || true
   fi
   if command -v apt >/dev/null 2>&1; then
-    run_with_optional_timeout "$timeout_seconds" apt \
+    run_with_optional_timeout "$timeout_seconds" env \
+      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical \
+      apt \
+      -o Dpkg::Options::=--force-confdef \
+      -o Dpkg::Options::=--force-confold \
       -o Acquire::Retries=1 \
       -o Acquire::http::Timeout=20 \
       -o Acquire::https::Timeout=20 \

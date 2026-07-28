@@ -62,6 +62,7 @@ public final class OpenHouseBundledResourceDelivery {
         GUIDE_NAME,
         "bootstrap/bootstrap.sh",
         "bootstrap/scripts/00-check-termux.sh",
+        "bootstrap/scripts/wuxianpi-setup",
         "bootstrap/scripts/50-install-runtime-components.sh",
         "bootstrap/scripts/60-start-smallphone.sh",
         "maintainer/install-runtime-components.sh",

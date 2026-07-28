@@ -350,6 +350,7 @@ public class OpenHouseBundledResourceDeliveryTest {
         files.put("smallphoneai/bootstrap/bootstrap.sh", bytes("bootstrap"));
         files.put("smallphoneai/bootstrap/.gitignore", bytes("ignore"));
         files.put("smallphoneai/bootstrap/scripts/00-check-termux.sh", bytes("check"));
+        files.put("smallphoneai/bootstrap/scripts/wuxianpi-setup", bytes("setup"));
         files.put("smallphoneai/bootstrap/scripts/50-install-runtime-components.sh", bytes("components"));
         files.put("smallphoneai/bootstrap/scripts/60-start-smallphone.sh", bytes("start"));
         files.put("maintainer/install-runtime-components.sh", bytes("maintainer"));

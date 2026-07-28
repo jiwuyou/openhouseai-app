@@ -24,6 +24,11 @@ import org.json.JSONObject
 
 /** Operit repair bridge for the Termux-embedded APK. */
 class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
+    private companion object {
+        const val PREPARE_HOST_ACTION = "com.termux.WUXIANPI_PREPARE_HOST"
+        const val SETUP_COMMAND = "/data/data/com.termux/files/usr/bin/wuxianpi-setup"
+    }
+
     private val appContext = context.applicationContext
     private val host = TermuxOpenHouseHost(appContext)
     private val runtimeLayout = TermuxRuntimeLayout.defaults()
@@ -98,6 +103,64 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         success("export_logs", JSONObject().put("path", output.absolutePath))
     }.getOrElse { failure("export_logs", it.message ?: "unable to write diagnostics") }
 
+    override suspend fun inspectWuxianPiSetup(): OperitHostOperationResult =
+        setupCommand("inspect_wuxianpi_setup", "inspect", 15_000L)
+
+    override fun prepareRuntimeHost(context: Context): OperitHostOperationResult = runCatching {
+        context.startActivity(
+            Intent(PREPARE_HOST_ACTION)
+                .setPackage(context.packageName)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        success(
+            "prepare_runtime_host",
+            JSONObject()
+                .put("action", PREPARE_HOST_ACTION)
+                .put("host", "embedded-termux")
+                .put("launched", true),
+        )
+    }.getOrElse { failure("prepare_runtime_host", it.message ?: "unable to launch host preparation") }
+
+    override fun requestTermuxHomeAccess(context: Context): OperitHostOperationResult =
+        embeddedPermissionNotRequired("request_termux_home_access", "Termux Home is directly accessible")
+
+    override fun requestTermuxRunCommandPermission(context: Context): OperitHostOperationResult =
+        embeddedPermissionNotRequired(
+            "request_termux_run_command_permission",
+            "RUN_COMMAND permission is not required inside the embedded Termux host",
+        )
+
+    override suspend fun preparePersistentTermux(): OperitHostOperationResult =
+        setupCommand("prepare_persistent_termux", "prepare-tmux", 30 * 60_000L)
+
+    override suspend fun startWuxianPiSetup(): OperitHostOperationResult =
+        setupCommand("start_wuxianpi_setup", "install", 30 * 60_000L)
+
+    override suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
+        setupCommand("wuxianpi_setup_status", "status", 15_000L)
+
+    private suspend fun setupCommand(
+        operation: String,
+        action: String,
+        timeoutMs: Long,
+    ): OperitHostOperationResult = withContext(Dispatchers.IO) {
+        val result = commandExecutor.execute(
+            "$SETUP_COMMAND $action",
+            HostTerminalTarget.TERMUX,
+            timeoutMs,
+        )
+        setupOperationResult(operation, action, result)
+    }
+
+    private fun embeddedPermissionNotRequired(operation: String, reason: String) = success(
+        operation,
+        JSONObject()
+            .put("host", "embedded-termux")
+            .put("skipped", true)
+            .put("required", false)
+            .put("reason", reason),
+    )
+
     private fun serviceAction(
         action: ServiceAction,
         operation: String,
@@ -150,6 +213,31 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
     private fun com.wuxianpi.openhouse.core.HostActionResult.toOperationResult(operation: String) =
         if (isSuccess()) success(operation, JSONObject().put("message", message))
         else failure(operation, message)
+}
+
+internal fun setupOperationResult(
+    operation: String,
+    action: String,
+    result: OperitHostCommandResult,
+): OperitHostOperationResult {
+    val details = JSONObject()
+        .put("operation", operation)
+        .put("action", action)
+        .put("exitCode", result.exitCode)
+        .put("timedOut", result.timedOut)
+        .put("stdout", result.stdout.take(256 * 1024))
+        .put("stderr", result.stderr.take(64 * 1024))
+    result.stdout.lineSequence()
+        .map(String::trim)
+        .filter { it.startsWith("{") && it.endsWith("}") }
+        .lastOrNull()
+        ?.let { json -> runCatching { details.put("status", JSONObject(json)) } }
+    return if (result.isSuccess) {
+        OperitHostOperationResult(true, details, operation, null)
+    } else {
+        val message = result.error.ifBlank { result.stderr.ifBlank { result.stdout.ifBlank { "$action failed" } } }
+        OperitHostOperationResult(false, details, message, message)
+    }
 }
 
 internal data class TermuxRuntimeLayout(
