@@ -7842,4 +7842,14 @@
     <string name="ai_message_use_package_failed">use_package call failed: %1$s</string>
     <string name="ai_message_use_package_empty">use_package returned empty.</string>
     <string name="ai_message_package_warmup_item">%1$d. Package %2$s (hit %3$d times)</string>
+    <string name="wuxianpi_action_accessibility">WuxianPi action card</string>
+    <string name="wuxianpi_action_termux_home_title">Allow Termux file access</string>
+    <string name="wuxianpi_action_termux_home_description">This opens the system file picker. Choose Termux from the sidebar, select the Termux Home root, then tap Use this folder.</string>
+    <string name="wuxianpi_action_termux_home_button">Open file access</string>
+    <string name="wuxianpi_action_run_command_title">Allow Termux commands</string>
+    <string name="wuxianpi_action_run_command_description">This opens the Android permission prompt. After approval, WuxianPi sends a test command to confirm the connection.</string>
+    <string name="wuxianpi_action_run_command_button">Open permission prompt</string>
+    <string name="wuxianpi_action_opened">The system page is open. Return to this conversation when finished.</string>
+    <string name="wuxianpi_action_completed">Completed</string>
+    <string name="wuxianpi_action_failed">Unable to open the system action</string>
 </resources>

@@ -17,7 +17,11 @@ class RescueToolDispatcherSetupTest {
     @Test
     fun preservesStructuredDetailsAndDoesNotTreatUserActionAsFailure() = runBlocking {
         val host = UserActionHostOperations()
-        val dispatcher = RescueToolDispatcher(ContextWrapper(null)) { host }
+        val dispatcher =
+            RescueToolDispatcher(
+                context = ContextWrapper(null),
+                operationsProvider = { host },
+            )
 
         val completion =
             dispatcher.execute(
@@ -33,6 +37,33 @@ class RescueToolDispatcherSetupTest {
         assertNull(completion.error)
         assertEquals("termux-home:", completion.details.getJSONObject("request").getString("root"))
         assertTrue(completion.toJson().getBoolean("userActionRequired"))
+    }
+
+    @Test
+    fun defersNativeUserActionUntilTheChatCardIsClicked() = runBlocking {
+        val host = UserActionHostOperations()
+        val dispatcher =
+            RescueToolDispatcher(
+                context = ContextWrapper(null),
+                operationsProvider = { host },
+                deferUserActions = true,
+            )
+
+        val completion =
+            dispatcher.execute(
+                catalog = RescueToolCatalog.default(),
+                toolName = WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
+                args = JSONObject(),
+                onUpdate = {},
+            )
+
+        assertEquals(0, host.requestCount)
+        assertTrue(completion.userActionRequired)
+        assertFalse(completion.isError)
+        assertEquals(
+            WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
+            completion.details.getString(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION),
+        )
     }
 
     private class UserActionHostOperations : TestOperitHostOperations() {

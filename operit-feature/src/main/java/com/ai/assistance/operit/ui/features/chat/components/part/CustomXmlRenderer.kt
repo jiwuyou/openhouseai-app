@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.host.OperitHostProvider
+import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import com.ai.assistance.operit.ui.common.animations.SimpleAnimatedVisibility
 import com.ai.assistance.operit.ui.common.markdown.DefaultXmlRenderer
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
@@ -62,7 +64,7 @@ class CustomXmlRenderer(
 ) : XmlContentRenderer {
     // 定义渲染器能够处理的内置标签集合
     private val builtInTags =
-            setOf("think", "thinking", "search", "tool", "status", "tool_result", "html", "mood", "font", "details", "detail", "meta")
+            setOf("think", "thinking", "search", "tool", "status", "tool_result", "wuxianpi_action", "html", "mood", "font", "details", "detail", "meta")
 
     private data class ToolRequestRenderState(
         val rawToolName: String,
@@ -96,6 +98,7 @@ class CustomXmlRenderer(
         val accessibilityDesc = when (tagName) {
             "tool" -> stringResource(R.string.tool_call_block)
             "tool_result" -> stringResource(R.string.tool_result_block)
+            "wuxianpi_action" -> stringResource(R.string.wuxianpi_action_accessibility)
             "think", "thinking" -> stringResource(R.string.thinking_process_block)
             "search" -> stringResource(R.string.search_content_block)
             "status" -> stringResource(R.string.status_info_block)
@@ -186,6 +189,7 @@ class CustomXmlRenderer(
             "search" -> renderSearchContent(trimmedContent, Modifier, textColor)
             "tool" -> renderToolRequest(trimmedContent, Modifier, textColor, xmlStream)
             "tool_result" -> renderToolResult(trimmedContent, Modifier, textColor)
+            "wuxianpi_action" -> renderWuxianPiAction(trimmedContent, Modifier)
             "status" -> renderStatus(trimmedContent, Modifier, textColor)
             "html" -> renderHtmlContent(trimmedContent, Modifier, textColor)
             "mood" -> renderMoodTag(trimmedContent, Modifier, textColor)
@@ -927,6 +931,102 @@ class CustomXmlRenderer(
                     modifier = modifier,
                     enableDialog = enableDialogs  // 传递弹窗启用状态
             )
+        }
+    }
+
+    @Composable
+    private fun renderWuxianPiAction(content: String, modifier: Modifier) {
+        val context = LocalContext.current
+        val operation =
+            Regex("""\boperation\s*=\s*[\"']([^\"']+)[\"']""")
+                .find(content)
+                ?.groupValues
+                ?.getOrNull(1)
+                .orEmpty()
+        val spec =
+            when (operation) {
+                WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS ->
+                    Triple(
+                        R.string.wuxianpi_action_termux_home_title,
+                        R.string.wuxianpi_action_termux_home_description,
+                        R.string.wuxianpi_action_termux_home_button,
+                    )
+                WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION ->
+                    Triple(
+                        R.string.wuxianpi_action_run_command_title,
+                        R.string.wuxianpi_action_run_command_description,
+                        R.string.wuxianpi_action_run_command_button,
+                    )
+                else -> null
+            }
+        if (spec == null) return
+
+        var feedback by remember(operation) { mutableStateOf<String?>(null) }
+        var completed by remember(operation) { mutableStateOf(false) }
+
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            ),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = stringResource(spec.first),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = stringResource(spec.second),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                feedback?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (completed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                    )
+                }
+                OutlinedButton(
+                    enabled = !completed,
+                    onClick = {
+                        val result = runCatching {
+                            val operations = OperitHostProvider.operationsOrUnsupported()
+                            when (operation) {
+                                WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS ->
+                                    operations.requestTermuxHomeAccess(context)
+                                WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION ->
+                                    operations.requestTermuxRunCommandPermission(context)
+                                else -> error("Unsupported WuxianPi action: $operation")
+                            }
+                        }.getOrElse { error ->
+                            feedback = error.message ?: context.getString(R.string.wuxianpi_action_failed)
+                            return@OutlinedButton
+                        }
+                        if (!result.success) {
+                            feedback = result.error ?: result.message.ifBlank {
+                                context.getString(R.string.wuxianpi_action_failed)
+                            }
+                        } else if (WuxianPiSetupContract.requiresUserAction(result)) {
+                            feedback = context.getString(R.string.wuxianpi_action_opened)
+                        } else {
+                            completed = true
+                            feedback = context.getString(R.string.wuxianpi_action_completed)
+                        }
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (completed) stringResource(R.string.wuxianpi_action_completed) else stringResource(spec.third))
+                }
+            }
         }
     }
 

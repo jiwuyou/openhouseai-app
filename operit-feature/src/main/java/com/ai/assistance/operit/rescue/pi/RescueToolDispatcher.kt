@@ -24,6 +24,7 @@ class RescueToolDispatcher private constructor(
     private val appContext: Context,
     private val toolHandler: AIToolHandler?,
     operationsProvider: () -> OperitHostOperations,
+    private val deferUserActions: Boolean,
 ) {
     data class Completion(
         val content: String,
@@ -45,12 +46,14 @@ class RescueToolDispatcher private constructor(
         appContext = context.applicationContext,
         toolHandler = AIToolHandler.getInstance(context.applicationContext),
         operationsProvider = OperitHostProvider::operationsOrUnsupported,
+        deferUserActions = context.packageName == NATIVE_APPLICATION_ID,
     )
 
     internal constructor(
         context: Context,
         operationsProvider: () -> OperitHostOperations,
-    ) : this(context, null, operationsProvider)
+        deferUserActions: Boolean = false,
+    ) : this(context, null, operationsProvider, deferUserActions)
 
     private val setupToolExecutor = WuxianPiSetupToolExecutor(operationsProvider)
     private val httpClient =
@@ -121,7 +124,11 @@ class RescueToolDispatcher private constructor(
         try {
             when (toolName) {
                 in WuxianPiSetupContract.toolNames ->
-                    hostCompletion(setupToolExecutor.execute(toolName, appContext))
+                    if (deferUserActions && toolName in DEFERRED_USER_ACTION_TOOLS) {
+                        deferredUserAction(toolName)
+                    } else {
+                        hostCompletion(setupToolExecutor.execute(toolName, appContext))
+                    }
                 "runtime_status" -> hostCompletion(OperitHostProvider.operationsOrUnsupported().runtimeStatus())
                 "connection_test" -> {
                     val url =
@@ -226,6 +233,25 @@ class RescueToolDispatcher private constructor(
     private fun success(details: JSONObject): Completion =
         Completion(details.toString(), details, isError = false, error = null)
 
+    private fun deferredUserAction(toolName: String): Completion {
+        val message = "请先阅读说明，然后点击聊天中的操作卡片继续。"
+        val details =
+            JSONObject()
+                .put(WuxianPiSetupContract.DETAIL_OPERATION, toolName)
+                .put(WuxianPiSetupContract.DETAIL_SUPPORTED, true)
+                .put(WuxianPiSetupContract.DETAIL_SUCCESS, false)
+                .put(WuxianPiSetupContract.DETAIL_USER_ACTION_REQUIRED, true)
+                .put(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION, toolName)
+                .put("message", message)
+        return Completion(
+            content = message,
+            details = details,
+            isError = false,
+            error = null,
+            userActionRequired = true,
+        )
+    }
+
     private fun error(message: String, failure: Throwable? = null): Completion {
         val details = JSONObject().put("message", message)
         failure?.javaClass?.name?.let { details.put("exception", it) }
@@ -240,6 +266,12 @@ class RescueToolDispatcher private constructor(
         }
 
     companion object {
+        private const val NATIVE_APPLICATION_ID = "com.wuxianpi"
+        private val DEFERRED_USER_ACTION_TOOLS =
+            setOf(
+                WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
+                WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION,
+            )
         private const val DEFAULT_RUNTIME_HEALTH_URL = "http://127.0.0.1:8765/health"
         private const val PAYLOAD_ASSET_PATH = "openhouse-runtime/runtime-aarch64.tgz"
         private const val PAYLOAD_FILE_NAME = "runtime-aarch64.tgz"

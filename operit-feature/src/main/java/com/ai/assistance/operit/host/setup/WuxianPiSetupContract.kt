@@ -30,6 +30,7 @@ object WuxianPiSetupContract {
     const val DETAIL_SUPPORTED = "supported"
     const val DETAIL_SUCCESS = "success"
     const val DETAIL_USER_ACTION_REQUIRED = "userActionRequired"
+    const val DETAIL_DEFERRED_USER_ACTION = "deferredUserAction"
 
     val toolNames: Set<String> =
         linkedSetOf(

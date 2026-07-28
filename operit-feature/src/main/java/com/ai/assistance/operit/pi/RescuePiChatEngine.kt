@@ -7,6 +7,7 @@ import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.model.ToolResult
+import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import com.ai.assistance.operit.rescue.pi.RescueToolCatalog
 import com.ai.assistance.operit.rescue.pi.RescueToolDispatcher
 import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
@@ -737,7 +738,20 @@ Keep execution environments explicit. execute_android_command is only for Androi
                 ),
                 error = event.optString("error").takeIf { it.isNotBlank() },
             )
-        return "\n${ConversationMarkupManager.formatToolResultForMessage(result)}\n"
+        val action =
+            event.optJSONObject("details")
+                ?.optString(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION)
+                ?.takeIf { it.isNotBlank() }
+        return buildString {
+            append('\n')
+            append(ConversationMarkupManager.formatToolResultForMessage(result))
+            append('\n')
+            if (action != null) {
+                append("<wuxianpi_action operation=\"")
+                    .append(escapeXml(action))
+                    .append("\"></wuxianpi_action>\n")
+            }
+        }
     }
 
     private fun parseJsonObject(raw: String, fieldName: String): JSONObject {

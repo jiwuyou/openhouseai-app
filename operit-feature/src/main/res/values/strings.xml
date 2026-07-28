@@ -7829,4 +7829,14 @@
     <string name="package_conflict_delete_source">删除源文件</string>
     <string name="package_conflict_delete_success">冲突包源文件已删除</string>
     <string name="package_conflict_delete_failed">删除冲突包源文件失败</string>
+    <string name="wuxianpi_action_accessibility">WuxianPi 操作卡片</string>
+    <string name="wuxianpi_action_termux_home_title">授权 Termux 文件</string>
+    <string name="wuxianpi_action_termux_home_description">点击后会打开系统文件选择器。请从侧边栏进入 Termux，选择 Termux Home 根目录，然后点击“使用此文件夹”。</string>
+    <string name="wuxianpi_action_termux_home_button">打开文件授权</string>
+    <string name="wuxianpi_action_run_command_title">允许调用 Termux 命令</string>
+    <string name="wuxianpi_action_run_command_description">点击后会打开 Android 权限页面。允许后，WuxianPi 会发送一条测试命令确认连接。</string>
+    <string name="wuxianpi_action_run_command_button">打开权限请求</string>
+    <string name="wuxianpi_action_opened">系统页面已打开，完成后返回此对话。</string>
+    <string name="wuxianpi_action_completed">已完成</string>
+    <string name="wuxianpi_action_failed">无法打开系统操作</string>
 </resources>
