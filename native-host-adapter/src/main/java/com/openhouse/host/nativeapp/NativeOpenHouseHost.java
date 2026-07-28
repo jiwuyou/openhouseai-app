@@ -41,7 +41,6 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
     public static final String DEFAULT_PI_RUNTIME_URL = "http://127.0.0.1:8765";
 
     private static final String RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND";
-    private static final String WUXIANPI_HOST_ACTION = "com.termux.SMALLPHONE_HOST";
     private static final String RUN_COMMAND_SERVICE = "com.termux.app.RunCommandService";
     private static final String EXTRA_COMMAND_PATH = "com.termux.RUN_COMMAND_PATH";
     private static final String EXTRA_ARGUMENTS = "com.termux.RUN_COMMAND_ARGUMENTS";
@@ -73,17 +72,16 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
     }
 
     @Override public HostCapabilities capabilities() {
-        boolean termuxInstalled = isWuxianPiHostInstalled();
+        boolean termuxInstalled = isPackageInstalled(TERMUX_PACKAGE);
+        boolean runCommandAvailable = isRunCommandAvailable();
         return new HostCapabilities(true, true, true, true, termuxInstalled, true,
-            termuxInstalled, termuxInstalled, false);
+            runCommandAvailable, termuxInstalled, false);
     }
 
     @Override public SetupState setupState() {
-        if (!isWuxianPiHostInstalled()) {
+        if (!isPackageInstalled(TERMUX_PACKAGE)) {
             return new SetupState(SetupState.Status.NOT_CONFIGURED, 0,
-                isPackageInstalled(TERMUX_PACKAGE)
-                    ? "Installed com.termux is not WuxianPi All-in-One"
-                    : "WuxianPi All-in-One host is not installed");
+                "Termux package com.termux is not installed");
         }
         if (findInTermuxHome(".config/openhouseai/service-manager/config.json") == null) {
             return new SetupState(SetupState.Status.NOT_CONFIGURED, 50,
@@ -128,11 +126,9 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
 
     @Override public HostActionResult openTerminal() {
         try {
-            if (!isWuxianPiHostInstalled()) {
-                String message = isPackageInstalled(TERMUX_PACKAGE)
-                    ? "The installed com.termux package is not WuxianPi All-in-One; uninstall it before installing the WuxianPi host because the signatures conflict"
-                    : "WuxianPi All-in-One host is not installed";
-                return new HostActionResult(HostActionResult.Status.USER_ACTION_REQUIRED, message);
+            if (!isPackageInstalled(TERMUX_PACKAGE)) {
+                return new HostActionResult(HostActionResult.Status.USER_ACTION_REQUIRED,
+                    "Termux package com.termux is not installed");
             }
             Intent intent = appContext.getPackageManager().getLaunchIntentForPackage(TERMUX_PACKAGE);
             if (intent == null) {
@@ -181,9 +177,11 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
 
     private ControlPlaneResult submitTermuxScript(String assetPath, String label,
                                                    ControlPlaneResult.Status successStatus) {
-        if (!isWuxianPiHostInstalled()) {
+        if (!isRunCommandAvailable()) {
             return new ControlPlaneResult(ControlPlaneResult.Status.USER_ACTION_REQUIRED,
-                "WuxianPi All-in-One host is not installed or incompatible");
+                isPackageInstalled(TERMUX_PACKAGE)
+                    ? "Installed Termux does not expose com.termux.RUN_COMMAND"
+                    : "Termux package com.termux is not installed");
         }
         try {
             Intent intent = new Intent(RUN_COMMAND_ACTION)
@@ -205,9 +203,9 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
         }
     }
 
-    private boolean isWuxianPiHostInstalled() {
-        Intent hostIntent = new Intent(WUXIANPI_HOST_ACTION).setPackage(TERMUX_PACKAGE);
-        return appContext.getPackageManager().resolveActivity(hostIntent, 0) != null;
+    private boolean isRunCommandAvailable() {
+        Intent commandIntent = new Intent(RUN_COMMAND_ACTION).setPackage(TERMUX_PACKAGE);
+        return appContext.getPackageManager().resolveService(commandIntent, 0) != null;
     }
 
     @SuppressWarnings("deprecation")

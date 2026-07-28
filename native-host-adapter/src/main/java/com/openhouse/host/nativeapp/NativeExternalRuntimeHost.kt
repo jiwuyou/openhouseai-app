@@ -21,27 +21,32 @@ import org.json.JSONObject
 internal const val WUXIANPI_ALL_IN_ONE_PACKAGE = "com.termux"
 internal const val WUXIANPI_HOST_ACTION = "com.termux.SMALLPHONE_HOST"
 internal const val WUXIANPI_PREPARE_HOST_ACTION = "com.termux.WUXIANPI_PREPARE_HOST"
+internal const val TERMUX_RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND"
 internal const val TERMUX_DOCUMENTS_AUTHORITY = "com.termux.documents"
 internal const val TERMUX_HOME_TREE_ID = "termux-home:"
 
 internal enum class NativeExternalHostState {
-    READY,
+    ALL_IN_ONE,
+    EXTERNAL_TERMUX,
     ABSENT,
-    INCOMPATIBLE_TERMUX,
 }
 
 internal data class NativeExternalHostProbe(
     val state: NativeExternalHostState,
     val hostComponent: ComponentName? = null,
     val preparationComponent: ComponentName? = null,
+    val runCommandComponent: ComponentName? = null,
+    val documentsProviderAvailable: Boolean = false,
 ) {
+    val runCommandAvailable: Boolean
+        get() = runCommandComponent != null
+
     val message: String
         get() = when (state) {
-            NativeExternalHostState.READY -> "WuxianPi All-in-One host is available"
+            NativeExternalHostState.ALL_IN_ONE -> "WuxianPi All-in-One host is available"
+            NativeExternalHostState.EXTERNAL_TERMUX ->
+                "External Termux is installed; SAF and RUN_COMMAND can be configured"
             NativeExternalHostState.ABSENT -> "WuxianPi All-in-One host is not installed"
-            NativeExternalHostState.INCOMPATIBLE_TERMUX ->
-                "An incompatible or official Termux package uses com.termux. " +
-                    "Uninstall it before installing WuxianPi All-in-One because the signatures conflict."
         }
 }
 
@@ -49,10 +54,16 @@ internal fun classifyNativeExternalHost(
     packageInstalled: Boolean,
     hostActionResolved: Boolean,
 ): NativeExternalHostState = when {
-    hostActionResolved -> NativeExternalHostState.READY
-    packageInstalled -> NativeExternalHostState.INCOMPATIBLE_TERMUX
+    hostActionResolved -> NativeExternalHostState.ALL_IN_ONE
+    packageInstalled -> NativeExternalHostState.EXTERNAL_TERMUX
     else -> NativeExternalHostState.ABSENT
 }
+
+internal fun canRequestTermuxHomeAccess(probe: NativeExternalHostProbe): Boolean =
+    probe.documentsProviderAvailable
+
+internal fun canUseTermuxRunCommand(probe: NativeExternalHostProbe): Boolean =
+    probe.runCommandAvailable
 
 internal object NativeExternalHostInspector {
     fun inspect(context: Context): NativeExternalHostProbe {
@@ -60,6 +71,7 @@ internal object NativeExternalHostInspector {
         val packageInstalled = packageManager.hasPackage(WUXIANPI_ALL_IN_ONE_PACKAGE)
         val hostComponent = packageManager.resolveActivityComponent(WUXIANPI_HOST_ACTION)
         val preparationComponent = packageManager.resolveActivityComponent(WUXIANPI_PREPARE_HOST_ACTION)
+        val runCommandComponent = packageManager.resolveServiceComponent(TERMUX_RUN_COMMAND_ACTION)
         return NativeExternalHostProbe(
             state = classifyNativeExternalHost(
                 packageInstalled = packageInstalled,
@@ -67,6 +79,8 @@ internal object NativeExternalHostInspector {
             ),
             hostComponent = hostComponent,
             preparationComponent = preparationComponent,
+            runCommandComponent = runCommandComponent,
+            documentsProviderAvailable = packageManager.hasDocumentsProvider(TERMUX_DOCUMENTS_AUTHORITY),
         )
     }
 
@@ -102,6 +116,26 @@ internal object NativeExternalHostInspector {
         val activity = info?.activityInfo ?: return null
         return ComponentName(activity.packageName, activity.name)
     }
+
+    @Suppress("DEPRECATION")
+    private fun PackageManager.resolveServiceComponent(action: String): ComponentName? {
+        val intent = Intent(action).setPackage(WUXIANPI_ALL_IN_ONE_PACKAGE)
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            resolveService(intent, PackageManager.ResolveInfoFlags.of(0L))
+        } else {
+            resolveService(intent, 0)
+        }
+        val service = info?.serviceInfo ?: return null
+        return ComponentName(service.packageName, service.name)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun PackageManager.hasDocumentsProvider(authority: String): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            resolveContentProvider(authority, PackageManager.ComponentInfoFlags.of(0L)) != null
+        } else {
+            resolveContentProvider(authority, 0) != null
+        }
 }
 
 internal fun isValidatedTermuxHomeTree(uri: Uri?): Boolean {
@@ -221,5 +255,8 @@ internal fun JSONObject.putHostProbe(probe: NativeExternalHostProbe): JSONObject
     put("hostPackage", WUXIANPI_ALL_IN_ONE_PACKAGE)
     put("hostAction", WUXIANPI_HOST_ACTION)
     put("preparationAction", WUXIANPI_PREPARE_HOST_ACTION)
+    put("allInOneHostAvailable", probe.hostComponent != null)
+    put("documentsProviderAvailable", probe.documentsProviderAvailable)
+    put("runCommandAvailable", probe.runCommandAvailable)
     put("hostMessage", probe.message)
 }

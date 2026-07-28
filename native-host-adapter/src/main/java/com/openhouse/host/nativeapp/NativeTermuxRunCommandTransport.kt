@@ -243,9 +243,15 @@ private class AndroidNativeTermuxRawCommandTransport(
 
     private fun ensureAvailable() {
         val host = NativeExternalHostInspector.inspect(appContext)
-        if (host.state != NativeExternalHostState.READY) {
-            val exitCode = if (host.state == NativeExternalHostState.ABSENT) 127 else 126
-            throw NativeTermuxTransportException(exitCode, host.message)
+        if (!canUseTermuxRunCommand(host)) {
+            val missingPackage = host.state == NativeExternalHostState.ABSENT
+            val exitCode = if (missingPackage) 127 else 126
+            val message = if (missingPackage) {
+                "Termux package $termuxPackage is not installed"
+            } else {
+                "Installed Termux does not expose $TERMUX_RUN_COMMAND_ACTION"
+            }
+            throw NativeTermuxTransportException(exitCode, message)
         }
         val permission = "$termuxPackage.permission.RUN_COMMAND"
         if (appContext.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {

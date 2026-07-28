@@ -28,7 +28,7 @@ class NativeRuntimeHostPreparationActivity : Activity() {
         setContentView(status)
         val probe = NativeExternalHostInspector.inspect(this)
         when (probe.state) {
-            NativeExternalHostState.READY -> {
+            NativeExternalHostState.ALL_IN_ONE -> {
                 if (NativeExternalHostInspector.launchPreparation(this, probe)) {
                     status.text = "WuxianPi All-in-One preparation opened."
                     finish()
@@ -36,7 +36,10 @@ class NativeRuntimeHostPreparationActivity : Activity() {
                     status.text = "Unable to open WuxianPi All-in-One preparation."
                 }
             }
-            NativeExternalHostState.INCOMPATIBLE_TERMUX -> status.text = probe.message
+            NativeExternalHostState.EXTERNAL_TERMUX -> {
+                status.text = "External Termux is available. Continue with SAF and RUN_COMMAND setup."
+                finish()
+            }
             NativeExternalHostState.ABSENT -> downloadAllInOne()
         }
     }

@@ -31,16 +31,16 @@ class NativeOperitHostOperationsTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
-    fun hostDetectionRequiresWuxianPiHostAction() {
+    fun hostDetectionSeparatesAllInOneFromExternalTermux() {
         assertEquals(
-            NativeExternalHostState.READY,
+            NativeExternalHostState.ALL_IN_ONE,
             classifyNativeExternalHost(
                 packageInstalled = true,
                 hostActionResolved = true,
             ),
         )
         assertEquals(
-            NativeExternalHostState.INCOMPATIBLE_TERMUX,
+            NativeExternalHostState.EXTERNAL_TERMUX,
             classifyNativeExternalHost(
                 packageInstalled = true,
                 hostActionResolved = false,
@@ -53,6 +53,26 @@ class NativeOperitHostOperationsTest {
                 hostActionResolved = false,
             ),
         )
+    }
+
+    @Test
+    fun externalTermuxCapabilitiesDoNotDependOnAllInOneHostAction() {
+        val probe = NativeExternalHostProbe(
+            state = NativeExternalHostState.EXTERNAL_TERMUX,
+            runCommandComponent = android.content.ComponentName(
+                "com.termux",
+                "com.termux.app.RunCommandService",
+            ),
+            documentsProviderAvailable = true,
+        )
+
+        assertTrue(canRequestTermuxHomeAccess(probe))
+        assertTrue(canUseTermuxRunCommand(probe))
+        val details = org.json.JSONObject().putHostProbe(probe)
+        assertEquals("external_termux", details.getString("hostState"))
+        assertFalse(details.getBoolean("allInOneHostAvailable"))
+        assertTrue(details.getBoolean("documentsProviderAvailable"))
+        assertTrue(details.getBoolean("runCommandAvailable"))
     }
 
     @Test

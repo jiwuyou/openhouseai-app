@@ -14,6 +14,9 @@
         <intent>
             <action android:name="com.termux.WUXIANPI_PREPARE_HOST" />
         </intent>
+        <intent>
+            <action android:name="com.termux.RUN_COMMAND" />
+        </intent>
         <provider android:authorities="com.termux.documents" />
     </queries>
 

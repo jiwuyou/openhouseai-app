@@ -75,7 +75,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
                 appContext.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) ==
                     PackageManager.PERMISSION_GRANTED,
             )
-        if (probe.state != NativeExternalHostState.READY ||
+        if (!canUseTermuxRunCommand(probe) ||
             appContext.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) !=
             PackageManager.PERMISSION_GRANTED
         ) {
@@ -88,7 +88,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         val probe = NativeExternalHostInspector.inspect(context)
         val details = JSONObject().putHostProbe(probe)
         return when (probe.state) {
-            NativeExternalHostState.READY -> runCatching {
+            NativeExternalHostState.ALL_IN_ONE -> runCatching {
                 check(NativeExternalHostInspector.launchPreparation(context, probe)) {
                     "WuxianPi All-in-One does not expose $WUXIANPI_PREPARE_HOST_ACTION"
                 }
@@ -103,16 +103,21 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
                 "prepare_runtime_host",
                 details.put("downloadRequired", true),
             )
-            NativeExternalHostState.INCOMPATIBLE_TERMUX ->
-                failure("prepare_runtime_host", probe.message, details)
+            NativeExternalHostState.EXTERNAL_TERMUX ->
+                success("prepare_runtime_host", details.put("externalTermux", true))
         }
     }
 
     override fun requestTermuxHomeAccess(context: Context): OperitHostOperationResult {
         val probe = NativeExternalHostInspector.inspect(context)
         val details = JSONObject().putHostProbe(probe)
-        if (probe.state != NativeExternalHostState.READY) {
-            return failure("request_termux_home_access", probe.message, details)
+        if (!canRequestTermuxHomeAccess(probe)) {
+            val message = if (probe.state == NativeExternalHostState.ABSENT) {
+                "Termux package com.termux is not installed"
+            } else {
+                "Installed Termux does not expose $TERMUX_DOCUMENTS_AUTHORITY"
+            }
+            return failure("request_termux_home_access", message, details)
         }
         if (hasTermuxHomeAccess()) {
             return success("request_termux_home_access", details.put("alreadyGranted", true))
@@ -128,8 +133,13 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     override fun requestTermuxRunCommandPermission(context: Context): OperitHostOperationResult {
         val probe = NativeExternalHostInspector.inspect(context)
         val details = JSONObject().putHostProbe(probe)
-        if (probe.state != NativeExternalHostState.READY) {
-            return failure("request_termux_run_command_permission", probe.message, details)
+        if (!canUseTermuxRunCommand(probe)) {
+            val message = if (probe.state == NativeExternalHostState.ABSENT) {
+                "Termux package com.termux is not installed"
+            } else {
+                "Installed Termux does not expose $TERMUX_RUN_COMMAND_ACTION"
+            }
+            return failure("request_termux_run_command_permission", message, details)
         }
         return launchCoordinator(
             context,
@@ -222,8 +232,13 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     ): OperitHostOperationResult {
         val probe = NativeExternalHostInspector.inspect(appContext)
         baseDetails.putHostProbe(probe).put("setupCommand", "wuxianpi-setup $subcommand")
-        if (probe.state != NativeExternalHostState.READY) {
-            return failure(operation, probe.message, baseDetails)
+        if (!canUseTermuxRunCommand(probe)) {
+            val message = if (probe.state == NativeExternalHostState.ABSENT) {
+                "Termux package com.termux is not installed"
+            } else {
+                "Installed Termux does not expose $TERMUX_RUN_COMMAND_ACTION"
+            }
+            return failure(operation, message, baseDetails)
         }
         val result = externalTermuxExecutor.execute(
             "wuxianpi-setup $subcommand",
