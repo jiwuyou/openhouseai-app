@@ -24,6 +24,8 @@ internal const val WUXIANPI_PREPARE_HOST_ACTION = "com.termux.WUXIANPI_PREPARE_H
 internal const val TERMUX_RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND"
 internal const val TERMUX_DOCUMENTS_AUTHORITY = "com.termux.documents"
 internal const val TERMUX_HOME_TREE_ID = "termux-home:"
+internal const val STANDARD_TERMUX_HOME_TREE_ID = "/data/data/com.termux/files/home"
+internal const val STANDARD_TERMUX_HOME_TREE_ID_USER = "/data/user/0/com.termux/files/home"
 
 internal enum class NativeExternalHostState {
     ALL_IN_ONE,
@@ -142,7 +144,14 @@ internal fun isValidatedTermuxHomeTree(uri: Uri?): Boolean {
     if (uri == null || uri.scheme != "content" || uri.authority != TERMUX_DOCUMENTS_AUTHORITY) return false
     val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
         ?: extractTreeDocumentId(uri.toString())
-    return treeId == TERMUX_HOME_TREE_ID
+    return isTermuxHomeTreeId(treeId)
+}
+
+internal fun isTermuxHomeTreeId(treeId: String?): Boolean {
+    val normalized = treeId?.trimEnd('/') ?: return false
+    return normalized == TERMUX_HOME_TREE_ID ||
+        normalized == STANDARD_TERMUX_HOME_TREE_ID ||
+        normalized == STANDARD_TERMUX_HOME_TREE_ID_USER
 }
 
 internal fun extractTreeDocumentId(uri: String): String? {

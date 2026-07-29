@@ -89,6 +89,12 @@ class NativeOperitHostOperationsTest {
             null,
             extractTreeDocumentId("content://com.android.externalstorage.documents/tree/primary%3ADownload"),
         )
+        assertTrue(isTermuxHomeTreeId(TERMUX_HOME_TREE_ID))
+        assertTrue(isTermuxHomeTreeId(STANDARD_TERMUX_HOME_TREE_ID))
+        assertTrue(isTermuxHomeTreeId(STANDARD_TERMUX_HOME_TREE_ID_USER))
+        assertTrue(isTermuxHomeTreeId("$STANDARD_TERMUX_HOME_TREE_ID/"))
+        assertFalse(isTermuxHomeTreeId("$STANDARD_TERMUX_HOME_TREE_ID/projects"))
+        assertFalse(isTermuxHomeTreeId("primary:Download"))
     }
 
     @Test
