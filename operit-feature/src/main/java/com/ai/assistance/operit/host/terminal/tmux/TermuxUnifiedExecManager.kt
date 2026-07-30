@@ -738,7 +738,9 @@ internal class TermuxUnifiedExecManager(
         return DecodedOutput(String(bytes, Charsets.UTF_8), bytes.size.toLong())
     }
 
-    private fun stateRoot(): String = "${transport.termuxPrefix}/tmp/operit-unified-exec"
+    // TermuxService clears $PREFIX/tmp when a RUN_COMMAND-backed service exits. Keep
+    // reconnectable session state under Home so one-shot commands cannot remove it.
+    private fun stateRoot(): String = "${transport.termuxHome}/.operit-unified-exec"
 
     private fun stateDirectory(sessionId: String): String = "${stateRoot()}/$sessionId"
 

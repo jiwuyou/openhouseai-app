@@ -71,6 +71,12 @@ class TermuxUnifiedExecManagerTest {
         assertTrue(transport.keys.contains("C-c"))
         assertFalse(transport.literalInputs.contains("c"))
         assertTrue(transport.sessionExists)
+        assertTrue(transport.writtenExecutableBodies.keys.any { path ->
+            path.startsWith("${transport.termuxHome}/.operit-unified-exec/")
+        })
+        assertFalse(transport.writtenExecutableBodies.keys.any { path ->
+            path.startsWith("${transport.termuxPrefix}/tmp/operit-unified-exec/")
+        })
         val reopened = TmuxHostTerminalBackend(transport).listTermuxSessions(includeCompleted = false)
         assertEquals(listOf(started.sessionId), reopened.map { it.sessionId })
         assertEquals("repair", reopened.single().sessionName)
