@@ -3,13 +3,21 @@ set -euo pipefail
 
 TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
 TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_HOME="${WUXIANPI_SETUP_HOME:-$TERMUX_HOME/.local/state/wuxianpi-setup}"
 SESSION_NAME="wuxianpi-setup"
 LOG_FILE="$SETUP_HOME/setup.log"
 STATE_FILE="$SETUP_HOME/state.json"
 EXIT_FILE="$SETUP_HOME/exit-code"
+REQUEST_FILE="$SETUP_HOME/request.json"
 MAX_LOG_BYTES="${WUXIANPI_SETUP_MAX_LOG_BYTES:-2097152}"
 PI_URL="${WUXIANPI_PI_URL:-http://127.0.0.1:8765}"
+SETUP_REGION="auto"
+SETUP_TERMUX_REPO="auto"
+SETUP_UBUNTU_ROOTFS_MIRROR="auto"
+SETUP_UBUNTU_APT_MIRROR="auto"
+SETUP_NODE_DIST_MIRROR="auto"
+SETUP_NPM_REGISTRY="auto"
 
 log() {
   printf '[WuxianPi Setup] %s\n' "$*"
@@ -52,7 +60,14 @@ compact_log() {
 }
 
 current_resource_dir() {
+  local native_root="$TERMUX_HOME/.local/share/wuxianpi/install-resources/current"
   local root="$TERMUX_HOME/.local/share/openhouseai/update-resources"
+  if [ -f "$native_root/.complete" ] \
+    && [ -f "$native_root/bootstrap/bootstrap.sh" ] \
+    && [ -f "$native_root/product-payloads/manifest.json" ]; then
+    printf '%s\n' "$native_root"
+    return 0
+  fi
   find "$root" -mindepth 2 -maxdepth 2 -type f -name .complete -print 2>/dev/null \
     | sed 's#/.complete$##' \
     | while IFS= read -r directory; do
@@ -125,6 +140,7 @@ tmux_ready() {
 }
 
 service_manager_ready() {
+  [ -x "$TERMUX_PREFIX/bin/service-manager" ] || return 1
   command -v curl >/dev/null 2>&1 || return 1
   curl -fsS --max-time 3 http://127.0.0.1:20087/api/v1/health >/dev/null 2>&1 \
     || curl -fsS --max-time 3 http://127.0.0.1:20087/ >/dev/null 2>&1
@@ -195,31 +211,18 @@ prepare_tmux() {
     log 'Termux bootstrap 尚未完成。'
     return 1
   }
-  run_bootstrap prepare
   if tmux_ready; then
     log 'tmux 已安装。'
     return 0
   fi
-  if command -v apt >/dev/null 2>&1; then
-    env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt \
-      -o Dpkg::Options::=--force-confdef \
-      -o Dpkg::Options::=--force-confold update
-    env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt \
-      -o Dpkg::Options::=--force-confdef \
-      -o Dpkg::Options::=--force-confold install -y tmux
-  elif command -v pkg >/dev/null 2>&1; then
-    env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical \
-      DPKG_OPTIONS="--force-confdef --force-confold" pkg update -y \
-      -o Dpkg::Options::=--force-confdef \
-      -o Dpkg::Options::=--force-confold
-    env DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical \
-      DPKG_OPTIONS="--force-confdef --force-confold" pkg install -y \
-      -o Dpkg::Options::=--force-confdef \
-      -o Dpkg::Options::=--force-confold tmux
-  else
-    log '缺少 apt/pkg，无法安装 tmux。'
+  local pre_tmux="$SCRIPT_DIR/wuxianpi-pre-tmux.sh"
+  [ -f "$pre_tmux" ] || {
+    log "缺少 pre-tmux 脚本：$pre_tmux"
     return 1
-  fi
+  }
+  "$TERMUX_PREFIX/bin/bash" "$pre_tmux" \
+    --region "$SETUP_REGION" \
+    --termux-repo "$SETUP_TERMUX_REPO"
   tmux_ready || {
     log 'tmux 安装后仍不可用。'
     return 1
@@ -268,6 +271,9 @@ run_core_install() {
   write_state running ubuntu '正在安装 Ubuntu'
   run_bootstrap ubuntu
 
+  write_state running ubuntu-packages '正在配置 Ubuntu 软件源和基础包'
+  run_bootstrap ubuntu-packages
+
   write_state running verify '正在检查核心状态'
   verify_core
   write_state completed complete 'WuxianPi 核心安装完成'
@@ -292,29 +298,89 @@ run_install_job() {
   fi
 }
 
-start_install() {
-  prepare_tmux
-  if session_running; then
-    log "安装会话已在运行：$SESSION_NAME"
-    emit_status
-    return 0
-  fi
+write_request() {
   ensure_state_dir
-  rotate_log
-  write_state queued queued '等待持久 Termux 会话启动'
-  tmux new-session -d -s "$SESSION_NAME" \
-    "exec '$TERMUX_PREFIX/bin/bash' --noprofile --norc -lc \"exec '$TERMUX_PREFIX/bin/wuxianpi-setup' _run-install\""
-  sleep 1
-  session_running || {
-    if [ "$(sed -n '1p' "$EXIT_FILE" 2>/dev/null || true)" = 0 ]; then
-      emit_status
-      return 0
-    fi
-    write_state failed tmux '无法创建持久安装会话'
+  printf '{"region":"%s","termuxRepo":"%s","ubuntuRootfsMirror":"%s","ubuntuAptMirror":"%s","nodeDistMirror":"%s","npmRegistry":"%s","updatedAt":%s}\n' \
+    "$(json_escape "$SETUP_REGION")" \
+    "$(json_escape "$SETUP_TERMUX_REPO")" \
+    "$(json_escape "$SETUP_UBUNTU_ROOTFS_MIRROR")" \
+    "$(json_escape "$SETUP_UBUNTU_APT_MIRROR")" \
+    "$(json_escape "$SETUP_NODE_DIST_MIRROR")" \
+    "$(json_escape "$SETUP_NPM_REGISTRY")" \
+    "$(date +%s)" > "$REQUEST_FILE.tmp"
+  mv "$REQUEST_FILE.tmp" "$REQUEST_FILE"
+}
+
+request_json_value() {
+  local file="$1" key="$2"
+  sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$file" | head -n 1
+}
+
+load_request() {
+  local file="$1" value
+  [ -f "$file" ] || { log "安装请求文件不存在：$file"; return 1; }
+  value="$(request_json_value "$file" region)"; [ -z "$value" ] || SETUP_REGION="$value"
+  value="$(request_json_value "$file" termuxRepo)"; [ -z "$value" ] || SETUP_TERMUX_REPO="$value"
+  value="$(request_json_value "$file" ubuntuRootfsMirror)"; [ -z "$value" ] || SETUP_UBUNTU_ROOTFS_MIRROR="$value"
+  value="$(request_json_value "$file" ubuntuAptMirror)"; [ -z "$value" ] || SETUP_UBUNTU_APT_MIRROR="$value"
+  value="$(request_json_value "$file" nodeDistMirror)"; [ -z "$value" ] || SETUP_NODE_DIST_MIRROR="$value"
+  value="$(request_json_value "$file" npmRegistry)"; [ -z "$value" ] || SETUP_NPM_REGISTRY="$value"
+}
+
+apply_options() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --request) load_request "${2:-}"; shift 2 ;;
+      --region) SETUP_REGION="${2:-}"; shift 2 ;;
+      --termux-repo) SETUP_TERMUX_REPO="${2:-}"; shift 2 ;;
+      --ubuntu-rootfs-mirror) SETUP_UBUNTU_ROOTFS_MIRROR="${2:-}"; shift 2 ;;
+      --ubuntu-apt-mirror) SETUP_UBUNTU_APT_MIRROR="${2:-}"; shift 2 ;;
+      --node-dist-mirror) SETUP_NODE_DIST_MIRROR="${2:-}"; shift 2 ;;
+      --npm-registry) SETUP_NPM_REGISTRY="${2:-}"; shift 2 ;;
+      *) log "未知安装参数：$1"; return 2 ;;
+    esac
+  done
+  case "$SETUP_REGION" in
+    auto|cn|global) ;;
+    *) log "不支持的地区参数：$SETUP_REGION"; return 2 ;;
+  esac
+
+  case "$SETUP_REGION" in
+    cn) export OPENHOUSE_RETRY_MODE=cn SMALLPHONEAI_RETRY_MODE=cn ;;
+    *) export OPENHOUSE_RETRY_MODE=normal SMALLPHONEAI_RETRY_MODE=normal ;;
+  esac
+  if [ "$SETUP_TERMUX_REPO" != auto ]; then
+    export OPENHOUSEAI_TERMUX_MAIN_REPO="$SETUP_TERMUX_REPO"
+    export SMALLPHONEAI_TERMUX_MAIN_REPO="$SETUP_TERMUX_REPO"
+  fi
+  if [ "$SETUP_UBUNTU_ROOTFS_MIRROR" != auto ]; then
+    export OPENHOUSEAI_UBUNTU_ROOTFS_URL="$SETUP_UBUNTU_ROOTFS_MIRROR"
+    export SMALLPHONEAI_UBUNTU_ROOTFS_URL="$SETUP_UBUNTU_ROOTFS_MIRROR"
+  fi
+  if [ "$SETUP_UBUNTU_APT_MIRROR" != auto ]; then
+    export OPENHOUSEAI_UBUNTU_APT_MIRROR="$SETUP_UBUNTU_APT_MIRROR"
+    export SMALLPHONEAI_UBUNTU_APT_MIRROR="$SETUP_UBUNTU_APT_MIRROR"
+  fi
+  if [ "$SETUP_NODE_DIST_MIRROR" != auto ]; then
+    export OPENHOUSEAI_NODE_DIST_BASE="$SETUP_NODE_DIST_MIRROR"
+    export SMALLPHONEAI_NODE_DIST_BASE="$SETUP_NODE_DIST_MIRROR"
+  fi
+  if [ "$SETUP_NPM_REGISTRY" != auto ]; then
+    export NPM_REGISTRY="$SETUP_NPM_REGISTRY"
+    export NPM_CONFIG_REGISTRY="$SETUP_NPM_REGISTRY"
+  fi
+}
+
+start_install() {
+  tmux_ready || {
+    log 'tmux 尚未准备完成；请先执行 prepare-tmux。'
     return 1
   }
-  log "已启动持久 Termux 安装会话：$SESSION_NAME"
-  emit_status
+  install -m 755 "$SCRIPT_DIR/wuxianpi-setup" "$TERMUX_PREFIX/bin/wuxianpi-setup"
+  install -m 755 "$SCRIPT_DIR/wuxianpi-pre-tmux.sh" "$TERMUX_PREFIX/bin/wuxianpi-pre-tmux.sh"
+  write_request
+  write_state running start '安装任务已在持久 Termux 会话中启动'
+  run_install_job
 }
 
 verify_core() {
@@ -335,27 +401,32 @@ verify_core() {
 }
 
 repair() {
-  if session_running; then
-    log "安装会话已在运行：$SESSION_NAME"
-    emit_status
-    return 0
-  fi
   rm -f "$EXIT_FILE"
   start_install
 }
 
 usage() {
   cat <<'EOF'
-Usage: wuxianpi-setup <inspect|prepare-tmux|install|status|verify|repair>
+Usage: wuxianpi-setup <inspect|prepare-tmux|install|status|verify|repair> [options]
+
+Options:
+  --region auto|cn|global
+  --request FILE
+  --termux-repo URL|auto
+  --ubuntu-rootfs-mirror URL|auto
+  --ubuntu-apt-mirror URL|auto
+  --node-dist-mirror URL|auto
+  --npm-registry URL|auto
 EOF
 }
 
-case "${1:-}" in
+command="${1:-}"
+shift || true
+case "$command" in
   inspect|status) emit_status ;;
-  prepare-tmux) prepare_tmux ;;
-  install) start_install ;;
+  prepare-tmux) apply_options "$@"; prepare_tmux ;;
+  install) apply_options "$@"; start_install ;;
   verify) verify_core; emit_status ;;
-  repair) repair ;;
-  _run-install) run_install_job ;;
+  repair) apply_options "$@"; repair ;;
   *) usage; exit 2 ;;
 esac

@@ -22,6 +22,7 @@ class RescueToolCatalog private constructor(
     }
 
     companion object {
+        const val TERMUX_HOME_ENVIRONMENT = "repo:termux-home"
         private val SUPPORTED_PARAMETER_TYPES =
             setOf("string", "boolean", "integer", "number", "object", "array")
 
@@ -40,7 +41,7 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
                     description =
-                        "Request Termux Home file access when the active host needs SAF. The result states whether the user must complete a system picker action.",
+                        "Request Termux Home file access when the active host needs SAF. Success registers repo:termux-home and proves real read/write access for rescue file tools.",
                 ),
                 definition(
                     name = WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION,
@@ -55,7 +56,7 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = WuxianPiSetupContract.TOOL_START_SETUP,
                     description =
-                        "Start or resume the deterministic persistent installation of post-tmux packages, bundled resources, service-manager, WuxianPi pi-agent, and Ubuntu. Returns durable host status or task details.",
+                        "Stage bundled setup resources and return the foreground install command. Launch that command with termux_exec_command using the returned session_name and yield_time_ms.",
                 ),
                 definition(
                     name = WuxianPiSetupContract.TOOL_SETUP_STATUS,
@@ -132,17 +133,21 @@ class RescueToolCatalog private constructor(
         private val RESCUE_TOOL_NAMES =
             RESCUE_DEFINITIONS.mapTo(LinkedHashSet()) { it.getString("name") }
 
-        fun default(): RescueToolCatalog =
+        fun default(useTermuxHomeRepository: Boolean = false): RescueToolCatalog =
             from(
                 (
                     SystemToolPrompts.fileSystemTools.tools +
                         SystemToolPrompts.httpTools.tools +
                         SystemToolPrompts.getHostTerminalToolCategoryEn().tools
                 )
-                    .distinctBy(ToolPrompt::name)
+                    .distinctBy(ToolPrompt::name),
+                useTermuxHomeRepository,
             )
 
-        fun from(tools: List<ToolPrompt>): RescueToolCatalog {
+        fun from(
+            tools: List<ToolPrompt>,
+            useTermuxHomeRepository: Boolean = false,
+        ): RescueToolCatalog {
             val names = LinkedHashSet<String>()
             val definitions = JSONArray()
             tools.forEach { tool ->
@@ -176,6 +181,18 @@ class RescueToolCatalog private constructor(
                             .put("description", parameter.description)
                     parameter.default?.let { rawDefault ->
                         parseDefault(rawDefault, parameter.type)?.let { schema.put("default", it) }
+                    }
+                    if (
+                        useTermuxHomeRepository &&
+                        toolName in FILE_SYSTEM_TOOL_NAMES &&
+                        parameterName == "environment"
+                    ) {
+                        schema.put("default", TERMUX_HOME_ENVIRONMENT)
+                        schema.put(
+                            "description",
+                            parameter.description +
+                                "; Rescue AI defaults to $TERMUX_HOME_ENVIRONMENT for Termux Home files",
+                        )
                     }
                     properties.put(parameterName, schema)
                     if (parameter.required) required.put(parameterName)
@@ -229,5 +246,8 @@ class RescueToolCatalog private constructor(
                 else -> value
             }
         }
+
+        private val FILE_SYSTEM_TOOL_NAMES =
+            SystemToolPrompts.fileSystemTools.tools.mapTo(linkedSetOf(), ToolPrompt::name)
     }
 }

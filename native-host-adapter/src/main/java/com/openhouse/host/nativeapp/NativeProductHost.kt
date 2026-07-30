@@ -15,6 +15,7 @@ import com.wuxianpi.openhouse.core.registry.RegistryRepository
 import com.wuxianpi.openhouse.core.registry.SharedPreferencesRegistryCache
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
 import com.wuxianpi.openhouse.feature.AdvancedUiEndpoints
+import com.wuxianpi.openhouse.feature.ComponentWebLaunchArgs
 import com.wuxianpi.openhouse.feature.OpenHouseFeature
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost
 import com.wuxianpi.openhouse.servicecontrol.OpenHouseFeatureLauncher
@@ -22,6 +23,11 @@ import com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity
 import com.wuxianpi.openhouse.servicecontrol.ServiceControlDependencies
 import com.wuxianpi.openhouse.servicecontrol.ServiceControlFeature
 import com.wuxianpi.openhouse.servicecontrol.ServiceControlRequest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Shared product routing backed by the native APK pairing/runtime host. */
 class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatureLauncher {
@@ -35,6 +41,9 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         ).load().components
     })
     private val operations = NativeOperitHostOperations(appContext)
+    private val componentEndpointResolver =
+        NativeComponentEndpointResolver.fromRuntimeConnection(host::runtimeConnection)
+    private val componentLaunchScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     fun install() {
         registryCatalog.start()
@@ -77,6 +86,10 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         launchServiceControl(activity, ServiceControlRequest())
     }
 
+    override fun launchComponentControl(activity: Activity, component: ComponentWebLaunchArgs) {
+        launchServiceControl(activity, serviceControlRequestFor(component))
+    }
+
     private fun launchServiceControl(activity: Activity, request: ServiceControlRequest) {
         activity.startActivity(
             OpenHouseServiceControlActivity.createIntent(activity, request),
@@ -92,7 +105,7 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
             OpenHouseComponent.EntryType.TERMINAL -> host.openTerminal()
             OpenHouseComponent.EntryType.SERVICE_CONTROL -> Unit
             OpenHouseComponent.EntryType.ANDROID_ACTIVITY -> launchClass(activity, component.activityClassName)
-            OpenHouseComponent.EntryType.WEBVIEW -> openUrl(activity, component.url)
+            OpenHouseComponent.EntryType.WEBVIEW -> launchComponentWebView(activity, component)
             OpenHouseComponent.EntryType.NATIVE_PAGE -> {
                 val route = ProductRoute.fromPersistenceKey(component.nativePage, ProductRoute.DESKTOP)
                 when (route) {
@@ -107,6 +120,21 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     }
 
     override fun advancedUiEndpoints(): AdvancedUiEndpoints = AdvancedUiEndpoints.defaults()
+
+    private fun launchComponentWebView(activity: Activity, component: OpenHouseComponent) {
+        componentLaunchScope.launch {
+            when (val endpoint = withContext(Dispatchers.IO) {
+                componentEndpointResolver.resolve(component)
+            }) {
+                is NativeComponentEndpointResult.Resolved -> activity.startActivity(
+                    createNativeComponentWebIntent(activity, component, endpoint.url),
+                )
+                is NativeComponentEndpointResult.Unavailable -> activity.startActivity(
+                    createNativeComponentWebIntent(activity, component, ""),
+                )
+            }
+        }
+    }
 
     override fun returnToProduct() {
         appContext.startActivity(
@@ -159,6 +187,12 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     )
 }
 
+internal fun createNativeComponentWebIntent(
+    context: Context,
+    component: OpenHouseComponent,
+    resolvedUrl: String,
+): Intent = OpenHouseFeature.createComponentWebIntent(context, component, resolvedUrl)
+
 fun serviceControlRequestForDynamicComponent(
     component: OpenHouseComponent,
 ): ServiceControlRequest? {
@@ -170,18 +204,23 @@ fun serviceControlRequestForDynamicComponent(
 }
 
 fun serviceControlRequestFor(component: OpenHouseComponent): ServiceControlRequest {
-    val referencedIds = component.serviceRefs.mapNotNull { reference ->
-        ServiceManagerClient.parseServiceManagerRef(reference).takeIf { it.valid }?.serviceId
-    }
-    val serviceIds = (component.serviceNames + referencedIds)
-        .map(String::trim)
-        .filter(String::isNotEmpty)
-        .distinct()
+    val serviceIds = serviceIdsFor(component)
     return ServiceControlRequest(
         title = component.controlTitle.ifBlank { component.title },
         componentId = component.id,
         componentEndpoint = component.url,
         serviceIds = serviceIds,
         showAllServices = serviceIds.isEmpty(),
+    )
+}
+
+fun serviceControlRequestFor(component: ComponentWebLaunchArgs): ServiceControlRequest {
+    val serviceIds = serviceIdsFor(component.serviceNames, component.serviceRefs)
+    return ServiceControlRequest(
+        title = component.controlTitle.ifBlank { component.title },
+        componentId = component.componentId,
+        componentEndpoint = component.loadUrl,
+        serviceIds = serviceIds,
+        showAllServices = false,
     )
 }

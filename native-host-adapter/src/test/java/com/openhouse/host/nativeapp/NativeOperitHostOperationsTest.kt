@@ -160,18 +160,22 @@ class NativeOperitHostOperationsTest {
             "printf native",
             ExternalTermuxCommandTarget.TERMUX,
         )
-        assertEquals("/data/data/com.termux/files/usr/bin/bash", request.executable)
-        assertEquals(listOf("-lc", "printf native"), request.arguments)
+        assertEquals("/data/data/com.termux/files/usr/bin/env", request.executable)
+        assertTrue(request.arguments.contains("HOME=/data/data/com.termux/files/home"))
+        assertTrue(request.arguments.contains("PREFIX=/data/data/com.termux/files/usr"))
+        assertTrue(request.arguments.any { it.startsWith("PATH=") })
+        assertEquals("/data/data/com.termux/files/usr/bin/bash", request.arguments[3])
+        assertEquals(listOf("-lc", "printf native"), request.arguments.takeLast(2))
         assertEquals("/data/data/com.termux/files/home", request.workingDirectory)
     }
 
     @Test
     fun ubuntuUsesExternalTermuxProotDistro() {
         val request = buildNativeTermuxCommandRequest("id", ExternalTermuxCommandTarget.UBUNTU)
-        assertEquals("/data/data/com.termux/files/usr/bin/proot-distro", request.executable)
+        assertEquals("/data/data/com.termux/files/usr/bin/env", request.executable)
         assertEquals(
-            listOf("login", "ubuntu", "--", "bash", "-lc", "id"),
-            request.arguments,
+            listOf("/data/data/com.termux/files/usr/bin/proot-distro", "login", "ubuntu", "--", "bash", "-lc", "id"),
+            request.arguments.takeLast(7),
         )
         assertEquals("/data/data/com.termux/files/home", request.workingDirectory)
     }
@@ -293,11 +297,46 @@ class NativeOperitHostOperationsTest {
             timeoutMs = 9_000L,
         )
 
-        assertEquals("/data/data/com.termux/files/usr/bin/tmux", capturedRequest!!.executable)
-        assertEquals(listOf("load-buffer", "-"), capturedRequest!!.arguments)
+        assertEquals("/data/data/com.termux/files/usr/bin/env", capturedRequest!!.executable)
+        assertEquals("/data/data/com.termux/files/usr/bin/tmux", capturedRequest!!.arguments[3])
+        assertEquals(listOf("load-buffer", "-"), capturedRequest!!.arguments.takeLast(2))
         assertEquals("echo ready", capturedRequest!!.stdin)
         assertEquals("tmux 3.5", result.stdout)
         assertEquals(TERMUX_SUCCESS_ERROR_CODE, result.errCode)
+    }
+
+    @Test
+    fun setupLaunchContractUsesManagedTermuxExecutor() {
+        val command = buildWuxianPiSetupLaunchCommand(
+            "/data/data/com.termux/files/usr",
+            "/data/data/com.termux/files/home",
+        )
+        val details = setupLaunchDetails(command)
+
+        assertTrue(command.contains("resources.tar"))
+        assertTrue(command.contains("bootstrap/wuxianpi-setup"))
+        assertEquals("termux_exec_command", details.getString("executorTool"))
+        assertEquals("wuxianpi-setup", details.getString("session_name"))
+        assertTrue(details.getBoolean("persistent"))
+        assertTrue(details.getBoolean("launchRequired"))
+    }
+
+    @Test
+    fun termuxHomeWorkspaceRequiresBookmarkAndReadWriteProbe() {
+        assertFalse(
+            isTermuxHomeWorkspaceReady(
+                org.json.JSONObject()
+                    .put("termuxHomeBookmarkReady", true)
+                    .put("termuxHomeReadWriteReady", false),
+            ),
+        )
+        assertTrue(
+            isTermuxHomeWorkspaceReady(
+                org.json.JSONObject()
+                    .put("termuxHomeBookmarkReady", true)
+                    .put("termuxHomeReadWriteReady", true),
+            ),
+        )
     }
 
     @Test

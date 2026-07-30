@@ -29,12 +29,37 @@ android {
 
     // The pairing server serves this exact filename and compressed byte stream from APK assets.
     androidResources {
-        noCompress += ["tgz"]
+        noCompress += ["tgz", "gz"]
     }
 
     testOptions {
         unitTests.returnDefaultValues = true
     }
+}
+
+def repoRoot = projectDir.parentFile
+def nativeInstallAssets = file("src/main/assets/wuxianpi-install")
+
+tasks.register("generateNativeInstallResources", Exec) {
+    group = "build setup"
+    description = "Generate the bundled WuxianPi installer, service-manager and runtime resources."
+    inputs.file(new File(repoRoot, "scripts/generate-native-install-resources.sh"))
+    inputs.dir(new File(repoRoot, "app/src/main/assets/smallphoneai/bootstrap"))
+    inputs.files(
+        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/manifest.json"),
+        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/payload-manifest.json"),
+        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/service-manager.tar"),
+        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/pi-runtime.tar")
+    )
+    outputs.files(
+        new File(nativeInstallAssets, "pre-tmux.sh"),
+        new File(nativeInstallAssets, "resources.tar")
+    )
+    commandLine "bash", new File(repoRoot, "scripts/generate-native-install-resources.sh").absolutePath
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("generateNativeInstallResources")
 }
 
 tasks.register("verifyDebugRuntimeAsset") {
@@ -67,6 +92,17 @@ tasks.register("verifyDebugRuntimeAsset") {
             def apkSha = digest(archive.getInputStream(entry))
             if (sourceSha != apkSha) {
                 throw new GradleException("Runtime asset SHA-256 mismatch: source=${sourceSha}, apk=${apkSha}")
+            }
+            ["pre-tmux.sh", "resources.tar"].each { name ->
+                def bundled = new File(nativeInstallAssets, name)
+                def path = "assets/wuxianpi-install/${name}"
+                def bundledEntry = archive.getEntry(path)
+                if (bundledEntry == null) throw new GradleException("Missing exact APK asset ${path}")
+                def bundledSha = digest(bundled.newInputStream())
+                def apkBundledSha = digest(archive.getInputStream(bundledEntry))
+                if (bundledSha != apkBundledSha) {
+                    throw new GradleException("Native install asset SHA-256 mismatch: ${name}")
+                }
             }
         } finally {
             archive.close()

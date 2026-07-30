@@ -17,11 +17,19 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /** Operit repair bridge for the native APK and its bundled runtime pairing flow. */
 class NativeOperitHostOperations(context: Context) : OperitHostOperations {
+    private companion object {
+        const val TERMUX_PREFIX = "/data/data/com.termux/files/usr"
+        const val TERMUX_HOME = "/data/data/com.termux/files/home"
+        const val SETUP_COMMAND = "$TERMUX_PREFIX/bin/wuxianpi-setup"
+        const val SERVICE_MANAGER_COMMAND = "$TERMUX_PREFIX/bin/service-manager"
+    }
+
     private val appContext = context.applicationContext
     private val host = NativeOpenHouseHost(appContext)
     private val runCommandTransport = NativeTermuxRunCommandTransport(appContext)
@@ -31,6 +39,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     private val externalTermuxExecutor = ExternalTermuxCommandExecutor(
         runCommandTransport,
     )
+    private val termuxHomeRepository = NativeTermuxHomeRepository(appContext)
     override val terminalSessionBackend: HostTerminalSessionBackend =
         TmuxHostTerminalBackend(NativeTermuxSessionTransport(runCommandTransport))
 
@@ -69,19 +78,36 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     override suspend fun inspectWuxianPiSetup(): OperitHostOperationResult {
         val probe = NativeExternalHostInspector.inspect(appContext)
         val details = JSONObject().putHostProbe(probe)
-            .put("termuxHomeAccess", hasTermuxHomeAccess())
             .put(
                 "runCommandPermission",
                 appContext.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) ==
                     PackageManager.PERMISSION_GRANTED,
             )
+        termuxHomeRepository.persistedTreeUri()?.let {
+            runCatching { termuxHomeRepository.registerAndProbe(it) }
+                .getOrNull()?.let { readiness -> mergeDetails(details, readiness) }
+        } ?: details.put("termuxHomeAccess", false)
         if (!canUseTermuxRunCommand(probe) ||
             appContext.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) !=
             PackageManager.PERMISSION_GRANTED
         ) {
             return success("inspect_wuxianpi_setup", details)
         }
-        return setupCommand("inspect", "inspect_wuxianpi_setup", 20_000L, details)
+        val binaryProbe = externalTermuxExecutor.execute(
+            "test -x '$SETUP_COMMAND' && echo setup=1 || echo setup=0; " +
+                "test -x '$SERVICE_MANAGER_COMMAND' && echo service_manager=1 || echo service_manager=0; " +
+                "test -x '$TERMUX_PREFIX/bin/tmux' && echo tmux=1 || echo tmux=0",
+            ExternalTermuxCommandTarget.TERMUX,
+            10_000L,
+        )
+        details.put("binaryProbe", binaryProbe.stdout)
+            .put("wuxianPiSetupPath", SETUP_COMMAND)
+            .put("serviceManagerPath", SERVICE_MANAGER_COMMAND)
+        return if (binaryProbe.stdout.contains("setup=1")) {
+            setupCommand("inspect", "inspect_wuxianpi_setup", 20_000L, details)
+        } else {
+            success("inspect_wuxianpi_setup", details.put("setupInstallerReady", false))
+        }
     }
 
     override fun prepareRuntimeHost(context: Context): OperitHostOperationResult {
@@ -119,8 +145,22 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             }
             return failure("request_termux_home_access", message, details)
         }
-        if (hasTermuxHomeAccess()) {
-            return success("request_termux_home_access", details.put("alreadyGranted", true))
+        termuxHomeRepository.persistedTreeUri()?.let { uri ->
+            return runCatching {
+                val readiness = runBlocking(Dispatchers.IO) {
+                    termuxHomeRepository.registerAndProbe(uri)
+                }
+                val completedDetails = mergeDetails(details.put("alreadyGranted", true), readiness)
+                if (isTermuxHomeWorkspaceReady(readiness)) {
+                    success("request_termux_home_access", completedDetails)
+                } else {
+                    failure(
+                        "request_termux_home_access",
+                        "Termux Home bookmark or read/write probe is not ready",
+                        completedDetails,
+                    )
+                }
+            }.getOrElse { failure("request_termux_home_access", it.message.orEmpty(), details) }
         }
         return launchCoordinator(
             context,
@@ -149,11 +189,32 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         )
     }
 
-    override suspend fun preparePersistentTermux(): OperitHostOperationResult =
-        setupCommand("prepare-tmux", "prepare_persistent_termux", 10 * 60_000L)
+    override suspend fun preparePersistentTermux(): OperitHostOperationResult = runCatching {
+        val bytes = termuxHomeRepository.stageAsset(PRE_TMUX_ASSET, PRE_TMUX_HOME_PATH)
+        commandResult(
+            operation = "prepare_persistent_termux",
+            command = "$TERMUX_PREFIX/bin/bash '$TERMUX_HOME/$PRE_TMUX_HOME_PATH' --region auto",
+            timeoutMs = 10 * 60_000L,
+            details = JSONObject().put("asset", PRE_TMUX_ASSET).put("stagedBytes", bytes),
+        )
+    }.getOrElse { failure("prepare_persistent_termux", it.message ?: "Unable to stage pre-tmux setup") }
 
-    override suspend fun startWuxianPiSetup(): OperitHostOperationResult =
-        setupCommand("install", "start_wuxianpi_setup", 60_000L)
+    override suspend fun startWuxianPiSetup(): OperitHostOperationResult = runCatching {
+        val bytes = termuxHomeRepository.stageAsset(SETUP_RESOURCES_ASSET, SETUP_RESOURCES_HOME_PATH)
+        val request = JSONObject()
+            .put("version", 1)
+            .put("region", "auto")
+            .put("resourcesArchive", "$TERMUX_HOME/$SETUP_RESOURCES_HOME_PATH")
+        termuxHomeRepository.writeText(SETUP_REQUEST_HOME_PATH, request.toString(2))
+        val command = buildWuxianPiSetupLaunchCommand(TERMUX_PREFIX, TERMUX_HOME)
+        success(
+            "start_wuxianpi_setup",
+            setupLaunchDetails(command)
+                .put("asset", SETUP_RESOURCES_ASSET)
+                .put("stagedBytes", bytes)
+                .put("request", "$TERMUX_HOME/$SETUP_REQUEST_HOME_PATH"),
+        )
+    }.getOrElse { failure("start_wuxianpi_setup", it.message ?: "Unable to stage WuxianPi setup resources") }
 
     override suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
         setupCommand("status", "wuxianpi_setup_status", 20_000L)
@@ -231,7 +292,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         baseDetails: JSONObject = JSONObject(),
     ): OperitHostOperationResult {
         val probe = NativeExternalHostInspector.inspect(appContext)
-        baseDetails.putHostProbe(probe).put("setupCommand", "wuxianpi-setup $subcommand")
+        baseDetails.putHostProbe(probe).put("setupCommand", "$SETUP_COMMAND $subcommand")
         if (!canUseTermuxRunCommand(probe)) {
             val message = if (probe.state == NativeExternalHostState.ABSENT) {
                 "Termux package com.termux is not installed"
@@ -241,7 +302,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             return failure(operation, message, baseDetails)
         }
         val result = externalTermuxExecutor.execute(
-            "wuxianpi-setup $subcommand",
+            "$SETUP_COMMAND $subcommand",
             ExternalTermuxCommandTarget.TERMUX,
             timeoutMs,
         )
@@ -252,14 +313,22 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             .put("durationMs", result.durationMs)
         return if (result.isSuccess) success(operation, baseDetails)
         else failure(operation, result.error.ifBlank { result.stderr }.ifBlank {
-            "wuxianpi-setup $subcommand failed with exit code ${result.exitCode}"
+            "$SETUP_COMMAND $subcommand failed with exit code ${result.exitCode}"
         }, baseDetails)
     }
 
-    private fun hasTermuxHomeAccess(): Boolean =
-        appContext.contentResolver.persistedUriPermissions.any { permission ->
-            permission.isReadPermission && isValidatedTermuxHomeTree(permission.uri)
-        }
+    private suspend fun commandResult(
+        operation: String,
+        command: String,
+        timeoutMs: Long,
+        details: JSONObject,
+    ): OperitHostOperationResult {
+        val result = externalTermuxExecutor.execute(command, ExternalTermuxCommandTarget.TERMUX, timeoutMs)
+        details.put("command", command).put("exitCode", result.exitCode)
+            .put("stdout", result.stdout).put("stderr", result.stderr).put("timedOut", result.timedOut)
+        return if (result.isSuccess) success(operation, details)
+        else failure(operation, result.error.ifBlank { result.stderr }, details)
+    }
 
     private fun launchCoordinator(
         context: Context,
@@ -300,6 +369,28 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     private fun com.wuxianpi.openhouse.core.HostActionResult.toOperationResult(operation: String) =
         if (isSuccess()) success(operation, JSONObject().put("message", message))
         else failure(operation, message)
+}
+
+internal fun buildWuxianPiSetupLaunchCommand(prefix: String, home: String): String =
+    "set -e; root='$home/.local/share/wuxianpi/install-resources/current'; " +
+        "rm -rf \"\$root\"; mkdir -p \"\$root\"; " +
+        "'$prefix/bin/tar' -xf '$home/$SETUP_RESOURCES_HOME_PATH' -C \"\$root\"; " +
+        "'$prefix/bin/bash' \"\$root/bootstrap/wuxianpi-setup\" install " +
+        "--request '$home/$SETUP_REQUEST_HOME_PATH'"
+
+internal fun setupLaunchDetails(command: String): JSONObject =
+    JSONObject()
+        .put("command", command)
+        .put("working_directory", "/data/data/com.termux/files/home")
+        .put("session_name", "wuxianpi-setup")
+        .put("yield_time_ms", 1000)
+        .put("executorTool", "termux_exec_command")
+        .put("persistent", true)
+        .put("launchRequired", true)
+
+private fun mergeDetails(target: JSONObject, source: JSONObject): JSONObject {
+    source.keys().forEach { key -> target.put(key, source.get(key)) }
+    return target
 }
 
 internal fun launchedUserActionDetails(details: JSONObject): JSONObject =

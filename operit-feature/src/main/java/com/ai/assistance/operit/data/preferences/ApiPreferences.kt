@@ -232,7 +232,10 @@ class ApiPreferences private constructor(private val context: Context) {
                     Json.decodeFromString<List<SafBookmark>>(json)
                 }.getOrElse { emptyList() }
 
-            val updated = (existing.filterNot { it.uri == uri } + SafBookmark(uri = uri, name = name))
+            val updated = (
+                existing.filterNot { it.uri == uri || it.name.equals(name, ignoreCase = true) } +
+                    SafBookmark(uri = uri, name = name)
+                )
                 .sortedBy { it.name.lowercase() }
             preferences[SAF_BOOKMARKS_JSON] = Json.encodeToString(updated)
         }

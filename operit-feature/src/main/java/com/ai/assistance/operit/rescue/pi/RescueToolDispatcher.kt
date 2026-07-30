@@ -86,12 +86,20 @@ class RescueToolDispatcher private constructor(
         args: JSONObject,
         onUpdate: suspend (ToolResult) -> Unit,
     ): Completion {
+        val effectiveArgs = JSONObject(args.toString())
+        if (
+            deferUserActions &&
+            toolName in FILE_SYSTEM_TOOL_NAMES &&
+            effectiveArgs.optString("environment").isBlank()
+        ) {
+            effectiveArgs.put("environment", RescueToolCatalog.TERMUX_HOME_ENVIRONMENT)
+        }
         val tool =
             AITool(
                 name = toolName,
                 parameters =
-                    args.keys().asSequence().map { key ->
-                        ToolParameter(key, jsonValueToParameter(args.get(key)))
+                    effectiveArgs.keys().asSequence().map { key ->
+                        ToolParameter(key, jsonValueToParameter(effectiveArgs.get(key)))
                     }.toList(),
             )
         var finalResult: ToolResult? = null
@@ -279,5 +287,8 @@ class RescueToolDispatcher private constructor(
         private const val DEFAULT_DIAGNOSTIC_BYTES = 32 * 1024
         private const val MAX_DIAGNOSTIC_BYTES = 256 * 1024
         private const val MAX_HTTP_BODY_CHARS = 64 * 1024
+        private val FILE_SYSTEM_TOOL_NAMES =
+            com.ai.assistance.operit.core.config.SystemToolPrompts.fileSystemTools.tools
+                .mapTo(linkedSetOf()) { it.name }
     }
 }

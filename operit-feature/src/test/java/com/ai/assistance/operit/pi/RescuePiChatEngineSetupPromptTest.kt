@@ -28,5 +28,8 @@ class RescuePiChatEngineSetupPromptTest {
         assertTrue(prompt.contains("Termux"))
         assertTrue(prompt.contains("Ubuntu"))
         assertTrue(prompt.contains("not Rescue AI process memory"))
+        assertTrue(prompt.contains("termuxHomeEnvironment=repo:termux-home"))
+        assertTrue(prompt.contains("All-in-One host keeps its direct file behavior"))
+        assertTrue(prompt.contains("default every Termux command, short or long, to termux_exec_command"))
     }
 }

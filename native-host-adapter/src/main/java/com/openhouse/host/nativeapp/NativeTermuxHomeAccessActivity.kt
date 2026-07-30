@@ -6,6 +6,9 @@ import android.os.Bundle
 import android.provider.DocumentsContract
 import android.view.Gravity
 import android.widget.TextView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /** Requests and persists exactly the external Termux Home SAF tree. */
 class NativeTermuxHomeAccessActivity : Activity() {
@@ -41,8 +44,24 @@ class NativeTermuxHomeAccessActivity : Activity() {
                 requestedFlags,
             )
         }.onSuccess {
-            status.text = "Termux Home access granted."
-            finish()
+            CoroutineScope(Dispatchers.IO).launch {
+                val result = runCatching {
+                    NativeTermuxHomeRepository(applicationContext).registerAndProbe(requireNotNull(uri))
+                }
+                runOnUiThread {
+                    result.onSuccess { readiness ->
+                        if (isTermuxHomeWorkspaceReady(readiness)) {
+                            status.text = "Termux Home attached as repo:termux-home."
+                            finish()
+                        } else {
+                            status.text =
+                                "Termux Home authorization is incomplete. Check access and try again."
+                        }
+                    }.onFailure { error ->
+                        status.text = error.message ?: "Unable to attach Termux Home workspace."
+                    }
+                }
+            }
         }.onFailure { error ->
             status.text = error.message ?: "Unable to persist Termux Home access."
         }

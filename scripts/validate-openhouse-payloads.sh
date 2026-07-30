@@ -1098,3 +1098,8 @@ if errors:
 
 print(f"OpenHouse payload validation passed: {len(digest_cache)} archives checked in {payload_dir}")
 PY
+
+native_archive="$REPO_DIR/native-app/src/main/assets/wuxianpi-install/resources.tar"
+if [[ -f "$native_archive" ]]; then
+  "$REPO_DIR/scripts/validate-native-install-resources.sh"
+fi

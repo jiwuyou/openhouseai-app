@@ -134,7 +134,17 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         setupCommand("prepare_persistent_termux", "prepare-tmux", 30 * 60_000L)
 
     override suspend fun startWuxianPiSetup(): OperitHostOperationResult =
-        setupCommand("start_wuxianpi_setup", "install", 30 * 60_000L)
+        success(
+            "start_wuxianpi_setup",
+            JSONObject()
+                .put("command", "$SETUP_COMMAND install")
+                .put("working_directory", runtimeLayout.home.absolutePath)
+                .put("session_name", "wuxianpi-setup")
+                .put("yield_time_ms", 1000)
+                .put("executorTool", "termux_exec_command")
+                .put("persistent", true)
+                .put("launchRequired", true),
+        )
 
     override suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
         setupCommand("wuxianpi_setup_status", "status", 15_000L)

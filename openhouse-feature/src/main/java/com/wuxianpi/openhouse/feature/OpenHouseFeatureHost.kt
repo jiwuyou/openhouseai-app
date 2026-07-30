@@ -23,6 +23,16 @@ interface OpenHouseFeatureHost {
 
     fun launchServiceControl(activity: Activity) = Unit
 
+    /** Opens controls scoped to the Web component currently shown by the shared feature UI. */
+    fun launchComponentControl(activity: Activity, component: ComponentWebLaunchArgs) {
+        launchServiceControl(activity)
+    }
+
+    /** Opens the host's maintenance/setup entry when a component cannot be reached. */
+    fun launchMaintenance(activity: Activity) {
+        launchHostRoute(activity, ProductRoute.SETUP)
+    }
+
     fun launchDynamicComponent(activity: Activity, component: OpenHouseComponent) = Unit
 
     fun advancedUiEndpoints(): AdvancedUiEndpoints = AdvancedUiEndpoints.defaults()
@@ -57,4 +67,11 @@ object OpenHouseFeature {
     @JvmStatic
     fun createAdvancedUiIntent(context: Context): Intent =
         Intent(context, AdvancedUiActivity::class.java)
+
+    @JvmStatic
+    fun createComponentWebIntent(
+        context: Context,
+        component: OpenHouseComponent,
+        resolvedUrl: String,
+    ): Intent = ComponentWebLaunchArgs.from(component, resolvedUrl).createIntent(context)
 }

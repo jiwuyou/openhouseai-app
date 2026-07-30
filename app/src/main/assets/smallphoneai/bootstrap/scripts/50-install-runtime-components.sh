@@ -346,6 +346,13 @@ service_manager_binary_current_env_executable() {
 
 find_termux_service_manager_binary() {
   local candidate
+  candidate="${PREFIX:-/data/data/com.termux/files/usr}/bin/service-manager"
+  if service_manager_binary_current_env_executable "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  elif [ -e "$candidate" ]; then
+    warn "发现 canonical service-manager 但当前环境不可执行，将等待 payload 刷新：$candidate"
+  fi
   if command -v service-manager >/dev/null 2>&1; then
     candidate="$(command -v service-manager)"
     if service_manager_binary_current_env_executable "$candidate"; then
@@ -355,7 +362,6 @@ find_termux_service_manager_binary() {
     warn "发现 service-manager 但当前 Termux 环境不可执行，将忽略并继续查找 payload/local binary：$candidate"
   fi
   for candidate in \
-    "${PREFIX:-/data/data/com.termux/files/usr}/bin/service-manager" \
     "$HOME/smallphoneai-repos/service-manager/service-manager" \
     "$HOME/smallphoneai-repos/service-manager/target/release/service-manager"; do
     if service_manager_binary_current_env_executable "$candidate"; then

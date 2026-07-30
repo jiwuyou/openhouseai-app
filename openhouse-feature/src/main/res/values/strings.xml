@@ -17,4 +17,16 @@
     <string name="oh_open_host_settings">打开宿主设置</string>
     <string name="oh_advanced_loading">正在连接高级 UI…</string>
     <string name="oh_advanced_failed">高级 UI 暂时不可用</string>
+    <string name="oh_maintenance">维护中心</string>
+    <string name="oh_copy_address">复制地址</string>
+    <string name="oh_address_copied">地址已复制</string>
+    <string name="oh_component_web_invalid">组件信息无效</string>
+    <string name="oh_component_web_address">地址：%1$s</string>
+    <string name="oh_component_web_connecting">正在连接：%1$s</string>
+    <string name="oh_component_web_connected">已连接：%1$s</string>
+    <string name="oh_component_web_disconnected">未连接：%1$s</string>
+    <string name="oh_component_web_unavailable">%1$s 未连接</string>
+    <string name="oh_component_web_unavailable_detail">没有连接到 %1$s。可以刷新，或进入服务控制和维护中心处理。</string>
+    <string name="oh_component_web_missing_endpoint">当前组件尚未发布可用地址。可以进入服务控制启动服务，或到维护中心检查环境。</string>
+    <string name="oh_component_web_no_address">当前没有可复制的地址</string>
 </resources>

@@ -129,18 +129,25 @@ internal fun buildNativeTermuxCommandRequest(
 ): NativeTermuxCommandRequest {
     val prefix = "/data/data/$termuxPackage/files/usr"
     val home = "/data/data/$termuxPackage/files/home"
+    val environment = listOf(
+        "HOME=$home",
+        "PREFIX=$prefix",
+        "PATH=$home/.pi/bin:$home/.local/bin:$prefix/bin:/system/bin:/system/xbin",
+    )
     return if (target == ExternalTermuxCommandTarget.UBUNTU) {
         NativeTermuxCommandRequest(
             command = command,
-            executable = "$prefix/bin/proot-distro",
-            arguments = listOf("login", "ubuntu", "--", "bash", "-lc", command),
+            executable = "$prefix/bin/env",
+            arguments = environment + listOf(
+                "$prefix/bin/proot-distro", "login", "ubuntu", "--", "bash", "-lc", command,
+            ),
             workingDirectory = home,
         )
     } else {
         NativeTermuxCommandRequest(
             command = command,
-            executable = "$prefix/bin/bash",
-            arguments = listOf("-lc", command),
+            executable = "$prefix/bin/env",
+            arguments = environment + listOf("$prefix/bin/bash", "-lc", command),
             workingDirectory = home,
         )
     }
@@ -295,8 +302,13 @@ internal class NativeTermuxSessionTransport(
             transport.execute(
                 NativeTermuxCommandRequest(
                     command = (listOf(program) + arguments).joinToString(" "),
-                    executable = "$termuxPrefix/bin/$program",
-                    arguments = arguments,
+                    executable = "$termuxPrefix/bin/env",
+                    arguments = listOf(
+                        "HOME=$termuxHome",
+                        "PREFIX=$termuxPrefix",
+                        "PATH=$termuxHome/.pi/bin:$termuxHome/.local/bin:$termuxPrefix/bin:/system/bin:/system/xbin",
+                        "$termuxPrefix/bin/$program",
+                    ) + arguments,
                     workingDirectory = termuxHome,
                     stdin = stdin,
                 ),

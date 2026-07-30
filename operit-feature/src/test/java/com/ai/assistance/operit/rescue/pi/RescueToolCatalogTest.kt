@@ -42,7 +42,7 @@ class RescueToolCatalogTest {
 
     @Test
     fun managedTermuxToolsExposeFrozenParametersAndBootstrapGuidance() {
-        val definitions = RescueToolCatalog.default().toJsonArray()
+        val definitions = RescueToolCatalog.default(useTermuxHomeRepository = true).toJsonArray()
         val byName =
             (0 until definitions.length()).associate { index ->
                 definitions.getJSONObject(index).let { it.getString("name") to it }
@@ -70,7 +70,7 @@ class RescueToolCatalogTest {
 
     @Test
     fun setupToolsAreParameterlessAndDescribeDurableCoreInstallation() {
-        val definitions = RescueToolCatalog.default().toJsonArray()
+        val definitions = RescueToolCatalog.default(useTermuxHomeRepository = true).toJsonArray()
         val byName =
             (0 until definitions.length()).associate { index ->
                 definitions.getJSONObject(index).let { it.getString("name") to it }
@@ -94,5 +94,28 @@ class RescueToolCatalogTest {
         assertTrue(requireNotNull(byName["prepare_persistent_termux"]).getString("description").contains("tmux"))
         assertTrue(requireNotNull(byName["start_wuxianpi_setup"]).getString("description").contains("Ubuntu"))
         assertTrue(requireNotNull(byName["get_wuxianpi_setup_status"]).getString("description").contains("durable"))
+        assertTrue(
+            requireNotNull(byName["start_wuxianpi_setup"])
+                .getString("description")
+                .contains("termux_exec_command"),
+        )
+        val fileEnvironment = requireNotNull(byName["read_file"])
+            .getJSONObject("parameters")
+            .getJSONObject("properties")
+            .getJSONObject("environment")
+        assertEquals("repo:termux-home", fileEnvironment.getString("default"))
+    }
+
+    @Test
+    fun allInOneCatalogKeepsDirectFileEnvironment() {
+        val definitions = RescueToolCatalog.default().toJsonArray()
+        val readFile = (0 until definitions.length())
+            .map { definitions.getJSONObject(it) }
+            .first { it.getString("name") == "read_file" }
+        val environment = readFile.getJSONObject("parameters")
+            .getJSONObject("properties")
+            .getJSONObject("environment")
+
+        assertTrue(!environment.has("default"))
     }
 }

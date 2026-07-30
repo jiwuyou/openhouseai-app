@@ -17,5 +17,12 @@
             android:launchMode="singleTop"
             android:process=":advanced_ui"
             android:theme="@style/Theme.OpenHouseFeature" />
+        <activity
+            android:name=".OpenHouseComponentWebActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:process=":openhouse"
+            android:theme="@style/Theme.OpenHouseFeature" />
     </application>
 </manifest>

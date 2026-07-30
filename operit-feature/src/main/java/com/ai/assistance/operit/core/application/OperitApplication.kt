@@ -36,6 +36,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import ru.noties.jlatexmath.JLatexMathAndroid
 
 object OperitApplication {
     private const val TAG = "OperitApplication"
@@ -88,6 +89,7 @@ object OperitApplication {
             applicationContext = appContext
             config = lifecycleConfig
             appStartupTimeMs = System.currentTimeMillis()
+            JLatexMathAndroid.init(appContext)
             OperitRuntimeContext.bind(appContext)
             AppLogger.bindContext(appContext)
             AIMessageManager.initialize(appContext)
