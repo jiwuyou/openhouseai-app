@@ -18,6 +18,8 @@ import com.ai.assistance.operit.core.application.OperitApplication
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.host.control.OperitShutdownController
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.rescue.remote.RescueAssistHostPhase
+import com.ai.assistance.operit.rescue.remote.RescueRemoteAssistController
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.MainActivity
 import com.ai.assistance.operit.ui.main.OperitApp
@@ -35,6 +37,8 @@ import kotlinx.coroutines.withContext
  * select ChatRuntimeSlot.RESCUE.  The normal WuxianPi/Node UI is not changed.
  */
 class RescueActivity : ComponentActivity() {
+    private var remoteAssistStopRequested = false
+
     companion object {
         const val ACTION_OPEN_RESCUE = "com.wuxianpi.action.OPEN_RESCUE_AI"
         const val EXTRA_RESCUE_ENTRY = "com.wuxianpi.extra.RESCUE_ENTRY"
@@ -122,9 +126,26 @@ class RescueActivity : ComponentActivity() {
     }
 
     private fun closeRescueAssistant() {
+        stopRemoteAssistanceIfActive()
         OperitShutdownController.shutdownRescueFromActivity(
             activity = this,
             rescueProcessSuffix = RESCUE_PROCESS_SUFFIX,
         )
+    }
+
+    override fun onDestroy() {
+        if (isFinishing && !isChangingConfigurations) {
+            stopRemoteAssistanceIfActive()
+        }
+        super.onDestroy()
+    }
+
+    private fun stopRemoteAssistanceIfActive() {
+        if (remoteAssistStopRequested) return
+        val remoteAssistController = RescueRemoteAssistController.getInstance(this)
+        if (remoteAssistController.state.value.phase != RescueAssistHostPhase.IDLE) {
+            remoteAssistStopRequested = true
+            remoteAssistController.stopSharing()
+        }
     }
 }

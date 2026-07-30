@@ -183,6 +183,13 @@
         </service>
 
         <service
+            android:name=".rescue.remote.RescueRemoteAssistService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:process=":rescue_ui" />
+
+        <service
             android:name=".services.FloatingChatService"
             android:enabled="true"
             android:exported="false"

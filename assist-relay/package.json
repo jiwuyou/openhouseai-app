@@ -1,0 +1,23 @@
+{
+  "name": "@wuxianpi/assist-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/ws": "8.18.1",
+    "typescript": "5.9.3"
+  }
+}

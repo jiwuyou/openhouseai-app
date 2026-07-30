@@ -21,6 +21,7 @@ dependencyResolutionManagement {
 include ':app', ':termux-shared', ':terminal-emulator', ':terminal-view'
 include ':pi-client', ':ai-feature', ':native-app'
 include ':operit-feature'
+include ':remote-assist-protocol', ':assist-app'
 include ':openhouse-core', ':openhouse-feature', ':service-control-feature'
 include ':termux-host-adapter', ':native-host-adapter'
 include ':operit-dragonbones', ':operit-mnn', ':operit-llama', ':operit-mmd'

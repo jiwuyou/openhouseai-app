@@ -81,6 +81,7 @@ android {
 
 dependencies {
     implementation project(":pi-client")
+    implementation project(":remote-assist-protocol")
     implementation project(":operit-dragonbones")
     implementation project(":operit-mnn")
     implementation project(":operit-llama")

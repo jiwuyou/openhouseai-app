@@ -11,6 +11,8 @@ import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import com.ai.assistance.operit.rescue.pi.RescueToolCatalog
 import com.ai.assistance.operit.rescue.pi.RescueToolDispatcher
 import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
+import com.ai.assistance.operit.rescue.remote.RescuePiRemoteEvent
+import com.ai.assistance.operit.rescue.remote.RescuePiRemoteEventHub
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.stream.SharedStream
@@ -29,6 +31,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharedFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -110,6 +113,8 @@ Keep execution environments explicit. When request_termux_home_access reports te
     private val usageByChatId = ConcurrentHashMap<String, Usage>()
     private val openedSessionKeys = ConcurrentHashMap.newKeySet<String>()
     private val androidToolJobs = ConcurrentHashMap<String, Job>()
+    private val remoteEventHub = RescuePiRemoteEventHub()
+    val remoteEvents: SharedFlow<RescuePiRemoteEvent> = remoteEventHub.events
     private val sessionDirectory = File(appContext.filesDir, ".pi/agent/sessions-rescue")
     private val activeSessionPreferences =
         appContext.getSharedPreferences("pi_rescue_active_sessions", Context.MODE_PRIVATE)
@@ -505,6 +510,7 @@ Keep execution environments explicit. When request_termux_home_access reports te
                     if (pending == null) {
                         val compaction = pendingCompactions[requestId] ?: continue
                         if (event.getString("chatId") != compaction.sessionKey) continue
+                        remoteEventHub.publishNative(compaction.chatId, event)
                         if (compaction.events.trySend(event).isFailure) {
                             failPendingCompaction(
                                 compaction,
@@ -515,6 +521,7 @@ Keep execution environments explicit. When request_termux_home_access reports te
                     }
                     if (event.getString("chatId") != pending.sessionKey) continue
 
+                    remoteEventHub.publishNative(pending.chatId, event)
                     if (event.getString("type") == "host_tool_request") {
                         executeAndroidTool(pending, event)
                     }

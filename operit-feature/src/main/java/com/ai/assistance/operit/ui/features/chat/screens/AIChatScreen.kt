@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.CodeOff
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,6 +46,7 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
 import com.ai.assistance.operit.rescue.ui.RescueFirstUsePrompt
+import com.ai.assistance.operit.rescue.ui.RescueRemoteAssistDialog
 import com.ai.assistance.operit.rescue.ui.shouldShowRescueFirstUsePrompt
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
@@ -858,6 +860,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         }
     val shouldUseGlobalImePadding = !shouldUseChatLocalImeHandling
     val hasBoundWorkspace = !currentChatView?.workspace.isNullOrBlank()
+    var showRescueRemoteAssistDialog by rememberSaveable { mutableStateOf(false) }
 
     SideEffect {
         if (isCurrentScreen) {
@@ -869,9 +872,31 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
     // 当showWebView或showAiComputer状态改变时，更新TopAppBar的actions
     // 使用DisposableEffect确保当AIChatScreen离开组合时，actions被清空
-    LaunchedEffect(isCurrentScreen, showWebView, showAiComputer, isWorkspacePreparing, appBarContentColor, hasBoundWorkspace) {
+    LaunchedEffect(
+        isCurrentScreen,
+        showWebView,
+        showAiComputer,
+        isWorkspacePreparing,
+        appBarContentColor,
+        hasBoundWorkspace,
+        chatViewRuntime,
+        currentChatId,
+    ) {
         if (isCurrentScreen) {
             setTopBarActions {
+                if (chatViewRuntime == "rescue") {
+                    IconButton(
+                        enabled = !currentChatId.isNullOrBlank(),
+                        onClick = { showRescueRemoteAssistDialog = true },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "远程协助",
+                            tint = appBarContentColor,
+                        )
+                    }
+                }
+
                 // AI电脑模式切换按钮
                 IconButton(
                         enabled = !isWorkspacePreparing,
@@ -917,6 +942,13 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                 }
             }
         }
+    }
+
+    if (showRescueRemoteAssistDialog) {
+        RescueRemoteAssistDialog(
+            sharedChatId = currentChatId.orEmpty(),
+            onDismiss = { showRescueRemoteAssistDialog = false },
+        )
     }
 
     // 导出相关状态

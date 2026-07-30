@@ -15,9 +15,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -28,6 +31,11 @@ import com.ai.assistance.operit.data.model.ChatMessageTimestampAllocator
 import com.ai.assistance.operit.pi.PiChatEngine
 import com.ai.assistance.operit.pi.RescuePiChatEngine
 import kotlinx.coroutines.withTimeoutOrNull
+
+data class ChatHistoryMessageEvent(
+    val chatId: String,
+    val message: ChatMessage,
+)
 
 /** 委托类，负责管理聊天历史相关功能 */
 class ChatHistoryDelegate(
@@ -73,6 +81,12 @@ class ChatHistoryDelegate(
     // State flows
     private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
+    private val mutableMessageEvents =
+        MutableSharedFlow<ChatHistoryMessageEvent>(
+            extraBufferCapacity = 256,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
+    val messageEvents: SharedFlow<ChatHistoryMessageEvent> = mutableMessageEvents
     private val currentChatWindow = CurrentChatWindowController()
     val hasOlderDisplayHistory: StateFlow<Boolean> = currentChatWindow.hasOlderDisplayHistory
     val hasNewerDisplayHistory: StateFlow<Boolean> = currentChatWindow.hasNewerDisplayHistory
@@ -1468,6 +1482,7 @@ class ChatHistoryDelegate(
     }
 
     suspend fun addMessageToChat(message: ChatMessage, chatIdOverride: String? = null) {
+        var emittedChatId: String? = null
         historyUpdateMutex.withLock {
             val targetChatId = chatIdOverride ?: _currentChatId.value ?: return@withLock
 
@@ -1479,6 +1494,7 @@ class ChatHistoryDelegate(
                 }
                 return@withLock
             }
+            emittedChatId = targetChatId
 
             // 仅在切换当前会话时阻止写入，后台会话仍允许写入
             if (isCurrentChat && !allowAddMessage.get()) {
@@ -1515,6 +1531,9 @@ class ChatHistoryDelegate(
                     chatHistoryManager.updateMessage(targetChatId, message)
                 }
             }
+        }
+        emittedChatId?.let { chatId ->
+            mutableMessageEvents.emit(ChatHistoryMessageEvent(chatId, message))
         }
     }
 
