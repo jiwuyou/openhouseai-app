@@ -58,7 +58,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 use std::borrow::Cow;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
@@ -1978,6 +1978,7 @@ impl Agent {
             .dispatch_context_event(&base_messages)
             .await
             .unwrap_or(base_messages);
+        let messages = prepare_messages_for_provider(&messages);
         let context = Context::owned(system_prompt, messages, tools);
         let mut stream = provider.stream(&context, &stream_options).await?;
 
@@ -10309,6 +10310,105 @@ fn filter_image_blocks(blocks: &mut Vec<ContentBlock>) -> usize {
     removed
 }
 
+fn append_missing_tool_results(
+    result: &mut Vec<Message>,
+    pending_tool_calls: &mut Vec<ToolCall>,
+    existing_tool_result_ids: &mut HashSet<String>,
+) {
+    for tool_call in pending_tool_calls.drain(..) {
+        if existing_tool_result_ids.contains(&tool_call.id) {
+            continue;
+        }
+        result.push(Message::tool_result(ToolResultMessage {
+            tool_call_id: tool_call.id,
+            tool_name: tool_call.name,
+            content: vec![ContentBlock::Text(TextContent::new("No result provided"))],
+            details: None,
+            is_error: true,
+            timestamp: Utc::now().timestamp_millis(),
+        }));
+    }
+    existing_tool_result_ids.clear();
+}
+
+/// Prepare persisted history for a provider request without mutating the session.
+///
+/// This mirrors pi-ai's outbound transform: incomplete assistant turns are not
+/// replayed, while valid tool calls from completed turns always receive a
+/// matching result before the next conversational boundary.
+fn prepare_messages_for_provider(messages: &[Message]) -> Vec<Message> {
+    let mut result = Vec::with_capacity(messages.len());
+    let mut pending_tool_calls = Vec::new();
+    let mut existing_tool_result_ids = HashSet::new();
+
+    for message in messages {
+        match message {
+            Message::Assistant(assistant) => {
+                append_missing_tool_results(
+                    &mut result,
+                    &mut pending_tool_calls,
+                    &mut existing_tool_result_ids,
+                );
+
+                if matches!(
+                    assistant.stop_reason,
+                    StopReason::Error | StopReason::Aborted
+                ) {
+                    continue;
+                }
+
+                let mut sanitized = assistant.as_ref().clone();
+                let original_content_len = sanitized.content.len();
+                sanitized.content.retain(|block| match block {
+                    ContentBlock::ToolCall(tool_call) => {
+                        !tool_call.id.trim().is_empty() && !tool_call.name.trim().is_empty()
+                    }
+                    _ => true,
+                });
+
+                pending_tool_calls = extract_tool_calls(&sanitized.content);
+                if sanitized.content.is_empty() && original_content_len > 0 {
+                    continue;
+                }
+
+                if sanitized.content.len() == original_content_len {
+                    result.push(message.clone());
+                } else {
+                    result.push(Message::assistant(sanitized));
+                }
+            }
+            Message::ToolResult(tool_result) => {
+                let matches_pending_call = pending_tool_calls
+                    .iter()
+                    .any(|tool_call| tool_call.id == tool_result.tool_call_id);
+                if tool_result.tool_call_id.trim().is_empty()
+                    || !matches_pending_call
+                    || existing_tool_result_ids.contains(&tool_result.tool_call_id)
+                {
+                    continue;
+                }
+                existing_tool_result_ids.insert(tool_result.tool_call_id.clone());
+                result.push(message.clone());
+            }
+            Message::User(_) | Message::Custom(_) => {
+                append_missing_tool_results(
+                    &mut result,
+                    &mut pending_tool_calls,
+                    &mut existing_tool_result_ids,
+                );
+                result.push(message.clone());
+            }
+        }
+    }
+
+    append_missing_tool_results(
+        &mut result,
+        &mut pending_tool_calls,
+        &mut existing_tool_result_ids,
+    );
+    result
+}
+
 /// Extract tool calls from content blocks.
 fn extract_tool_calls(content: &[ContentBlock]) -> Vec<ToolCall> {
     content
@@ -10408,6 +10508,15 @@ mod tests {
             error_message: None,
             timestamp: 0,
         }
+    }
+
+    fn tool_call(id: &str, name: &str) -> ContentBlock {
+        ContentBlock::ToolCall(ToolCall {
+            id: id.to_string(),
+            name: name.to_string(),
+            arguments: json!({"path": "/tmp/example"}),
+            thought_signature: None,
+        })
     }
 
     #[derive(Debug)]
@@ -11233,6 +11342,168 @@ mod tests {
         let context = agent.build_context();
         assert_eq!(context.messages.len(), 1);
         assert_eq!(image_count_in_message(&context.messages[0]), 1);
+    }
+
+    #[test]
+    fn provider_history_skips_aborted_assistant_with_partial_tool_call() {
+        let mut aborted = assistant_message("partial response");
+        aborted
+            .content
+            .push(ContentBlock::Thinking(ThinkingContent {
+                thinking: "partial reasoning".to_string(),
+                thinking_signature: None,
+            }));
+        aborted.content.push(tool_call("", ""));
+        aborted.stop_reason = StopReason::Aborted;
+        aborted.error_message = Some("Aborted".to_string());
+
+        let messages = vec![
+            user_message("before"),
+            Message::assistant(aborted),
+            user_message("after"),
+        ];
+        let prepared = prepare_messages_for_provider(&messages);
+
+        assert_eq!(prepared.len(), 2);
+        assert_user_text(&prepared[0], "before");
+        assert_user_text(&prepared[1], "after");
+    }
+
+    #[test]
+    fn provider_history_synthesizes_missing_result_for_valid_tool_call() {
+        let mut assistant = assistant_message("calling tool");
+        assistant.content.push(tool_call("call-1", "read"));
+        assistant.stop_reason = StopReason::ToolUse;
+
+        let messages = vec![
+            user_message("before"),
+            Message::assistant(assistant),
+            user_message("after"),
+        ];
+        let prepared = prepare_messages_for_provider(&messages);
+
+        assert_eq!(prepared.len(), 4);
+        assert!(matches!(&prepared[1], Message::Assistant(_)));
+        assert!(matches!(
+            &prepared[2],
+            Message::ToolResult(result)
+                if result.tool_call_id == "call-1"
+                    && result.tool_name == "read"
+                    && result.is_error
+                    && matches!(result.content.as_slice(), [ContentBlock::Text(text)] if text.text == "No result provided")
+        ));
+        assert_user_text(&prepared[3], "after");
+    }
+
+    #[test]
+    fn provider_history_does_not_duplicate_existing_tool_result() {
+        let mut assistant = assistant_message("calling tool");
+        assistant.content.push(tool_call("call-1", "read"));
+        assistant.stop_reason = StopReason::ToolUse;
+        let existing_result = Message::tool_result(ToolResultMessage {
+            tool_call_id: "call-1".to_string(),
+            tool_name: "read".to_string(),
+            content: vec![ContentBlock::Text(TextContent::new("done"))],
+            details: None,
+            is_error: false,
+            timestamp: 0,
+        });
+
+        let messages = vec![
+            user_message("before"),
+            Message::assistant(assistant),
+            existing_result,
+            user_message("after"),
+        ];
+        let prepared = prepare_messages_for_provider(&messages);
+
+        assert_eq!(
+            prepared
+                .iter()
+                .filter(|message| matches!(message, Message::ToolResult(_)))
+                .count(),
+            1
+        );
+        assert!(matches!(
+            &prepared[2],
+            Message::ToolResult(result)
+                if result.tool_call_id == "call-1" && !result.is_error
+        ));
+    }
+
+    #[test]
+    fn provider_history_drops_result_for_aborted_assistant_tool_call() {
+        let mut aborted = assistant_message("partial response");
+        aborted.content.push(tool_call("call-aborted", "read"));
+        aborted.stop_reason = StopReason::Aborted;
+        aborted.error_message = Some("Aborted".to_string());
+        let orphan_result = Message::tool_result(ToolResultMessage {
+            tool_call_id: "call-aborted".to_string(),
+            tool_name: "read".to_string(),
+            content: vec![ContentBlock::Text(TextContent::new("late result"))],
+            details: None,
+            is_error: true,
+            timestamp: 0,
+        });
+
+        let prepared = prepare_messages_for_provider(&[
+            user_message("before"),
+            Message::assistant(aborted),
+            orphan_result,
+            user_message("after"),
+        ]);
+
+        assert_eq!(prepared.len(), 2);
+        assert_user_text(&prepared[0], "before");
+        assert_user_text(&prepared[1], "after");
+    }
+
+    #[test]
+    fn provider_history_drops_result_for_invalid_tool_call() {
+        let mut assistant = assistant_message("");
+        assistant.content = vec![tool_call("call-invalid", "")];
+        assistant.stop_reason = StopReason::ToolUse;
+        let orphan_result = Message::tool_result(ToolResultMessage {
+            tool_call_id: "call-invalid".to_string(),
+            tool_name: String::new(),
+            content: vec![ContentBlock::Text(TextContent::new("invalid result"))],
+            details: None,
+            is_error: true,
+            timestamp: 0,
+        });
+
+        let prepared = prepare_messages_for_provider(&[
+            user_message("before"),
+            Message::assistant(assistant),
+            orphan_result,
+            user_message("after"),
+        ]);
+
+        assert_eq!(prepared.len(), 2);
+        assert_user_text(&prepared[0], "before");
+        assert_user_text(&prepared[1], "after");
+    }
+
+    #[test]
+    fn provider_history_drops_tool_result_without_preceding_call() {
+        let orphan_result = Message::tool_result(ToolResultMessage {
+            tool_call_id: "orphan".to_string(),
+            tool_name: "read".to_string(),
+            content: vec![ContentBlock::Text(TextContent::new("orphan result"))],
+            details: None,
+            is_error: false,
+            timestamp: 0,
+        });
+
+        let prepared = prepare_messages_for_provider(&[
+            user_message("before"),
+            orphan_result,
+            user_message("after"),
+        ]);
+
+        assert_eq!(prepared.len(), 2);
+        assert_user_text(&prepared[0], "before");
+        assert_user_text(&prepared[1], "after");
     }
 
     #[test]
