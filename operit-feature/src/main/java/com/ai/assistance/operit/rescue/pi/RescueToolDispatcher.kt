@@ -18,6 +18,9 @@ import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.host.OperitHostOperations
 import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import com.ai.assistance.operit.host.setup.WuxianPiSetupToolExecutor
+import com.ai.assistance.operit.rescue.plugins.RescuePluginContract
+import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
+import com.ai.assistance.operit.rescue.ui.plugins.RescuePluginMarketActivity
 
 /** Executes existing Operit tools plus the fixed WuxianPi repair tools exposed to Rescue Pi. */
 class RescueToolDispatcher private constructor(
@@ -56,6 +59,7 @@ class RescueToolDispatcher private constructor(
     ) : this(context, null, operationsProvider, deferUserActions)
 
     private val setupToolExecutor = WuxianPiSetupToolExecutor(operationsProvider)
+    private val pluginManager by lazy { RescuePluginManager.get(appContext) }
     private val httpClient =
         OkHttpClient.Builder()
             .connectTimeout(4, TimeUnit.SECONDS)
@@ -137,6 +141,55 @@ class RescueToolDispatcher private constructor(
                     } else {
                         hostCompletion(setupToolExecutor.execute(toolName, appContext))
                     }
+                RescuePluginContract.TOOL_SEARCH ->
+                    success(pluginManager.search(args.optString("query")))
+                RescuePluginContract.TOOL_LIST_INSTALLED ->
+                    success(pluginManager.listInstalled())
+                RescuePluginContract.TOOL_INSTALL ->
+                    success(
+                        pluginManager.install(
+                            args.getString("pluginId"),
+                            args.optString("version").takeIf { it.isNotBlank() },
+                        ).toJson()
+                    )
+                RescuePluginContract.TOOL_UPDATE ->
+                    success(pluginManager.update(args.getString("pluginId")).toJson())
+                RescuePluginContract.TOOL_READ_DOCUMENT ->
+                    success(
+                        pluginManager.readDocument(
+                            args.getString("pluginId"),
+                            args.optString("path").takeIf { it.isNotBlank() },
+                        )
+                    )
+                RescuePluginContract.TOOL_START_WORKFLOW ->
+                    success(
+                        pluginManager.startWorkflow(
+                            args.getString("pluginId"),
+                            args.optString("path").takeIf { it.isNotBlank() },
+                        )
+                    )
+                RescuePluginContract.TOOL_GET_COMMENTS ->
+                    success(
+                        pluginManager.getComments(
+                            args.getString("pluginId"),
+                            args.optString("version").takeIf { it.isNotBlank() },
+                        )
+                    )
+                RescuePluginContract.TOOL_DRAFT_COMMENT ->
+                    success(
+                        pluginManager.draftAgentComment(
+                            pluginId = args.getString("pluginId"),
+                            pluginVersion = args.getString("pluginVersion"),
+                            type = args.optString("type", "compatibility_report"),
+                            rating =
+                                args.optInt("rating", 0).takeIf { args.has("rating") && it in 1..5 },
+                            content = args.getString("content"),
+                            environment = args.optJSONObject("environment") ?: JSONObject(),
+                        )
+                    )
+                RescuePluginContract.TOOL_PUBLISH_COMMENT ->
+                    deferredPluginCommentPublish(args.getString("draftId"))
+                RescuePluginContract.TOOL_OPEN_MARKET -> openPluginMarket(args)
                 "runtime_status" -> hostCompletion(OperitHostProvider.operationsOrUnsupported().runtimeStatus())
                 "connection_test" -> {
                     val url =
@@ -258,6 +311,28 @@ class RescueToolDispatcher private constructor(
             error = null,
             userActionRequired = true,
         )
+    }
+
+    private suspend fun deferredPluginCommentPublish(draftId: String): Completion {
+        val details = pluginManager.preparePublish(draftId)
+        val message = details.getString("message")
+        return Completion(
+            content = message,
+            details = details,
+            isError = false,
+            error = null,
+            userActionRequired = true,
+        )
+    }
+
+    private fun openPluginMarket(args: JSONObject): Completion {
+        val intent =
+            RescuePluginMarketActivity.createIntent(
+                appContext,
+                args.optString("pluginId").takeIf { it.isNotBlank() },
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        appContext.startActivity(intent)
+        return success(JSONObject().put("opened", true).put("message", "Rescue Plugin Market opened"))
     }
 
     private fun error(message: String, failure: Throwable? = null): Completion {

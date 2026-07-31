@@ -84,6 +84,15 @@
             android:windowSoftInputMode="adjustPan" />
 
         <activity
+            android:name=".rescue.ui.plugins.RescuePluginMarketActivity"
+            android:exported="false"
+            android:label="@string/rescue_plugin_market_title"
+            android:launchMode="singleTask"
+            android:process=":rescue_ui"
+            android:theme="@style/Theme.Operit"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".services.assistant.OperitAssistActivity"
             android:excludeFromRecents="true"
             android:exported="true"

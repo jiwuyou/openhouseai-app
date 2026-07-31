@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
 
 const val RESCUE_FIRST_USE_MESSAGE =
-    "这是我第一次使用，请检查当前环境，并引导我完成 WuxianPi 初始化。"
+    "这是我第一次使用。请先调用 start_rescue_plugin_workflow 启动内置的 wuxianpi.first-install 工作流，再按工作流检查当前环境并引导我完成 WuxianPi 初始化。"
 
 internal fun shouldShowRescueFirstUsePrompt(
     isRescueContext: Boolean,

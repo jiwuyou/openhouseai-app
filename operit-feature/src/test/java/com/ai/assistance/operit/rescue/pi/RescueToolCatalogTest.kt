@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.rescue.pi
 
+import com.ai.assistance.operit.rescue.plugins.RescuePluginContract
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,6 +39,9 @@ class RescueToolCatalogTest {
         assertTrue("prepare_persistent_termux missing", "prepare_persistent_termux" in names)
         assertTrue("start_wuxianpi_setup missing", "start_wuxianpi_setup" in names)
         assertTrue("get_wuxianpi_setup_status missing", "get_wuxianpi_setup_status" in names)
+        RescuePluginContract.toolNames.forEach { name ->
+            assertTrue("$name missing", name in names)
+        }
     }
 
     @Test

@@ -40,6 +40,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
+import com.ai.assistance.operit.rescue.plugins.RescuePluginContract
+import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
 import com.ai.assistance.operit.ui.common.animations.SimpleAnimatedVisibility
 import com.ai.assistance.operit.ui.common.markdown.DefaultXmlRenderer
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
@@ -50,6 +52,7 @@ import com.ai.assistance.operit.util.ChatUtils
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.stream
+import kotlinx.coroutines.launch
 
 /** 支持多种 XML 标签的自定义渲染器 包含高效的前缀检测，直接解析标签类型 */
 private const val TOOL_PARAM_TOKEN_THRESHOLD = 50
@@ -937,8 +940,15 @@ class CustomXmlRenderer(
     @Composable
     private fun renderWuxianPiAction(content: String, modifier: Modifier) {
         val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
         val operation =
             Regex("""\boperation\s*=\s*[\"']([^\"']+)[\"']""")
+                .find(content)
+                ?.groupValues
+                ?.getOrNull(1)
+                .orEmpty()
+        val draftId =
+            Regex("""\bdraftId\s*=\s*[\"']([^\"']+)[\"']""")
                 .find(content)
                 ?.groupValues
                 ?.getOrNull(1)
@@ -957,12 +967,19 @@ class CustomXmlRenderer(
                         R.string.wuxianpi_action_run_command_description,
                         R.string.wuxianpi_action_run_command_button,
                     )
+                RescuePluginContract.TOOL_PUBLISH_COMMENT ->
+                    Triple(
+                        R.string.rescue_plugin_comment_confirm_title,
+                        R.string.rescue_plugin_comment_confirm_description,
+                        R.string.rescue_plugin_comment_confirm_button,
+                    )
                 else -> null
             }
         if (spec == null) return
 
         var feedback by remember(operation) { mutableStateOf<String?>(null) }
         var completed by remember(operation) { mutableStateOf(false) }
+        var running by remember(operation) { mutableStateOf(false) }
 
         Card(
             modifier = modifier.fillMaxWidth(),
@@ -992,8 +1009,27 @@ class CustomXmlRenderer(
                     )
                 }
                 OutlinedButton(
-                    enabled = !completed,
+                    enabled = !completed && !running,
                     onClick = {
+                        if (operation == RescuePluginContract.TOOL_PUBLISH_COMMENT) {
+                            if (draftId.isBlank()) {
+                                feedback = context.getString(R.string.wuxianpi_action_failed)
+                                return@OutlinedButton
+                            }
+                            running = true
+                            coroutineScope.launch {
+                                runCatching {
+                                    RescuePluginManager.get(context).publishDraft(draftId)
+                                }.onSuccess {
+                                    completed = true
+                                    feedback = context.getString(R.string.rescue_plugin_comment_published)
+                                }.onFailure { error ->
+                                    feedback = error.message ?: context.getString(R.string.wuxianpi_action_failed)
+                                }
+                                running = false
+                            }
+                            return@OutlinedButton
+                        }
                         val result = runCatching {
                             val operations = OperitHostProvider.operationsOrUnsupported()
                             when (operation) {

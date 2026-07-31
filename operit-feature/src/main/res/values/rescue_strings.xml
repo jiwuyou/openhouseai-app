@@ -3,4 +3,20 @@
     <string name="rescue_ai_close">关闭救援助手</string>
     <string name="rescue_ai_title">Rescue AI</string>
     <string name="rescue_ai_open">救援助手</string>
+    <string name="rescue_plugin_market_title">救援插件</string>
+    <string name="rescue_plugin_hub_url">插件市场地址</string>
+    <string name="rescue_plugin_save">保存</string>
+    <string name="rescue_plugin_saved">插件市场地址已保存</string>
+    <string name="rescue_plugin_not_installed">尚未安装</string>
+    <string name="rescue_plugin_install">安装</string>
+    <string name="rescue_plugin_update">更新</string>
+    <string name="rescue_plugin_install_complete">插件已启用</string>
+    <string name="rescue_plugin_comments">评论与实测</string>
+    <string name="rescue_plugin_no_comments">当前版本还没有评论</string>
+    <string name="rescue_plugin_add_comment">发表评论</string>
+    <string name="rescue_plugin_publish">发布</string>
+    <string name="rescue_plugin_comment_published">评论已发布</string>
+    <string name="rescue_plugin_comment_confirm_title">发布 Agent 实测报告</string>
+    <string name="rescue_plugin_comment_confirm_description">该评论由救援 AI 生成并保存在本机。点击后才会发送到插件市场。</string>
+    <string name="rescue_plugin_comment_confirm_button">确认发布</string>
 </resources>

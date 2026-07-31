@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "id": "wuxianpi.first-install.install",
+  "title": "初始化 WuxianPi",
+  "executionPolicy": {
+    "beforePersistentTermux": "execute_termux_command",
+    "afterPersistentTermux": "termux_exec_command",
+    "longRunningCommands": "termux_exec_command",
+    "serviceLifecycle": "service-manager"
+  },
+  "steps": [
+    {
+      "id": "inspect",
+      "kind": "tool",
+      "tool": "inspect_wuxianpi_setup",
+      "description": "检查宿主类型、Termux、权限、安装载荷和服务真实状态。"
+    },
+    {
+      "id": "prepare-host",
+      "kind": "tool",
+      "tool": "prepare_runtime_host",
+      "description": "准备 Termux bootstrap 和宿主命令通道；已完成时跳过。"
+    },
+    {
+      "id": "termux-home",
+      "kind": "tool",
+      "tool": "request_termux_home_access",
+      "when": "runtimeHost.externalTermux && !permissions.termuxHomeWorkspace",
+      "description": "显示用户点击后才跳转的 SAF 授权卡片，并确认工作区已绑定到 Termux Home。"
+    },
+    {
+      "id": "run-command",
+      "kind": "tool",
+      "tool": "request_termux_run_command_permission",
+      "when": "runtimeHost.externalTermux && !permissions.runCommand",
+      "description": "获取并验证外部 Termux RUN_COMMAND 权限。"
+    },
+    {
+      "id": "persistent-terminal",
+      "kind": "tool",
+      "tool": "prepare_persistent_termux",
+      "description": "先测试软件源，再安装 tmux 的最小前置依赖并建立持久终端。"
+    },
+    {
+      "id": "stage-setup",
+      "kind": "tool",
+      "tool": "start_wuxianpi_setup",
+      "description": "转移安装载荷并返回前台安装所需的 command、session_name 和 yield_time_ms。"
+    },
+    {
+      "id": "run-setup",
+      "kind": "tool-from-result",
+      "tool": "termux_exec_command",
+      "sourceStep": "stage-setup",
+      "description": "使用 stage-setup 返回的 command、session_name 和 yield_time_ms 启动持久安装任务。"
+    },
+    {
+      "id": "verify",
+      "kind": "poll-tool",
+      "tool": "get_wuxianpi_setup_status",
+      "description": "轮询安装状态，直到完成或返回可操作失败，并验证 service-manager、WuxianPi、Ubuntu、端口、模型接口和终端能力。"
+    }
+  ]
+}

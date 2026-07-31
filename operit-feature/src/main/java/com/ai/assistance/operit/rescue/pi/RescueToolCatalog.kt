@@ -3,6 +3,7 @@ package com.ai.assistance.operit.rescue.pi
 import com.ai.assistance.operit.core.config.SystemToolPrompts
 import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
+import com.ai.assistance.operit.rescue.plugins.RescuePluginContract
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -56,12 +57,103 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = WuxianPiSetupContract.TOOL_START_SETUP,
                     description =
-                        "Stage bundled setup resources and return the foreground install command. Launch that command with termux_exec_command using the returned session_name and yield_time_ms.",
+                        "Stage bundled setup resources for service-manager, WuxianPi, and Ubuntu, then return the foreground install command. Launch that command with termux_exec_command using the returned session_name and yield_time_ms.",
                 ),
                 definition(
                     name = WuxianPiSetupContract.TOOL_SETUP_STATUS,
                     description =
                         "Read durable WuxianPi setup status from the active host and persistent Termux state. Use it after starting setup and after Rescue AI restarts.",
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_SEARCH,
+                    description = "Search the online Rescue Plugin Hub for repair knowledge and workflows.",
+                    properties =
+                        JSONObject().put(
+                            "query",
+                            JSONObject().put("type", "string").put("description", "Optional search text"),
+                        ),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_LIST_INSTALLED,
+                    description = "List installed Rescue plugins, including active and previous versions.",
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_INSTALL,
+                    description = "Download, verify, and activate a Rescue plugin. A failed install keeps the current version active.",
+                    properties =
+                        JSONObject()
+                            .put("pluginId", JSONObject().put("type", "string").put("description", "Plugin id"))
+                            .put("version", JSONObject().put("type", "string").put("description", "Optional version")),
+                    required = JSONArray().put("pluginId"),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_UPDATE,
+                    description = "Update an installed Rescue plugin to the Hub's latest version.",
+                    properties =
+                        JSONObject().put(
+                            "pluginId",
+                            JSONObject().put("type", "string").put("description", "Plugin id"),
+                        ),
+                    required = JSONArray().put("pluginId"),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_READ_DOCUMENT,
+                    description = "Read a document from an installed Rescue plugin.",
+                    properties =
+                        JSONObject()
+                            .put("pluginId", JSONObject().put("type", "string").put("description", "Plugin id"))
+                            .put("path", JSONObject().put("type", "string").put("description", "Optional document path")),
+                    required = JSONArray().put("pluginId"),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_START_WORKFLOW,
+                    description = "Load an installed Rescue workflow. Follow its ordered steps by calling existing high-level tools; the plugin does not replace those tools.",
+                    properties =
+                        JSONObject()
+                            .put("pluginId", JSONObject().put("type", "string").put("description", "Plugin id"))
+                            .put("path", JSONObject().put("type", "string").put("description", "Optional workflow path")),
+                    required = JSONArray().put("pluginId"),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_GET_COMMENTS,
+                    description = "Read user comments and Agent compatibility reports for a plugin version.",
+                    properties =
+                        JSONObject()
+                            .put("pluginId", JSONObject().put("type", "string").put("description", "Plugin id"))
+                            .put("version", JSONObject().put("type", "string").put("description", "Optional plugin version")),
+                    required = JSONArray().put("pluginId"),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_DRAFT_COMMENT,
+                    description = "Save an Agent plugin comment as a local draft. This never publishes the comment.",
+                    properties =
+                        JSONObject()
+                            .put("pluginId", JSONObject().put("type", "string").put("description", "Plugin id"))
+                            .put("pluginVersion", JSONObject().put("type", "string").put("description", "Tested plugin version"))
+                            .put("type", JSONObject().put("type", "string").put("description", "Comment type, usually compatibility_report"))
+                            .put("rating", JSONObject().put("type", "integer").put("description", "Optional rating from 1 to 5"))
+                            .put("content", JSONObject().put("type", "string").put("description", "Review text without secrets or raw logs"))
+                            .put("environment", JSONObject().put("type", "object").put("description", "Optional structured device compatibility fields")),
+                    required = JSONArray().put("pluginId").put("pluginVersion").put("content"),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_PUBLISH_COMMENT,
+                    description = "Prepare a saved Agent comment draft for user-confirmed publication. This call never sends it; the user must click the returned action card.",
+                    properties =
+                        JSONObject().put(
+                            "draftId",
+                            JSONObject().put("type", "string").put("description", "Local draft id returned by draft_rescue_plugin_comment"),
+                        ),
+                    required = JSONArray().put("draftId"),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_OPEN_MARKET,
+                    description = "Open the Rescue Plugin Market activity for user browsing, installation, updates, and comments.",
+                    properties =
+                        JSONObject().put(
+                            "pluginId",
+                            JSONObject().put("type", "string").put("description", "Optional plugin id to focus"),
+                        ),
                 ),
                 definition(
                     name = "runtime_status",
