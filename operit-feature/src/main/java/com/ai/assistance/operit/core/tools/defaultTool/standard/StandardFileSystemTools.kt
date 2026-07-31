@@ -4300,7 +4300,7 @@ open class StandardFileSystemTools(protected val context: Context) {
         val newParam = tool.parameters.find { it.name == "new" }?.value
         ToolProgressBus.update(tool.name, 0f, "Preparing...")
         try {
-            PathValidator.validateAndroidPath(path, tool.name)?.let {
+            validateApplyFilePath(path, tool.name, environment)?.let {
                 emit(it)
                 return@flow
             }
@@ -5295,3 +5295,14 @@ open class StandardFileSystemTools(protected val context: Context) {
         }
     }
 }
+
+internal fun validateApplyFilePath(
+    path: String,
+    toolName: String,
+    environment: String?,
+): ToolResult? =
+    if (environment?.trim()?.startsWith("repo:", ignoreCase = true) == true) {
+        null
+    } else {
+        PathValidator.validateAndroidPath(path, toolName)
+    }

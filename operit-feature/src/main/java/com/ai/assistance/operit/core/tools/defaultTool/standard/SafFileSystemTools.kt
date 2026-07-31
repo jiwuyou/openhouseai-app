@@ -33,6 +33,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
+internal fun selectSafDocumentId(treeId: String, documentId: String?): String =
+    documentId?.takeIf { it.isNotBlank() } ?: treeId
+
 class SafFileSystemTools(
     private val context: Context,
     private val apiPreferences: ApiPreferences
@@ -567,7 +570,8 @@ class SafFileSystemTools(
         val authority = uri.authority ?: return null
         val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return null
         val treeUri = DocumentsContract.buildTreeDocumentUri(authority, treeId)
-        val docId = if (DocumentsContract.isTreeUri(uri)) treeId else runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull() ?: treeId
+        val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        val docId = selectSafDocumentId(treeId, documentId)
         return DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
     }
 
@@ -593,7 +597,7 @@ class SafFileSystemTools(
     private fun isDirectoryUri(uri: Uri): Boolean {
         val docUri = toTreeDocumentUri(uri) ?: uri
         val mime = queryMimeType(docUri)
-        return mime == DocumentsContract.Document.MIME_TYPE_DIR || DocumentsContract.isTreeUri(uri)
+        return mime == DocumentsContract.Document.MIME_TYPE_DIR
     }
 
     private fun openInputStreamOrNull(uri: Uri) = runCatching { contentResolver.openInputStream(uri) }.getOrNull()
@@ -619,7 +623,7 @@ class SafFileSystemTools(
     private fun ensureDirectoryDocumentUriOrNull(uri: Uri): Uri? {
         val docUri = toTreeDocumentUri(uri) ?: return null
         val mime = queryMimeType(docUri)
-        return if (mime == DocumentsContract.Document.MIME_TYPE_DIR || DocumentsContract.isTreeUri(uri)) docUri else null
+        return if (mime == DocumentsContract.Document.MIME_TYPE_DIR) docUri else null
     }
 
     private fun createChildDocumentOrNull(parentDirUri: Uri, name: String, mimeType: String): Uri? {
@@ -923,7 +927,60 @@ class SafFileSystemTools(
                         error = "Failed to open uri: $path"
                     )
 
-                output.use { it.write(content.toByteArray(Charsets.UTF_8)) }
+                val expectedBytes = content.toByteArray(Charsets.UTF_8)
+                output.use {
+                    it.write(expectedBytes)
+                    it.flush()
+                }
+
+                val resolvedAfterWrite =
+                    if (synthetic != null) targetUri
+                    else resolveSafPathToDocumentUriOrNull(path, environment)
+                if (resolvedAfterWrite == null) {
+                    return@withContext ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = FileOperationData(
+                            operation = if (append) "append" else "write",
+                            env = resolveEnvLabel(environment),
+                            path = path,
+                            successful = false,
+                            details = "Write completed but the requested path could not be resolved"
+                        ),
+                        error = "Write verification failed: $path was not created at the requested path"
+                    )
+                }
+
+                if (!append) {
+                    val matches = openInputStreamOrNull(resolvedAfterWrite)?.use { input ->
+                        val buffer = ByteArray(64 * 1024)
+                        var offset = 0
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            if (offset + read > expectedBytes.size) return@use false
+                            for (index in 0 until read) {
+                                if (buffer[index] != expectedBytes[offset + index]) return@use false
+                            }
+                            offset += read
+                        }
+                        offset == expectedBytes.size
+                    } ?: false
+                    if (!matches) {
+                        return@withContext ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = FileOperationData(
+                                operation = "write",
+                                env = resolveEnvLabel(environment),
+                                path = path,
+                                successful = false,
+                                details = "Write completed but read-back verification failed"
+                            ),
+                            error = "Write verification failed for $path"
+                        )
+                    }
+                }
 
                 ToolResult(
                     toolName = tool.name,
