@@ -1,5 +1,6 @@
 package com.wuxianpi.openhouse.feature.desktop
 
+import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.registry.OpenHouseBuiltins
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import org.junit.Assert.assertEquals
@@ -25,5 +26,9 @@ class DesktopCatalogTest {
         assertEquals("folder", files.iconKey)
         assertEquals(OpenHouseComponent.EntryType.FILES, files.source.entryType)
         assertTrue(DesktopCatalog.isProtected(DesktopCatalog.ID_FILES))
+        val about = merged.first { it.id == DesktopCatalog.ID_ABOUT }
+        assertEquals("关于 WuxianPi", about.title)
+        assertEquals(ProductRoute.ABOUT, about.route)
+        assertTrue(DesktopCatalog.isProtected(DesktopCatalog.ID_ABOUT))
     }
 }

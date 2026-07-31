@@ -7,7 +7,8 @@ public enum ProductRoute {
     REPAIR("repair"),
     SERVICE_CONTROL("service_control"),
     SETUP("setup"),
-    SETTINGS("settings");
+    SETTINGS("settings"),
+    ABOUT("about");
 
     private final String persistenceKey;
 

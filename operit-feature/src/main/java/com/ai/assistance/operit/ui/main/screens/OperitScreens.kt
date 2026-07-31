@@ -88,7 +88,6 @@ import com.ai.assistance.operit.ui.features.toolbox.screens.texttospeech.TextToS
 import com.ai.assistance.operit.ui.features.toolbox.screens.tooltester.ToolTesterScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.autoglm.AutoGlmOneClickToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.autoglm.AutoGlmToolScreen
-import com.ai.assistance.operit.ui.features.update.screens.UpdateScreen
 import com.ai.assistance.operit.ui.features.workflow.screens.WorkflowListScreen
 import com.ai.assistance.operit.ui.features.workflow.screens.WorkflowDetailScreen
 import com.ai.assistance.operit.ui.main.PendingChatDraftHandler
@@ -619,11 +618,7 @@ sealed class Screen(
                 onError: (String) -> Unit,
                 onGestureConsumed: (Boolean) -> Unit
         ) {
-            AboutScreen(
-                navigateToUpdateHistory = {
-                    navigateTo(UpdateHistory)
-                }
-            )
+            AboutScreen()
         }
     }
 
@@ -641,25 +636,6 @@ sealed class Screen(
             com.ai.assistance.operit.ui.features.agreement.screens.AgreementScreen(
                     onAgreementAccepted = onGoBack
             )
-        }
-    }
-
-    data object UpdateHistory :
-            Screen(
-                    navItem = NavItem.About,
-                    titleRes = R.string.update_history
-            ) {
-        @Composable
-        override fun Content(
-            navController: NavController,
-            navigateTo: ScreenNavigationHandler,
-            onGoBack: () -> Unit,
-            hasBackgroundImage: Boolean,
-            onLoading: (Boolean) -> Unit,
-            onError: (String) -> Unit,
-            onGestureConsumed: (Boolean) -> Unit
-        ) {
-            UpdateScreen(onNavigateToThemeSettings = { navigateTo(ThemeSettings) })
         }
     }
 

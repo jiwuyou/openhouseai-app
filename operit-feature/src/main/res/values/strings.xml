@@ -583,6 +583,9 @@
     <string name="about_developer">开发者: &lt;a href="https://github.com/AAswordman"&gt;AAswordman&lt;/a&gt;</string>
     <string name="about_contact">联系我们: aaswordsman@foxmail.com</string>
     <string name="about_website">&lt;a href="https://github.com/AAswordman/Operit"&gt;GitHub: https://github.com/AAswordman/Operit&lt;/a&gt;</string>
+    <string name="operit_source_attribution_title">Operit 源码致谢</string>
+    <string name="operit_source_attribution_desc">部分本地助手能力基于开源 Operit 项目开发；该仓库仅作为源码致谢，不是 WuxianPi 产品主页或更新源。</string>
+    <string name="operit_source_repository">查看 Operit 上游源码</string>
     <string name="about_copyright">© 2025 - 2026 Operit. 保留所有权利。</string>
     <string name="star_on_github">在 GitHub 点个 Star</string>
     <string name="update_log">更新日志</string>

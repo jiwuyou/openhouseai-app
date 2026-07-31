@@ -582,6 +582,9 @@
     <string name="about_developer">Developer: &lt;a href="https://github.com/AAswordman"&gt;AAswordman&lt;/a&gt;</string>
     <string name="about_contact">Contact Us: aaswordsman@foxmail.com</string>
     <string name="about_website">&lt;a href="https://github.com/AAswordman/Operit"&gt;GitHub: https://github.com/AAswordman/Operit&lt;/a&gt;</string>
+    <string name="operit_source_attribution_title">Operit source acknowledgement</string>
+    <string name="operit_source_attribution_desc">Some local assistant capabilities are based on the open-source Operit project. This repository is acknowledged as source code, not used as the WuxianPi product site or update channel.</string>
+    <string name="operit_source_repository">View upstream Operit source</string>
     <string name="about_copyright">© 2025 - 2026 Operit. All Rights Reserved.</string>
     <string name="star_on_github">Star on GitHub</string>
     <string name="update_log">Update Log</string>

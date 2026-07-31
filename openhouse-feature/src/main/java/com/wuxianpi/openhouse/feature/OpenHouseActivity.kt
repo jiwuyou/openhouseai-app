@@ -1,6 +1,8 @@
 package com.wuxianpi.openhouse.feature
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -103,7 +105,7 @@ class OpenHouseActivity : AppCompatActivity() {
             it.setEditMode(false)
             return
         }
-        if (currentRoute == ProductRoute.SETTINGS) {
+        if (currentRoute == ProductRoute.SETTINGS || currentRoute == ProductRoute.ABOUT) {
             showDesktop()
             return
         }
@@ -135,6 +137,7 @@ class OpenHouseActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.oh_nav_service).setOnClickListener { openRoute(ProductRoute.SERVICE_CONTROL) }
         findViewById<View>(R.id.oh_nav_settings).setOnClickListener { openRoute(ProductRoute.SETTINGS) }
+        findViewById<View>(R.id.oh_nav_about).setOnClickListener { openRoute(ProductRoute.ABOUT) }
         val capabilities = host.capabilities()
         findViewById<View>(R.id.oh_nav_basic).isEnabled = capabilities.supports(ProductRoute.BASIC)
         findViewById<View>(R.id.oh_nav_advanced).isEnabled = capabilities.supports(ProductRoute.ADVANCED)
@@ -157,6 +160,7 @@ class OpenHouseActivity : AppCompatActivity() {
             }
             ProductRoute.SERVICE_CONTROL -> host.launchServiceControl(this)
             ProductRoute.SETTINGS -> showSettings()
+            ProductRoute.ABOUT -> showAbout()
             else -> host.launchHostRoute(this, route)
         }
     }
@@ -338,6 +342,79 @@ class OpenHouseActivity : AppCompatActivity() {
             host.launchHostRoute(this, ProductRoute.SETTINGS)
         })
         content.addView(scroll, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    }
+
+    private fun showAbout() {
+        currentRoute = ProductRoute.ABOUT
+        title.setText(R.string.oh_about)
+        doneEditing.visibility = View.GONE
+        desktopView = null
+        content.removeAllViews()
+
+        val scroll = ScrollView(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(28))
+        }
+        scroll.addView(panel, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        panel.addView(heading(getString(R.string.oh_about_product_name)))
+        panel.addView(body(getString(R.string.oh_about_description)))
+        panel.addView(body(getString(R.string.oh_about_version, appVersion())))
+
+        panel.addView(heading(getString(R.string.oh_about_repositories)).apply {
+            setPadding(0, dp(24), 0, 0)
+        })
+        productRepositories().forEach { (name, url) -> panel.addView(linkButton(name, url)) }
+
+        panel.addView(heading(getString(R.string.oh_about_acknowledgements)).apply {
+            setPadding(0, dp(24), 0, 0)
+        })
+        acknowledgementRepositories().forEach { (name, url) -> panel.addView(linkButton(name, url)) }
+
+        content.addView(scroll, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun appVersion(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+    }.getOrDefault("").ifBlank { getString(R.string.oh_about_version_unknown) }
+
+    private fun productRepositories(): List<Pair<String, String>> = listOf(
+        "Android Host" to "https://github.com/jiwuyou/openhouseai-app",
+        "WuxianPi Runtime" to "https://github.com/jiwuyou/wuxianpi",
+        "service-manager" to "https://github.com/jiwuyou/service-manager",
+        "WuxianPi Rescue" to "https://github.com/jiwuyou/wuxianpi-rescue",
+        "OpenHouse Docs" to "https://github.com/jiwuyou/openhouse-docs",
+    )
+
+    private fun acknowledgementRepositories(): List<Pair<String, String>> = listOf(
+        "Operit" to "https://github.com/AAswordman/Operit",
+        "Termux" to "https://github.com/termux/termux-app",
+        "Pi" to "https://github.com/earendil-works/pi",
+        "OpenAI Codex" to "https://github.com/openai/codex",
+    )
+
+    private fun linkButton(name: String, url: String) = Button(this).apply {
+        text = "$name\n$url"
+        isAllCaps = false
+        gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        setTextColor(ContextCompat.getColor(this@OpenHouseActivity, R.color.oh_text))
+        textSize = 13f
+        minHeight = dp(58)
+        setPadding(dp(14), dp(8), dp(14), dp(8))
+        setBackgroundResource(R.drawable.oh_button_background)
+        setOnClickListener { openExternalUrl(url) }
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(10)
+        }
+    }
+
+    private fun openExternalUrl(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: RuntimeException) {
+            Toast.makeText(this, R.string.oh_about_open_link_failed, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun releaseDesktopAndFinish() {

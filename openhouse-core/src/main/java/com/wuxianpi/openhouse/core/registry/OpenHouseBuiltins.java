@@ -17,10 +17,11 @@ public final class OpenHouseBuiltins {
     public static final String SERVICE_CONTROL_ID = "service-control";
     public static final String SETUP_ID = "setup";
     public static final String SETTINGS_ID = "settings";
+    public static final String ABOUT_ID = "about-wuxianpi";
 
     private static final Set<String> PROTECTED_IDS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
         DESKTOP_ID, BASIC_ID, ADVANCED_ID, REPAIR_ID, TERMINAL_ID, FILES_ID,
-        SERVICE_CONTROL_ID, SETUP_ID, SETTINGS_ID
+        SERVICE_CONTROL_ID, SETUP_ID, SETTINGS_ID, ABOUT_ID
     )));
 
     private OpenHouseBuiltins() {}
@@ -48,6 +49,7 @@ public final class OpenHouseBuiltins {
             false, false, true, "builtin", Collections.emptyList(), Collections.emptyList()));
         values.add(nativeRoute(SETUP_ID, "安装引导", "首次配置运行环境", "tools", 50, "sparkles"));
         values.add(nativeRoute(SETTINGS_ID, "设置", "启动、桌面与兼容设置", "tools", 60, "sliders"));
+        values.add(nativeRoute(ABOUT_ID, "关于 WuxianPi", "产品、仓库与开源致谢", "tools", 70, "sparkles"));
         return Collections.unmodifiableList(values);
     }
 

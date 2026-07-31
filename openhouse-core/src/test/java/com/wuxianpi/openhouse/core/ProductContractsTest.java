@@ -22,8 +22,9 @@ public class ProductContractsTest {
             false, false, true, false);
         List<ProductRoute> routes = capabilities.trimRoutes(Arrays.asList(
             ProductRoute.DESKTOP, ProductRoute.BASIC, ProductRoute.ADVANCED,
-            ProductRoute.REPAIR, ProductRoute.SERVICE_CONTROL, ProductRoute.SETTINGS));
-        assertEquals(Arrays.asList(ProductRoute.DESKTOP, ProductRoute.BASIC, ProductRoute.REPAIR, ProductRoute.SETTINGS), routes);
+            ProductRoute.REPAIR, ProductRoute.SERVICE_CONTROL, ProductRoute.SETTINGS, ProductRoute.ABOUT));
+        assertEquals(Arrays.asList(ProductRoute.DESKTOP, ProductRoute.BASIC, ProductRoute.REPAIR,
+            ProductRoute.SETTINGS, ProductRoute.ABOUT), routes);
     }
 
     @Test public void repairAndServiceControlCannotBecomeOrdinaryDefaults() {

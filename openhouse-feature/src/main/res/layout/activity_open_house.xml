@@ -126,5 +126,6 @@
         <Button android:id="@+id/oh_nav_files" style="@style/OhDrawerButton" android:text="@string/oh_files" />
         <Button android:id="@+id/oh_nav_service" style="@style/OhDrawerButton" android:text="@string/oh_service_control" />
         <Button android:id="@+id/oh_nav_settings" style="@style/OhDrawerButton" android:text="@string/oh_settings" />
+        <Button android:id="@+id/oh_nav_about" style="@style/OhDrawerButton" android:text="@string/oh_about" />
     </LinearLayout>
 </androidx.drawerlayout.widget.DrawerLayout>
