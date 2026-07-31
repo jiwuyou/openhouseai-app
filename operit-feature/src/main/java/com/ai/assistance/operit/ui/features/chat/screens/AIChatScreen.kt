@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.CodeOff
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -47,6 +48,7 @@ import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
 import com.ai.assistance.operit.rescue.ui.RescueFirstUsePrompt
 import com.ai.assistance.operit.rescue.ui.RescueRemoteAssistDialog
+import com.ai.assistance.operit.rescue.ui.plugins.RescuePluginMarketActivity
 import com.ai.assistance.operit.rescue.ui.shouldShowRescueFirstUsePrompt
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
@@ -885,6 +887,17 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         if (isCurrentScreen) {
             setTopBarActions {
                 if (chatViewRuntime == "rescue") {
+                    IconButton(
+                        onClick = {
+                            context.startActivity(RescuePluginMarketActivity.createIntent(context))
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Store,
+                            contentDescription = "维修市场",
+                            tint = appBarContentColor,
+                        )
+                    }
                     IconButton(
                         enabled = !currentChatId.isNullOrBlank(),
                         onClick = { showRescueRemoteAssistDialog = true },

@@ -129,15 +129,13 @@
 - `use_package` 是三兼容入口：对 MCP/Skill/Sandbox Package 都可统一调用。
 - `ping_mcp` 工具是 `use_package` 的直通封装，用于快速探测指定包是否可被加载。
 
-【市场 Agent API（HTTP，只读）】
-- 基础前缀：`https://api.operit.app/market-stats`
-- 搜索：`/agent/search?q=<关键词>&type=mcp|skill|package|script&limit=10`
-- 详情：`/agent/items/<type>/<id>`
-- 安装计划：`/agent/items/<type>/<id>/install-plan`
-- `package` / `script` 的 install_plan 通常会返回 `download_url`、`tracked_download_url`、`sha256`、`runtime_package_id`。
-- `skill` 的 install_plan 通常会返回 `repository_url`。
-- `mcp` 的 install_plan 可能返回 `config`（可直接作为 installConfig 参考）或 `repository_url`。
-- 当前软件未对 JS 暴露统一的一键安装市场接口；需要安装时，按条目类型自行下载、解压、导入，必要时配合 `debug_install_js_package` / `debug_install_toolpkg` / `use_package`。
+【WuxianPi 维修市场 API（HTTP，只读）】
+- 市场地址：`https://wuxianpirescue.webefficacy.com`
+- 搜索：`/api/v1/plugins?q=<关键词>`
+- 详情：`/api/v1/plugins/<id>`
+- 版本：`/api/v1/plugins/<id>/versions`
+- 文档：`/docs/raw/<id>/<version>/<path>`
+- 优先通过维修助手内置的维修市场工具完成查询、安装和更新。
 
 【功能模型与模型配置】
 1) 模型配置（Model Config）：
@@ -377,15 +375,13 @@
 - `use_package` is tri-compatible and can be called uniformly for MCP/Skill/Sandbox Package.
 - `ping_mcp` is a thin wrapper over `use_package` for quick package availability probing.
 
-[Market agent API (HTTP, read-only)]
-- Base prefix: `https://api.operit.app/market-stats`
-- Search: `/agent/search?q=<query>&type=mcp|skill|package|script&limit=10`
-- Detail: `/agent/items/<type>/<id>`
-- Install plan: `/agent/items/<type>/<id>/install-plan`
-- `package` / `script` install_plan usually returns `download_url`, `tracked_download_url`, `sha256`, and `runtime_package_id`.
-- `skill` install_plan usually returns `repository_url`.
-- `mcp` install_plan may return `config` (usable as installConfig reference) or `repository_url`.
-- The app does not currently expose a unified one-click market install API to JS; when installation is needed, download/extract/import by item type and use `debug_install_js_package`, `debug_install_toolpkg`, or `use_package` when appropriate.
+[WuxianPi rescue market API (HTTP, read-only)]
+- Market URL: `https://wuxianpirescue.webefficacy.com`
+- Search: `/api/v1/plugins?q=<query>`
+- Detail: `/api/v1/plugins/<id>`
+- Versions: `/api/v1/plugins/<id>/versions`
+- Documents: `/docs/raw/<id>/<version>/<path>`
+- Prefer the Rescue assistant's built-in market tools for discovery, installation, and updates.
 
 [Function model and model config]
 1) Model config:

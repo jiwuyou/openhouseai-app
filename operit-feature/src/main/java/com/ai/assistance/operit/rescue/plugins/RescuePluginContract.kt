@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 object RescuePluginContract {
     const val SCHEMA_VERSION = 1
-    const val DEFAULT_HUB_URL = "https://wuxianpi.webefficacy.com"
+    const val DEFAULT_HUB_URL = "https://wuxianpirescue.webefficacy.com"
     const val FIRST_INSTALL_PLUGIN_ID = "wuxianpi.first-install"
 
     const val TOOL_SEARCH = "search_rescue_plugins"

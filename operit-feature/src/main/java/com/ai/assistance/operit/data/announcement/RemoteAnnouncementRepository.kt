@@ -256,6 +256,6 @@ class RemoteAnnouncementRepository(
 
     companion object {
         private const val TAG = "RemoteAnnouncementRepo"
-        const val DEFAULT_POINTER_URL = "https://operit.app/announcements/latest.json"
+        const val DEFAULT_POINTER_URL = "https://wuxianpirescue.webefficacy.com/announcements/latest.json"
     }
 }

@@ -18,10 +18,14 @@ class RescuePluginHubSettings(context: Context) {
     private val preferences =
         context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
-    fun getHubUrl(): String =
-        preferences.getString(KEY_HUB_URL, RescuePluginContract.DEFAULT_HUB_URL)
-            ?.let(RescuePluginContract::normalizeHubUrl)
-            ?: RescuePluginContract.DEFAULT_HUB_URL
+    fun getHubUrl(): String {
+        val stored = preferences.getString(KEY_HUB_URL, null)
+        if (stored.isNullOrBlank() || stored.trimEnd('/') == LEGACY_HUB_URL) {
+            preferences.edit().putString(KEY_HUB_URL, RescuePluginContract.DEFAULT_HUB_URL).apply()
+            return RescuePluginContract.DEFAULT_HUB_URL
+        }
+        return RescuePluginContract.normalizeHubUrl(stored)
+    }
 
     fun setHubUrl(value: String): String {
         val normalized = RescuePluginContract.normalizeHubUrl(value)
@@ -40,6 +44,7 @@ class RescuePluginHubSettings(context: Context) {
         const val PREFERENCES_NAME = "rescue_plugin_hub"
         const val KEY_HUB_URL = "hub_url"
         const val KEY_CLIENT_ID = "client_id"
+        const val LEGACY_HUB_URL = "https://wuxianpi.webefficacy.com"
     }
 }
 
