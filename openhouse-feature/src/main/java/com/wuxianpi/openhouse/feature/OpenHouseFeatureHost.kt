@@ -23,6 +23,8 @@ interface OpenHouseFeatureHost {
 
     fun launchServiceControl(activity: Activity) = Unit
 
+    fun launchTerminal(activity: Activity) = Unit
+
     /** Opens controls scoped to the Web component currently shown by the shared feature UI. */
     fun launchComponentControl(activity: Activity, component: ComponentWebLaunchArgs) {
         launchServiceControl(activity)

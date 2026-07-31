@@ -122,6 +122,7 @@
             android:textColor="@color/oh_text_secondary"
             android:textSize="12sp" />
 
+        <Button android:id="@+id/oh_nav_terminal" style="@style/OhDrawerButton" android:text="@string/oh_terminal" />
         <Button android:id="@+id/oh_nav_service" style="@style/OhDrawerButton" android:text="@string/oh_service_control" />
         <Button android:id="@+id/oh_nav_settings" style="@style/OhDrawerButton" android:text="@string/oh_settings" />
     </LinearLayout>

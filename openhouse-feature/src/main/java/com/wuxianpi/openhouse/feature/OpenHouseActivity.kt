@@ -124,6 +124,10 @@ class OpenHouseActivity : AppCompatActivity() {
         findViewById<View>(R.id.oh_nav_basic).setOnClickListener { openRoute(ProductRoute.BASIC) }
         findViewById<View>(R.id.oh_nav_advanced).setOnClickListener { openRoute(ProductRoute.ADVANCED) }
         findViewById<View>(R.id.oh_nav_repair).setOnClickListener { openRoute(ProductRoute.REPAIR) }
+        findViewById<View>(R.id.oh_nav_terminal).setOnClickListener {
+            drawer.closeDrawer(GravityCompat.START)
+            host.launchTerminal(this)
+        }
         findViewById<View>(R.id.oh_nav_service).setOnClickListener { openRoute(ProductRoute.SERVICE_CONTROL) }
         findViewById<View>(R.id.oh_nav_settings).setOnClickListener { openRoute(ProductRoute.SETTINGS) }
         val capabilities = host.capabilities()

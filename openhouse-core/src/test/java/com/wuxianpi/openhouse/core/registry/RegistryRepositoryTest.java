@@ -113,7 +113,7 @@ public class RegistryRepositoryTest {
 
     private static void assertAllFixedEntries(RegistrySnapshot snapshot) {
         for (String id : OpenHouseBuiltins.protectedIds()) assertNotNull(id, snapshot.find(id));
-        assertEquals(7, OpenHouseBuiltins.protectedIds().size());
+        assertEquals(8, OpenHouseBuiltins.protectedIds().size());
     }
 
     private static String manifest(String id, String title) {

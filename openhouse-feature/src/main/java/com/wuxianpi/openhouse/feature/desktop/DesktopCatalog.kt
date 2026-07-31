@@ -10,6 +10,7 @@ object DesktopCatalog {
     const val ID_BASIC = "basic"
     const val ID_ADVANCED = "advanced"
     const val ID_REPAIR = "repair"
+    const val ID_TERMINAL = "terminal"
     const val ID_SERVICE_CONTROL = "service-control"
     const val ID_SETTINGS = "settings"
 

@@ -7,6 +7,7 @@
     <string name="oh_basic">基础模式</string>
     <string name="oh_advanced">高级 UI</string>
     <string name="oh_repair">维修模式</string>
+    <string name="oh_terminal">终端</string>
     <string name="oh_service_control">服务控制</string>
     <string name="oh_settings">设置</string>
     <string name="oh_modes">模式</string>

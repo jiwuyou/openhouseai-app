@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.CodeOff
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Terminal
@@ -44,6 +45,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
 import com.ai.assistance.operit.rescue.ui.RescueFirstUsePrompt
@@ -887,6 +889,25 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         if (isCurrentScreen) {
             setTopBarActions {
                 if (chatViewRuntime == "rescue") {
+                    IconButton(
+                        onClick = {
+                            val result =
+                                OperitHostProvider.operationsOrUnsupported().openHostApp(context)
+                            if (!result.success) {
+                                Toast.makeText(
+                                    context,
+                                    result.error ?: result.message.ifBlank { "无法打开 Termux 终端。" },
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = stringResource(R.string.open_terminal),
+                            tint = appBarContentColor,
+                        )
+                    }
                     IconButton(
                         onClick = {
                             context.startActivity(RescuePluginMarketActivity.createIntent(context))

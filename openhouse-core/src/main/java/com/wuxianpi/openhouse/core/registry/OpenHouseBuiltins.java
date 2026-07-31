@@ -12,12 +12,13 @@ public final class OpenHouseBuiltins {
     public static final String BASIC_ID = "basic";
     public static final String ADVANCED_ID = "advanced";
     public static final String REPAIR_ID = "repair";
+    public static final String TERMINAL_ID = "terminal";
     public static final String SERVICE_CONTROL_ID = "service-control";
     public static final String SETUP_ID = "setup";
     public static final String SETTINGS_ID = "settings";
 
     private static final Set<String> PROTECTED_IDS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
-        DESKTOP_ID, BASIC_ID, ADVANCED_ID, REPAIR_ID, SERVICE_CONTROL_ID, SETUP_ID, SETTINGS_ID
+        DESKTOP_ID, BASIC_ID, ADVANCED_ID, REPAIR_ID, TERMINAL_ID, SERVICE_CONTROL_ID, SETUP_ID, SETTINGS_ID
     )));
 
     private OpenHouseBuiltins() {}
@@ -31,6 +32,10 @@ public final class OpenHouseBuiltins {
         values.add(nativeRoute(BASIC_ID, "基础模式", "Operit UI 与主 Node Pi Runtime", "ai", 10, "brain"));
         values.add(nativeRoute(ADVANCED_ID, "高级 UI", "完整 Web 工作台", "ai", 20, "sparkles"));
         values.add(nativeRoute(REPAIR_ID, "维修模式", "独立诊断与修复", "tools", 30, "wrench"));
+        values.add(new OpenHouseComponent(TERMINAL_ID, "终端", "打开 Termux 命令行",
+            "tools", 35, "terminal", "终", 35, false, true, true,
+            OpenHouseComponent.EntryType.TERMINAL, "", "", "", "", true,
+            false, false, true, "builtin", Collections.emptyList(), Collections.emptyList()));
         values.add(new OpenHouseComponent(SERVICE_CONTROL_ID, "服务控制", "启动、停止和重启本机服务",
             "tools", 40, "settings", "服", 40, false, true, true,
             OpenHouseComponent.EntryType.SERVICE_CONTROL, "", "", "", "控制", true,

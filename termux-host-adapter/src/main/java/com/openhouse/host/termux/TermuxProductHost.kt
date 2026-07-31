@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
 import com.ai.assistance.operit.rescue.ui.RescueActivity
@@ -75,6 +76,17 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         launchServiceControl(activity, ServiceControlRequest())
     }
 
+    override fun launchTerminal(activity: Activity) {
+        val result = host.openTerminal()
+        if (!result.isSuccess) {
+            Toast.makeText(
+                activity,
+                result.message.ifBlank { "无法打开 Termux 终端。" },
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
     private fun launchServiceControl(activity: Activity, request: ServiceControlRequest) {
         activity.startActivity(
             OpenHouseServiceControlActivity.createIntent(activity, request),
@@ -87,7 +99,7 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
             return
         }
         when (component.entryType) {
-            OpenHouseComponent.EntryType.TERMINAL -> host.openTerminal()
+            OpenHouseComponent.EntryType.TERMINAL -> launchTerminal(activity)
             OpenHouseComponent.EntryType.SERVICE_CONTROL -> Unit
             OpenHouseComponent.EntryType.ANDROID_ACTIVITY -> launchClass(activity, component.activityClassName)
             OpenHouseComponent.EntryType.WEBVIEW -> openUrl(activity, component.url)

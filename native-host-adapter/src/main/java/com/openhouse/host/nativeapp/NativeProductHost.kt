@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
 import com.ai.assistance.operit.rescue.ui.RescueActivity
@@ -86,6 +87,18 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         launchServiceControl(activity, ServiceControlRequest())
     }
 
+    override fun launchTerminal(activity: Activity) {
+        val result = host.openTerminal()
+        if (!result.isSuccess) {
+            val message = if (result.status == HostActionResult.Status.USER_ACTION_REQUIRED) {
+                "请先安装并打开 WuxianPi All-in-One（Termux）。"
+            } else {
+                result.message.ifBlank { "无法打开 Termux 终端。" }
+            }
+            Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun launchComponentControl(activity: Activity, component: ComponentWebLaunchArgs) {
         launchServiceControl(activity, serviceControlRequestFor(component))
     }
@@ -102,7 +115,7 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
             return
         }
         when (component.entryType) {
-            OpenHouseComponent.EntryType.TERMINAL -> host.openTerminal()
+            OpenHouseComponent.EntryType.TERMINAL -> launchTerminal(activity)
             OpenHouseComponent.EntryType.SERVICE_CONTROL -> Unit
             OpenHouseComponent.EntryType.ANDROID_ACTIVITY -> launchClass(activity, component.activityClassName)
             OpenHouseComponent.EntryType.WEBVIEW -> launchComponentWebView(activity, component)
