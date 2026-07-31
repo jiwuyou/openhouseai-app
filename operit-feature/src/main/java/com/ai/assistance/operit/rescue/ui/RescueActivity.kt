@@ -80,6 +80,7 @@ class RescueActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        OperitApplication.initializeUiProcess(applicationContext)
 
         // The rescue process must initialize only the shared Operit environment.  Loading the Rust
         // library itself remains lazy and is owned by RescuePiChatEngine on the first turn.

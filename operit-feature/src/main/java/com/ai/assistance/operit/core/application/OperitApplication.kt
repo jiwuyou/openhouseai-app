@@ -62,9 +62,13 @@ object OperitApplication {
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mainInitializationLock = Any()
+    private val uiProcessInitializationLock = Any()
 
     @Volatile
     private var mainApplicationInitialized = false
+
+    @Volatile
+    private var uiProcessInitialized = false
 
     @Volatile
     private var applicationContext: Context? = null
@@ -76,6 +80,16 @@ object OperitApplication {
     private var initializerStatuses: List<OperitInitializerStatus> = emptyList()
 
     private var previousUncaughtExceptionHandler: Thread.UncaughtExceptionHandler? = null
+
+    /** Initializes process-local UI libraries before any Compose content can render. */
+    fun initializeUiProcess(context: Context) {
+        if (uiProcessInitialized) return
+        synchronized(uiProcessInitializationLock) {
+            if (uiProcessInitialized) return
+            JLatexMathAndroid.init(context.applicationContext)
+            uiProcessInitialized = true
+        }
+    }
 
     fun initializeMainApplication(
         context: Context,
@@ -89,7 +103,7 @@ object OperitApplication {
             applicationContext = appContext
             config = lifecycleConfig
             appStartupTimeMs = System.currentTimeMillis()
-            JLatexMathAndroid.init(appContext)
+            initializeUiProcess(appContext)
             OperitRuntimeContext.bind(appContext)
             AppLogger.bindContext(appContext)
             AIMessageManager.initialize(appContext)
