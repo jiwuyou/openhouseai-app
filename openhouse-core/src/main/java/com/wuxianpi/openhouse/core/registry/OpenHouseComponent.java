@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 public final class OpenHouseComponent {
-    public enum EntryType { WEBVIEW, NATIVE_PAGE, TERMINAL, SERVICE_CONTROL, ANDROID_ACTIVITY }
+    public enum EntryType { WEBVIEW, NATIVE_PAGE, TERMINAL, FILES, SERVICE_CONTROL, ANDROID_ACTIVITY }
 
     public final String id;
     public final String title;

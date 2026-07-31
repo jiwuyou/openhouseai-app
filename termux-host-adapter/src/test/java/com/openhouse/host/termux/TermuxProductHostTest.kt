@@ -1,0 +1,14 @@
+package com.openhouse.host.termux
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class TermuxProductHostTest {
+    @Test
+    fun filesEntryUsesExistingEmbeddedFileManager() {
+        assertEquals(
+            "com.termux.app.openhouse.files.ui.OpenHouseFilesActivity",
+            TermuxProductHost.FILES_ACTIVITY_CLASS,
+        )
+    }
+}

@@ -101,6 +101,13 @@ public class RegistryRepositoryTest {
         assertEquals(Collections.singletonList("service-manager://services/memo"), component.serviceRefs);
     }
 
+    @Test public void parserRecognizesFilesEntry() throws Exception {
+        RegistryManifest manifest = RegistryManifest.fromManifestJson(manifestWithEntry("files-demo", "文件", "files"));
+        OpenHouseComponent component = new OpenHouseComponentParser().parse(manifest, "test");
+        assertEquals(OpenHouseComponent.EntryType.FILES, component.entryType);
+        assertEquals("folder", component.iconKey);
+    }
+
     @Test(expected = Exception.class)
     public void manifestRejectsAbsoluteRegistryPath() throws Exception {
         RegistryManifest.fromManifestJson("/private/components/demo.json", manifest("demo", "Demo"));
@@ -113,12 +120,22 @@ public class RegistryRepositoryTest {
 
     private static void assertAllFixedEntries(RegistrySnapshot snapshot) {
         for (String id : OpenHouseBuiltins.protectedIds()) assertNotNull(id, snapshot.find(id));
-        assertEquals(8, OpenHouseBuiltins.protectedIds().size());
+        assertEquals(9, OpenHouseBuiltins.protectedIds().size());
+        OpenHouseComponent files = snapshot.find(OpenHouseBuiltins.FILES_ID);
+        assertEquals("文件", files.title);
+        assertEquals("folder", files.iconKey);
+        assertEquals(OpenHouseComponent.EntryType.FILES, files.entryType);
     }
 
     private static String manifest(String id, String title) {
         return "{\"schemaVersion\":1,\"id\":\"" + id + "\",\"title\":\"" + title + "\","
             + "\"shellMenu\":{\"title\":\"" + title + "\",\"entry\":{\"type\":\"native-page\",\"page\":\"demo\"}},"
+            + "\"smallphoneApp\":{},\"serviceManager\":{},\"ai\":{}}";
+    }
+
+    private static String manifestWithEntry(String id, String title, String entryType) {
+        return "{\"schemaVersion\":1,\"id\":\"" + id + "\",\"title\":\"" + title + "\","
+            + "\"shellMenu\":{\"title\":\"" + title + "\",\"entry\":{\"type\":\"" + entryType + "\"}},"
             + "\"smallphoneApp\":{},\"serviceManager\":{},\"ai\":{}}";
     }
 

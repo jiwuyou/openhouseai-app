@@ -22,6 +22,7 @@ import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.StartupTarget
+import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.feature.desktop.DesktopCatalog
 import com.wuxianpi.openhouse.feature.desktop.DesktopComponent
 import com.wuxianpi.openhouse.feature.desktop.DesktopIconOverride
@@ -128,6 +129,10 @@ class OpenHouseActivity : AppCompatActivity() {
             drawer.closeDrawer(GravityCompat.START)
             host.launchTerminal(this)
         }
+        findViewById<View>(R.id.oh_nav_files).setOnClickListener {
+            drawer.closeDrawer(GravityCompat.START)
+            host.launchFiles(this)
+        }
         findViewById<View>(R.id.oh_nav_service).setOnClickListener { openRoute(ProductRoute.SERVICE_CONTROL) }
         findViewById<View>(R.id.oh_nav_settings).setOnClickListener { openRoute(ProductRoute.SETTINGS) }
         val capabilities = host.capabilities()
@@ -215,7 +220,13 @@ class OpenHouseActivity : AppCompatActivity() {
             return
         }
         val route = entry.component.route
-        if (route != null) openRoute(route) else host.launchDynamicComponent(this, entry.component.source)
+        if (route != null) {
+            openRoute(route)
+        } else if (entry.component.source.entryType == OpenHouseComponent.EntryType.FILES) {
+            host.launchFiles(this)
+        } else {
+            host.launchDynamicComponent(this, entry.component.source)
+        }
     }
 
     private fun showEditDialog(appId: String) {

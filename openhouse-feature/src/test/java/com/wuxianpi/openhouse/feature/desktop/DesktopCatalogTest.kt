@@ -20,5 +20,10 @@ class DesktopCatalogTest {
             OpenHouseComponent.EntryType.TERMINAL,
             merged.first { it.id == DesktopCatalog.ID_TERMINAL }.source.entryType,
         )
+        val files = merged.first { it.id == DesktopCatalog.ID_FILES }
+        assertEquals("文件", files.title)
+        assertEquals("folder", files.iconKey)
+        assertEquals(OpenHouseComponent.EntryType.FILES, files.source.entryType)
+        assertTrue(DesktopCatalog.isProtected(DesktopCatalog.ID_FILES))
     }
 }

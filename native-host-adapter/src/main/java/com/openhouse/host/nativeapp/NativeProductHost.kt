@@ -99,6 +99,10 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         }
     }
 
+    override fun launchFiles(activity: Activity) {
+        activity.startActivity(Intent(activity, NativeTermuxFilesActivity::class.java))
+    }
+
     override fun launchComponentControl(activity: Activity, component: ComponentWebLaunchArgs) {
         launchServiceControl(activity, serviceControlRequestFor(component))
     }
@@ -115,6 +119,7 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
             return
         }
         when (component.entryType) {
+            OpenHouseComponent.EntryType.FILES -> launchFiles(activity)
             OpenHouseComponent.EntryType.TERMINAL -> launchTerminal(activity)
             OpenHouseComponent.EntryType.SERVICE_CONTROL -> Unit
             OpenHouseComponent.EntryType.ANDROID_ACTIVITY -> launchClass(activity, component.activityClassName)

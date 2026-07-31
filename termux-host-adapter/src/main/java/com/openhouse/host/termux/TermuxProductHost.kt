@@ -87,6 +87,17 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         }
     }
 
+    override fun launchFiles(activity: Activity) {
+        val result = launchClass(activity, FILES_ACTIVITY_CLASS)
+        if (!result.isSuccess) {
+            Toast.makeText(
+                activity,
+                result.message.ifBlank { "无法打开文件管理器。" },
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
     private fun launchServiceControl(activity: Activity, request: ServiceControlRequest) {
         activity.startActivity(
             OpenHouseServiceControlActivity.createIntent(activity, request),
@@ -100,6 +111,7 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         }
         when (component.entryType) {
             OpenHouseComponent.EntryType.TERMINAL -> launchTerminal(activity)
+            OpenHouseComponent.EntryType.FILES -> launchFiles(activity)
             OpenHouseComponent.EntryType.SERVICE_CONTROL -> Unit
             OpenHouseComponent.EntryType.ANDROID_ACTIVITY -> launchClass(activity, component.activityClassName)
             OpenHouseComponent.EntryType.WEBVIEW -> openUrl(activity, component.url)
@@ -163,6 +175,11 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         HostActionResult.Status.FAILED,
         error.message ?: error.javaClass.simpleName,
     )
+
+    companion object {
+        internal const val FILES_ACTIVITY_CLASS =
+            "com.termux.app.openhouse.files.ui.OpenHouseFilesActivity"
+    }
 }
 
 fun serviceControlRequestForDynamicComponent(

@@ -81,6 +81,7 @@ public final class OpenHouseComponentParser {
             return page.isEmpty() ? null : new EntryFields(OpenHouseComponent.EntryType.NATIVE_PAGE, "", page, "");
         }
         if ("terminal".equals(type)) return new EntryFields(OpenHouseComponent.EntryType.TERMINAL, "", "", "");
+        if ("files".equals(type)) return new EntryFields(OpenHouseComponent.EntryType.FILES, "", "", "");
         if ("service-control".equals(type) || "servicecontrol".equals(type) || "services".equals(type)) {
             return new EntryFields(OpenHouseComponent.EntryType.SERVICE_CONTROL, "", "", "");
         }
@@ -212,6 +213,7 @@ public final class OpenHouseComponentParser {
         if (normalized.contains("pi") || normalized.contains("agent")) return "brain";
         if (normalized.contains("browser")) return "globe";
         if (fields != null && fields.type == OpenHouseComponent.EntryType.TERMINAL) return "terminal";
+        if (fields != null && fields.type == OpenHouseComponent.EntryType.FILES) return "folder";
         if (fields != null && fields.type == OpenHouseComponent.EntryType.SERVICE_CONTROL) return "settings";
         return "ai".equals(section) ? "sparkles" : "app";
     }
