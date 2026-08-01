@@ -59,6 +59,10 @@ class TopBarTitleContent(val content: @Composable () -> Unit)
 
 val LocalTopBarTitleContent = compositionLocalOf<(TopBarTitleContent?) -> Unit> { {} }
 val LocalAppNavigationModel = compositionLocalOf<AppNavigationModel?> { null }
+val LocalOperitHostMode = compositionLocalOf { OperitHostMode.STANDALONE }
+val LocalHostedSidebarActions = compositionLocalOf<(@Composable RowScope.() -> Unit)> { {} }
+val LocalSetHostedSidebarActions =
+    compositionLocalOf<(@Composable RowScope.() -> Unit) -> Unit> { {} }
 
 enum class NavigationTransitionSource {
     DEFAULT,
@@ -83,6 +87,7 @@ fun OperitApp(
     routeNavArgs: Map<String, Any?> = emptyMap(),
     routeNavRequestId: Long = 0L,
     isHostedMode: Boolean = false,
+    hostMode: OperitHostMode = if (isHostedMode) OperitHostMode.BASIC else OperitHostMode.STANDALONE,
     onReturnToHostMainMenu: () -> Unit = {},
     onCloseHostedOperit: () -> Unit = {},
     hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
@@ -90,6 +95,15 @@ fun OperitApp(
     onCurrentNavItemChanged: (NavItem) -> Unit = {},
     onRouteNavHandled: (Long) -> Unit = {}
 ) {
+    val effectiveHostMode =
+        if (isHostedMode && hostMode == OperitHostMode.STANDALONE) {
+            OperitHostMode.BASIC
+        } else {
+            hostMode
+        }
+    val effectiveIsHosted = effectiveHostMode.isHosted
+    val safeInitialNavItem =
+        if (effectiveHostMode.allowsDrawerItem(initialNavItem)) initialNavItem else NavItem.AiChat
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -103,15 +117,19 @@ fun OperitApp(
     val navigationModel = remember(context, configuration, navigationRevision) { AppRouteCatalog.build(context) }
 
     val routerState = remember {
-        AppRouterState(AppRouteCatalog.initialEntry(initialNavItem))
+        AppRouterState(AppRouteCatalog.initialEntry(safeInitialNavItem))
     }
     val currentRouteEntry = routerState.currentEntry
     val currentScreen = AppRouteCatalog.resolveScreen(navigationModel, currentRouteEntry) ?: Screen.AiChat
     val selectedItem = currentScreen.navItem
     val pluginSidebarEntries =
-        remember(navigationModel) {
-            navigationModel.navigationEntries.filter {
-                it.surface == NavigationSurface.MAIN_SIDEBAR_PLUGINS
+        remember(navigationModel, effectiveHostMode) {
+            if (effectiveHostMode.isHosted) {
+                emptyList()
+            } else {
+                navigationModel.navigationEntries.filter {
+                    it.surface == NavigationSurface.MAIN_SIDEBAR_PLUGINS
+                }
             }
         }
 
@@ -126,6 +144,7 @@ fun OperitApp(
     var topBarTitleContent by remember { mutableStateOf<TopBarTitleContent?>(null) }
     var lastHandledShortcutRequestId by remember { mutableStateOf(0L) }
     var lastHandledRouteRequestId by remember { mutableStateOf(0L) }
+    var hostedSidebarActions by remember { mutableStateOf<@Composable RowScope.() -> Unit>({}) }
 
     LaunchedEffect(selectedItem) {
         selectedItem?.let { navItem ->
@@ -142,7 +161,9 @@ fun OperitApp(
             return@LaunchedEffect
         }
 
-        val targetEntry = AppRouteCatalog.initialEntry(requestNavItem)
+        val targetNavItem =
+            if (effectiveHostMode.allowsDrawerItem(requestNavItem)) requestNavItem else NavItem.AiChat
+        val targetEntry = AppRouteCatalog.initialEntry(targetNavItem)
         isNavigatingBack = false
         navigationTransitionSource = NavigationTransitionSource.DEFAULT
         routerState.resetTo(targetEntry)
@@ -150,7 +171,7 @@ fun OperitApp(
         onShortcutNavHandled(shortcutNavRequestId)
     }
 
-    LaunchedEffect(routeNavRequestId, routeNavRequest, routeNavArgs, navigationModel) {
+    LaunchedEffect(routeNavRequestId, routeNavRequest, routeNavArgs, navigationModel, effectiveHostMode) {
         val requestRouteId = routeNavRequest?.trim().orEmpty()
         if (requestRouteId.isBlank() || routeNavRequestId == 0L) {
             return@LaunchedEffect
@@ -164,14 +185,23 @@ fun OperitApp(
             onRouteNavHandled(routeNavRequestId)
             return@LaunchedEffect
         }
-        isNavigatingBack = false
-        navigationTransitionSource = NavigationTransitionSource.DEFAULT
-        routerState.resetTo(
+        val requestedEntry =
             com.ai.assistance.operit.ui.main.navigation.RouteEntry(
                 routeId = requestRouteId,
                 args = routeNavArgs,
                 source = RouteEntrySource.DEFAULT
             )
+        val requestedScreen = AppRouteCatalog.resolveScreen(navigationModel, requestedEntry)
+        if (requestedScreen?.navItem?.let { !effectiveHostMode.allowsDrawerItem(it) } == true) {
+            routerState.resetTo(AppRouteCatalog.initialEntry(NavItem.AiChat))
+            lastHandledRouteRequestId = routeNavRequestId
+            onRouteNavHandled(routeNavRequestId)
+            return@LaunchedEffect
+        }
+        isNavigatingBack = false
+        navigationTransitionSource = NavigationTransitionSource.DEFAULT
+        routerState.resetTo(
+            requestedEntry
         )
         lastHandledRouteRequestId = routeNavRequestId
         onRouteNavHandled(routeNavRequestId)
@@ -186,8 +216,18 @@ fun OperitApp(
         topBarTitleContent = null
     }
 
+    LaunchedEffect(currentScreen, effectiveHostMode) {
+        val currentNavItem = currentScreen.navItem
+        if (currentNavItem != null && !effectiveHostMode.allowsDrawerItem(currentNavItem)) {
+            routerState.resetTo(AppRouteCatalog.initialEntry(NavItem.AiChat))
+        }
+    }
+
     // Navigation functions
     fun navigateTo(newScreen: Screen, fromDrawer: Boolean = false) {
+        if (newScreen.navItem?.let { !effectiveHostMode.allowsDrawerItem(it) } == true) {
+            return
+        }
         isNavigatingBack = false
         navigationTransitionSource =
             if (fromDrawer) NavigationTransitionSource.DRAWER
@@ -304,7 +344,7 @@ fun OperitApp(
         NavItem.Settings,
         NavItem.Help,
         NavItem.About
-    )
+    ).filter(effectiveHostMode::allowsDrawerItem)
 
     // Network state monitoring
     var isNetworkAvailable by remember { mutableStateOf(false) }
@@ -394,6 +434,9 @@ fun OperitApp(
         }
         CompositionLocalProvider(
             LocalAppNavigationModel provides navigationModel,
+            LocalOperitHostMode provides effectiveHostMode,
+            LocalHostedSidebarActions provides { hostedSidebarActions() },
+            LocalSetHostedSidebarActions provides { actions -> hostedSidebarActions = actions },
             LocalTopBarActions provides { actions: @Composable RowScope.() -> Unit ->
                 topBarActions = actions
             },
@@ -427,10 +470,13 @@ fun OperitApp(
                         navigateTo(screen, fromDrawer = true)
                     },
                     onNavigationEntrySelected = ::navigateToNavigationEntry,
-                    isHostedMode = isHostedMode,
+                    isHostedMode = effectiveIsHosted,
+                    hostMode = effectiveHostMode,
                     onReturnToHostMainMenu = onReturnToHostMainMenu,
                     onCloseHostedOperit = onCloseHostedOperit,
                     hostedCloseLabel = hostedCloseLabel,
+                    sidebarActions = { hostedSidebarActions() },
+                    onOpenHostDesktop = onReturnToHostMainMenu,
                     onToggleSidebar = {
                         isTabletSidebarExpanded = !isTabletSidebarExpanded
                     },
@@ -465,10 +511,13 @@ fun OperitApp(
                         navigateTo(screen, fromDrawer = true)
                     },
                     onNavigationEntrySelected = ::navigateToNavigationEntry,
-                    isHostedMode = isHostedMode,
+                    isHostedMode = effectiveIsHosted,
+                    hostMode = effectiveHostMode,
                     onReturnToHostMainMenu = onReturnToHostMainMenu,
                     onCloseHostedOperit = onCloseHostedOperit,
                     hostedCloseLabel = hostedCloseLabel,
+                    sidebarActions = { hostedSidebarActions() },
+                    onOpenHostDesktop = onReturnToHostMainMenu,
                     navigateToTokenConfig = ::navigateToTokenConfig,
                     canGoBack = canGoBack,
                     onGoBack = ::goBack,

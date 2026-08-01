@@ -24,6 +24,7 @@ import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavigationTransitionSource
 import com.ai.assistance.operit.ui.main.TopBarTitleContent
 import com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
+import com.ai.assistance.operit.ui.main.OperitHostMode
 import com.ai.assistance.operit.ui.main.navigation.NavigationEntrySpec
 import com.ai.assistance.operit.ui.main.navigation.RouteEntry
 import com.ai.assistance.operit.ui.main.components.AppContent
@@ -60,9 +61,12 @@ fun TabletLayout(
         onDrawerItemSelected: (Screen) -> Unit,
         onNavigationEntrySelected: (NavigationEntrySpec) -> Unit,
         isHostedMode: Boolean = false,
+        hostMode: OperitHostMode = OperitHostMode.STANDALONE,
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
         hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
+        sidebarActions: @Composable RowScope.() -> Unit = {},
+        onOpenHostDesktop: () -> Unit = {},
         onToggleSidebar: () -> Unit,
         navigateToTokenConfig: () -> Unit,
         canGoBack: Boolean,
@@ -157,9 +161,11 @@ fun TabletLayout(
                                                 onScreenSelected = onDrawerItemSelected,
                                                 onNavigationEntrySelected = onNavigationEntrySelected,
                                                 isHostedMode = isHostedMode,
+                                                hostMode = hostMode,
                                                 onReturnToHostMainMenu = onReturnToHostMainMenu,
                                                 onCloseHostedOperit = onCloseHostedOperit,
-                                                hostedCloseLabel = hostedCloseLabel
+                                                hostedCloseLabel = hostedCloseLabel,
+                                                sidebarActions = sidebarActions
                                         )
                                 } else {
                                         CollapsedDrawerContent(
@@ -172,9 +178,11 @@ fun TabletLayout(
                                                 onScreenSelected = onDrawerItemSelected,
                                                 onNavigationEntrySelected = onNavigationEntrySelected,
                                                 isHostedMode = isHostedMode,
+                                                hostMode = hostMode,
                                                 onReturnToHostMainMenu = onReturnToHostMainMenu,
                                                 onCloseHostedOperit = onCloseHostedOperit,
-                                                hostedCloseLabel = hostedCloseLabel
+                                                hostedCloseLabel = hostedCloseLabel,
+                                                sidebarActions = sidebarActions
                                         )
                                 }
                         }
@@ -203,6 +211,8 @@ fun TabletLayout(
                                 navigationTransitionSource = navigationTransitionSource,
                                 onScreenChange = onScreenChange,
                                 onToggleSidebar = onToggleSidebar,
+                                isHostedMode = isHostedMode,
+                                onOpenHostDesktop = onOpenHostDesktop,
                                 navigateToTokenConfig = navigateToTokenConfig,
                                 onGestureConsumed = { consumed ->
                                         // 当聊天页面的手势被消费时，这里不需要特别处理

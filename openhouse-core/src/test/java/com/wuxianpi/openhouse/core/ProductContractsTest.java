@@ -12,6 +12,7 @@ public class ProductContractsTest {
         for (ProductRoute route : ProductRoute.values()) {
             assertSame(route, ProductRoute.fromPersistenceKey(route.persistenceKey()));
         }
+        assertSame(ProductRoute.PERMISSIONS, ProductRoute.fromPersistenceKey("permissions"));
         assertSame(ProductRoute.DESKTOP, ProductRoute.fromPersistenceKey("future-route"));
         assertSame(ProductRoute.BASIC, ProductRoute.fromPersistenceKey("future-route", ProductRoute.BASIC));
         assertSame(ProductRoute.DESKTOP, ProductRoute.fromPersistenceKey("service-control"));
@@ -22,9 +23,10 @@ public class ProductContractsTest {
             false, false, true, false);
         List<ProductRoute> routes = capabilities.trimRoutes(Arrays.asList(
             ProductRoute.DESKTOP, ProductRoute.BASIC, ProductRoute.ADVANCED,
-            ProductRoute.REPAIR, ProductRoute.SERVICE_CONTROL, ProductRoute.SETTINGS, ProductRoute.ABOUT));
+            ProductRoute.REPAIR, ProductRoute.SERVICE_CONTROL, ProductRoute.PERMISSIONS,
+            ProductRoute.SETTINGS, ProductRoute.ABOUT));
         assertEquals(Arrays.asList(ProductRoute.DESKTOP, ProductRoute.BASIC, ProductRoute.REPAIR,
-            ProductRoute.SETTINGS, ProductRoute.ABOUT), routes);
+            ProductRoute.PERMISSIONS, ProductRoute.SETTINGS, ProductRoute.ABOUT), routes);
     }
 
     @Test public void repairAndServiceControlCannotBecomeOrdinaryDefaults() {

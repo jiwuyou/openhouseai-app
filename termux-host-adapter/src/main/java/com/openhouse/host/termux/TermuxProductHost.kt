@@ -49,6 +49,7 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     override fun launchHostRoute(activity: Activity, route: ProductRoute) {
         when (route) {
             ProductRoute.SETUP -> host.ensureConfigured()
+            ProductRoute.PERMISSIONS -> launchClass(activity, PERMISSIONS_ACTIVITY_CLASS)
             ProductRoute.SETTINGS -> launchClass(activity, "com.termux.app.activities.SettingsActivity")
             else -> Unit
         }
@@ -120,7 +121,8 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
                 when (route) {
                     ProductRoute.BASIC, ProductRoute.ADVANCED, ProductRoute.REPAIR -> launchAiMode(activity, route)
                     ProductRoute.SERVICE_CONTROL -> Unit
-                    ProductRoute.SETUP, ProductRoute.SETTINGS -> launchHostRoute(activity, route)
+                    ProductRoute.SETUP, ProductRoute.PERMISSIONS, ProductRoute.SETTINGS ->
+                        launchHostRoute(activity, route)
                     else -> Unit
                 }
             }
@@ -179,6 +181,8 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     companion object {
         internal const val FILES_ACTIVITY_CLASS =
             "com.termux.app.openhouse.files.ui.OpenHouseFilesActivity"
+        internal const val PERMISSIONS_ACTIVITY_CLASS =
+            "com.termux.app.activities.MaintenanceCenterActivity"
     }
 }
 

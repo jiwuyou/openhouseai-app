@@ -10,6 +10,7 @@
     <string name="oh_terminal">终端</string>
     <string name="oh_files">文件</string>
     <string name="oh_service_control">服务控制</string>
+    <string name="oh_permissions">权限获取</string>
     <string name="oh_settings">设置</string>
     <string name="oh_about">关于 WuxianPi</string>
     <string name="oh_modes">模式</string>

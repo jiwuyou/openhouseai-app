@@ -7,6 +7,7 @@ public enum ProductRoute {
     REPAIR("repair"),
     SERVICE_CONTROL("service_control"),
     SETUP("setup"),
+    PERMISSIONS("permissions"),
     SETTINGS("settings"),
     ABOUT("about");
 

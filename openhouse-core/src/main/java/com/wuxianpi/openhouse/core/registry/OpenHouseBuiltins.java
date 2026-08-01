@@ -16,6 +16,7 @@ public final class OpenHouseBuiltins {
     public static final String FILES_ID = "openhouse-files";
     public static final String SERVICE_CONTROL_ID = "service-control";
     public static final String SETUP_ID = "setup";
+    public static final String PERMISSIONS_ID = "permissions";
     public static final String SETTINGS_ID = "settings";
     public static final String ABOUT_ID = "about-wuxianpi";
     public static final String SHARED_BROWSER_ID = "shared-browser";
@@ -24,12 +25,12 @@ public final class OpenHouseBuiltins {
     // the shared browser are reserved separately because their Activity class is host-owned.
     private static final Set<String> PROTECTED_IDS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
         DESKTOP_ID, BASIC_ID, ADVANCED_ID, REPAIR_ID, TERMINAL_ID, FILES_ID,
-        SERVICE_CONTROL_ID, SETUP_ID, SETTINGS_ID, ABOUT_ID
+        SERVICE_CONTROL_ID, SETUP_ID, PERMISSIONS_ID, SETTINGS_ID, ABOUT_ID
     )));
 
     private static final Set<String> RESERVED_IDS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
         DESKTOP_ID, BASIC_ID, ADVANCED_ID, REPAIR_ID, TERMINAL_ID, FILES_ID,
-        SERVICE_CONTROL_ID, SETUP_ID, SETTINGS_ID, ABOUT_ID, SHARED_BROWSER_ID
+        SERVICE_CONTROL_ID, SETUP_ID, PERMISSIONS_ID, SETTINGS_ID, ABOUT_ID, SHARED_BROWSER_ID
     )));
 
     private OpenHouseBuiltins() {}
@@ -56,6 +57,7 @@ public final class OpenHouseBuiltins {
             OpenHouseComponent.EntryType.SERVICE_CONTROL, "", "", "", "控制", true,
             false, false, true, "builtin", Collections.emptyList(), Collections.emptyList()));
         values.add(nativeRoute(SETUP_ID, "安装引导", "首次配置运行环境", "tools", 50, "sparkles"));
+        values.add(nativeRoute(PERMISSIONS_ID, "权限获取", "后台运行、文件访问和悬浮窗", "tools", 55, "shield"));
         values.add(nativeRoute(SETTINGS_ID, "设置", "启动、桌面与兼容设置", "tools", 60, "sliders"));
         values.add(nativeRoute(ABOUT_ID, "关于 WuxianPi", "产品、仓库与开源致谢", "tools", 70, "sparkles"));
         return Collections.unmodifiableList(values);

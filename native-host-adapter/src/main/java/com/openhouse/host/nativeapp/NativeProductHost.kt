@@ -65,6 +65,7 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     override fun launchHostRoute(activity: Activity, route: ProductRoute) {
         when (route) {
             ProductRoute.SETUP -> host.ensureConfigured()
+            ProductRoute.PERMISSIONS -> openApplicationSettings(activity)
             ProductRoute.SETTINGS -> openApplicationSettings(activity)
             else -> Unit
         }
@@ -134,7 +135,8 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
                 when (route) {
                     ProductRoute.BASIC, ProductRoute.ADVANCED, ProductRoute.REPAIR -> launchAiMode(activity, route)
                     ProductRoute.SERVICE_CONTROL -> Unit
-                    ProductRoute.SETUP, ProductRoute.SETTINGS -> launchHostRoute(activity, route)
+                    ProductRoute.SETUP, ProductRoute.PERMISSIONS, ProductRoute.SETTINGS ->
+                        launchHostRoute(activity, route)
                     else -> Unit
                 }
             }

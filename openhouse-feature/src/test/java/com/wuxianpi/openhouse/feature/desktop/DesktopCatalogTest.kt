@@ -30,5 +30,11 @@ class DesktopCatalogTest {
         assertEquals("关于 WuxianPi", about.title)
         assertEquals(ProductRoute.ABOUT, about.route)
         assertTrue(DesktopCatalog.isProtected(DesktopCatalog.ID_ABOUT))
+
+        val permissions = merged.first { it.id == DesktopCatalog.ID_PERMISSIONS }
+        assertEquals("权限获取", permissions.title)
+        assertEquals(ProductRoute.PERMISSIONS, permissions.route)
+        assertEquals("permissions", permissions.source.nativePage)
+        assertTrue(DesktopCatalog.isProtected(DesktopCatalog.ID_PERMISSIONS))
     }
 }

@@ -41,6 +41,7 @@ import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavigationTransitionSource
 import com.ai.assistance.operit.ui.main.TopBarTitleContent
 import com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
+import com.ai.assistance.operit.ui.main.OperitHostMode
 import com.ai.assistance.operit.ui.main.navigation.NavigationEntrySpec
 import com.ai.assistance.operit.ui.main.navigation.RouteEntry
 import com.ai.assistance.operit.ui.main.components.AppContent
@@ -75,9 +76,12 @@ fun PhoneLayout(
         onDrawerItemSelected: (Screen) -> Unit,
         onNavigationEntrySelected: (NavigationEntrySpec) -> Unit,
         isHostedMode: Boolean = false,
+        hostMode: OperitHostMode = OperitHostMode.STANDALONE,
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
         hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
+        sidebarActions: @Composable RowScope.() -> Unit = {},
+        onOpenHostDesktop: () -> Unit = {},
         navigateToTokenConfig: () -> Unit,
         canGoBack: Boolean,
         onGoBack: () -> Unit,
@@ -242,6 +246,8 @@ fun PhoneLayout(
                         navigationTransitionSource = navigationTransitionSource,
                         onScreenChange = onScreenChange,
                         onToggleSidebar = { /* Not used in phone layout */},
+                        isHostedMode = isHostedMode,
+                        onOpenHostDesktop = onOpenHostDesktop,
                         navigateToTokenConfig = navigateToTokenConfig,
                         canGoBack = canGoBack,
                         onGoBack = onGoBack,
@@ -305,9 +311,11 @@ fun PhoneLayout(
                                 onScreenSelected = onDrawerItemSelected,
                                 onNavigationEntrySelected = onNavigationEntrySelected,
                                 isHostedMode = isHostedMode,
+                                hostMode = hostMode,
                                 onReturnToHostMainMenu = onReturnToHostMainMenu,
                                 onCloseHostedOperit = onCloseHostedOperit,
-                                hostedCloseLabel = hostedCloseLabel
+                                hostedCloseLabel = hostedCloseLabel,
+                                sidebarActions = sidebarActions
                         )
                 }
 

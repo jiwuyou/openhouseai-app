@@ -14,6 +14,7 @@ object DesktopCatalog {
     const val ID_FILES = "openhouse-files"
     const val ID_SERVICE_CONTROL = "service-control"
     const val ID_SETTINGS = "settings"
+    const val ID_PERMISSIONS = "permissions"
     const val ID_ABOUT = "about-wuxianpi"
 
     private val routeById = mapOf(
@@ -22,6 +23,7 @@ object DesktopCatalog {
         ID_ADVANCED to ProductRoute.ADVANCED,
         ID_REPAIR to ProductRoute.REPAIR,
         ID_SERVICE_CONTROL to ProductRoute.SERVICE_CONTROL,
+        ID_PERMISSIONS to ProductRoute.PERMISSIONS,
         ID_SETTINGS to ProductRoute.SETTINGS,
         ID_ABOUT to ProductRoute.ABOUT,
         OpenHouseBuiltins.SETUP_ID to ProductRoute.SETUP,

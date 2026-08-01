@@ -11,4 +11,12 @@ class TermuxProductHostTest {
             TermuxProductHost.FILES_ACTIVITY_CLASS,
         )
     }
+
+    @Test
+    fun permissionsEntryUsesExistingMaintenanceCenter() {
+        assertEquals(
+            "com.termux.app.activities.MaintenanceCenterActivity",
+            TermuxProductHost.PERMISSIONS_ACTIVITY_CLASS,
+        )
+    }
 }

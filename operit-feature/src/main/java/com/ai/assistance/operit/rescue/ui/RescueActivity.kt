@@ -23,6 +23,7 @@ import com.ai.assistance.operit.rescue.remote.RescueRemoteAssistController
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.MainActivity
 import com.ai.assistance.operit.ui.main.OperitApp
+import com.ai.assistance.operit.ui.main.OperitHostMode
 import com.ai.assistance.operit.ui.theme.OperitTheme
 import com.ai.assistance.operit.util.AppLogger
 import kotlinx.coroutines.Dispatchers
@@ -103,6 +104,7 @@ class RescueActivity : ComponentActivity() {
                         initialNavItem = NavItem.AiChat,
                         toolHandler = AIToolHandler.getInstance(this@RescueActivity),
                         isHostedMode = true,
+                        hostMode = OperitHostMode.RESCUE,
                         onReturnToHostMainMenu = ::returnToHostMainMenu,
                         onCloseHostedOperit = ::closeRescueAssistant,
                         hostedCloseLabel = getString(R.string.rescue_ai_close),

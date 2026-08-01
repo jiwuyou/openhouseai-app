@@ -120,7 +120,7 @@ public class RegistryRepositoryTest {
 
     private static void assertAllFixedEntries(RegistrySnapshot snapshot) {
         for (String id : OpenHouseBuiltins.protectedIds()) assertNotNull(id, snapshot.find(id));
-        assertEquals(10, OpenHouseBuiltins.protectedIds().size());
+        assertEquals(11, OpenHouseBuiltins.protectedIds().size());
         OpenHouseComponent about = snapshot.find(OpenHouseBuiltins.ABOUT_ID);
         assertEquals("关于 WuxianPi", about.title);
         assertEquals(OpenHouseComponent.EntryType.NATIVE_PAGE, about.entryType);
@@ -128,6 +128,9 @@ public class RegistryRepositoryTest {
         assertEquals("文件", files.title);
         assertEquals("folder", files.iconKey);
         assertEquals(OpenHouseComponent.EntryType.FILES, files.entryType);
+        OpenHouseComponent permissions = snapshot.find(OpenHouseBuiltins.PERMISSIONS_ID);
+        assertEquals("权限获取", permissions.title);
+        assertEquals("permissions", permissions.nativePage);
     }
 
     private static String manifest(String id, String title) {

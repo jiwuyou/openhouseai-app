@@ -24,6 +24,7 @@ object OperitAiLauncher {
     fun basicIntent(context: Context, hostReturnActivity: String?): Intent =
         Intent(context, MainActivity::class.java).apply {
             putExtra(MainActivity.EXTRA_HOSTED_MODE, true)
+            putExtra(MainActivity.EXTRA_HOST_MODE, "basic")
             hostReturnActivity
                 ?.trim()
                 ?.takeIf(String::isNotEmpty)

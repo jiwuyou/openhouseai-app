@@ -87,6 +87,8 @@ import com.ai.assistance.operit.ui.features.chat.webview.computer.ComputerScreen
 import com.ai.assistance.operit.ui.features.chat.util.ConfigurationStateHolder
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.main.LocalTopBarActions
+import com.ai.assistance.operit.ui.main.LocalSetHostedSidebarActions
+import com.ai.assistance.operit.ui.main.LocalOperitHostMode
 import com.ai.assistance.operit.ui.main.PendingChatDraftHandler
 import com.ai.assistance.operit.ui.main.components.LocalAppBarContentColor
 import com.ai.assistance.operit.ui.main.screens.GestureStateHolder
@@ -852,6 +854,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
     // 从CompositionLocal获取设置TopBar Actions的函数
     val setTopBarActions = LocalTopBarActions.current
+    val setHostedSidebarActions = LocalSetHostedSidebarActions.current
+    val hostMode = LocalOperitHostMode.current
     val appBarContentColor = LocalAppBarContentColor.current
     val isCurrentScreen = LocalIsCurrentScreen.current
     val setScreenSoftInputMode = LocalSetScreenSoftInputMode.current
@@ -885,9 +889,11 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         hasBoundWorkspace,
         chatViewRuntime,
         currentChatId,
+        hostMode,
     ) {
         if (isCurrentScreen) {
-            setTopBarActions {
+            val setActions = if (hostMode.isHosted) setHostedSidebarActions else setTopBarActions
+            setActions {
                 if (chatViewRuntime == "rescue") {
                     IconButton(
                         onClick = {
@@ -975,6 +981,14 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                     }
                 }
             }
+            if (hostMode.isHosted) {
+                setTopBarActions {}
+            } else {
+                setHostedSidebarActions {}
+            }
+        } else {
+            setTopBarActions {}
+            setHostedSidebarActions {}
         }
     }
 

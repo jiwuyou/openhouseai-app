@@ -136,6 +136,7 @@ class OpenHouseActivity : AppCompatActivity() {
             host.launchFiles(this)
         }
         findViewById<View>(R.id.oh_nav_service).setOnClickListener { openRoute(ProductRoute.SERVICE_CONTROL) }
+        findViewById<View>(R.id.oh_nav_permissions).setOnClickListener { openRoute(ProductRoute.PERMISSIONS) }
         findViewById<View>(R.id.oh_nav_settings).setOnClickListener { openRoute(ProductRoute.SETTINGS) }
         findViewById<View>(R.id.oh_nav_about).setOnClickListener { openRoute(ProductRoute.ABOUT) }
         val capabilities = host.capabilities()
@@ -159,6 +160,7 @@ class OpenHouseActivity : AppCompatActivity() {
                 host.launchAiMode(this, route)
             }
             ProductRoute.SERVICE_CONTROL -> host.launchServiceControl(this)
+            ProductRoute.PERMISSIONS -> host.launchHostRoute(this, route)
             ProductRoute.SETTINGS -> showSettings()
             ProductRoute.ABOUT -> showAbout()
             else -> host.launchHostRoute(this, route)

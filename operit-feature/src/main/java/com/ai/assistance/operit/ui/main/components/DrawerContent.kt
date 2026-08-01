@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -64,6 +65,7 @@ import com.ai.assistance.operit.ui.main.screens.ScreenRouteRegistry
 import com.ai.assistance.operit.ui.main.navigation.NavigationEntrySpec
 import com.ai.assistance.operit.ui.main.screens.Screen
 import com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
+import com.ai.assistance.operit.ui.main.OperitHostMode
 import com.ai.assistance.operit.ui.theme.liquidGlass
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -137,9 +139,11 @@ fun DrawerContent(
         onScreenSelected: (Screen) -> Unit,
         onNavigationEntrySelected: (NavigationEntrySpec) -> Unit,
         isHostedMode: Boolean = false,
+        hostMode: OperitHostMode = OperitHostMode.STANDALONE,
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
-        hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL
+        hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
+        sidebarActions: @Composable RowScope.() -> Unit = {}
 ) {
         val context = LocalContext.current
         val userPreferencesManager = remember(context) { UserPreferencesManager.getInstance(context) }
@@ -149,12 +153,15 @@ fun DrawerContent(
                 )
         val preferredPermissionLevel by
                 androidPermissionPreferences.preferredPermissionLevelFlow.collectAsState(initial = null)
-        val drawerBrandName =
-                if (softwareIdentity == UserPreferencesManager.SOFTWARE_IDENTITY_LINGSHU) {
+        val drawerBrandName = when (hostMode) {
+                OperitHostMode.BASIC -> "基础模式"
+                OperitHostMode.RESCUE -> "救援助手"
+                OperitHostMode.STANDALONE -> if (softwareIdentity == UserPreferencesManager.SOFTWARE_IDENTITY_LINGSHU) {
                         context.getString(R.string.software_identity_option_lingshu)
                 } else {
                         context.getString(R.string.software_identity_option_operit)
                 }
+        }
         val bottomInset =
                 WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val resolvedTopContentPadding =
@@ -202,12 +209,12 @@ fun DrawerContent(
                                 }
                 }
         val primaryNavItems =
-                remember(navItems) {
+                remember(navItems, hostMode) {
                         navItems.filterNot {
                                 it in fixedBottomItems ||
                                         it in quickActionItems ||
                                         it == NavItem.ShizukuCommands
-                        }
+                        }.filter(hostMode::allowsDrawerItem)
                 }
         val handleScreenSelection: (Screen) -> Unit = { screen ->
                 val shouldCloseBeforeNavigate =
@@ -282,6 +289,8 @@ fun DrawerContent(
                                 activePackageCount = activePackageCount,
                                 workflowCount = workflowCount,
                                 permissionStatus = permissionStatus,
+                                hostMode = hostMode,
+                                sidebarActions = sidebarActions,
                                 onNavItemClick = handleNavItemClick,
                                 onNavigationEntryClick = handleNavigationEntryClick
                         )
@@ -317,6 +326,7 @@ fun DrawerContent(
                 DrawerBottomShortcutRow(
                         selectedItem = selectedItem,
                         appearance = appearance,
+                        hostMode = hostMode,
                         onNavItemClick = handleNavItemClick
                 )
         }
@@ -334,9 +344,11 @@ fun CollapsedDrawerContent(
         onScreenSelected: (Screen) -> Unit,
         onNavigationEntrySelected: (NavigationEntrySpec) -> Unit,
         isHostedMode: Boolean = false,
+        hostMode: OperitHostMode = OperitHostMode.STANDALONE,
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
-        hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL
+        hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
+        sidebarActions: @Composable RowScope.() -> Unit = {}
 ) {
         Column(
                 modifier =
@@ -569,6 +581,8 @@ private fun NewSidebarTopContent(
         activePackageCount: Int,
         workflowCount: Int,
         permissionStatus: SidebarPermissionStatus,
+        hostMode: OperitHostMode,
+        sidebarActions: @Composable RowScope.() -> Unit,
         onNavItemClick: (NavItem) -> Unit,
         onNavigationEntryClick: (NavigationEntrySpec) -> Unit
 ) {
@@ -598,15 +612,17 @@ private fun NewSidebarTopContent(
                         appearance = appearance,
                         onClick = { onNavItemClick(NavItem.Packages) }
                 )
-                SidebarQuickActionCard(
-                        modifier = Modifier.weight(1f),
-                        icon = NavItem.ShizukuCommands.icon,
-                        label = stringResource(id = R.string.sidebar_permission_short),
-                        badgeText = stringResource(id = permissionStatus.badgeTextResId),
-                        selected = selectedItem == NavItem.ShizukuCommands,
-                        appearance = appearance,
-                        onClick = { onNavItemClick(NavItem.ShizukuCommands) }
-                )
+                if (!hostMode.isHosted) {
+                        SidebarQuickActionCard(
+                                modifier = Modifier.weight(1f),
+                                icon = NavItem.ShizukuCommands.icon,
+                                label = stringResource(id = R.string.sidebar_permission_short),
+                                badgeText = stringResource(id = permissionStatus.badgeTextResId),
+                                selected = selectedItem == NavItem.ShizukuCommands,
+                                appearance = appearance,
+                                onClick = { onNavItemClick(NavItem.ShizukuCommands) }
+                        )
+                }
                 SidebarQuickActionCard(
                         modifier = Modifier.weight(1f),
                         icon = NavItem.Workflow.icon,
@@ -615,6 +631,16 @@ private fun NewSidebarTopContent(
                         selected = selectedItem == NavItem.Workflow,
                         appearance = appearance,
                         onClick = { onNavItemClick(NavItem.Workflow) }
+                )
+        }
+
+        if (hostMode.isHosted) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = sidebarActions
                 )
         }
 
@@ -851,8 +877,10 @@ private fun SidebarQuickActionBadge(
 private fun DrawerBottomShortcutRow(
         selectedItem: NavItem?,
         appearance: NavigationDrawerAppearance,
+        hostMode: OperitHostMode,
         onNavItemClick: (NavItem) -> Unit
 ) {
+        if (hostMode.isHosted) return
         Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

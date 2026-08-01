@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val ACTION_OPEN_SETTINGS_SHORTCUT = "com.ai.assistance.operit.action.OPEN_SETTINGS_SHORTCUT"
         const val EXTRA_HOSTED_MODE = "com.ai.assistance.operit.extra.HOSTED_MODE"
+        const val EXTRA_HOST_MODE = "com.ai.assistance.operit.extra.HOST_MODE"
         const val EXTRA_HELP_MODE = "com.ai.assistance.operit.extra.HELP_MODE"
         const val EXTRA_HOST_RETURN_ACTIVITY =
             "com.ai.assistance.operit.extra.HOST_RETURN_ACTIVITY"
@@ -129,6 +130,7 @@ class MainActivity : ComponentActivity() {
     private var pendingRouteArgs: Map<String, Any?> = emptyMap()
     private var pendingRouteRequestId: Long = 0L
     private var isHostedMode by mutableStateOf(false)
+    private var hostMode by mutableStateOf(OperitHostMode.STANDALONE)
     private var isHostedHelpMode by mutableStateOf(false)
     private var hostedShutdownReceiverRegistered = false
     private val hostedShutdownReceiver =
@@ -323,7 +325,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateHostedFlags(intent: Intent?) {
-        isHostedMode = intent?.getBooleanExtra(EXTRA_HOSTED_MODE, false) == true
+        val legacyHosted = intent?.getBooleanExtra(EXTRA_HOSTED_MODE, false) == true
+        val requestedMode = OperitHostMode.fromExtra(intent?.getStringExtra(EXTRA_HOST_MODE))
+        hostMode = if (requestedMode != OperitHostMode.STANDALONE) {
+            requestedMode
+        } else if (legacyHosted) {
+            OperitHostMode.BASIC
+        } else {
+            OperitHostMode.STANDALONE
+        }
+        isHostedMode = hostMode.isHosted
         isHostedHelpMode = intent?.getBooleanExtra(EXTRA_HELP_MODE, false) == true
         if (isHostedHelpMode) {
             AppLogger.d(TAG, "Operit launched in hosted AI朋友 Help mode")
@@ -576,6 +587,17 @@ class MainActivity : ComponentActivity() {
     // ======== 执行初始化检查 ========
     private fun performInitialChecks() {
         lifecycleScope.launch {
+            if (hostMode.isHosted) {
+                // Basic/hosted surfaces must open the product UI directly.  The standalone
+                // Operit agreement, permission wizard, and profile setup remain unchanged.
+                showPermissionGuide = false
+                showPreferencesGuide = false
+                prepareStartupChatIfNeeded()
+                initialChecksDone = true
+                setAppContent()
+                return@launch
+            }
+
             // 1. 检查通知权限（Android 13+）
             checkNotificationPermission()
 
@@ -736,7 +758,8 @@ class MainActivity : ComponentActivity() {
 
         // 初始化用户偏好管理器并直接检查初始化状态
         preferencesManager = UserPreferencesManager.getInstance(this)
-        showPreferencesGuide = !preferencesManager.isPreferencesInitialized()
+        showPreferencesGuide =
+            hostMode != OperitHostMode.BASIC && !preferencesManager.isPreferencesInitialized()
         AppLogger.d(
                 TAG,
                 "初始化检查: 用户偏好已初始化=${!showPreferencesGuide}，将${if(showPreferencesGuide) "" else "不"}显示引导界面"
@@ -749,6 +772,10 @@ class MainActivity : ComponentActivity() {
 
     // ======== 检查通知权限 ========
     private fun checkNotificationPermission() {
+        if (hostMode.isHosted) {
+            AppLogger.d(TAG, "Hosted mode skips automatic notification permission request")
+            return
+        }
         // Android 13 (API 33) 及以上需要请求通知权限
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val permission = Manifest.permission.POST_NOTIFICATIONS
@@ -780,6 +807,11 @@ class MainActivity : ComponentActivity() {
 
     // ======== 检查权限级别设置 ========
     private fun checkPermissionLevelSet() {
+        if (hostMode.isHosted) {
+            showPermissionGuide = false
+            AppLogger.d(TAG, "Hosted mode skips automatic permission guide")
+            return
+        }
         // 检查是否已设置权限级别
         val permissionLevel = androidPermissionPreferences.getPreferredPermissionLevel()
         AppLogger.d(TAG, "当前权限级别: $permissionLevel")
@@ -796,6 +828,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             preferencesManager.getUserPreferencesFlow().collect { profile ->
                 // 只有当状态变化时才更新UI
+                if (hostMode == OperitHostMode.BASIC) return@collect
                 val newValue = !profile.isInitialized
                 if (showPreferencesGuide != newValue) {
                     AppLogger.d(TAG, "偏好变更: 从 $showPreferencesGuide 变为 $newValue")
@@ -859,8 +892,9 @@ class MainActivity : ComponentActivity() {
                             CircularProgressIndicator()
                         }
                     } else {
-                        // 检查是否需要显示用户协议
-                        if (!agreementPreferences.isAgreementAccepted()) {
+                        // Hosted modes intentionally bypass Operit's onboarding screens.  The
+                        // screens and stored agreement state remain available in standalone mode.
+                        if (!hostMode.isHosted && !agreementPreferences.isAgreementAccepted()) {
                             AgreementScreen(
                                     onAgreementAccepted = {
                                         agreementPreferences.setAgreementAccepted(true)
@@ -879,7 +913,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         // 检查是否需要显示权限引导界面
-                        else if (showPermissionGuide) {
+                        else if (!hostMode.isHosted && showPermissionGuide) {
                             PermissionGuideScreen(
                                     onComplete = {
                                         showPermissionGuide = false
@@ -902,7 +936,7 @@ class MainActivity : ComponentActivity() {
                             val routeNavRequestId =
                                 if (!showPreferencesGuide) pendingRouteRequestId else 0L
                             val initialNavItem = when {
-                                showPreferencesGuide -> NavItem.UserPreferencesGuide
+                                !hostMode.isHosted && showPreferencesGuide -> NavItem.UserPreferencesGuide
                                 shortcutNavItem != null -> shortcutNavItem
                                 else -> currentMainNavItem
                             }
@@ -919,6 +953,7 @@ class MainActivity : ComponentActivity() {
                                         routeNavArgs = routeNavArgs,
                                         routeNavRequestId = routeNavRequestId,
                                         isHostedMode = isHostedMode,
+                                        hostMode = hostMode,
                                         onReturnToHostMainMenu = ::returnToHostMainMenu,
                                         onCloseHostedOperit = {
                                             shutdownOperit(
