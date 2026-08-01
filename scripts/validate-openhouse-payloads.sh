@@ -77,7 +77,7 @@ def warn(message):
 def validate_service_control_contract():
     expected = [
         {"id": "openhouse-web", "runtime": "termux", "manager": "service-manager"},
-        {"id": "pi-agent", "runtime": "termux", "manager": "service-manager"},
+        {"id": "yuanshengwuxianpi", "runtime": "termux", "manager": "service-manager"},
         {"id": "pi-web", "runtime": "termux", "manager": "service-manager"},
         {"id": "aionui-web", "runtime": "termux", "manager": "service-manager"},
     ]
@@ -88,7 +88,7 @@ def validate_service_control_contract():
         fail(f"invalid service-control subject: {exc}")
         return
     if subject.get("serviceRefs") != expected:
-        fail("service-control subject must reference exactly openhouse-web, pi-agent, pi-web, and aionui-web in Termux service-manager")
+        fail("service-control subject must reference exactly openhouse-web, yuanshengwuxianpi, pi-web, and aionui-web in Termux service-manager")
     try:
         with open(component_installer_path, "r", encoding="utf-8") as handle:
             installer = handle.read()
@@ -134,7 +134,7 @@ def validate_pi_dynamic_registration_contract():
         for required in (
             "dynamic_register_pi_service",
             "/api/v1/registry/apply",
-            "/api/v1/services/$service_id/register",
+            "/api/v1/services/$stable_service_id/register",
             '[ "$service_id" = "pi-agent" ]',
             '[ "$service_id" = "pi-web" ]',
         ):
@@ -276,11 +276,11 @@ def validate_bootstrap_pi_contract(product_manifest):
         fail("Pi subject serviceRefs must be an array")
         service_refs = []
     pi_service = next(
-        (entry for entry in service_refs if isinstance(entry, dict) and entry.get("id") == "pi-agent"),
+        (entry for entry in service_refs if isinstance(entry, dict) and entry.get("id") == "yuanshengwuxianpi"),
         None,
     )
     if not isinstance(pi_service, dict):
-        fail("Pi subject must preserve service id pi-agent")
+        fail("Pi subject must preserve service id yuanshengwuxianpi")
     else:
         if pi_service.get("command") != "wuxianpi-node-start":
             fail("Pi subject pi-agent service must launch wuxianpi-node-start")
@@ -288,7 +288,7 @@ def validate_bootstrap_pi_contract(product_manifest):
             fail("Pi subject pi-agent service workingDirectory must be $HOME/workspace")
     subject_text = json.dumps(subject, ensure_ascii=False, separators=(",", ":"))
     for required in (
-        "127.0.0.1:8765",
+        "127.0.0.1:20765",
         "/.local/share/openhouseai/runtime",
         "/.pi",
         "/smallphoneai-repos/pi-runtime",

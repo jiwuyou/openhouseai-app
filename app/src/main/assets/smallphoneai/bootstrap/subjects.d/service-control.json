@@ -10,7 +10,7 @@
       "manager": "service-manager"
     },
     {
-      "id": "pi-agent",
+      "id": "yuanshengwuxianpi",
       "runtime": "termux",
       "manager": "service-manager"
     },

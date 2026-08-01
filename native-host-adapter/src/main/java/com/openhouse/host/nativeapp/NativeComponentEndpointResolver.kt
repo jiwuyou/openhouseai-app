@@ -4,6 +4,7 @@ import com.wuxianpi.openhouse.core.RuntimeConnection
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.core.service.HttpRequestSpec
 import com.wuxianpi.openhouse.core.service.HttpTransport
+import com.wuxianpi.openhouse.core.service.ServiceAction
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
 import com.wuxianpi.openhouse.core.service.UrlConnectionHttpTransport
 import org.json.JSONObject
@@ -26,7 +27,13 @@ internal data class NativeServiceEndpointStatus(
 
 internal class NativeComponentEndpointResolver(
     private val lookupEndpoint: (String) -> NativeServiceEndpointStatus,
+    private val startService: (String) -> Boolean = { false },
 ) {
+    /** Keeps the original single-lambda constructor source-compatible for host tests and adapters. */
+    internal constructor(
+        lookupEndpoint: (String) -> NativeServiceEndpointStatus,
+    ) : this(lookupEndpoint, { false })
+
     fun resolve(component: OpenHouseComponent): NativeComponentEndpointResult {
         val serviceIds = serviceIdsFor(component)
         if (serviceIds.isEmpty()) {
@@ -40,15 +47,28 @@ internal class NativeComponentEndpointResolver(
         }
 
         val failures = mutableListOf<String>()
-        serviceIds.forEach { serviceId ->
-            val status = runCatching { lookupEndpoint(serviceId) }.getOrElse { error ->
+        for (serviceId in serviceIds) {
+            var status = runCatching { lookupEndpoint(serviceId) }.getOrElse { error ->
                 failures += "$serviceId: ${error.message ?: error.javaClass.simpleName}"
-                return@forEach
+                null
             }
-            if (status.success && status.url.isHttpUrl()) {
-                return NativeComponentEndpointResult.Resolved(status.url, serviceId)
+            if (isUsable(status)) {
+                return NativeComponentEndpointResult.Resolved(status!!.url, serviceId)
             }
-            failures += "$serviceId: ${status.message.ifBlank { "no published endpoint" }}"
+            val initialMessage = status?.message?.ifBlank { "no published endpoint" } ?: "endpoint lookup failed"
+            if (startService(serviceId)) {
+                for (attempt in 0 until 5) {
+                    if (attempt > 0) Thread.sleep(200)
+                    status = runCatching { lookupEndpoint(serviceId) }.getOrNull()
+                    if (isUsable(status)) break
+                }
+                if (isUsable(status)) {
+                    return NativeComponentEndpointResult.Resolved(status!!.url, serviceId)
+                }
+                failures += "$serviceId: started but ${status?.message?.ifBlank { "endpoint is still unavailable" } ?: "endpoint is still unavailable"}"
+            } else {
+                failures += "$serviceId: $initialMessage"
+            }
         }
 
         val detail = failures.joinToString("; ").ifBlank { "no published endpoint" }
@@ -61,13 +81,25 @@ internal class NativeComponentEndpointResolver(
         fun fromRuntimeConnection(
             runtimeConnection: () -> RuntimeConnection,
             transport: HttpTransport = UrlConnectionHttpTransport(),
-        ): NativeComponentEndpointResolver = NativeComponentEndpointResolver { serviceId ->
-            queryServiceEndpoints(runtimeConnection(), transport, serviceId)
+        ): NativeComponentEndpointResolver {
+            return NativeComponentEndpointResolver(
+                lookupEndpoint = { serviceId ->
+                    queryServiceEndpoints(runtimeConnection(), transport, serviceId)
+                },
+                startService = { serviceId ->
+                    ServiceManagerClient(runtimeConnection(), transport)
+                        .runAction(serviceId, ServiceAction.START)
+                        .success
+                },
+            )
         }
     }
+
+    private fun isUsable(status: NativeServiceEndpointStatus?): Boolean =
+        status != null && status.success && status.url.isHttpUrl()
 }
 
-private fun queryServiceEndpoints(
+internal fun queryServiceEndpoints(
     runtimeConnection: RuntimeConnection,
     transport: HttpTransport,
     serviceId: String,

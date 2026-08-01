@@ -27,7 +27,7 @@ import json, sys
 
 expected = [
     {"id": "openhouse-web", "runtime": "termux", "manager": "service-manager"},
-    {"id": "pi-agent", "runtime": "termux", "manager": "service-manager"},
+    {"id": "yuanshengwuxianpi", "runtime": "termux", "manager": "service-manager"},
     {"id": "pi-web", "runtime": "termux", "manager": "service-manager"},
     {"id": "aionui-web", "runtime": "termux", "manager": "service-manager"},
 ]

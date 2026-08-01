@@ -3,5 +3,10 @@
         <activity
             android:name="com.openhouse.host.nativeapp.NativeTermuxFilesActivity"
             android:exported="false" />
+        <activity
+            android:name="com.openhouse.host.nativeapp.browser.NativeSharedBrowserActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:label="共享浏览器" />
     </application>
 </manifest>

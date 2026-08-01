@@ -108,7 +108,7 @@
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "先准备 Termux、Node 和 wuyou，再安装嵌入官方 Pi SDK 的 WuxianPi Node runtime，并开放 30142 紧急救援；随后安装 service-manager、注册并启动 8765 runtime 与正式 30141 Web 入口。",
+      "description": "先准备 Termux、Node 和 wuyou，再安装嵌入官方 Pi SDK 的 WuxianPi Node runtime，并开放 30142 紧急救援；随后安装 service-manager、注册按需 20765 runtime 与正式 30141 Web 入口。",
       "stages": ["env_check", "prepare", "termux_packages", "install_wuyou", "termux_node", "install_pi_agent", "install_pi_web", "start_pi_web_rescue", "install_service_manager", "register_pi_services", "start_smallphone", "install_openhouse_web", "install_ubuntu", "ubuntu_packages"]
     },
     {
@@ -269,7 +269,7 @@
     {
       "id": "install_pi_agent",
       "title": "安装 WuxianPi Node runtime",
-      "description": "使用稳定组件 ID pi-agent 安装并检查 Termux native WuxianPi Node 服务；目标目录为 pi-runtime，直接嵌入 @earendil-works/pi-coding-agent 0.80.10，暂不执行服务注册。",
+      "description": "使用组件 pi-agent 安装并检查 Termux native WuxianPi Node 服务；稳定 service ID 为 yuanshengwuxianpi，按需使用 20765，目标目录为 pi-runtime，直接嵌入 @earendil-works/pi-coding-agent 0.80.10，暂不执行服务注册。",
       "action": { "type": "bootstrap", "args": ["install-pi-agent"] }
     },
     {
@@ -287,7 +287,7 @@
     {
       "id": "install_service_manager",
       "title": "安装运行中枢",
-      "description": "安装并启动 Termux native service-manager，等待健康与认证接口就绪。",
+      "description": "安装并启动 Termux native service-manager，等待健康与认证接口就绪；WuxianPi 只注册，不在首次安装阶段启动。",
       "action": { "type": "bootstrap", "args": ["install-service-manager"] }
     },
     {

@@ -407,6 +407,7 @@ termux_service_manager_auth_ready() (
 
 termux_service_manager_ready_for_registration() {
   local token
+  termux_service_manager_runit_ready || return 1
   termux_service_manager_instance_matches_expected || return 1
   termux_service_manager_ready || return 1
   token="$(termux_service_manager_config_token || true)"
@@ -450,10 +451,11 @@ termux_service_manager_instance_matches_expected() {
 }
 
 stop_stale_termux_service_manager() {
-  local pid pids
+  local pid pids service_root
 
+  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
   if command -v sv >/dev/null 2>&1; then
-    sv down service-manager >/dev/null 2>&1 || true
+    env SVDIR="$service_root" sv down service-manager >/dev/null 2>&1 || true
   fi
   pids="$(termux_service_manager_serve_pids)"
   for pid in $pids; do
@@ -470,8 +472,59 @@ stop_stale_termux_service_manager() {
   [ -z "$(termux_service_manager_serve_pids)" ]
 }
 
+termux_runsvdir_active() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local proc comm args
+
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
+    comm="$(cat "$proc/comm" 2>/dev/null || true)"
+    [ "$comm" = "runsvdir" ] || continue
+    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
+    printf '%s\n' "$args" | grep -Fqx -- "$service_root" && return 0
+  done
+  return 1
+}
+
+ensure_termux_services_daemon() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+
+  command -v service-daemon >/dev/null 2>&1 || {
+    warn "缺少 service-daemon；请先安装 termux-services。"
+    return 1
+  }
+  command -v sv >/dev/null 2>&1 || {
+    warn "缺少 sv；请先安装 termux-services。"
+    return 1
+  }
+  [ -d "$service_root" ] || {
+    warn "termux-services 服务目录不存在：$service_root"
+    return 1
+  }
+  service-daemon start >/dev/null 2>&1 || true
+  for _ in $(seq 1 10); do
+    termux_runsvdir_active && return 0
+    sleep 1
+  done
+  warn "termux-services 未能启动 runsvdir：$service_root"
+  return 1
+}
+
+termux_service_manager_runit_ready() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local status
+
+  termux_runsvdir_active || return 1
+  [ -x "$service_root/service-manager/run" ] || return 1
+  status="$(env SVDIR="$service_root" sv status service-manager 2>/dev/null || true)"
+  case "$status" in
+    run:*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 start_termux_service_manager_for_registration() {
-  local bind url cfg sm_bin log_file bootstrap_log
+  local bind url cfg sm_bin log_file service_root
   bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
   url="${SERVICE_MANAGER_URL:-http://$bind}"
   cfg="$(termux_service_manager_config_path)"
@@ -487,29 +540,29 @@ start_termux_service_manager_for_registration() {
   sm_bin="$(find_termux_service_manager_binary || true)"
   [ -n "$sm_bin" ] || return 1
   log_file="$HOME/.smallphoneai/logs/service-manager.log"
-  bootstrap_log="$HOME/.smallphoneai/logs/service-manager-bootstrap.log"
+  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
 
-  if command -v sv >/dev/null 2>&1 && [ -d "${PREFIX:-/data/data/com.termux/files/usr}/var/service" ]; then
-    "$sm_bin" install-service --config "$cfg" --bind "$bind" --log-file "$log_file" >/dev/null 2>&1 || true
-    sv up service-manager >/dev/null 2>&1 || true
-    for _ in $(seq 1 10); do
-      termux_service_manager_ready_for_registration && return 0
-      sleep 1
-    done
-    sv down service-manager >/dev/null 2>&1 || true
-    stop_stale_termux_service_manager || return 1
-  fi
-
+  ensure_termux_services_daemon || return 1
   mkdir -p "$HOME/.smallphoneai/logs" "$(dirname "$cfg")"
-  umask 077
-  : > "$bootstrap_log"
-  chmod 600 "$bootstrap_log" >/dev/null 2>&1 || true
-  log "正在 Termux native 启动 service-manager 以注册组件：$url"
-  nohup "$sm_bin" serve --config "$cfg" --bind "$bind" --log-file "$log_file" > "$bootstrap_log" 2>&1 < /dev/null &
+  log "正在通过 termux-services 安装并拉起 service-manager：$url"
+  "$sm_bin" install-service --config "$cfg" --bind "$bind" --log-file "$log_file" || {
+    warn "service-manager install-service 失败。"
+    return 1
+  }
+  [ -x "$service_root/service-manager/run" ] || {
+    warn "service-manager runit run 文件未生成：$service_root/service-manager/run"
+    return 1
+  }
+  env SVDIR="$service_root" sv up service-manager || {
+    warn "sv up service-manager 失败。"
+    return 1
+  }
   for _ in $(seq 1 20); do
     termux_service_manager_ready_for_registration && return 0
     sleep 1
   done
+  env SVDIR="$service_root" sv status service-manager >&2 || true
+  warn "service-manager 未能以唯一 canonical runit 实例通过 health/token 验证。"
   return 1
 }
 
@@ -738,7 +791,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
         log "正在向 Termux native service-manager 注册既有 pi 组件：$termux_pi_targets"
         ;;
       *)
-        log "正在 Termux native 安装、检查并注册 pi 常驻组件：$termux_pi_targets"
+        log "正在 Termux native 安装、检查并注册 pi 按需组件：$termux_pi_targets"
         ;;
     esac
     run_with_service_manager_auth "${SERVICE_MANAGER_TOKEN:-$native_token}" env \
@@ -918,7 +971,7 @@ install_default_subjects() {
   fi
 
   install_default_subject_file "pi-agent.json" <<'JSON'
-{"id":"pi-agent","title":"WuxianPi Node Runtime","kind":"runtime-http","summary":"Node service embedding the official Pi SDK and preserving native Pi JSONL sessions.","serviceRefs":[{"id":"pi-agent","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/workspace","workdir":"$HOME/workspace","command":"wuxianpi-node-start","entryCommand":"wuxianpi-node-start"},{"id":"pi-web","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-web","workdir":"$HOME/smallphoneai-repos/pi-web","command":"openhouse-pi-web-start","entryCommand":"openhouse-pi-web-start"}],"entries":[{"type":"runtime","label":"WuxianPi SDK API","url":"http://127.0.0.1:8765/"},{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","purpose":"APK-managed WuxianPi Node payload source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/openhouseai/runtime","purpose":"Installed Node service and Pi SDK"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Pi conversation data, extensions, skills, and settings"}],"ai":{"description":"The pi-agent service starts wuxianpi-node-start on port 8765 and embeds @earendil-works/pi-coding-agent directly.","whenUnavailable":"Inspect pi-agent logs, verify Node >=22.19 and rerun bootstrap repair."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/bin/wuxianpi-node-start","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.pi/agent/sessions","timeoutSeconds":4}]}}
+{"id":"pi-agent","title":"WuxianPi Node Runtime","kind":"runtime-http","summary":"Node service embedding the official Pi SDK and preserving native Pi JSONL sessions.","serviceRefs":[{"id":"yuanshengwuxianpi","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/workspace","workdir":"$HOME/workspace","command":"wuxianpi-node-start","entryCommand":"wuxianpi-node-start"},{"id":"pi-web","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-web","workdir":"$HOME/smallphoneai-repos/pi-web","command":"openhouse-pi-web-start","entryCommand":"openhouse-pi-web-start"}],"entries":[{"type":"runtime","label":"WuxianPi SDK API","url":"http://127.0.0.1:20765/"},{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","purpose":"APK-managed WuxianPi Node payload source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/openhouseai/runtime","purpose":"Installed Node service and Pi SDK"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Pi conversation data, extensions, skills, and settings"}],"ai":{"description":"The yuanshengwuxianpi service starts wuxianpi-node-start on demand on port 20765 and embeds @earendil-works/pi-coding-agent directly.","whenUnavailable":"Start yuanshengwuxianpi through service-manager and verify Node >=22.19."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/bin/wuxianpi-node-start","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.pi/agent/sessions","timeoutSeconds":4}]}}
 JSON
   install_default_subject_file "file-inbox.json" <<'JSON'
 {"id":"file-inbox","title":"File Inbox","kind":"file","summary":"Shared staging area for files opened with or shared to OpenHouse.","serviceRefs":[],"entries":[{"type":"file","label":"Android inbox","path":"/storage/emulated/0/OpenHouse/Inbox"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","purpose":"user-visible Android storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse/Inbox","purpose":"Termux-native inbox projection"},{"runtime":"ubuntu","path":"/root/OpenHouse/Inbox","purpose":"Ubuntu/proot inbox projection"}],"ai":{"description":"Files from Android share/open-with flows should be staged here before AI processing.","whenUnavailable":"Check storage permission and projected inbox directories."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","timeoutSeconds":3}]}}
@@ -927,7 +980,7 @@ JSON
 {"id":"openhouse-workspace","title":"OpenHouse Workspace","kind":"file","summary":"Native work partition with Android, Termux, and Ubuntu visible roots.","serviceRefs":[],"entries":[{"type":"file","label":"Android workspace","path":"/storage/emulated/0/OpenHouse"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse","purpose":"shared phone storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse","purpose":"Termux-native workspace"},{"runtime":"ubuntu","path":"/root/OpenHouse","purpose":"Ubuntu/proot workspace"}],"ai":{"description":"Use this workspace when explaining where OpenHouse data lives across Android, Termux, and Ubuntu.","whenUnavailable":"Check storage permission and root directory projections."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse","timeoutSeconds":3},{"type":"pathExists","runtime":"ubuntu","path":"/root/OpenHouse","timeoutSeconds":4}]}}
 JSON
   install_default_subject_file "service-control.json" <<'JSON'
-{"id":"service-control","title":"Service Control","kind":"runtime-http","summary":"Local service-manager control surface for service status, lifecycle actions, and logs.","serviceRefs":[{"id":"openhouse-web","runtime":"termux","manager":"service-manager"},{"id":"pi-agent","runtime":"termux","manager":"service-manager"},{"id":"pi-web","runtime":"termux","manager":"service-manager"},{"id":"aionui-web","runtime":"termux","manager":"service-manager"}],"entries":[{"type":"web","label":"service-manager","url":"http://127.0.0.1:20087/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json","purpose":"OpenHouse service-manager config and token"}],"ai":{"description":"service-manager is the standing service control layer. It answers service status, lifecycle, and logs for explicit service ids; it does not infer runtime or perform subject endpoint/file/skill checks.","whenUnavailable":"Repair the Termux native service-manager control plane before using higher-level subject checks."},"checks":{"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:20087/api/v1/health","timeoutSeconds":3}]}}
+{"id":"service-control","title":"Service Control","kind":"runtime-http","summary":"Local service-manager control surface for service status, lifecycle actions, and logs.","serviceRefs":[{"id":"openhouse-web","runtime":"termux","manager":"service-manager"},{"id":"yuanshengwuxianpi","runtime":"termux","manager":"service-manager"},{"id":"pi-web","runtime":"termux","manager":"service-manager"},{"id":"aionui-web","runtime":"termux","manager":"service-manager"}],"entries":[{"type":"web","label":"service-manager","url":"http://127.0.0.1:20087/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json","purpose":"OpenHouse service-manager config and token"}],"ai":{"description":"service-manager is the standing service control layer. It answers service status, lifecycle, and logs for explicit service ids; it does not infer runtime or perform subject endpoint/file/skill checks.","whenUnavailable":"Repair the Termux native service-manager control plane before using higher-level subject checks."},"checks":{"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:20087/api/v1/health","timeoutSeconds":3}]}}
 JSON
 }
 
@@ -1332,7 +1385,10 @@ payload_dir_needs_refresh() {
         && [ -f "$source/scripts/check.sh" ] \
         && [ -f "$source/scripts/register-service.sh" ] \
         && grep -Fq 'wuxianpi-node-start' "$source/scripts/register-service.sh" \
-        && grep -Fq '127.0.0.1:8765' "$source/scripts/register-service.sh" \
+        && grep -Fq 'yuanshengwuxianpi.json' "$source/scripts/register-service.sh" \
+        && grep -Fq '127.0.0.1:20765' "$source/scripts/register-service.sh" \
+        && grep -Fq '"residentByDefault": false' "$source/scripts/register-service.sh" \
+        && grep -Fq '"mode": "on-failure"' "$source/scripts/register-service.sh" \
         || return 0
       ;;
     pi-web)
@@ -1784,13 +1840,15 @@ dynamic_register_pi_service() (
   local token="$2"
   local sm_url="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}"
   local config_dir="${OPENHOUSEAI_CONFIG_DIR:-$HOME/.config/openhouseai}"
-  local spec="$config_dir/service-manager/services.d/$service_id.json"
-  local work_dir apply_payload curl_cfg escaped_token
+  local stable_service_id="$service_id"
+  local spec work_dir apply_payload curl_cfg escaped_token
 
   [ "$service_id" = "pi-agent" ] || [ "$service_id" = "pi-web" ] || {
     warn "拒绝动态注册非 Pi 稳定服务 ID：$service_id"
     return 1
   }
+  [ "$service_id" != "pi-agent" ] || stable_service_id="yuanshengwuxianpi"
+  spec="$config_dir/service-manager/services.d/$stable_service_id.json"
   [ -n "$token" ] || {
     warn "$service_id: service-manager token 不可用，无法动态注册。"
     return 1
@@ -1813,22 +1871,22 @@ dynamic_register_pi_service() (
   trap 'rm -rf "$work_dir" >/dev/null 2>&1 || true' EXIT INT HUP TERM
   apply_payload="$work_dir/registry-apply.json"
   curl_cfg="$work_dir/curl.cfg"
-  jq -n --arg id "$service_id" --slurpfile spec "$spec" \
+  jq -n --arg id "$stable_service_id" --slurpfile spec "$spec" \
     '{services: [{schemaVersion: 1, id: $id, service: $spec[0]}]}' > "$apply_payload"
   escaped_token="$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" > "$curl_cfg"
   chmod 600 "$curl_cfg"
 
-  log "$service_id: 正在将稳定 ID 服务定义动态应用到运行中的 service-manager。"
+  log "$service_id: 正在将稳定 ID=$stable_service_id 的服务定义动态应用到运行中的 service-manager。"
   curl -q -fsS --max-time 10 -K "$curl_cfg" \
     -H 'Content-Type: application/json' -X POST --data-binary "@$apply_payload" \
     "$sm_url/api/v1/registry/apply" >/dev/null || {
       warn "$service_id: service-manager registry apply 失败。"
       return 1
     }
-  log "$service_id: 正在调用 provider 注册：/api/v1/services/$service_id/register"
+  log "$service_id: 正在调用 provider 注册：/api/v1/services/$stable_service_id/register"
   curl -q -fsS --max-time 10 -K "$curl_cfg" -X POST \
-    "$sm_url/api/v1/services/$service_id/register" >/dev/null || {
+    "$sm_url/api/v1/services/$stable_service_id/register" >/dev/null || {
       warn "$service_id: service-manager provider 注册失败。"
       return 1
     }
@@ -1849,8 +1907,6 @@ run_repo_script_command() {
       sm_config_path="${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-${SERVICE_MANAGER_CONFIG_PATH:-$HOME/.config/openhouseai/service-manager/config.json}}"
       if [ -n "${SMALLPHONEAI_SERVICE_MANAGER_INSTALL_SERVICE:-}" ]; then
         sm_install_service="${SMALLPHONEAI_SERVICE_MANAGER_INSTALL_SERVICE}"
-      elif is_termux; then
-        sm_install_service="1"
       else
         sm_install_service="0"
       fi

@@ -5,7 +5,7 @@
   "summary": "Node service embedding the official Pi SDK, with native Pi JSONL sessions and a WebSocket UI protocol.",
   "serviceRefs": [
     {
-      "id": "pi-agent",
+      "id": "yuanshengwuxianpi",
       "runtime": "termux",
       "manager": "service-manager",
       "home": "/data/data/com.termux/files/home",
@@ -26,7 +26,7 @@
     }
   ],
   "entries": [
-    { "type": "api", "label": "WuxianPi SDK API", "url": "http://127.0.0.1:8765/" },
+    { "type": "api", "label": "WuxianPi SDK API", "url": "http://127.0.0.1:20765/" },
     { "type": "web", "label": "Pi Agent Web", "url": "http://127.0.0.1:30141/" }
   ],
   "locations": [
@@ -52,8 +52,8 @@
     }
   ],
   "ai": {
-    "description": "The stable pi-agent service ID starts wuxianpi-node-start on 127.0.0.1:8765. The service embeds @earendil-works/pi-coding-agent 0.80.10 directly.",
-    "whenUnavailable": "Inspect service-manager logs for pi-agent, verify Node >=22.19, wuxianpi-node-start, and GET /health on port 8765, then rerun bootstrap repair."
+    "description": "The stable yuanshengwuxianpi service ID starts wuxianpi-node-start on demand on 127.0.0.1:20765. The service embeds @earendil-works/pi-coding-agent 0.80.10 directly.",
+    "whenUnavailable": "Start yuanshengwuxianpi through service-manager, verify Node >=22.19, wuxianpi-node-start, and GET /health on port 20765."
   },
   "checks": {
     "serviceTimeoutSeconds": 5,

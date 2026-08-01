@@ -144,6 +144,61 @@ service_manager_serve_pids() {
   done
 }
 
+service_manager_instance_matches_expected() {
+  local binary="$1" config="$2" bind="$3"
+  local expected_exe pid args actual_exe total=0 matched=0
+  expected_exe="$(readlink -f "$binary" 2>/dev/null || true)"
+  [ -n "$expected_exe" ] || return 1
+  for pid in $(service_manager_serve_pids); do
+    total=$((total + 1))
+    args="$(tr '\000' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    actual_exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+    if [ "$actual_exe" = "$expected_exe" ] \
+      && printf '%s\n' "$args" | grep -Fqx -- "--config" \
+      && printf '%s\n' "$args" | grep -Fqx -- "$config" \
+      && printf '%s\n' "$args" | grep -Fqx -- "--bind" \
+      && printf '%s\n' "$args" | grep -Fqx -- "$bind"; then
+      matched=$((matched + 1))
+    fi
+  done
+  [ "$total" -eq 1 ] && [ "$matched" -eq 1 ]
+}
+
+termux_runsvdir_active() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local proc comm args
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
+    comm="$(cat "$proc/comm" 2>/dev/null || true)"
+    [ "$comm" = runsvdir ] || continue
+    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
+    printf '%s\n' "$args" | grep -Fqx -- "$service_root" && return 0
+  done
+  return 1
+}
+
+ensure_termux_services_daemon() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  command -v service-daemon >/dev/null 2>&1 || return 1
+  command -v sv >/dev/null 2>&1 || return 1
+  [ -d "$service_root" ] || return 1
+  service-daemon start >/dev/null 2>&1 || true
+  for _ in $(seq 1 10); do
+    termux_runsvdir_active && return 0
+    sleep 1
+  done
+  return 1
+}
+
+service_manager_runit_ready() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local status
+  termux_runsvdir_active || return 1
+  [ -x "$service_root/service-manager/run" ] || return 1
+  status="$(env SVDIR="$service_root" sv status service-manager 2>/dev/null || true)"
+  case "$status" in run:*) return 0 ;; *) return 1 ;; esac
+}
+
 canonical_port_open() {
   local bind="$1" host port
   host="${bind%:*}"
@@ -153,10 +208,12 @@ canonical_port_open() {
 }
 
 wait_for_canonical_service_manager() {
-  local config="$1" url="$2" attempts="${3:-30}" attempt=1
+  local binary="$1" config="$2" bind="$3" url="$4" attempts="${5:-30}" attempt=1
   while [ "$attempt" -le "$attempts" ]; do
     if service_manager_health_ready "$url" \
-      && service_manager_auth_ready "$config" "$url"; then
+      && service_manager_auth_ready "$config" "$url" \
+      && service_manager_runit_ready \
+      && service_manager_instance_matches_expected "$binary" "$config" "$bind"; then
       return 0
     fi
     sleep 1
@@ -166,7 +223,7 @@ wait_for_canonical_service_manager() {
 }
 
 start_control_plane() {
-  local config bind url binary existing_pids log_dir log_file bootstrap_log started_pid
+  local config bind url binary existing_pids log_dir log_file service_root
 
   is_termux_native || {
     warn "运行中枢只允许从 Termux native 环境启动。"
@@ -192,12 +249,25 @@ start_control_plane() {
   }
   url="$(config_url "$config")" || return 2
 
+  binary="$(find_installed_service_manager || true)"
+  if [ -z "$binary" ]; then
+    warn "未找到当前已安装的 Termux native service-manager；不会从 APK 安装或覆盖。"
+    return 2
+  fi
+  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  if ! ensure_termux_services_daemon; then
+    warn "termux-services/runsvdir 不可用；正式启动不会回退到 nohup。"
+    return 2
+  fi
+
   if service_manager_health_ready "$url"; then
-    if service_manager_auth_ready "$config" "$url"; then
-      log "运行中枢已启动并通过 canonical config 认证：$url"
+    if service_manager_auth_ready "$config" "$url" \
+      && service_manager_runit_ready \
+      && service_manager_instance_matches_expected "$binary" "$config" "$bind"; then
+      log "运行中枢已由 runit 常驻并通过 canonical config 认证：$url"
       return 0
     fi
-    warn "service-manager API 可达，但 canonical config 认证不匹配；不会重启或覆盖现有实例。"
+    warn "service-manager API 可达，但未同时满足 canonical 认证、唯一实例与 runit 常驻；请运行受控修复。"
     return 1
   fi
 
@@ -211,38 +281,34 @@ start_control_plane() {
     return 1
   fi
 
-  binary="$(find_installed_service_manager || true)"
-  if [ -z "$binary" ]; then
-    warn "未找到当前已安装的 Termux native service-manager；不会从 APK 安装或覆盖。"
-    return 2
-  fi
-
   log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
   umask 077
   mkdir -p "$log_dir"
   chmod 700 "$log_dir" >/dev/null 2>&1 || true
   log_file="$log_dir/service-manager.log"
-  bootstrap_log="$log_dir/service-manager-bootstrap.log"
-  : > "$bootstrap_log"
-  chmod 600 "$bootstrap_log" >/dev/null 2>&1 || true
 
-  log "正在使用当前已安装 binary 和 canonical config 启动运行中枢：binary=$binary bind=$bind"
-  nohup env \
-    -u SERVICE_MANAGER_TOKEN \
-    -u SMALLPHONE_SERVICE_MANAGER_TOKEN \
-    "$binary" serve --config "$config" --bind "$bind" --log-file "$log_file" \
-    </dev/null > "$bootstrap_log" 2>&1 &
-  started_pid=$!
+  log "正在通过 termux-services 安装并启动运行中枢：binary=$binary bind=$bind"
+  "$binary" install-service --config "$config" --bind "$bind" --log-file "$log_file" || {
+    warn "service-manager install-service 失败。"
+    return 1
+  }
+  [ -x "$service_root/service-manager/run" ] || {
+    warn "service-manager runit run 文件未生成：$service_root/service-manager/run"
+    return 1
+  }
+  env SVDIR="$service_root" sv up service-manager || {
+    warn "sv up service-manager 失败。"
+    return 1
+  }
 
-  if wait_for_canonical_service_manager "$config" "$url" \
+  if wait_for_canonical_service_manager "$binary" "$config" "$bind" "$url" \
     "${SMALLPHONEAI_SERVICE_MANAGER_READY_ATTEMPTS:-30}"; then
-    log "运行中枢已启动并通过 canonical config 认证：$url"
+    log "运行中枢已由 runit 常驻并通过 canonical config 认证：$url"
     return 0
   fi
 
-  kill "$started_pid" >/dev/null 2>&1 || true
-  wait "$started_pid" >/dev/null 2>&1 || true
-  warn "本次启动的 service-manager 未能通过有限等待与 canonical 认证，已停止该新进程；正式日志：$log_file；启动日志：$bootstrap_log"
+  env SVDIR="$service_root" sv down service-manager >/dev/null 2>&1 || true
+  warn "service-manager 未能通过有限等待、canonical 认证、唯一实例与 runit 常驻验证；正式日志：$log_file"
   return 1
 }
 

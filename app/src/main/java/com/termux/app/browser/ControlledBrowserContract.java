@@ -76,6 +76,10 @@ public final class ControlledBrowserContract {
     public static final String COMMAND_SCREENSHOT = "screenshot";
     public static final String COMMAND_CDP = "cdp";
     public static final String COMMAND_RUN = "run";
+    public static final String COMMAND_APP_CONTEXT = "app-context";
+    public static final String COMMAND_APP_DESCRIBE = "app-describe";
+    public static final String COMMAND_APP_LIST_ACTIONS = "app-list-actions";
+    public static final String COMMAND_APP_INVOKE = "app-invoke";
 
     public static final String FIELD_COMMAND = "command";
     public static final String FIELD_URL = "url";

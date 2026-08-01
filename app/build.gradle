@@ -158,6 +158,14 @@ android {
         buildConfig true
     }
 
+    sourceSets {
+        main.java.exclude "com/termux/app/browser/ControlledBrowserCommandDispatcher.java"
+        main.java.exclude "com/termux/app/browser/ControlledBrowserCommandResult.java"
+        main.java.exclude "com/termux/app/browser/ControlledBrowserContract.java"
+        main.java.exclude "com/termux/app/browser/ControlledBrowserRuntime.java"
+        main.java.exclude "com/termux/app/browser/ControlledBrowserView.java"
+    }
+
 }
 
 dependencies {
@@ -169,6 +177,7 @@ dependencies {
     implementation project(":openhouse-feature")
     implementation project(":service-control-feature")
     implementation project(":termux-host-adapter")
+    implementation project(":controlled-browser-feature")
 }
 
 task versionName {

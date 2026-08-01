@@ -1,9 +1,7 @@
 package com.termux.app.openhouse;
 
 import android.content.Context;
-import android.content.Intent;
 
-import com.termux.app.TermuxService;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerActionResult;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerControlClient;
@@ -11,14 +9,11 @@ import com.termux.app.openhouse.servicecontrol.ServiceManagerRedactor;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerService;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
-import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
@@ -51,18 +46,16 @@ public final class OpenHouseExitAllController {
     public ExitReport exitAll() {
         OpenHouseRuntimeSupervisor.setExitAllRequested(context, true);
         StopRuntimeStackResult stackResult = stopRuntimeStackInternal();
-        ShellResult termuxStopResult = requestTermuxServiceStop();
-        int stopped = stackResult.stoppedCount + (termuxStopResult.exitCode == 0 ? 1 : 0);
-        int failed = stackResult.failedCount + (termuxStopResult.exitCode == 0 ? 0 : 1);
+        int stopped = stackResult.stoppedCount;
+        int failed = stackResult.failedCount;
         StringBuilder report = new StringBuilder();
         appendLine(report, stackResult.details);
-        appendLine(report, termuxStopResult.output);
 
         return new ExitReport(
             failed == 0,
             stopped,
             failed,
-            "全部退出 OpenHouse 已提交：已先停止运行栈，并请求关闭 Termux 前台服务和终端会话；OpenHouse 界面将关闭。"
+            "全部退出 OpenHouse 已提交：已先停止业务运行栈，保留 service-manager 控制中枢；OpenHouse 界面将关闭。"
                 + "\n用户数据、模型配置、日志和 payload 均保留。"
                 + "\n已请求停止 " + stopped + " 项，失败 " + failed + " 项。"
                 + (report.length() == 0 ? "" : "\n" + report)
@@ -73,8 +66,6 @@ public final class OpenHouseExitAllController {
         StringBuilder report = new StringBuilder();
         int stopped = 0;
         int failed = 0;
-        List<String> controlPlaneServiceIds = new ArrayList<>();
-
         try {
             for (ServiceManagerService service : controlClient.listServices()) {
                 String serviceId = ServiceManagerClient.sanitizeServiceId(service.id());
@@ -82,7 +73,6 @@ public final class OpenHouseExitAllController {
                     continue;
                 }
                 if (isControlPlaneService(serviceId)) {
-                    controlPlaneServiceIds.add(serviceId);
                     continue;
                 }
                 ServiceStopCount count = stopRegisteredService(serviceId, report);
@@ -92,29 +82,6 @@ public final class OpenHouseExitAllController {
         } catch (Exception e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Failed to stop services through service-manager", e);
             appendLine(report, "读取 service-manager 服务列表失败，继续停止运行栈进程：" + safeText(e.getMessage()));
-        }
-
-        boolean groupStopSuccess = false;
-        try {
-            ServiceManagerActionResult groupStop = controlClient.runGroupAction("local-stack", "stop");
-            if (groupStop.success()) {
-                groupStopSuccess = true;
-                stopped++;
-                appendLine(report, "local-stack：已提交停止。");
-            } else {
-                appendLine(report, "local-stack：停止失败或未注册，继续清理长期进程。"
-                    + optionalMessage(groupStop.message()));
-            }
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to stop local-stack group", e);
-            appendLine(report, "local-stack：停止请求异常，继续清理长期进程。" + safeText(e.getMessage()));
-        }
-        if (!groupStopSuccess) {
-            for (String serviceId : controlPlaneServiceIds) {
-                ServiceStopCount count = stopRegisteredService(serviceId, report);
-                stopped += count.stoppedCount;
-                failed += count.failedCount;
-            }
         }
 
         ShellResult shellResult = stopManagedProcesses();
@@ -144,18 +111,6 @@ public final class OpenHouseExitAllController {
             appendLine(report, serviceId + "：停止请求异常。" + safeText(e.getMessage()));
         }
         return new ServiceStopCount(0, 1);
-    }
-
-    private ShellResult requestTermuxServiceStop() {
-        try {
-            Intent stopIntent = new Intent(context, TermuxService.class)
-                .setAction(TERMUX_SERVICE.ACTION_STOP_SERVICE);
-            context.startService(stopIntent);
-            return new ShellResult(0, "Termux 前台服务和终端会话：已发送停止请求。");
-        } catch (Exception e) {
-            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to request TermuxService stop", e);
-            return new ShellResult(1, "Termux 前台服务和终端会话：停止请求发送失败。" + safeText(e.getMessage()));
-        }
     }
 
     private ShellResult stopManagedProcesses() {
@@ -205,7 +160,7 @@ public final class OpenHouseExitAllController {
         script.append("    [ \"$pid\" = \"$self_pid\" ] && continue\n");
         script.append("    [ -n \"$parent_pid\" ] && [ \"$pid\" = \"$parent_pid\" ] && continue\n");
         script.append("    case \" $args \" in\n");
-        script.append("      *service-manager-proot-launcher*|*service-manager*' serve '*|*service-manager*' serve --bind '*|*wuxianpi-node*|*openhouse-pi-web-start*|*cloudcli*' start '*|*dist-server/server/index.js*|*/smallphone-active/*|*smallphone-frontend*|*smallphone-core*|*/openhouse-connect/*|*openhouse-connect*' serve '*|*cc-connect*' serve '*)\n");
+        script.append("      *wuxianpi-node*|*openhouse-pi-web-start*|*cloudcli*' start '*|*dist-server/server/index.js*|*/smallphone-active/*|*smallphone-frontend*|*smallphone-core*|*/openhouse-connect/*|*openhouse-connect*' serve '*|*cc-connect*' serve '*)\n");
         script.append("        kill \"$pid\" >/dev/null 2>&1 && log \"stopped pid=$pid\" ;;\n");
         script.append("    esac\n");
         script.append("  done\n");
@@ -222,7 +177,7 @@ public final class OpenHouseExitAllController {
         script.append("  [ \"$pid\" = \"$self_pid\" ] && continue\n");
         script.append("  [ -n \"$parent_pid\" ] && [ \"$pid\" = \"$parent_pid\" ] && continue\n");
         script.append("  case \" $args \" in\n");
-        script.append("    *service-manager*' serve '*|*service-manager*' serve --bind '*|*wuxianpi-node*|*openhouse-pi-web-start*|*cloudcli*' start '*|*/smallphone-active/*|*smallphone-frontend*|*smallphone-core*|*/openhouse-connect/*|*openhouse-connect*' serve '*|*cc-connect*' serve '*) kill \"$pid\" >/dev/null 2>&1 || true ;;\n");
+        script.append("    *wuxianpi-node*|*openhouse-pi-web-start*|*cloudcli*' start '*|*/smallphone-active/*|*smallphone-frontend*|*smallphone-core*|*/openhouse-connect/*|*openhouse-connect*' serve '*|*cc-connect*' serve '*) kill \"$pid\" >/dev/null 2>&1 || true ;;\n");
         script.append("  esac\n");
         script.append("done\n");
         script.append("' >/dev/null 2>&1 || true\n");

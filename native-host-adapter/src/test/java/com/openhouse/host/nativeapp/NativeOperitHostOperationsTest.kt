@@ -31,6 +31,12 @@ class NativeOperitHostOperationsTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
+    fun nativeRuntimeUsesStableOnDemandServiceId() {
+        assertEquals("yuanshengwuxianpi", NATIVE_WUXIANPI_SERVICE_ID)
+        assertEquals("http://127.0.0.1:20765", NativeOpenHouseHost.DEFAULT_PI_RUNTIME_URL)
+    }
+
+    @Test
     fun hostDetectionSeparatesAllInOneFromExternalTermux() {
         assertEquals(
             NativeExternalHostState.ALL_IN_ONE,

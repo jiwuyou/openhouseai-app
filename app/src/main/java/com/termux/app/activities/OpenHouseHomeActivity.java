@@ -3774,7 +3774,10 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         if (hasBrowserCommand || PAGE_CONTROLLED_BROWSER.equals(requestedPage)) {
             if (browserCommand != null) {
                 ControlledBrowserRuntime.getInstance().ensureStarted(this);
-                ControlledBrowserCommandDispatcher.getInstance().enqueue(this, browserCommand);
+                ControlledBrowserCommandDispatcher.getInstance().enqueue(
+                    this,
+                    browserCommand,
+                    result -> ControlledBrowserRpcFiles.writeResultIfRequested(this, browserCommand, result));
             }
             selectPage(PAGE_CONTROLLED_BROWSER);
             return true;

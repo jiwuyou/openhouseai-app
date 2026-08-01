@@ -305,8 +305,8 @@ install_termux_base_packages() {
       continue
     fi
 
-    log "正在执行 apt install -y proot-distro openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates（源：$repo）"
-    if run_termux_apt_install proot-distro openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates; then
+    log "正在执行 apt install -y proot-distro openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates termux-services（源：$repo）"
+    if run_termux_apt_install proot-distro openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates termux-services; then
       return 0
     fi
 
@@ -315,6 +315,49 @@ install_termux_base_packages() {
     repair_termux_package_state
   done
 
+  return 1
+}
+
+termux_runsvdir_active() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local proc comm args
+
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
+    comm="$(cat "$proc/comm" 2>/dev/null || true)"
+    [ "$comm" = "runsvdir" ] || continue
+    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
+    printf '%s\n' "$args" | grep -Fqx -- "$service_root" && return 0
+  done
+  return 1
+}
+
+ensure_termux_services_ready() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+
+  command -v service-daemon >/dev/null 2>&1 || {
+    log "termux-services 已安装但 service-daemon 不可用。"
+    return 1
+  }
+  command -v sv >/dev/null 2>&1 || {
+    log "termux-services 已安装但 sv 不可用。"
+    return 1
+  }
+  [ -d "$service_root" ] || {
+    log "termux-services 服务目录不存在：$service_root"
+    return 1
+  }
+
+  log "正在显式启动 termux-services 服务守护进程。"
+  service-daemon start >/dev/null 2>&1 || true
+  for _ in $(seq 1 10); do
+    termux_runsvdir_active && {
+      log "termux-services 已就绪：$service_root"
+      return 0
+    }
+    sleep 1
+  done
+  log "termux-services 未能启动 runsvdir：$service_root"
   return 1
 }
 
@@ -356,10 +399,15 @@ if ! install_termux_base_packages; then
   exit 1
 fi
 
+if ! ensure_termux_services_ready; then
+  log "termux-services 安装或启动验证失败。"
+  exit 1
+fi
+
 if ! curl --version >/dev/null 2>&1; then
   log "curl 仍不可用，尝试完整升级 Termux 依赖。"
   repair_termux_package_state
-  run_termux_apt_install openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates || true
+  run_termux_apt_install openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates termux-services || true
 fi
 
 if ! curl --version >/dev/null 2>&1; then

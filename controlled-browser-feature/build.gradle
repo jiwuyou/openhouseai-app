@@ -1,0 +1,52 @@
+plugins {
+    id "com.android.library"
+}
+
+def generatedBrowserSources = layout.buildDirectory.dir("generated/controlled-browser-sources")
+
+tasks.register("syncControlledBrowserSources", Sync) {
+    from("../app/src/main/java") {
+        include "com/termux/app/browser/ControlledBrowserCommandDispatcher.java"
+        include "com/termux/app/browser/ControlledBrowserCommandResult.java"
+        include "com/termux/app/browser/ControlledBrowserContract.java"
+        include "com/termux/app/browser/ControlledBrowserRuntime.java"
+        include "com/termux/app/browser/ControlledBrowserView.java"
+    }
+    into(generatedBrowserSources)
+}
+
+android {
+    namespace "com.wuxianpi.controlledbrowser"
+    compileSdkVersion 36
+
+    defaultConfig {
+        minSdkVersion 26
+        targetSdkVersion 28
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main.java.srcDirs = ["src/main/java", generatedBrowserSources]
+    }
+
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.returnDefaultValues = true
+    }
+}
+
+tasks.named("preBuild").configure { dependsOn("syncControlledBrowserSources") }
+
+dependencies {
+    implementation project(":termux-shared")
+    implementation "androidx.annotation:annotation:1.9.0"
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.json:json:20240303"
+    testImplementation "androidx.test:core:1.6.1"
+    testImplementation "org.robolectric:robolectric:4.14.1"
+}

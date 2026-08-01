@@ -18,16 +18,24 @@ public final class OpenHouseBuiltins {
     public static final String SETUP_ID = "setup";
     public static final String SETTINGS_ID = "settings";
     public static final String ABOUT_ID = "about-wuxianpi";
+    public static final String SHARED_BROWSER_ID = "shared-browser";
 
+    // These are the fixed entries supplied by the core registry. Host-specific entries such as
+    // the shared browser are reserved separately because their Activity class is host-owned.
     private static final Set<String> PROTECTED_IDS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
         DESKTOP_ID, BASIC_ID, ADVANCED_ID, REPAIR_ID, TERMINAL_ID, FILES_ID,
         SERVICE_CONTROL_ID, SETUP_ID, SETTINGS_ID, ABOUT_ID
     )));
 
+    private static final Set<String> RESERVED_IDS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
+        DESKTOP_ID, BASIC_ID, ADVANCED_ID, REPAIR_ID, TERMINAL_ID, FILES_ID,
+        SERVICE_CONTROL_ID, SETUP_ID, SETTINGS_ID, ABOUT_ID, SHARED_BROWSER_ID
+    )));
+
     private OpenHouseBuiltins() {}
 
     public static Set<String> protectedIds() { return PROTECTED_IDS; }
-    public static boolean isProtectedId(String id) { return id != null && PROTECTED_IDS.contains(id.trim()); }
+    public static boolean isProtectedId(String id) { return id != null && RESERVED_IDS.contains(id.trim()); }
 
     public static List<OpenHouseComponent> components() {
         List<OpenHouseComponent> values = new ArrayList<>();
@@ -51,6 +59,13 @@ public final class OpenHouseBuiltins {
         values.add(nativeRoute(SETTINGS_ID, "设置", "启动、桌面与兼容设置", "tools", 60, "sliders"));
         values.add(nativeRoute(ABOUT_ID, "关于 WuxianPi", "产品、仓库与开源致谢", "tools", 70, "sparkles"));
         return Collections.unmodifiableList(values);
+    }
+
+    public static OpenHouseComponent sharedBrowser(String activityClassName) {
+        return new OpenHouseComponent(SHARED_BROWSER_ID, "共享浏览器", "可由 Pi 控制的多标签浏览器",
+            "apps", 10, "globe", "浏", 45, false, true, true,
+            OpenHouseComponent.EntryType.ANDROID_ACTIVITY, "", "", activityClassName, "浏览器控制", true,
+            true, false, true, "native-host", Collections.emptyList(), Collections.emptyList());
     }
 
     private static OpenHouseComponent nativeRoute(String id, String title, String subtitle,

@@ -11,7 +11,7 @@ STATE_FILE="$SETUP_HOME/state.json"
 EXIT_FILE="$SETUP_HOME/exit-code"
 REQUEST_FILE="$SETUP_HOME/request.json"
 MAX_LOG_BYTES="${WUXIANPI_SETUP_MAX_LOG_BYTES:-2097152}"
-PI_URL="${WUXIANPI_PI_URL:-http://127.0.0.1:8765}"
+PI_URL="${WUXIANPI_PI_URL:-http://127.0.0.1:20765}"
 SETUP_REGION="auto"
 SETUP_TERMUX_REPO="auto"
 SETUP_UBUNTU_ROOTFS_MIRROR="auto"
@@ -140,10 +140,41 @@ tmux_ready() {
 }
 
 service_manager_ready() {
+  local service_root="$TERMUX_PREFIX/var/service"
+  local status
+
   [ -x "$TERMUX_PREFIX/bin/service-manager" ] || return 1
+  [ -x "$TERMUX_PREFIX/bin/sv" ] || return 1
+  [ -x "$service_root/service-manager/run" ] || return 1
+  status="$(env SVDIR="$service_root" "$TERMUX_PREFIX/bin/sv" status service-manager 2>/dev/null || true)"
+  case "$status" in run:*) ;; *) return 1 ;; esac
   command -v curl >/dev/null 2>&1 || return 1
   curl -fsS --max-time 3 http://127.0.0.1:20087/api/v1/health >/dev/null 2>&1 \
     || curl -fsS --max-time 3 http://127.0.0.1:20087/ >/dev/null 2>&1
+}
+
+service_manager_token() {
+  local token config
+  token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
+  if [ -n "$token" ]; then
+    printf '%s\n' "$token"
+    return 0
+  fi
+  config="$(printf '%s\n' "$TERMUX_HOME/.config/openhouseai/service-manager/config.json")"
+  [ -x "$TERMUX_PREFIX/bin/service-manager" ] || return 1
+  "$TERMUX_PREFIX/bin/service-manager" token show --config "$config" 2>/dev/null \
+    | head -n 1 | tr -d '\r\n'
+}
+
+wuxianpi_service_registered() {
+  local token body
+  token="$(service_manager_token || true)"
+  [ -n "$token" ] || return 1
+  body="$(curl -fsS --max-time 3 \
+    -H "Authorization: Bearer $token" \
+    http://127.0.0.1:20087/api/v1/services 2>/dev/null || true)"
+  printf '%s' "$body" \
+    | grep -Eq '"id"[[:space:]]*:[[:space:]]*"yuanshengwuxianpi"'
 }
 
 pi_health_body() {
@@ -167,7 +198,7 @@ pi_port_state() {
     fi
     return 0
   fi
-  if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | awk '$4 ~ /:8765$/ { found=1 } END { exit(found ? 0 : 1) }'; then
+  if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | awk '$4 ~ /:20765$/ { found=1 } END { exit(found ? 0 : 1) }'; then
     printf conflict
   else
     printf free
@@ -192,7 +223,7 @@ emit_status() {
   [ -n "$state" ] || state=unknown
   exit_code="$(sed -n '1p' "$EXIT_FILE" 2>/dev/null || true)"
   port_state="$(pi_port_state)"
-  printf '{"ok":true,"termuxReady":%s,"tmuxReady":%s,"session":"%s","state":"%s","serviceManagerReady":%s,"piReady":%s,"piPort8765":"%s","ubuntuReady":%s,"resourceDir":"%s","logFile":"%s","exitCode":"%s"}\n' \
+  printf '{"ok":true,"termuxReady":%s,"tmuxReady":%s,"session":"%s","state":"%s","serviceManagerReady":%s,"piReady":%s,"piPort20765":"%s","ubuntuReady":%s,"resourceDir":"%s","logFile":"%s","exitCode":"%s"}\n' \
     "$(json_bool termux_ready)" \
     "$(json_bool tmux_ready)" \
     "$session" \
@@ -240,7 +271,6 @@ write_state() {
 }
 
 run_core_install() {
-  local port_state
   rotate_log
   exec >> "$LOG_FILE" 2>&1
   set -x
@@ -248,26 +278,17 @@ run_core_install() {
   run_bootstrap termux-packages
   run_bootstrap termux-node
 
-  port_state="$(pi_port_state)"
-  if [ "$port_state" = conflict ]; then
-    write_state failed port-8765-conflict '端口 8765 已被非 WuxianPi 服务占用'
-    log '端口 8765 已被占用，但响应不是 WuxianPi；拒绝静默改端口。'
-    return 18
-  fi
-
   write_state running service-manager '正在安装并启动 service-manager'
   SMALLPHONEAI_COMPONENT_TARGETS=service-manager \
     SMALLPHONEAI_COMPONENT_ACTION=install-register \
     SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
     run_bootstrap components
 
-  write_state running pi-agent '正在安装、注册并启动 WuxianPi'
+  write_state running yuanshengwuxianpi '正在安装并注册 WuxianPi 按需服务'
   SMALLPHONEAI_COMPONENT_TARGETS=pi-agent \
     SMALLPHONEAI_COMPONENT_ACTION=install-register \
     SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
     run_bootstrap components
-  SMALLPHONEAI_START_TARGETS=pi-agent run_bootstrap start
-
   write_state running ubuntu '正在安装 Ubuntu'
   run_bootstrap ubuntu
 
@@ -384,17 +405,16 @@ start_install() {
 }
 
 verify_core() {
-  local failed=0 port_state
+  local failed=0
   termux_ready || { log 'FAIL termux'; failed=1; }
   tmux_ready || { log 'FAIL tmux'; failed=1; }
   [ -n "$(resource_dir || true)" ] || { log 'FAIL resources'; failed=1; }
   service_manager_ready || { log 'FAIL service-manager'; failed=1; }
-  port_state="$(pi_port_state)"
-  case "$port_state" in
-    ready) ;;
-    conflict) log 'FAIL port 8765 conflict'; failed=1 ;;
-    *) log 'FAIL pi-agent'; failed=1 ;;
-  esac
+  wuxianpi_service_registered || { log 'FAIL yuanshengwuxianpi registration'; failed=1; }
+  [ -x "$TERMUX_HOME/.local/bin/wuxianpi-node-start" ] || { log 'FAIL yuanshengwuxianpi install'; failed=1; }
+  [ -f "$TERMUX_HOME/.local/share/openhouseai/runtime/node/dist/index.js" ] || {
+    log 'FAIL yuanshengwuxianpi runtime'; failed=1
+  }
   ubuntu_ready || { log 'FAIL ubuntu'; failed=1; }
   [ "$failed" -eq 0 ] || return 1
   log 'Termux、tmux、service-manager、WuxianPi 和 Ubuntu 均已就绪。'

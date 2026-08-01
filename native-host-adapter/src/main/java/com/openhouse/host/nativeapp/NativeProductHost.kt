@@ -12,6 +12,7 @@ import com.wuxianpi.openhouse.core.HostActionResult
 import com.wuxianpi.openhouse.core.HostCapabilities
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
+import com.wuxianpi.openhouse.core.registry.OpenHouseBuiltins
 import com.wuxianpi.openhouse.core.registry.RegistryRepository
 import com.wuxianpi.openhouse.core.registry.SharedPreferencesRegistryCache
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
@@ -55,7 +56,11 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
 
     override fun capabilities(): HostCapabilities = host.capabilities()
 
-    override fun desktopComponents(): List<OpenHouseComponent> = registryCatalog.components()
+    override fun desktopComponents(): List<OpenHouseComponent> =
+        registryCatalog.components().filterNot { it.id == OpenHouseBuiltins.SHARED_BROWSER_ID } +
+            OpenHouseBuiltins.sharedBrowser(
+                "com.openhouse.host.nativeapp.browser.NativeSharedBrowserActivity",
+            )
 
     override fun launchHostRoute(activity: Activity, route: ProductRoute) {
         when (route) {

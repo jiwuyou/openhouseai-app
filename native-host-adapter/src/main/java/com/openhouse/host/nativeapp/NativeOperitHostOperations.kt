@@ -21,6 +21,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+internal const val NATIVE_WUXIANPI_SERVICE_ID = "yuanshengwuxianpi"
+
 /** Operit repair bridge for the native APK and its bundled runtime pairing flow. */
 class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     private companion object {
@@ -262,8 +264,8 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         operation: String,
         details: JSONObject = JSONObject(),
     ): OperitHostOperationResult {
-        val result = ServiceManagerClient(host.runtimeConnection()).runAction("pi-agent", action)
-        details.put("serviceId", "pi-agent").put("action", action.apiName()).put("code", result.code)
+        val result = ServiceManagerClient(host.runtimeConnection()).runAction(NATIVE_WUXIANPI_SERVICE_ID, action)
+        details.put("serviceId", NATIVE_WUXIANPI_SERVICE_ID).put("action", action.apiName()).put("code", result.code)
         details.put("body", result.body)
         return if (result.success) success(operation, details)
         else failure(operation, result.message.ifBlank { "service-manager action failed" }, details)
@@ -356,7 +358,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         tar -xzf "${'$'}TMP/runtime-aarch64.tgz" -C "${'$'}TMP"
         [ ! -x "${'$'}TMP/install.sh" ] || "${'$'}TMP/install.sh"
         curl -fsSL -X POST -H 'Content-Type: application/json' \
-          --data '{"port":8765,"clientId":"operit-native"}' \
+          --data '{"port":20765,"clientId":"operit-native"}' \
           "${'$'}BASE/paired/${'$'}PAIR"
     """.trimIndent()
 

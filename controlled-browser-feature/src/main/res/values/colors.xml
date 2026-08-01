@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="controlled_browser_panel">#FFFDF8</color>
+    <color name="controlled_browser_text_primary">#1E241C</color>
+    <color name="controlled_browser_text_secondary">#5D6458</color>
+    <color name="textPrimary">#1E241C</color>
+    <color name="accent">#4E7B56</color>
+    <color name="stageChecking">#F2F6F1</color>
+    <color name="stageBlocked">#CAD5CC</color>
+</resources>

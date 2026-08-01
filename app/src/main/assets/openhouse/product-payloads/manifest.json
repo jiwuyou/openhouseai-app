@@ -14,9 +14,9 @@
       "id": "service-manager",
       "archive": "service-manager.tar",
       "targetDir": "service-manager",
-      "sha256": "a3fe8d5e2418ff4958156c1aafad944a1708ae9cd7bbad0bc70939bd59a05ca9",
-      "size": 8325120,
-      "binarySha256": "b63134e94de575f69ffda5271d3c3b465637091927d613f2d9a9d60eae2c5574",
+      "sha256": "1cf47740e335345afbf1d695b2733ee7a105032e06cdc87690932b1682a1d76e",
+      "size": 8448000,
+      "binarySha256": "2eb3ff7dd5fa249d967da7eeb219d3d3ad6c3c29558f4c58cafb1cd96cb8329a",
       "platform": "termux-arm64",
       "version": "0.3.4",
       "registryApiVersion": 2,
@@ -30,7 +30,7 @@
       "binaryInterpreter": "/system/bin/linker64",
       "sourceRepo": "https://github.com/jiwuyou/service-manager",
       "sourceCommit": "63648fa3cf5f35cd5dc620abb31803cfd0be0691",
-      "sourceTreeSha256": "c167acd5d03b05b3f7117325d0621b527a7bad1679776c956eefb8cb6af072d0",
+      "sourceTreeSha256": "abe0e4ba25c173ba207a7a9f3f0e48dcbad56355561dcb096fbe3a88a885959f",
       "buildToolchain": {
         "method": "local-android-ndk-cross",
         "rustTarget": "aarch64-linux-android",
@@ -42,10 +42,10 @@
         "linker": "/root/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang",
         "buildCommand": "rustup run nightly-2026-07-05 cargo clean --manifest-path /root/projects/service-manager/Cargo.toml --target-dir /root/projects/service-manager/target/service-manager-payload-build && CARGO_TARGET_DIR=/root/projects/service-manager/target/service-manager-payload-build CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=/root/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang CC_aarch64_linux_android=/root/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang AR_aarch64_linux_android=/root/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar rustup run nightly-2026-07-05 cargo build --manifest-path /root/projects/service-manager/Cargo.toml --target aarch64-linux-android --release --locked"
       },
-      "sourceDirty": false,
-      "sourceStatusSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "sourceTreeId": "sha256:c167acd5d03b05b3f7117325d0621b527a7bad1679776c956eefb8cb6af072d0",
-      "payloadSourceTreeSha256": "b46f9128f53e2aaa182dcd8e44ff46898a8a916911ade664392525cc07f66496"
+      "sourceDirty": true,
+      "sourceStatusSha256": "f0d3277be15aea18566857591a563977f33b8155d787df702b4a7d9fed372e90",
+      "sourceTreeId": "sha256:abe0e4ba25c173ba207a7a9f3f0e48dcbad56355561dcb096fbe3a88a885959f",
+      "payloadSourceTreeSha256": "e244a38605ffa78dd60ef223d6f0f8384479a017f8ea7cc2014c01d8d21e37cc"
     },
     {
       "id": "openhouse-web",
@@ -80,7 +80,7 @@
     {
       "id": "pi-agent",
       "archive": "pi-runtime.tar",
-      "sha256": "e56200d65935a9f5316025639e0de6f2c6c5c5a52908e772c72d43fa693dc253",
+      "sha256": "0f26b28056420e8c82c4631d591a5f749ed9507bf056e55695afd172e91ba550",
       "size": 168253440,
       "platform": "termux-android-arm64",
       "version": "0.1.0+pi.0.80.10",
@@ -177,14 +177,14 @@
   "nativeInstallBundle": {
     "id": "wuxianpi-native-install",
     "archive": "wuxianpi-native-install.tar",
-    "sha256": "7cf148a5dcc0ff4b011195c3f9b07bf57fa68bcb6e8516e7e241ce66cdaa337d",
+    "sha256": "73c1f01ba71840bafe0d052bd67f20714d695bbec87a3a41cbd4f49ecf3bf1bd",
     "size": 168263680,
     "applicationId": "com.wuxianpi"
   },
   "nativeRuntimeAsset": {
     "archive": "runtime-aarch64.tgz",
-    "sha256": "e1cc97e119c4111fe7c5197c863e9a5ab79cdaaa5a9dcda4540da07c4190e767",
-    "size": 31639195,
+    "sha256": "11ca8076f74552f96f48b96a16d1bb77b8e831a0ef1ba9008e3e7eb52478d7d8",
+    "size": 31639175,
     "abi": "arm64-v8a",
     "applicationId": "com.wuxianpi"
   }

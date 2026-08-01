@@ -32,7 +32,10 @@ public final class ControlledBrowserCommandReceiver extends BroadcastReceiver {
             + safe(command.getString(ControlledBrowserContract.EXTRA_COMMAND))
             + " requestId=" + safe(command.getString(ControlledBrowserContract.EXTRA_REQUEST_ID)));
         ControlledBrowserRuntime.getInstance().ensureStarted(context);
-        ControlledBrowserCommandDispatcher.getInstance().enqueue(context, command);
+        ControlledBrowserCommandDispatcher.getInstance().enqueue(
+            context,
+            command,
+            result -> ControlledBrowserRpcFiles.writeResultIfRequested(context, command, result));
     }
 
     private String safe(String value) {

@@ -222,6 +222,7 @@ termux_service_manager_auth_ready() (
 
 termux_service_manager_ready_for_registration() {
   local token
+  termux_service_manager_runit_ready || return 1
   termux_service_manager_instance_matches_expected || return 1
   termux_service_manager_ready || return 1
   token="$(termux_service_manager_config_token || true)"
@@ -265,10 +266,11 @@ termux_service_manager_instance_matches_expected() {
 }
 
 stop_stale_termux_service_manager() {
-  local pid pids
+  local pid pids service_root
 
+  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
   if command -v sv >/dev/null 2>&1; then
-    sv down service-manager >/dev/null 2>&1 || true
+    env SVDIR="$service_root" sv down service-manager >/dev/null 2>&1 || true
   fi
   pids="$(termux_service_manager_serve_pids)"
   for pid in $pids; do
@@ -285,13 +287,64 @@ stop_stale_termux_service_manager() {
   [ -z "$(termux_service_manager_serve_pids)" ]
 }
 
+termux_runsvdir_active() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local proc comm args
+
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
+    comm="$(cat "$proc/comm" 2>/dev/null || true)"
+    [ "$comm" = "runsvdir" ] || continue
+    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
+    printf '%s\n' "$args" | grep -Fqx -- "$service_root" && return 0
+  done
+  return 1
+}
+
+ensure_termux_services_daemon() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+
+  command -v service-daemon >/dev/null 2>&1 || {
+    warn "缺少 service-daemon；请先安装 termux-services。"
+    return 1
+  }
+  command -v sv >/dev/null 2>&1 || {
+    warn "缺少 sv；请先安装 termux-services。"
+    return 1
+  }
+  [ -d "$service_root" ] || {
+    warn "termux-services 服务目录不存在：$service_root"
+    return 1
+  }
+  service-daemon start >/dev/null 2>&1 || true
+  for _ in $(seq 1 10); do
+    termux_runsvdir_active && return 0
+    sleep 1
+  done
+  warn "termux-services 未能启动 runsvdir：$service_root"
+  return 1
+}
+
+termux_service_manager_runit_ready() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local status
+
+  termux_runsvdir_active || return 1
+  [ -x "$service_root/service-manager/run" ] || return 1
+  status="$(env SVDIR="$service_root" sv status service-manager 2>/dev/null || true)"
+  case "$status" in
+    run:*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 ensure_termux_service_manager() {
-  local bind url cfg sm_bin log_file bootstrap_log
+  local bind url cfg sm_bin log_file service_root
   bind="${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}"
   url="${SERVICE_MANAGER_URL:-http://$bind}"
   cfg="$(termux_service_manager_config_path)"
   log_file="$HOME/.smallphoneai/logs/service-manager.log"
-  bootstrap_log="$HOME/.smallphoneai/logs/service-manager-bootstrap.log"
+  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
 
   if termux_service_manager_ready_for_registration; then
     log "Termux native service-manager 已可访问：$url"
@@ -308,36 +361,31 @@ ensure_termux_service_manager() {
     return 1
   fi
 
-  if command -v sv >/dev/null 2>&1 && [ -d "${PREFIX:-/data/data/com.termux/files/usr}/var/service" ]; then
-    log "正在通过 termux-services 拉起 service-manager。"
-    "$sm_bin" install-service --config "$cfg" --bind "$bind" --log-file "$log_file" >/dev/null 2>&1 || true
-    sv up service-manager >/dev/null 2>&1 || true
-    for _ in $(seq 1 10); do
-      termux_service_manager_ready_for_registration && {
-        log "Termux native service-manager 已由 runit 拉起：$url"
-        return 0
-      }
-      sleep 1
-    done
-    sv down service-manager >/dev/null 2>&1 || true
-    stop_stale_termux_service_manager || return 1
-  fi
-
+  ensure_termux_services_daemon || return 1
   mkdir -p "$HOME/.smallphoneai/logs" "$(dirname "$cfg")"
-  umask 077
-  : > "$bootstrap_log"
-  chmod 600 "$bootstrap_log" >/dev/null 2>&1 || true
-  log "正在 Termux native 后台启动 service-manager：$bind"
-  nohup "$sm_bin" serve --config "$cfg" --bind "$bind" --log-file "$log_file" > "$bootstrap_log" 2>&1 < /dev/null &
+  log "正在通过 termux-services 安装并拉起 service-manager。"
+  "$sm_bin" install-service --config "$cfg" --bind "$bind" --log-file "$log_file" || {
+    warn "service-manager install-service 失败。"
+    return 1
+  }
+  [ -x "$service_root/service-manager/run" ] || {
+    warn "service-manager runit run 文件未生成：$service_root/service-manager/run"
+    return 1
+  }
+  env SVDIR="$service_root" sv up service-manager || {
+    warn "sv up service-manager 失败。"
+    return 1
+  }
   for _ in $(seq 1 30); do
     termux_service_manager_ready_for_registration && {
-      log "Termux native service-manager 已启动：$url"
+      log "Termux native service-manager 已由 runit 拉起：$url"
       return 0
     }
     sleep 1
   done
 
-  warn "Termux native service-manager 未能启动。正式日志：$log_file；启动日志：$bootstrap_log"
+  env SVDIR="$service_root" sv status service-manager >&2 || true
+  warn "Termux native service-manager 未能以唯一 canonical runit 实例通过 health/token 验证。正式日志：$log_file"
   return 1
 }
 
@@ -570,7 +618,7 @@ smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
 pi_web_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
 pi_runtime_host="${OPENHOUSE_PI_RUNTIME_HOST:-127.0.0.1}"
-pi_runtime_port="${OPENHOUSE_PI_RUNTIME_PORT:-8765}"
+pi_runtime_port="${OPENHOUSE_PI_RUNTIME_PORT:-20765}"
 log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
 
 export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$HOME/.npm-global/bin:$PATH"
@@ -774,48 +822,20 @@ fi
 
 mkdir -p "$log_dir"
 service_manager_log_file="$log_dir/service-manager.log"
-service_manager_bootstrap_log="$log_dir/service-manager-bootstrap.log"
-if is_service_manager_ready; then
-  log "service-manager 已可访问：$sm_url"
+if is_termux; then
+  ensure_termux_service_manager || exit 1
+elif is_service_manager_ready; then
+  log "使用 Termux native 外部 service-manager 控制面：$sm_url"
 else
-  if is_current_ubuntu && [ "${SMALLPHONEAI_REQUIRE_EXTERNAL_SERVICE_MANAGER:-0}" = "1" ]; then
-    warn "Ubuntu 内禁止启动 service-manager；请先修复 Termux native 控制面：$sm_url"
-    exit 1
-  fi
-  if [ -z "$service_manager_bin" ]; then
-    warn "service-manager 不可访问，且没有本地二进制可启动。"
-    exit 1
-  fi
-  umask 077
-  : > "$service_manager_bootstrap_log"
-  chmod 600 "$service_manager_bootstrap_log" >/dev/null 2>&1 || true
-  log "正在启动 service-manager：$bind"
-  if is_termux; then
-    stop_stale_termux_service_manager || exit 1
-    service_manager_config_path="$(termux_service_manager_config_path)"
-  else
-    service_manager_config_path="${SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH:-${SERVICE_MANAGER_CONFIG_PATH:-}}"
-  fi
-  if [ -n "$service_manager_config_path" ]; then
-    nohup "$service_manager_bin" serve --config "$service_manager_config_path" --bind "$bind" --log-file "$service_manager_log_file" > "$service_manager_bootstrap_log" 2>&1 < /dev/null &
-  else
-    nohup "$service_manager_bin" serve --bind "$bind" --log-file "$service_manager_log_file" > "$service_manager_bootstrap_log" 2>&1 < /dev/null &
-  fi
-  for _ in $(seq 1 30); do
-    if is_service_manager_ready; then
-      log "service-manager 已启动：$sm_url"
-      break
-    fi
-    sleep 1
-  done
+  warn "service-manager 只允许由 Termux native termux-services/runit 常驻；请先修复控制面：$sm_url"
+  exit 1
 fi
 
 if ! is_service_manager_ready; then
-  warn "service-manager 未能启动。正式日志：$service_manager_log_file；启动日志：$service_manager_bootstrap_log"
+  warn "service-manager 未能通过健康检查。正式日志：$service_manager_log_file"
   if [ -f "$service_manager_log_file" ]; then
     tail -n 80 "$service_manager_log_file" >&2 || true
   fi
-  [ -f "$service_manager_bootstrap_log" ] && tail -n 80 "$service_manager_bootstrap_log" >&2 || true
   exit 1
 fi
 
@@ -847,10 +867,12 @@ fi
 dynamic_register_pi_service() (
   local service_id="$1"
   local config_dir="${OPENHOUSEAI_CONFIG_DIR:-$HOME/.config/openhouseai}"
-  local spec="$config_dir/service-manager/services.d/$service_id.json"
-  local work_dir apply_payload curl_cfg escaped_token
+  local stable_service_id="$service_id"
+  local spec work_dir apply_payload curl_cfg escaped_token
 
   [ "$service_id" = "pi-agent" ] || [ "$service_id" = "pi-web" ] || return 1
+  [ "$service_id" != "pi-agent" ] || stable_service_id="yuanshengwuxianpi"
+  spec="$config_dir/service-manager/services.d/$stable_service_id.json"
   [ -f "$spec" ] || {
     warn "$service_id: register-service.sh 未生成服务定义：$spec"
     return 1
@@ -869,22 +891,22 @@ dynamic_register_pi_service() (
   trap 'rm -rf "$work_dir" >/dev/null 2>&1 || true' EXIT INT HUP TERM
   apply_payload="$work_dir/registry-apply.json"
   curl_cfg="$work_dir/curl.cfg"
-  jq -n --arg id "$service_id" --slurpfile spec "$spec" \
+  jq -n --arg id "$stable_service_id" --slurpfile spec "$spec" \
     '{services: [{schemaVersion: 1, id: $id, service: $spec[0]}]}' > "$apply_payload"
   escaped_token="$(printf '%s' "$sm_token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" > "$curl_cfg"
   chmod 600 "$curl_cfg"
 
-  log "$service_id: 正在将稳定 ID 服务定义动态应用到运行中的 service-manager。"
+  log "$service_id: 正在将稳定 ID=$stable_service_id 的服务定义动态应用到运行中的 service-manager。"
   curl -q -fsS --max-time 10 -K "$curl_cfg" \
     -H 'Content-Type: application/json' -X POST --data-binary "@$apply_payload" \
     "$sm_url/api/v1/registry/apply" >/dev/null || {
       warn "$service_id: service-manager registry apply 失败。"
       return 1
     }
-  log "$service_id: 正在调用 provider 注册：/api/v1/services/$service_id/register"
+  log "$service_id: 正在调用 provider 注册：/api/v1/services/$stable_service_id/register"
   curl -q -fsS --max-time 10 -K "$curl_cfg" -X POST \
-    "$sm_url/api/v1/services/$service_id/register" >/dev/null || {
+    "$sm_url/api/v1/services/$stable_service_id/register" >/dev/null || {
       warn "$service_id: service-manager provider 注册失败。"
       return 1
     }
@@ -962,6 +984,7 @@ chmod 600 "$curl_cfg"
 
 start_service_if_present() {
   local service_id="$1"
+  [ "$service_id" != "pi-agent" ] || service_id="yuanshengwuxianpi"
   if curl -q -fsS --max-time 10 -X POST -K "$curl_cfg" "$sm_url/api/v1/services/$service_id/start" >/dev/null 2>&1; then
     log "service-manager: 已请求启动 $service_id。"
   else
@@ -979,7 +1002,6 @@ elif curl -q -fsS --max-time 10 -X POST -K "$curl_cfg" "$sm_url/api/v1/groups/lo
   log "pi 主线运行栈启动请求已提交。"
 else
   warn "group:local-stack 启动失败；将单独尝试启动 pi 主线核心服务。"
-  start_service_if_present "pi-agent"
   start_service_if_present "pi-web"
   start_service_if_present "smallphone-core"
   start_service_if_present "smallphone-frontend-beta"

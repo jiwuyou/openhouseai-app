@@ -38,7 +38,7 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
     public static final String TERMUX_PACKAGE = "com.termux";
     public static final String TERMUX_HOME = "/data/data/com.termux/files/home";
     public static final String TERMUX_PREFIX = "/data/data/com.termux/files/usr";
-    public static final String DEFAULT_PI_RUNTIME_URL = "http://127.0.0.1:8765";
+    public static final String DEFAULT_PI_RUNTIME_URL = "http://127.0.0.1:20765";
 
     private static final String RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND";
     private static final String RUN_COMMAND_SERVICE = "com.termux.app.RunCommandService";

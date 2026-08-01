@@ -27,6 +27,7 @@ import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebChromeClient;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -42,7 +43,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.termux.R;
+import com.wuxianpi.controlledbrowser.R;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -62,6 +63,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ControlledBrowserView extends LinearLayout {
 
@@ -73,13 +75,21 @@ public class ControlledBrowserView extends LinearLayout {
         void onResult(@NonNull ControlledBrowserCommandResult result);
     }
 
+    public interface BrowserEventListener {
+        void onBrowserEvent(@NonNull String name, @NonNull JSONObject data);
+    }
+
     private static final long DEFAULT_WAIT_TIMEOUT_MS = 5000L;
     private static final long WAIT_POLL_INTERVAL_MS = 100L;
+    private static final long PAGE_API_TIMEOUT_MS = 10_000L;
     private static final String UTF_8 = "UTF-8";
 
     private final List<BrowserTab> tabs = new ArrayList<>();
     private final Map<Integer, String> domNodeSelectors = new HashMap<>();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final List<BrowserEventListener> browserEventListeners = new ArrayList<>();
+    private final Map<String, PageApiPending> pendingPageApi = new ConcurrentHashMap<>();
+    private final PageApiJavascriptBridge pageApiBridge = new PageApiJavascriptBridge();
     private int nextDomNodeId = 2;
 
     private LinearLayout tabStripView;
@@ -114,6 +124,32 @@ public class ControlledBrowserView extends LinearLayout {
 
     public void setExternalNavigationHandler(@Nullable ExternalNavigationHandler externalNavigationHandler) {
         this.externalNavigationHandler = externalNavigationHandler;
+    }
+
+    public void addBrowserEventListener(@NonNull BrowserEventListener listener) {
+        if (!browserEventListeners.contains(listener)) browserEventListeners.add(listener);
+    }
+
+    public void removeBrowserEventListener(@NonNull BrowserEventListener listener) {
+        browserEventListeners.remove(listener);
+    }
+
+    @NonNull
+    public JSONObject getStateSnapshot() {
+        try {
+            return buildStatusData();
+        } catch (JSONException error) {
+            return new JSONObject();
+        }
+    }
+
+    @NonNull
+    public JSONArray getTabsSnapshot() {
+        try {
+            return buildTabArray();
+        } catch (JSONException error) {
+            return new JSONArray();
+        }
     }
 
     @NonNull
@@ -280,6 +316,18 @@ public class ControlledBrowserView extends LinearLayout {
                 case ControlledBrowserContract.COMMAND_RUN:
                     handleRunCommand(pending);
                     return;
+                case ControlledBrowserContract.COMMAND_APP_CONTEXT:
+                    handlePageApiCommand(pending, "describe", true);
+                    return;
+                case ControlledBrowserContract.COMMAND_APP_DESCRIBE:
+                    handlePageApiCommand(pending, "describe", false);
+                    return;
+                case ControlledBrowserContract.COMMAND_APP_LIST_ACTIONS:
+                    handlePageApiCommand(pending, "listActions", false);
+                    return;
+                case ControlledBrowserContract.COMMAND_APP_INVOKE:
+                    handlePageApiCommand(pending, "invoke", false);
+                    return;
                 default:
                     ControlledBrowserCommandResult syncResult =
                         handleCommand(command, extras).withRequest(pending.requestId, elapsedMs(pending));
@@ -336,6 +384,7 @@ public class ControlledBrowserView extends LinearLayout {
         updateAddress(tab);
         renderTabs();
         updateNavigationButtons();
+        emitBrowserEvent("tab.activated", tabEventData(tab));
         return true;
     }
 
@@ -357,7 +406,9 @@ public class ControlledBrowserView extends LinearLayout {
         if (tab.webView.getParent() == webContainerView) {
             webContainerView.removeView(tab.webView);
         }
+        JSONObject closedTab = tabEventData(tab);
         destroyWebView(tab.webView);
+        emitBrowserEvent("tab.closed", closedTab);
 
         if (tabs.isEmpty()) {
             BrowserTab blankTab = createTab("about:blank", null);
@@ -465,6 +516,10 @@ public class ControlledBrowserView extends LinearLayout {
         }
         tabs.clear();
         domNodeSelectors.clear();
+        for (PageApiPending pending : pendingPageApi.values()) {
+            pending.callback.onResult(false, null, "Browser has been destroyed");
+        }
+        pendingPageApi.clear();
         nextDomNodeId = 2;
         activeTabId = null;
         if (tabStripView != null) {
@@ -1082,6 +1137,117 @@ public class ControlledBrowserView extends LinearLayout {
         }
     }
 
+    private void handlePageApiCommand(
+        @NonNull PendingCommand pending,
+        @NonNull String pageMethod,
+        boolean includeContext
+    ) throws JSONException {
+        BrowserTab tab = resolveRequiredCommandTab(pending);
+        if (tab == null) return;
+        JSONObject params = getParamsObject(pending.extras);
+        String action = getStringParam(params, "action", null);
+        JSONObject args = params.optJSONObject("args");
+        if (args == null) args = new JSONObject();
+        if ("invoke".equals(pageMethod) && isBlank(action)) {
+            finishError(pending, "missing_action", "app.invoke requires params.action");
+            return;
+        }
+        invokePageApi(tab, pageMethod, action, args, (ok, result, message) -> {
+            if (!ok) {
+                if ("invoke".equals(pageMethod)) {
+                    finishError(pending, "frontend_api_unavailable", message);
+                    return;
+                }
+                try {
+                    JSONObject data = new JSONObject();
+                    data.put("available", false);
+                    data.put("result", "listActions".equals(pageMethod) ? new JSONArray() : JSONObject.NULL);
+                    if (includeContext) {
+                        data.put("tabId", tab.id);
+                        data.put("url", currentUrl(tab));
+                        data.put("title", tab.title);
+                        data.put("app", JSONObject.NULL);
+                    }
+                    finishOk(pending, "Frontend API is not available", data);
+                } catch (JSONException error) {
+                    finishError(pending, "json_error", "Unable to encode frontend result");
+                }
+                return;
+            }
+            try {
+                JSONObject data = new JSONObject();
+                data.put("available", true);
+                data.put("result", result == null ? JSONObject.NULL : result);
+                if (includeContext) {
+                    data.put("tabId", tab.id);
+                    data.put("url", currentUrl(tab));
+                    data.put("title", tab.title);
+                    data.put("app", result == null ? JSONObject.NULL : result);
+                }
+                finishOk(pending, "Frontend action completed", data);
+            } catch (JSONException error) {
+                finishError(pending, "json_error", "Unable to encode frontend result: " + error.getMessage());
+            }
+        });
+    }
+
+    private void invokePageApi(
+        @NonNull BrowserTab tab,
+        @NonNull String method,
+        @Nullable String action,
+        @NonNull JSONObject args,
+        @NonNull PageApiCallback callback
+    ) {
+        String requestId = UUID.randomUUID().toString();
+        pendingPageApi.put(requestId, new PageApiPending(callback));
+        mainHandler.postDelayed(() -> {
+            PageApiPending pending = pendingPageApi.remove(requestId);
+            if (pending != null) pending.callback.onResult(false, null, "Frontend action timed out");
+        }, PAGE_API_TIMEOUT_MS);
+
+        String call = "invoke".equals(method)
+            ? "api.invoke(" + JSONObject.quote(action) + "," + args.toString() + ")"
+            : "api[" + JSONObject.quote(method) + "]()";
+        String script = "(function(){"
+            + "var bridge=window.__WuxianPiNativeBridge;"
+            + "var reply=function(v){bridge.resolve(" + JSONObject.quote(requestId)
+            + ",JSON.stringify(v));};"
+            + "try{var api=window.wuxianPiControl;"
+            + "if(!api||typeof api[" + JSONObject.quote(method) + "]!=='function'){"
+            + "reply({ok:false,error:'window.wuxianPiControl." + method + " is unavailable'});return;}"
+            + "Promise.resolve(" + call + ").then(function(value){reply({ok:true,result:value===undefined?null:value});},"
+            + "function(error){reply({ok:false,error:String(error&&error.message||error)});});"
+            + "}catch(error){reply({ok:false,error:String(error&&error.message||error)});}})();";
+        tab.webView.evaluateJavascript(script, ignored -> {});
+    }
+
+    private void refreshAppContext(@NonNull BrowserTab tab) {
+        invokePageApi(tab, "describe", null, new JSONObject(), (ok, result, message) -> {
+            if (!ok || !(result instanceof JSONObject)) return;
+            tab.appContext = (JSONObject) result;
+            JSONObject data = tabEventData(tab);
+            try { data.put("app", tab.appContext); } catch (JSONException ignored) {}
+            emitBrowserEvent("app.contextChanged", data);
+        });
+    }
+
+    private void emitBrowserEvent(@NonNull String name, @NonNull JSONObject data) {
+        for (BrowserEventListener listener : new ArrayList<>(browserEventListeners)) {
+            listener.onBrowserEvent(name, data);
+        }
+    }
+
+    @NonNull
+    private JSONObject tabEventData(@NonNull BrowserTab tab) {
+        try {
+            JSONObject data = buildTabData(tab, Math.max(0, tabs.indexOf(tab)));
+            if (tab.appContext != null) data.put("app", tab.appContext);
+            return data;
+        } catch (JSONException error) {
+            return new JSONObject();
+        }
+    }
+
     private void evaluateJavascript(
         @NonNull BrowserTab tab,
         @NonNull String script,
@@ -1168,6 +1334,7 @@ public class ControlledBrowserView extends LinearLayout {
     private JSONObject buildTabData(@NonNull BrowserTab tab, int index) throws JSONException {
         JSONObject object = new JSONObject();
         object.put("id", tab.id);
+        object.put("tabId", tab.id);
         object.put("targetId", tab.id);
         object.put("index", index);
         object.put("title", tab.title);
@@ -1175,6 +1342,8 @@ public class ControlledBrowserView extends LinearLayout {
         object.put("active", tab.id.equals(activeTabId));
         object.put("loading", tab.loading);
         object.put("progress", tab.progress);
+        object.put("app", tab.appContext == null ? JSONObject.NULL : tab.appContext);
+        object.put("context", tab.appContext == null ? JSONObject.NULL : tab.appContext);
         return object;
     }
 
@@ -1896,6 +2065,7 @@ public class ControlledBrowserView extends LinearLayout {
             "about:blank",
             createWebView());
         tabs.add(tab);
+        emitBrowserEvent("tab.created", tabEventData(tab));
         if (url != null && !url.trim().isEmpty()) {
             loadInTab(tab, url);
         }
@@ -1917,6 +2087,7 @@ public class ControlledBrowserView extends LinearLayout {
         WebView webView = new WebView(getContext());
         webView.setLayoutParams(new FrameLayout.LayoutParams(
             LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        webView.addJavascriptInterface(pageApiBridge, "__WuxianPiNativeBridge");
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -1953,6 +2124,7 @@ public class ControlledBrowserView extends LinearLayout {
                     }
                 }
                 updateNavigationButtons();
+                if (tab != null) emitBrowserEvent("page.started", tabEventData(tab));
             }
 
             @Override
@@ -1967,6 +2139,10 @@ public class ControlledBrowserView extends LinearLayout {
                 }
                 updateNavigationButtons();
                 renderTabs();
+                if (tab != null) {
+                    emitBrowserEvent("page.finished", tabEventData(tab));
+                    refreshAppContext(tab);
+                }
             }
         });
 
@@ -1979,6 +2155,7 @@ public class ControlledBrowserView extends LinearLayout {
                 }
                 tab.title = title;
                 renderTabs();
+                emitBrowserEvent("page.titleChanged", tabEventData(tab));
             }
 
             @Override
@@ -2259,6 +2436,36 @@ public class ControlledBrowserView extends LinearLayout {
         void onResult(@Nullable String result);
     }
 
+    private interface PageApiCallback {
+        void onResult(boolean ok, @Nullable Object result, @NonNull String message);
+    }
+
+    private final class PageApiJavascriptBridge {
+        @JavascriptInterface
+        public void resolve(String requestId, String payload) {
+            mainHandler.post(() -> {
+                PageApiPending pending = pendingPageApi.remove(requestId);
+                if (pending == null) return;
+                try {
+                    JSONObject response = new JSONObject(payload == null ? "{}" : payload);
+                    boolean ok = response.optBoolean("ok", false);
+                    Object result = response.has("result") && !response.isNull("result")
+                        ? response.opt("result") : null;
+                    pending.callback.onResult(ok, result,
+                        ok ? "" : response.optString("error", "Frontend action failed"));
+                } catch (JSONException error) {
+                    pending.callback.onResult(false, null, "Invalid frontend action result");
+                }
+            });
+        }
+    }
+
+    private static final class PageApiPending {
+        final PageApiCallback callback;
+
+        PageApiPending(@NonNull PageApiCallback callback) { this.callback = callback; }
+    }
+
     private static final class PendingCommand {
         final Bundle extras;
         final String requestId;
@@ -2297,6 +2504,7 @@ public class ControlledBrowserView extends LinearLayout {
         String url;
         boolean loading;
         int progress = 100;
+        JSONObject appContext;
 
         BrowserTab(String id, String title, String url, WebView webView) {
             this.id = id;

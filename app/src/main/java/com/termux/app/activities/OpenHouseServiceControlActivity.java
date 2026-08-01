@@ -251,7 +251,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         TextView title = sectionTitle("批量控制");
         panel.addView(title);
 
-        TextView note = bodyText("全部关闭和全部重启会跳过 service-manager；“停止运行栈”会停掉 service-manager 和 OpenHouse 长期服务并留在当前页；“全部退出 OpenHouse”会在停止运行栈后关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。");
+        TextView note = bodyText("全部关闭和全部重启会跳过 service-manager；“停止运行栈”会停止业务服务并保留 service-manager 控制中枢；“全部退出 OpenHouse”会在停止业务运行栈后关闭 OpenHouse 界面，控制中枢继续保留。");
         panel.addView(note, topMarginParams(8));
 
         addButtonRow(panel,
@@ -1020,7 +1020,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private void confirmStopRuntimeStack() {
         new AlertDialog.Builder(this)
             .setTitle("停止运行栈")
-            .setMessage("将停止 service-manager 管理的 OpenHouse 长期服务、service-manager 本身，以及 OpenHouse 拉起的 Termux/Ubuntu 长期进程。\n\nApp 会留在当前界面；本次会话会暂停自动保活。用户文件、模型配置、日志和已安装 payload 会保留。之后可点击“恢复默认核心服务”重新拉起。")
+            .setMessage("将停止 service-manager 管理的业务服务和 OpenHouse 拉起的 Termux/Ubuntu 长期进程，但保留 service-manager 控制中枢。\n\nApp 会留在当前界面；本次会话会暂停自动保活。用户文件、模型配置、日志和已安装 payload 会保留。之后可点击“恢复默认核心服务”重新拉起业务服务。")
             .setNegativeButton("取消", null)
             .setPositiveButton("停止运行栈", (dialog, which) -> runStopRuntimeStack())
             .show();
@@ -1030,7 +1030,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         stopForegroundMaintenance();
         foregroundMaintenanceTaskRunning = false;
         setBusy(true);
-        setStatus("正在停止运行栈。\n会停止 OpenHouse 长期服务和控制中枢；App 会留在当前界面，用户数据会保留。");
+        setStatus("正在停止运行栈。\n会停止业务服务并保留 service-manager 控制中枢；App 会留在当前界面，用户数据会保留。");
         setControlPlaneStatus("控制中枢：正在停止运行栈...");
         backgroundExecutor.execute(() -> {
             OpenHouseExitAllController.ExitReport report =
@@ -1047,7 +1047,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private void confirmExitAll() {
         new AlertDialog.Builder(this)
             .setTitle("全部退出 OpenHouse")
-            .setMessage("将先执行“停止运行栈”，再关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。\n\n用户文件、模型配置、日志和已安装 payload 会保留。再次打开 App 后可重新拉起。")
+            .setMessage("将先停止业务运行栈，再关闭 OpenHouse 界面；service-manager 控制中枢会保留。\n\n用户文件、模型配置、日志和已安装 payload 会保留。再次打开 App 后可重新拉起业务服务。")
             .setNegativeButton("取消", null)
             .setPositiveButton("全部退出 OpenHouse", (dialog, which) -> runExitAll())
             .show();
@@ -1057,7 +1057,7 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         stopForegroundMaintenance();
         foregroundMaintenanceTaskRunning = false;
         setBusy(true);
-        setStatus("正在全部退出 OpenHouse。\n会先停止运行栈，再关闭 OpenHouse 界面，并请求关闭 Termux 前台服务和终端会话。用户数据会保留。");
+        setStatus("正在全部退出 OpenHouse。\n会先停止业务运行栈并保留 service-manager，再关闭 OpenHouse 界面。用户数据会保留。");
         setControlPlaneStatus("控制中枢：正在停止运行栈...");
         backgroundExecutor.execute(() -> {
             OpenHouseExitAllController.ExitReport report = new OpenHouseExitAllController(this).exitAll();

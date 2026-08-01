@@ -29,6 +29,7 @@ public class NativeOpenHouseHostTest {
 
     @Test
     public void normalizesAndLoadsSafLegacyRegistryFallback() throws Exception {
+        assertEquals("http://127.0.0.1:20765", NativeOpenHouseHost.DEFAULT_PI_RUNTIME_URL);
         assertEquals("http://127.0.0.1:20087",
             NativeOpenHouseHost.normalizeServiceManagerUrl("0.0.0.0:20087"));
         assertEquals("http://127.0.0.1:21000",

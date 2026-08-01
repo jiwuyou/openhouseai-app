@@ -264,9 +264,10 @@ service_manager_instance_matches_openhouse() {
 }
 
 stop_termux_service_manager_instances() {
-  local pid pids
+  local pid pids service_root
+  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
   if command -v sv >/dev/null 2>&1; then
-    sv down service-manager >/dev/null 2>&1 || true
+    env SVDIR="$service_root" sv down service-manager >/dev/null 2>&1 || true
   fi
   pids="$(termux_service_manager_serve_pids)"
   for pid in $pids; do
@@ -281,6 +282,41 @@ stop_termux_service_manager_instances() {
   done
   sleep 1
   [ -z "$(termux_service_manager_serve_pids)" ]
+}
+
+termux_runsvdir_active() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local proc comm args
+  for proc in /proc/[0-9]*; do
+    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
+    comm="$(cat "$proc/comm" 2>/dev/null || true)"
+    [ "$comm" = runsvdir ] || continue
+    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
+    printf '%s\n' "$args" | grep -Fqx -- "$service_root" && return 0
+  done
+  return 1
+}
+
+ensure_termux_services_daemon() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  command -v service-daemon >/dev/null 2>&1 || return 1
+  command -v sv >/dev/null 2>&1 || return 1
+  [ -d "$service_root" ] || return 1
+  service-daemon start >/dev/null 2>&1 || true
+  for _ in $(seq 1 10); do
+    termux_runsvdir_active && return 0
+    sleep 1
+  done
+  return 1
+}
+
+service_manager_runit_ready() {
+  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local status
+  termux_runsvdir_active || return 1
+  [ -x "$service_root/service-manager/run" ] || return 1
+  status="$(env SVDIR="$service_root" sv status service-manager 2>/dev/null || true)"
+  case "$status" in run:*) return 0 ;; *) return 1 ;; esac
 }
 
 service_manager_auth_ready() {
@@ -633,7 +669,8 @@ EOF
 }
 
 repair_termux_native_control_plane() {
-  local bind sm_url sm_bin config log_file bootstrap_log token
+  local bind sm_url sm_bin config log_file bootstrap_log token service_root
+  local persistent=0
 
   is_termux || {
     log "当前不是 Termux；拒绝在 Ubuntu/proot 内拉起长期 service-manager。"
@@ -645,6 +682,8 @@ repair_termux_native_control_plane() {
   config="$(termux_service_manager_config)"
   log_file="$(termux_service_manager_log)"
   bootstrap_log="$(dirname "$log_file")/service-manager-bootstrap.log"
+  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  state_dir="$HOME/.smallphoneai/state"
 
   quarantine_empty_service_specs
 
@@ -667,16 +706,33 @@ repair_termux_native_control_plane() {
     stop_termux_service_manager_instances || return 1
   fi
 
-  log "正在启动 Termux native service-manager：$bind"
-  if command -v setsid >/dev/null 2>&1; then
-    (trap '' HUP; setsid -f "$sm_bin" serve --config "$config" --bind "$bind" --log-file "$log_file" > "$bootstrap_log" 2>&1 < /dev/null) || true
+  if ensure_termux_services_daemon; then
+    log "正在通过 termux-services 修复并启动 service-manager：$bind"
+    if "$sm_bin" install-service --config "$config" --bind "$bind" --log-file "$log_file" \
+      && [ -x "$service_root/service-manager/run" ] \
+      && env SVDIR="$service_root" sv up service-manager; then
+      for _ in $(seq 1 30); do
+        if service_manager_ready \
+          && service_manager_instance_matches_openhouse \
+          && service_manager_runit_ready; then
+          persistent=1
+          break
+        fi
+        sleep 1
+      done
+    else
+      warn "service-manager install-service 或 sv up 失败；不会启动脱离 runit 的临时进程。"
+    fi
   else
-    (trap '' HUP; nohup "$sm_bin" serve --config "$config" --bind "$bind" --log-file "$log_file" > "$bootstrap_log" 2>&1 < /dev/null &)
+    warn "termux-services/runsvdir 不可用；不会启动脱离 runit 的临时进程。"
   fi
-  for _ in $(seq 1 30); do
-    service_manager_ready && service_manager_instance_matches_openhouse && break
-    sleep 1
-  done
+
+  if [ "$persistent" != "1" ]; then
+    env SVDIR="$service_root" sv down service-manager >/dev/null 2>&1 || true
+    stop_termux_service_manager_instances || return 1
+    log "Termux native service-manager 未获得 runit 常驻，修复失败。"
+    return 2
+  fi
 
   if ! service_manager_ready || ! service_manager_instance_matches_openhouse; then
     log "Termux native service-manager health 检查失败：$sm_url/api/v1/health"
@@ -695,7 +751,7 @@ repair_termux_native_control_plane() {
 
   migrate_legacy_service_manager_specs "$token" || warn "旧服务声明迁移未完全成功；控制中枢本体仍已恢复。"
 
-  log "控制中枢轻量修复完成：Termux native service-manager=$sm_url"
+  log "控制中枢 runit 常驻修复完成：Termux native service-manager=$sm_url"
 }
 
 if is_current_ubuntu; then

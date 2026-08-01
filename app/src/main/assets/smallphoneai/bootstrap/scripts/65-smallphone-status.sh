@@ -804,7 +804,7 @@ smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
 pi_web_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
 pi_runtime_host="${OPENHOUSE_PI_RUNTIME_HOST:-127.0.0.1}"
-pi_runtime_port="${OPENHOUSE_PI_RUNTIME_PORT:-8765}"
+pi_runtime_port="${OPENHOUSE_PI_RUNTIME_PORT:-20765}"
 pi_runtime_url="tcp://${pi_runtime_host}:${pi_runtime_port}"
 likegirl_url="${SMALLPHONEAI_LIKEGIRL_URL:-http://127.0.0.1:23003/}"
 likegirl_clone_url="${SMALLPHONEAI_LIKEGIRL_CLONE_URL:-http://127.0.0.1:23008/}"
@@ -954,7 +954,6 @@ fi
 ready=0
 if [ "$sm_reachable" = "1" ] \
   && [ "$pi_agent_satisfied" = "1" ] \
-  && [ "$pi_runtime_reachable" = "1" ] \
   && [ "$pi_web_reachable" = "1" ] \
   && [ "$smallphone_reachable" = "1" ] \
   && [ "$smallphone_core_reachable" = "1" ]; then
@@ -981,7 +980,7 @@ json_string "$health_signature_status"
 printf ',"readiness":{"ready":%s,"requirements":[' "$(bool "$ready")"
 readiness_object "service-manager" "service-manager API" "$sm_url" "$sm_reachable" "1" "0"
 printf ','
-readiness_object "pi-agent" "WuxianPi Node runtime" "$pi_runtime_url" "$pi_runtime_reachable" "1" "0"
+readiness_object "yuanshengwuxianpi" "WuxianPi Node runtime" "$pi_runtime_url" "$pi_runtime_reachable" "0" "0"
 printf ','
 readiness_object "pi-web" "Pi Web main agent UI" "$pi_web_url" "$pi_web_reachable" "1" "0"
 printf ','
@@ -998,13 +997,13 @@ component_object "cc-connect" "cc-connect/openhouse-connect" "$cc_connect_dir" "
 printf ','
 component_object "smallphone" "SmallPhone" "$smallphone_dir"
 printf ','
-component_object "pi-agent" "pi-agent" "$pi_agent_dir"
+component_object "yuanshengwuxianpi" "pi-agent" "$pi_agent_dir"
 printf ','
 component_object "pi-web" "pi-web" "$pi_web_dir"
 printf '],"ports":['
 port_object "service-manager" "$sm_url" "$sm_reachable"
 printf ','
-port_object "pi-agent" "$pi_runtime_url" "$pi_runtime_reachable"
+port_object "yuanshengwuxianpi" "$pi_runtime_url" "$pi_runtime_reachable"
 printf ','
 port_object "cc-connect-bridge" "tcp://${cc_host}:${cc_bridge_port}" "$cc_bridge_reachable" "$cc_connect_enabled"
 printf ','

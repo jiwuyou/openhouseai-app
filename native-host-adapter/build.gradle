@@ -31,7 +31,9 @@ dependencies {
     implementation project(":openhouse-feature")
     implementation project(":service-control-feature")
     implementation project(":operit-feature")
+    implementation project(":controlled-browser-feature")
     implementation "androidx.documentfile:documentfile:1.0.1"
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0"
     testImplementation "junit:junit:4.13.2"

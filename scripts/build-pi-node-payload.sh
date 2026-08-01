@@ -69,7 +69,7 @@ set -eu
 : "${HOME:?HOME is required}"
 mkdir -p "$HOME/.pi/agent/sessions" "$HOME/workspace"
 exec "$HOME/.local/bin/wuxianpi-node" \
-  --listen "${OPENHOUSE_PI_LISTEN:-127.0.0.1:8765}" \
+  --listen "${OPENHOUSE_PI_LISTEN:-127.0.0.1:20765}" \
   --agent-dir "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}" \
   --idle-timeout-ms "${OPENHOUSE_PI_IDLE_TIMEOUT_MS:-300000}" \
   --web-root "${WUXIANPI_WEB_ROOT:-$HOME/.local/share/openhouseai/runtime/node/web}" \
@@ -129,13 +129,13 @@ cat > "$stage/scripts/register-service.sh" <<'EOF'
 set -eu
 : "${HOME:?HOME is required}"
 service_dir="${OPENHOUSEAI_CONFIG_DIR:-$HOME/.config/openhouseai}/service-manager/services.d"
-spec="$service_dir/pi-agent.json"
+spec="$service_dir/yuanshengwuxianpi.json"
 mkdir -p "$service_dir"
-tmp=$(mktemp "${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/pi-agent.json.XXXXXX")
+tmp=$(mktemp "${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/yuanshengwuxianpi.json.XXXXXX")
 cat > "$tmp" <<JSON
 {
-  "name": "pi-agent",
-  "description": "WuxianPi Node service embedding the official Pi SDK",
+  "name": "yuanshengwuxianpi",
+  "description": "WuxianPi Web and Node Runtime",
   "provider": "termux-process",
   "command": ["sh", "-lc", "wuxianpi-node-start & child=\$!; trap 'kill -TERM \$child 2>/dev/null; wait \$child 2>/dev/null || true' TERM INT HUP; wait \$child"],
   "working_dir": "$HOME/workspace",
@@ -143,20 +143,22 @@ cat > "$tmp" <<JSON
     "HOME": "$HOME",
     "PATH": "$HOME/.local/bin:${PREFIX:-/data/data/com.termux/files/usr}/bin:/system/bin",
     "PI_CODING_AGENT_DIR": "$HOME/.pi/agent",
-    "OPENHOUSE_PI_RUNTIME_ORIGIN": "http://127.0.0.1:8765",
+    "OPENHOUSE_PI_LISTEN": "127.0.0.1:20765",
+    "OPENHOUSE_PI_RUNTIME_ORIGIN": "http://127.0.0.1:20765",
     "OPENHOUSE_AIONUI_ORIGIN": "http://127.0.0.1:25808/",
     "WUXIANPI_WEB_ROOT": "$HOME/.local/share/openhouseai/runtime/node/web"
   },
   "runtime": {"strategy": "termux-process", "runtime": "termux", "platform": "android-arm64"},
-  "restart": {"mode": "always", "max_retries": 0},
-  "health": [{"type": "http", "url": "http://127.0.0.1:8765/health", "interval": "15s", "timeout": "3s"}],
+  "restart": {"mode": "on-failure", "max_retries": 5},
+  "health": [{"type": "http", "url": "http://127.0.0.1:20765/health", "interval": "15s", "timeout": "3s"}],
   "enabled": true,
-  "tags": ["group:local-stack", "openhouseai", "agent", "pi-node-sdk", "openhouse-component:pi-agent"]
+  "residentByDefault": false,
+  "tags": ["wuxianpi", "agent", "openhouse-component:yuanshengwuxianpi"]
 }
 JSON
 node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$tmp"
 mv "$tmp" "$spec"
-printf 'registered: %s\n' "$spec"
+printf 'Registered on-demand service-manager service (not started): %s\n' "$spec"
 EOF
 
 cat > "$stage/install.sh" <<'EOF'

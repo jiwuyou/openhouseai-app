@@ -136,6 +136,38 @@ class NativeComponentEndpointResolverTest {
     }
 
     @Test
+    fun stoppedServiceIsStartedAndResolvedAgain() {
+        var lookups = 0
+        var starts = 0
+        val resolver = NativeComponentEndpointResolver(
+            lookupEndpoint = {
+                lookups += 1
+                if (lookups == 1) {
+                    NativeServiceEndpointStatus(false, "", "service is stopped")
+                } else {
+                    NativeServiceEndpointStatus(true, "http://127.0.0.1:20765/", "healthy")
+                }
+            },
+            startService = {
+                starts += 1
+                true
+            },
+        )
+
+        val result = resolver.resolve(component(serviceNames = listOf("yuanshengwuxianpi")))
+
+        assertEquals(1, starts)
+        assertEquals(2, lookups)
+        assertEquals(
+            NativeComponentEndpointResult.Resolved(
+                "http://127.0.0.1:20765/",
+                "yuanshengwuxianpi",
+            ),
+            result,
+        )
+    }
+
+    @Test
     fun ordinaryWebComponentUsesManifestUrlWithoutServiceLookup() {
         var queried = false
         val resolver = NativeComponentEndpointResolver {
