@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.rescue.plugins
 
 import android.content.Context
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -11,8 +12,46 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
 import org.json.JSONArray
 import org.json.JSONObject
+
+internal const val MAX_RESCUE_PLUGIN_ARCHIVE_BYTES = 64L * 1024L * 1024L
+
+internal fun createRescuePluginHttpClient(): OkHttpClient =
+    OkHttpClient.Builder()
+        .callTimeout(25, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .build()
+
+internal fun ResponseBody.readBoundedPluginArchive(
+    maxBytes: Long = MAX_RESCUE_PLUGIN_ARCHIVE_BYTES,
+): ByteArray {
+    require(maxBytes >= 0) { "Maximum archive size must not be negative" }
+    val declaredLength = contentLength()
+    if (declaredLength > maxBytes) {
+        throw IOException("Plugin archive exceeds the ${maxBytes}-byte limit")
+    }
+
+    return byteStream().use { input ->
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var totalBytes = 0L
+        while (true) {
+            val bytesToRead = minOf(buffer.size.toLong(), maxBytes - totalBytes + 1L).toInt()
+            val bytesRead = input.read(buffer, 0, bytesToRead)
+            if (bytesRead == -1) break
+            totalBytes += bytesRead
+            if (totalBytes > maxBytes) {
+                throw IOException("Plugin archive exceeds the ${maxBytes}-byte limit")
+            }
+            output.write(buffer, 0, bytesRead)
+        }
+        output.toByteArray()
+    }
+}
 
 class RescuePluginHubSettings(context: Context) {
     private val preferences =
@@ -50,12 +89,7 @@ class RescuePluginHubSettings(context: Context) {
 
 class RescuePluginCatalogClient(
     private val settings: RescuePluginHubSettings,
-    private val client: OkHttpClient =
-        OkHttpClient.Builder()
-            .connectTimeout(8, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
-            .writeTimeout(20, TimeUnit.SECONDS)
-            .build(),
+    private val client: OkHttpClient = createRescuePluginHttpClient(),
 ) {
     suspend fun search(query: String = ""): List<RescuePluginListing> = withContext(Dispatchers.IO) {
         val urlBuilder =
@@ -132,7 +166,8 @@ class RescuePluginCatalogClient(
             if (!response.isSuccessful) {
                 throw IOException("Hub download HTTP ${response.code}")
             }
-            response.body?.bytes() ?: throw IOException("Hub returned an empty plugin archive")
+            response.body?.readBoundedPluginArchive()
+                ?: throw IOException("Hub returned an empty plugin archive")
         }
 
     private fun parseArrayPayload(body: String, vararg keys: String): List<JSONObject> {

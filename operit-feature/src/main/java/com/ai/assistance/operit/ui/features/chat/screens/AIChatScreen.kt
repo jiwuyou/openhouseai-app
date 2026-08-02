@@ -46,6 +46,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.host.OperitHostProvider
+import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
 import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
 import com.ai.assistance.operit.rescue.ui.RescueFirstUsePrompt
@@ -2002,7 +2003,10 @@ private fun ChatInputBottomBar(
     ) {
         if (showRescueFirstUsePrompt) {
             RescueFirstUsePrompt(
-                onClick = { sendMessage(RESCUE_FIRST_USE_MESSAGE) },
+                onClick = {
+                    sendMessage(RESCUE_FIRST_USE_MESSAGE)
+                    RescuePluginManager.get(context).prewarmFirstInstall()
+                },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }

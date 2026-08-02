@@ -5,9 +5,13 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipInputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -32,7 +36,11 @@ internal class RescuePluginArchiveInstaller(private val stagingRoot: File) {
         expectedSha256: String,
         expectedPluginId: String,
         expectedVersion: String,
+        expectedManifest: RescuePluginManifest? = null,
     ): Pair<File, RescuePluginManifest> {
+        require(SHA_256.matches(expectedSha256.trim())) {
+            "Plugin SHA-256 must contain exactly 64 hexadecimal characters"
+        }
         val actualSha = sha256(archive)
         require(actualSha.equals(expectedSha256.trim(), ignoreCase = true)) {
             "Plugin SHA-256 mismatch: expected $expectedSha256, got $actualSha"
@@ -52,6 +60,12 @@ internal class RescuePluginArchiveInstaller(private val stagingRoot: File) {
             require(manifest.version == RescuePluginContract.requireVersion(expectedVersion)) {
                 "Plugin version mismatch: expected $expectedVersion, got ${manifest.version}"
             }
+            expectedManifest?.let {
+                require(manifest == it) {
+                    "Plugin archive manifest does not match the catalog manifest"
+                }
+            }
+            RescuePluginContract.requireCompatible(manifest)
             manifest.entryWorkflow?.let { requirePluginFile(staging, it) }
             manifest.documents.forEach { requirePluginFile(staging, it.path) }
             return staging to manifest
@@ -114,11 +128,78 @@ internal class RescuePluginArchiveInstaller(private val stagingRoot: File) {
         private const val MANIFEST_FILE = "manifest.json"
         private const val MAX_ARCHIVE_ENTRIES = 2048
         private const val MAX_UNCOMPRESSED_BYTES = 64L * 1024L * 1024L
+        private val SHA_256 = Regex("[0-9a-fA-F]{64}")
 
         fun sha256(bytes: ByteArray): String =
             MessageDigest.getInstance("SHA-256")
                 .digest(bytes)
                 .joinToString("") { byte -> "%02x".format(byte) }
+    }
+}
+
+internal class RescuePluginInstalledReader(private val installedRoot: File) {
+    fun readActive(state: JSONObject, pluginId: String): InstalledRescuePlugin? {
+        val id = RescuePluginContract.requirePluginId(pluginId)
+        val record = state.optJSONObject(id) ?: return null
+        val active = record.optionalString("active") ?: return null
+        val manifest = readManifest(id, active) ?: return null
+        return InstalledRescuePlugin(
+            manifest = manifest,
+            activeVersion = active,
+            previousVersion = record.optionalString("previous"),
+            bundled = record.optBoolean("bundled", false),
+        )
+    }
+
+    fun readPrevious(state: JSONObject, pluginId: String): InstalledRescuePlugin? {
+        val id = RescuePluginContract.requirePluginId(pluginId)
+        val record = state.optJSONObject(id) ?: return null
+        val active = record.optionalString("active") ?: return null
+        val previous = record.optionalString("previous") ?: return null
+        if (active == previous) return null
+        val manifest = readManifest(id, previous) ?: return null
+        return InstalledRescuePlugin(
+            manifest = manifest,
+            activeVersion = previous,
+            previousVersion = active,
+            bundled = File(versionDirectory(id, previous), BUNDLED_MARKER).isFile,
+        )
+    }
+
+    private fun readManifest(pluginId: String, version: String): RescuePluginManifest? =
+        runCatching {
+            val pluginRoot = versionDirectory(pluginId, version).canonicalFile
+            require(pluginRoot.isDirectory) { "Plugin version directory is missing" }
+            val manifestFile = File(pluginRoot, MANIFEST_FILE).canonicalFile
+            require(manifestFile.toPath().startsWith(pluginRoot.toPath()) && manifestFile.isFile) {
+                "Plugin version is missing $MANIFEST_FILE"
+            }
+            val manifest = RescuePluginManifest.parse(JSONObject(manifestFile.readText()))
+            require(manifest.id == pluginId && manifest.version == version) {
+                "Installed plugin manifest does not match its version directory"
+            }
+            RescuePluginContract.requireCompatible(manifest)
+            manifest.entryWorkflow?.let { requirePluginFile(pluginRoot, it) }
+            manifest.documents.forEach { requirePluginFile(pluginRoot, it.path) }
+            manifest
+        }.getOrNull()
+
+    private fun versionDirectory(pluginId: String, version: String): File =
+        File(
+            File(installedRoot, RescuePluginContract.requirePluginId(pluginId)),
+            RescuePluginContract.requireVersion(version),
+        )
+
+    private fun requirePluginFile(root: File, relativePath: String) {
+        val file = File(root, relativePath).canonicalFile
+        require(file.toPath().startsWith(root.toPath()) && file.isFile) {
+            "Plugin manifest references a missing file: $relativePath"
+        }
+    }
+
+    private companion object {
+        const val MANIFEST_FILE = "manifest.json"
+        const val BUNDLED_MARKER = ".bundled"
     }
 }
 
@@ -132,33 +213,66 @@ class RescuePluginStore(
     private val stagingRoot = File(root, "staging")
     private val stateFile = File(root, "state.json")
     private val installer = RescuePluginArchiveInstaller(stagingRoot)
+    private val installedReader = RescuePluginInstalledReader(installedRoot)
     private val stateLock = Any()
 
     suspend fun ensureBundledFirstInstall(): InstalledRescuePlugin = withContext(Dispatchers.IO) {
-        val assetRoot = "rescue-plugins/${RescuePluginContract.FIRST_INSTALL_PLUGIN_ID}"
-        val manifest =
-            appContext.assets.open("$assetRoot/manifest.json").bufferedReader().use { reader ->
-                RescuePluginManifest.parse(JSONObject(reader.readText()))
-            }
+        val (assetRoot, manifest) = readBundledFirstInstallManifest()
         synchronized(stateLock) {
-            readInstalled(manifest.id)?.let {
+            val state = readState()
+            installedReader.readActive(state, manifest.id)?.let {
                 return@synchronized it
             }
-
-            val staging = File(stagingRoot, "bundled-${UUID.randomUUID()}")
-            check(staging.mkdirs()) { "Unable to create bundled plugin staging directory" }
-            try {
-                copyAssetTree(assetRoot, staging)
-                val copied =
-                    RescuePluginManifest.parse(JSONObject(File(staging, "manifest.json").readText()))
-                require(copied == manifest) { "Bundled plugin manifest changed while copying" }
-                activate(staging, manifest, bundled = true)
-            } catch (failure: Throwable) {
-                staging.deleteRecursively()
-                throw failure
-            }
+            rollbackToPreviousLocked(manifest.id, state)?.let { return@synchronized it }
+            installBundled(assetRoot, manifest)
         }
     }
+
+    /**
+     * Updates the bundled first-install plugin only when the catalog publishes a compatible,
+     * strictly newer SemVer release. Any recoverable catalog or installation failure leaves the
+     * active plugin unchanged and returns it so first-install can continue offline.
+     */
+    suspend fun updateFirstInstallIfAvailable(): InstalledRescuePlugin =
+        withContext(Dispatchers.IO) {
+            val current = ensureBundledFirstInstall()
+            try {
+                val listing = catalogClient.getPlugin(RescuePluginContract.FIRST_INSTALL_PLUGIN_ID)
+                requireCompatibleListing(listing)
+                if (
+                    RescuePluginContract.compareSemanticVersions(
+                        listing.version,
+                        current.activeVersion,
+                    ) <= 0
+                ) {
+                    current
+                } else {
+                    installListing(listing, onlyIfStrictlyNewer = true)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                synchronized(stateLock) {
+                    readInstalled(RescuePluginContract.FIRST_INSTALL_PLUGIN_ID) ?: current
+                }
+            }
+        }
+
+    /** Switches to the recorded previous version when it still has a valid compatible payload. */
+    suspend fun rollbackToPrevious(pluginId: String): InstalledRescuePlugin? =
+        withContext(Dispatchers.IO) {
+            val id = RescuePluginContract.requirePluginId(pluginId)
+            synchronized(stateLock) {
+                rollbackToPreviousLocked(id, readState())
+            }
+        }
+
+    /** Forcibly recopies and activates the APK asset, even when that version is already present. */
+    suspend fun restoreBundledFirstInstall(): InstalledRescuePlugin =
+        withContext(Dispatchers.IO) {
+            val (assetRoot, manifest) = readBundledFirstInstallManifest()
+            synchronized(stateLock) { installBundled(assetRoot, manifest) }
+        }
 
     suspend fun install(pluginId: String, version: String? = null): InstalledRescuePlugin =
         withContext(Dispatchers.IO) {
@@ -177,7 +291,10 @@ class RescuePluginStore(
         ensureBundledFirstInstall()
         synchronized(stateLock) {
             val state = readState()
-            state.keys().asSequence().mapNotNull(::readInstalled).sortedBy { it.manifest.name }.toList()
+            state.keys().asSequence()
+                .mapNotNull { pluginId -> installedReader.readActive(state, pluginId) }
+                .sortedBy { it.manifest.name }
+                .toList()
         }
     }
 
@@ -198,12 +315,42 @@ class RescuePluginStore(
         file.readText()
     }
 
-    private suspend fun installListing(listing: RescuePluginListing): InstalledRescuePlugin {
+    private suspend fun installListing(
+        listing: RescuePluginListing,
+        onlyIfStrictlyNewer: Boolean = false,
+    ): InstalledRescuePlugin {
+        requireCompatibleListing(listing)
         val expectedSha = listing.sha256 ?: error("Hub did not provide SHA-256 for ${listing.id}")
         val archive = catalogClient.download(listing)
         val (staging, manifest) =
-            installer.extractAndValidate(archive, expectedSha, listing.id, listing.version)
-        return synchronized(stateLock) { activate(staging, manifest, bundled = false) }
+            installer.extractAndValidate(
+                archive,
+                expectedSha,
+                listing.id,
+                listing.version,
+                listing.manifest,
+            )
+        try {
+            return synchronized(stateLock) {
+                if (onlyIfStrictlyNewer) {
+                    val current = readInstalled(listing.id)
+                    if (
+                        current != null &&
+                            RescuePluginContract.compareSemanticVersions(
+                                listing.version,
+                                current.activeVersion,
+                            ) <= 0
+                    ) {
+                        staging.deleteRecursively()
+                        return@synchronized current
+                    }
+                }
+                activate(staging, manifest, bundled = false)
+            }
+        } catch (failure: Throwable) {
+            staging.deleteRecursively()
+            throw failure
+        }
     }
 
     private fun activate(
@@ -211,6 +358,11 @@ class RescuePluginStore(
         manifest: RescuePluginManifest,
         bundled: Boolean,
     ): InstalledRescuePlugin {
+        if (bundled) {
+            File(staging, BUNDLED_MARKER).writeText("")
+        } else {
+            File(staging, BUNDLED_MARKER).delete()
+        }
         val pluginRoot = File(installedRoot, manifest.id)
         check(pluginRoot.mkdirs() || pluginRoot.isDirectory) { "Unable to create plugin directory" }
         val target = versionDirectory(manifest.id, manifest.version)
@@ -239,22 +391,75 @@ class RescuePluginStore(
         return InstalledRescuePlugin(manifest, manifest.version, previous, bundled)
     }
 
-    private fun readInstalled(pluginId: String): InstalledRescuePlugin? {
-        val record = readState().optJSONObject(pluginId) ?: return null
-        val active = record.optionalString("active") ?: return null
-        val manifestFile = File(versionDirectory(pluginId, active), "manifest.json")
-        if (!manifestFile.isFile) return null
-        val manifest = RescuePluginManifest.parse(JSONObject(manifestFile.readText()))
-        return InstalledRescuePlugin(
-            manifest = manifest,
-            activeVersion = active,
-            previousVersion = record.optionalString("previous"),
-            bundled = record.optBoolean("bundled", false),
-        )
-    }
+    private fun readInstalled(pluginId: String): InstalledRescuePlugin? =
+        installedReader.readActive(readState(), pluginId)
 
     private fun versionDirectory(pluginId: String, version: String): File =
         File(File(installedRoot, RescuePluginContract.requirePluginId(pluginId)), RescuePluginContract.requireVersion(version))
+
+    private fun rollbackToPreviousLocked(
+        pluginId: String,
+        state: JSONObject,
+    ): InstalledRescuePlugin? {
+        val previous = installedReader.readPrevious(state, pluginId) ?: return null
+        val updatedState = JSONObject(state.toString())
+        updatedState.put(
+            pluginId,
+            JSONObject()
+                .put("active", previous.activeVersion)
+                .put("previous", previous.previousVersion ?: JSONObject.NULL)
+                .put("bundled", previous.bundled),
+        )
+        writeState(updatedState)
+        return previous
+    }
+
+    private fun requireCompatibleListing(listing: RescuePluginListing) {
+        require(listing.id == listing.manifest.id && listing.version == listing.manifest.version) {
+            "Catalog listing identity does not match its manifest"
+        }
+        RescuePluginContract.requireCompatible(listing.manifest)
+    }
+
+    private fun requirePluginFile(root: File, relativePath: String) {
+        val file = File(root, relativePath).canonicalFile
+        require(file.toPath().startsWith(root.toPath()) && file.isFile) {
+            "Plugin manifest references a missing file: $relativePath"
+        }
+    }
+
+    private fun readBundledFirstInstallManifest(): Pair<String, RescuePluginManifest> {
+        val assetRoot = "rescue-plugins/${RescuePluginContract.FIRST_INSTALL_PLUGIN_ID}"
+        val manifest =
+            appContext.assets.open("$assetRoot/$MANIFEST_FILE").bufferedReader().use { reader ->
+                RescuePluginManifest.parse(JSONObject(reader.readText()))
+            }
+        require(manifest.id == RescuePluginContract.FIRST_INSTALL_PLUGIN_ID) {
+            "Bundled first-install plugin has an unexpected id: ${manifest.id}"
+        }
+        RescuePluginContract.requireCompatible(manifest)
+        return assetRoot to manifest
+    }
+
+    private fun installBundled(
+        assetRoot: String,
+        manifest: RescuePluginManifest,
+    ): InstalledRescuePlugin {
+        val staging = File(stagingRoot, "bundled-${UUID.randomUUID()}")
+        check(staging.mkdirs()) { "Unable to create bundled plugin staging directory" }
+        try {
+            copyAssetTree(assetRoot, staging)
+            val copied =
+                RescuePluginManifest.parse(JSONObject(File(staging, MANIFEST_FILE).readText()))
+            require(copied == manifest) { "Bundled plugin manifest changed while copying" }
+            copied.entryWorkflow?.let { requirePluginFile(staging.canonicalFile, it) }
+            copied.documents.forEach { requirePluginFile(staging.canonicalFile, it.path) }
+            return activate(staging, manifest, bundled = true)
+        } catch (failure: Throwable) {
+            staging.deleteRecursively()
+            throw failure
+        }
+    }
 
     private fun readState(): JSONObject =
         if (stateFile.isFile) runCatching { JSONObject(stateFile.readText()) }.getOrElse { JSONObject() }
@@ -264,13 +469,24 @@ class RescuePluginStore(
         root.mkdirs()
         val temporary = File(root, "state-${UUID.randomUUID()}.tmp")
         temporary.writeText(state.toString(2))
-        if (stateFile.exists() && !stateFile.delete()) {
+        try {
+            try {
+                Files.move(
+                    temporary.toPath(),
+                    stateFile.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(
+                    temporary.toPath(),
+                    stateFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            }
+        } catch (failure: IOException) {
             temporary.delete()
-            throw IOException("Unable to replace rescue plugin state")
-        }
-        if (!temporary.renameTo(stateFile)) {
-            temporary.delete()
-            throw IOException("Unable to save rescue plugin state")
+            throw IOException("Unable to save rescue plugin state", failure)
         }
     }
 
@@ -287,5 +503,10 @@ class RescuePluginStore(
         children.forEach { child ->
             copyAssetTree("$assetPath/$child", File(destination, child))
         }
+    }
+
+    private companion object {
+        const val MANIFEST_FILE = "manifest.json"
+        const val BUNDLED_MARKER = ".bundled"
     }
 }

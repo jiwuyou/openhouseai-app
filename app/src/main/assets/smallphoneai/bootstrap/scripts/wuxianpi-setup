@@ -392,13 +392,23 @@ apply_options() {
   fi
 }
 
+install_runtime_script() {
+  local source="$1"
+  local target="$2"
+  if [ -e "$target" ] && [ "$source" -ef "$target" ]; then
+    chmod 755 "$target"
+    return 0
+  fi
+  install -m 755 "$source" "$target"
+}
+
 start_install() {
   tmux_ready || {
     log 'tmux 尚未准备完成；请先执行 prepare-tmux。'
     return 1
   }
-  install -m 755 "$SCRIPT_DIR/wuxianpi-setup" "$TERMUX_PREFIX/bin/wuxianpi-setup"
-  install -m 755 "$SCRIPT_DIR/wuxianpi-pre-tmux.sh" "$TERMUX_PREFIX/bin/wuxianpi-pre-tmux.sh"
+  install_runtime_script "$SCRIPT_DIR/wuxianpi-setup" "$TERMUX_PREFIX/bin/wuxianpi-setup"
+  install_runtime_script "$SCRIPT_DIR/wuxianpi-pre-tmux.sh" "$TERMUX_PREFIX/bin/wuxianpi-pre-tmux.sh"
   write_request
   write_state running start '安装任务已在持久 Termux 会话中启动'
   run_install_job

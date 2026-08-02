@@ -5,8 +5,19 @@ import org.json.JSONObject
 
 object RescuePluginContract {
     const val SCHEMA_VERSION = 1
+    const val HOST_API_VERSION = 12
     const val DEFAULT_HUB_URL = "https://wuxianpirescue.webefficacy.com"
     const val FIRST_INSTALL_PLUGIN_ID = "wuxianpi.first-install"
+
+    val supportedCapabilities =
+        setOf(
+            "setup-tools",
+            "termux",
+            "persistent-terminal",
+            "service-manager",
+            "pi-model-api",
+            "ubuntu",
+        )
 
     const val TOOL_SEARCH = "search_rescue_plugins"
     const val TOOL_LIST_INSTALLED = "list_installed_rescue_plugins"
@@ -34,13 +45,27 @@ object RescuePluginContract {
         )
 
     private val SAFE_PLUGIN_ID = Regex("[a-z0-9]+(?:[.-][a-z0-9]+)*")
-    private val SAFE_VERSION = Regex("\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?")
-
     fun requirePluginId(value: String): String =
         value.trim().also { require(SAFE_PLUGIN_ID.matches(it)) { "Invalid plugin id: $value" } }
 
     fun requireVersion(value: String): String =
-        value.trim().also { require(SAFE_VERSION.matches(it)) { "Invalid plugin version: $value" } }
+        value.trim().also { SemanticVersion.parse(it) }
+
+    internal fun compareSemanticVersions(left: String, right: String): Int =
+        SemanticVersion.parse(left).compareTo(SemanticVersion.parse(right))
+
+    fun requireCompatible(manifest: RescuePluginManifest): RescuePluginManifest =
+        manifest.also {
+            require(it.minHostVersion <= HOST_API_VERSION) {
+                "Plugin ${it.id} ${it.version} requires host API ${it.minHostVersion}, " +
+                    "but this host provides $HOST_API_VERSION"
+            }
+            val unsupported = it.requiredCapabilities.toSet() - supportedCapabilities
+            require(unsupported.isEmpty()) {
+                "Plugin ${it.id} ${it.version} requires unsupported capabilities: " +
+                    unsupported.sorted().joinToString()
+            }
+        }
 
     fun normalizeHubUrl(value: String): String {
         val normalized = value.trim().trimEnd('/')
@@ -48,6 +73,66 @@ object RescuePluginContract {
             "Hub URL must start with http:// or https://"
         }
         return normalized
+    }
+}
+
+private data class SemanticVersion(
+    val major: String,
+    val minor: String,
+    val patch: String,
+    val preRelease: List<String>?,
+) : Comparable<SemanticVersion> {
+    override fun compareTo(other: SemanticVersion): Int {
+        compareNumeric(major, other.major).takeIf { it != 0 }?.let { return it }
+        compareNumeric(minor, other.minor).takeIf { it != 0 }?.let { return it }
+        compareNumeric(patch, other.patch).takeIf { it != 0 }?.let { return it }
+
+        val leftPreRelease = preRelease ?: return if (other.preRelease == null) 0 else 1
+        val rightPreRelease = other.preRelease ?: return -1
+        val sharedSize = minOf(leftPreRelease.size, rightPreRelease.size)
+        for (index in 0 until sharedSize) {
+            val leftIdentifier = leftPreRelease[index]
+            val rightIdentifier = rightPreRelease[index]
+            val comparison = comparePreReleaseIdentifier(leftIdentifier, rightIdentifier)
+            if (comparison != 0) return comparison
+        }
+        return leftPreRelease.size.compareTo(rightPreRelease.size)
+    }
+
+    companion object {
+        private val STRICT_SEMVER =
+            Regex(
+                "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)" +
+                    "(?:-((?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)" +
+                    "(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*))?" +
+                    "(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+            )
+
+        fun parse(value: String): SemanticVersion {
+            val normalized = value.trim()
+            val match = STRICT_SEMVER.matchEntire(normalized)
+                ?: throw IllegalArgumentException("Version is not strict SemVer: $value")
+            return SemanticVersion(
+                major = match.groupValues[1],
+                minor = match.groupValues[2],
+                patch = match.groupValues[3],
+                preRelease = match.groupValues[4].takeIf(String::isNotEmpty)?.split('.'),
+            )
+        }
+
+        private fun compareNumeric(left: String, right: String): Int =
+            left.length.compareTo(right.length).takeIf { it != 0 } ?: left.compareTo(right)
+
+        private fun comparePreReleaseIdentifier(left: String, right: String): Int {
+            val leftNumeric = left.all(Char::isDigit)
+            val rightNumeric = right.all(Char::isDigit)
+            return when {
+                leftNumeric && rightNumeric -> compareNumeric(left, right)
+                leftNumeric -> -1
+                rightNumeric -> 1
+                else -> left.compareTo(right)
+            }
+        }
     }
 }
 

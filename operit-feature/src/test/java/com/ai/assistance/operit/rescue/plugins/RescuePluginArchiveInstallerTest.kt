@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -65,6 +66,51 @@ class RescuePluginArchiveInstallerTest {
         val failure =
             runCatching {
                 installer.extractAndValidate(archive, "00".repeat(32), "wuxianpi.test", "1.0.0")
+            }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+    }
+
+    @Test
+    fun rejectsArchiveManifestThatIsIncompatibleWithHost() {
+        val archive =
+            zip(
+                "manifest.json" to
+                    """{"schemaVersion":1,"id":"wuxianpi.test","version":"1.0.0","name":"Test","description":"Test plugin","category":"test","minHostVersion":13,"requiredCapabilities":[],"tags":[],"documents":[]}"""
+            )
+        val installer = RescuePluginArchiveInstaller(temporaryFolder.newFolder("incompatible"))
+
+        val failure =
+            runCatching {
+                installer.extractAndValidate(
+                    archive,
+                    RescuePluginArchiveInstaller.sha256(archive),
+                    "wuxianpi.test",
+                    "1.0.0",
+                )
+            }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+    }
+
+    @Test
+    fun rejectsArchiveManifestThatDiffersFromCatalogManifest() {
+        val manifestJson =
+            """{"schemaVersion":1,"id":"wuxianpi.test","version":"1.0.0","name":"Archive name","description":"Test plugin","category":"test","minHostVersion":12,"requiredCapabilities":[],"tags":[],"documents":[]}"""
+        val archive = zip("manifest.json" to manifestJson)
+        val catalogManifest =
+            RescuePluginManifest.parse(JSONObject(manifestJson.replace("Archive name", "Catalog name")))
+        val installer = RescuePluginArchiveInstaller(temporaryFolder.newFolder("catalog-mismatch"))
+
+        val failure =
+            runCatching {
+                installer.extractAndValidate(
+                    archive,
+                    RescuePluginArchiveInstaller.sha256(archive),
+                    "wuxianpi.test",
+                    "1.0.0",
+                    catalogManifest,
+                )
             }.exceptionOrNull()
 
         assertTrue(failure is IllegalArgumentException)

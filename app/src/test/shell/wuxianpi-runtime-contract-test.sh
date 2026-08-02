@@ -63,4 +63,17 @@ if grep -Fq 'setsid -f' "$REPAIR" || grep -Fq 'nohup "$sm_bin" serve' "$REPAIR";
   fail 'repair contains a detached service-manager fallback'
 fi
 
+self_copy_root="$(mktemp -d)"
+trap 'rm -rf "$self_copy_root"' EXIT
+cp "$SETUP" "$self_copy_root/wuxianpi-setup"
+chmod 644 "$self_copy_root/wuxianpi-setup"
+source <(awk '/^command="\$\{1:-\}"/ { exit } { print }' "$SETUP")
+install_runtime_script "$self_copy_root/wuxianpi-setup" "$self_copy_root/wuxianpi-setup"
+[ -x "$self_copy_root/wuxianpi-setup" ] || fail 'self-copy guard did not preserve executable permissions'
+
+printf 'replacement\n' > "$self_copy_root/source-script"
+install_runtime_script "$self_copy_root/source-script" "$self_copy_root/target-script"
+cmp -s "$self_copy_root/source-script" "$self_copy_root/target-script" || fail 'runtime script copy no longer replaces a distinct target'
+[ -x "$self_copy_root/target-script" ] || fail 'runtime script copy did not set executable permissions'
+
 printf 'WuxianPi runtime and runit lifecycle contracts passed\n'

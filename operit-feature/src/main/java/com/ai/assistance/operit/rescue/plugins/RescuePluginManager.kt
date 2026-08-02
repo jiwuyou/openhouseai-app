@@ -1,10 +1,94 @@
 package com.ai.assistance.operit.rescue.plugins
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+
+internal data class FirstInstallPreparation(
+    val initialVersion: String?,
+    val activeVersion: String?,
+    val updateStatus: String,
+    val updated: Boolean,
+    val detail: String? = null,
+) {
+    fun toJson(): JSONObject =
+        JSONObject()
+            .put("updateStatus", updateStatus)
+            .put("updated", updated)
+            .put("initialVersion", initialVersion ?: JSONObject.NULL)
+            .put("activeVersion", activeVersion ?: JSONObject.NULL)
+            .apply { detail?.let { put("detail", it) } }
+
+    companion object {
+        fun timedOut(): FirstInstallPreparation =
+            FirstInstallPreparation(
+                initialVersion = null,
+                activeVersion = null,
+                updateStatus = "timeout_using_available",
+                updated = false,
+                detail = "The online first-install update check timed out; using the available plugin.",
+            )
+    }
+}
+
+internal class FirstInstallPreparationCoordinator<T>(
+    private val scope: CoroutineScope,
+    private val timeoutMillis: Long,
+    private val onTimeout: () -> T,
+    private val prepare: suspend () -> T,
+) {
+    private val mutex = Mutex()
+    private var inFlightPreparation: Deferred<T>? = null
+
+    fun prewarm() {
+        scope.launch {
+            try {
+                awaitPreparation()
+            } catch (_: CancellationException) {
+                // The application scope owns this task; callers do not need a prewarm failure.
+            } catch (_: Exception) {
+                // A later workflow start performs the normal bundled fallback and reports errors.
+            }
+        }
+    }
+
+    suspend fun awaitPreparation(): T = getOrStart().await()
+
+    private suspend fun getOrStart(): Deferred<T> =
+        mutex.withLock {
+            inFlightPreparation?.takeIf { it.isActive }
+                ?: scope.async {
+                    try {
+                        withTimeout(timeoutMillis) { prepare() }
+                    } catch (_: TimeoutCancellationException) {
+                        onTimeout()
+                    }
+                }.also { created ->
+                    inFlightPreparation = created
+                    created.invokeOnCompletion {
+                        scope.launch {
+                            mutex.withLock {
+                                if (inFlightPreparation === created) {
+                                    inFlightPreparation = null
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+}
 
 class RescuePluginManager private constructor(context: Context) {
     private val appContext = context.applicationContext
@@ -12,6 +96,14 @@ class RescuePluginManager private constructor(context: Context) {
     private val catalogClient = RescuePluginCatalogClient(settings)
     private val store = RescuePluginStore(appContext, catalogClient)
     private val workflowRunner = RescuePluginWorkflowRunner(store)
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val firstInstallPreparation =
+        FirstInstallPreparationCoordinator(
+            scope = applicationScope,
+            timeoutMillis = FIRST_INSTALL_PREPARATION_TIMEOUT_MILLIS,
+            onTimeout = FirstInstallPreparation::timedOut,
+            prepare = ::prepareFirstInstall,
+        )
     private val drafts =
         RescuePluginCommentDraftStore(
             java.io.File(appContext.filesDir, "rescue-plugins/comment-drafts")
@@ -47,8 +139,26 @@ class RescuePluginManager private constructor(context: Context) {
             .put("content", store.readFile(pluginId, path))
     }
 
-    suspend fun startWorkflow(pluginId: String, path: String?): JSONObject =
-        workflowRunner.start(pluginId, path)
+    fun prewarmFirstInstall() {
+        firstInstallPreparation.prewarm()
+    }
+
+    suspend fun startWorkflow(pluginId: String, path: String?): JSONObject {
+        if (pluginId != RescuePluginContract.FIRST_INSTALL_PLUGIN_ID) {
+            return workflowRunner.start(pluginId, path)
+        }
+
+        val preparation = firstInstallPreparation.awaitPreparation()
+        return startFirstInstallWorkflowWithFallback(
+            preparation = preparation,
+            start = { workflowRunner.start(pluginId, path) },
+            rollback = { store.rollbackToPrevious(pluginId) != null },
+            restoreBundled = {
+                store.restoreBundledFirstInstall()
+                Unit
+            },
+        )
+    }
 
     suspend fun getComments(pluginId: String, version: String?): JSONObject =
         JSONObject().put(
@@ -119,7 +229,53 @@ class RescuePluginManager private constructor(context: Context) {
     suspend fun ensureBundledFirstInstall(): InstalledRescuePlugin =
         store.ensureBundledFirstInstall()
 
+    private suspend fun prepareFirstInstall(): FirstInstallPreparation {
+        val available =
+            try {
+                store.ensureBundledFirstInstall()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                return FirstInstallPreparation(
+                    initialVersion = null,
+                    activeVersion = null,
+                    updateStatus = "bundled_prepare_failed",
+                    updated = false,
+                    detail = failure.message ?: failure::class.java.simpleName,
+                )
+            }
+        val updated =
+            try {
+                store.updateFirstInstallIfAvailable()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                return FirstInstallPreparation(
+                    initialVersion = available.activeVersion,
+                    activeVersion = available.activeVersion,
+                    updateStatus = "update_failed_using_available",
+                    updated = false,
+                    detail = failure.message ?: failure::class.java.simpleName,
+                )
+            }
+        val didUpdate = updated.activeVersion != available.activeVersion
+        return FirstInstallPreparation(
+            initialVersion = available.activeVersion,
+            activeVersion = updated.activeVersion,
+            updateStatus = if (didUpdate) "updated" else "current_or_offline",
+            updated = didUpdate,
+            detail =
+                if (didUpdate) {
+                    "Updated the first-install plugin before starting the workflow."
+                } else {
+                    "No newer compatible release was activated; using the available plugin."
+                },
+        )
+    }
+
     companion object {
+        private const val FIRST_INSTALL_PREPARATION_TIMEOUT_MILLIS = 30_000L
+
         @Volatile private var instance: RescuePluginManager? = null
 
         fun get(context: Context): RescuePluginManager =
@@ -127,4 +283,72 @@ class RescuePluginManager private constructor(context: Context) {
                 instance ?: RescuePluginManager(context.applicationContext).also { instance = it }
             }
     }
+}
+
+internal suspend fun startFirstInstallWorkflowWithFallback(
+    preparation: FirstInstallPreparation,
+    start: suspend () -> JSONObject,
+    rollback: suspend () -> Boolean,
+    restoreBundled: suspend () -> Unit,
+): JSONObject {
+    val failures = JSONArray()
+
+    suspend fun attempt(source: String): JSONObject? =
+        try {
+            start().apply {
+                put(
+                    "firstInstallPreparation",
+                    preparation.toJson()
+                        .put("workflowSource", source)
+                        .put("fallbackUsed", source != "active")
+                        .put("fallbackFailures", JSONArray(failures.toString())),
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            failures.put(
+                JSONObject()
+                    .put("source", source)
+                    .put("error", failure.message ?: failure::class.java.simpleName)
+            )
+            null
+        }
+
+    attempt("active")?.let { return it }
+
+    val rolledBack =
+        try {
+            rollback()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            failures.put(
+                JSONObject()
+                    .put("source", "rollback")
+                    .put("error", failure.message ?: failure::class.java.simpleName)
+            )
+            false
+        }
+    if (rolledBack) {
+        attempt("previous")?.let { return it }
+    }
+
+    try {
+        restoreBundled()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        throw IllegalStateException(
+            "Unable to restore the bundled first-install plugin after workflow failure: " +
+                (failure.message ?: failure::class.java.simpleName),
+            failure,
+        )
+    }
+    attempt("bundled")?.let { return it }
+
+    throw IllegalStateException(
+        "The first-install workflow could not be started from the active, previous, or bundled plugin: " +
+            failures.toString(),
+    )
 }
