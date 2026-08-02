@@ -4,17 +4,16 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import com.ai.assistance.operit.pi.OPERIT_ADVANCED_UI_URL
-import com.ai.assistance.operit.pi.OPERIT_BUILTIN_WEB_UI_URL
-import com.ai.assistance.operit.pi.OPERIT_PI_RUNTIME_URL
 import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.ui.main.MainActivity
 
 /** Stable Java-friendly Basic and Repair entry points for every APK host. */
 object OperitAiLauncher {
-    const val PI_RUNTIME_URL = OPERIT_PI_RUNTIME_URL
-    const val AION_UI_URL = OPERIT_ADVANCED_UI_URL
-    const val BUILTIN_WEB_UI_URL = OPERIT_BUILTIN_WEB_UI_URL
+    // Keep these Java-facing constants local. K2/KAPT cannot reliably fold const aliases
+    // imported from the larger Pi pairing source file during incremental Android builds.
+    const val PI_RUNTIME_URL = "http://127.0.0.1:8765/"
+    const val AION_UI_URL = "http://127.0.0.1:25808/"
+    const val BUILTIN_WEB_UI_URL = PI_RUNTIME_URL
     const val ADVANCED_UI_METADATA_URL = "${PI_RUNTIME_URL}v1/ui/metadata"
 
     @JvmStatic
