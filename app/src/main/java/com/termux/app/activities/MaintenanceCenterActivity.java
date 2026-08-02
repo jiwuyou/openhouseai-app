@@ -143,8 +143,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         StageAction.INSTALL_WUYOU,
         StageAction.INSTALL_TERMUX_NODE,
         StageAction.INSTALL_PI_AGENT,
-        StageAction.INSTALL_PI_WEB,
-        StageAction.START_PI_WEB_RESCUE,
         StageAction.INSTALL_SERVICE_MANAGER,
         StageAction.REGISTER_PI_SERVICES,
         StageAction.START_SMALLPHONE,
@@ -2855,9 +2853,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         ensureStageAfter(sequence, StageAction.INSTALL_WUYOU, StageAction.TERMUX_PACKAGES);
         ensureStageAfter(sequence, StageAction.INSTALL_TERMUX_NODE, StageAction.INSTALL_WUYOU);
         ensureStageAfter(sequence, StageAction.INSTALL_PI_AGENT, StageAction.INSTALL_TERMUX_NODE);
-        ensureStageAfter(sequence, StageAction.INSTALL_PI_WEB, StageAction.INSTALL_PI_AGENT);
-        ensureStageAfter(sequence, StageAction.START_PI_WEB_RESCUE, StageAction.INSTALL_PI_WEB);
-        ensureStageAfter(sequence, StageAction.INSTALL_SERVICE_MANAGER, StageAction.START_PI_WEB_RESCUE);
+        ensureStageAfter(sequence, StageAction.INSTALL_SERVICE_MANAGER, StageAction.INSTALL_PI_AGENT);
         ensureStageAfter(sequence, StageAction.REGISTER_PI_SERVICES, StageAction.INSTALL_SERVICE_MANAGER);
         ensureStageAfter(sequence, StageAction.START_SMALLPHONE, StageAction.REGISTER_PI_SERVICES);
         ensureStageAfter(sequence, StageAction.INSTALL_OPENHOUSE_WEB, StageAction.START_SMALLPHONE);
@@ -2876,8 +2872,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             case INSTALL_WUYOU:
             case INSTALL_TERMUX_NODE:
             case INSTALL_PI_AGENT:
-            case INSTALL_PI_WEB:
-            case START_PI_WEB_RESCUE:
             case INSTALL_SERVICE_MANAGER:
             case REGISTER_PI_SERVICES:
             case INSTALL_OPENHOUSE_WEB:
@@ -2931,8 +2925,6 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
                 StageAction.INSTALL_WUYOU,
                 StageAction.INSTALL_TERMUX_NODE,
                 StageAction.INSTALL_PI_AGENT,
-                StageAction.INSTALL_PI_WEB,
-                StageAction.START_PI_WEB_RESCUE,
                 StageAction.INSTALL_SERVICE_MANAGER,
                 StageAction.REGISTER_PI_SERVICES,
                 StageAction.START_SMALLPHONE,
@@ -3160,7 +3152,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             case INSTALL_TERMUX_NODE:
                 return "安装 Termux Node.js 24 LTS";
             case INSTALL_PI_AGENT:
-                return "安装 pi-agent";
+                return "安装 WuxianPi 核心运行时";
             case INSTALL_PI_WEB:
                 return "安装 pi-web";
             case START_PI_WEB_RESCUE:
@@ -3168,7 +3160,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             case INSTALL_SERVICE_MANAGER:
                 return "安装运行中枢";
             case REGISTER_PI_SERVICES:
-                return "注册 pi 服务";
+                return "注册 WuxianPi 服务";
             case INSTALL_OPENHOUSE_WEB:
                 return "安装 OpenHouse Web";
             case INSTALL_CODEX:
@@ -3182,7 +3174,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             case SYNC_OPENHOUSE_REGISTRY:
                 return "同步 OpenHouseAI registry";
             case START_SMALLPHONE:
-                return getString(R.string.button_start_smallphone);
+                return "启动 WuxianPi 核心服务";
             case RESTART_ENTRY_TERMINAL:
                 return getString(R.string.button_restart_entry_terminal);
             default:
@@ -4469,12 +4461,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         boolean termuxPackagesComplete = isTermuxPackagesStageComplete() || isLastExitSuccess(termuxPackagesExitCode);
         boolean wuyouInstalled = termuxPackagesComplete && (isWuyouInstalled() || isLastExitSuccess(installWuyouExitCode));
         boolean termuxNodeInstalled = wuyouInstalled && (isTermuxNodeInstalled() || isLastExitSuccess(installTermuxNodeExitCode));
-        boolean piAgentInstalled = termuxPackagesComplete && (isPiAgentInstalled() || isLastExitSuccess(installPiAgentExitCode));
+        boolean piAgentInstalled = termuxNodeInstalled && (isPiAgentInstalled() || isLastExitSuccess(installPiAgentExitCode));
         boolean piWebInstalled = termuxNodeInstalled && piAgentInstalled && (isPiWebInstalled() || isLastExitSuccess(installPiWebExitCode));
         boolean piWebRescueStarted = piWebInstalled && (isPiWebRescueReady() || isLastExitSuccess(startPiWebRescueExitCode));
-        boolean serviceManagerInstalled = piWebRescueStarted && (isServiceManagerReady() || isLastExitSuccess(installServiceManagerExitCode));
+        boolean serviceManagerInstalled = piAgentInstalled && (isServiceManagerReady() || isLastExitSuccess(installServiceManagerExitCode));
         boolean piServicesRegistered = serviceManagerInstalled && (arePiServicesRegistered() || isLastExitSuccess(registerPiServicesExitCode));
-        boolean smallPhoneStarted = piServicesRegistered && (isManagedPiWebReachable() || isLastExitSuccess(startSmallPhoneExitCode));
+        boolean smallPhoneStarted = piServicesRegistered && (isManagedWuxianPiReachable() || isLastExitSuccess(startSmallPhoneExitCode));
         boolean openHouseWebInstalled = smallPhoneStarted && (isOpenHouseWebInstalled() || isLastExitSuccess(installOpenHouseWebExitCode));
         boolean ubuntuInstalled = openHouseWebInstalled && (isUbuntuInstalled() || isLastExitSuccess(installUbuntuExitCode));
         boolean ubuntuPackagesComplete = ubuntuInstalled && (isUbuntuPackagesStageComplete() || isLastExitSuccess(ubuntuPackagesExitCode));
@@ -4564,8 +4556,8 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             StageAction.INSTALL_SERVICE_MANAGER,
             serviceManagerInstalled
                 ? StagePresentation.complete(this, "service-manager 已安装并通过健康检查。")
-                : (!piWebRescueStarted
-                    ? StagePresentation.blocked(this, "请先准备紧急 AI 救援入口。")
+                : (!piAgentInstalled
+                    ? StagePresentation.blocked(this, "请先安装 WuxianPi 核心运行时。")
                     : failedOrReady(installServiceManagerExitCode,
                         "service-manager 安装或启动失败，请查看该阶段日志。",
                         "准备安装并启动 Termux native service-manager。"))
@@ -4574,12 +4566,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.REGISTER_PI_SERVICES,
             piServicesRegistered
-                ? StagePresentation.complete(this, "pi-agent 和 pi-web 已注册到 service-manager。")
+                ? StagePresentation.complete(this, "WuxianPi 核心运行时已注册到 service-manager。")
                 : (!serviceManagerInstalled
                     ? StagePresentation.blocked(this, "请先安装并启动 service-manager。")
                     : failedOrReady(registerPiServicesExitCode,
-                        "pi 服务注册失败，请查看该阶段日志。",
-                        "准备把已安装的 pi-agent、pi-web 注册到 service-manager。"))
+                        "WuxianPi 服务注册失败，请查看该阶段日志。",
+                        "准备把已安装的 WuxianPi 核心运行时注册到 service-manager。"))
         );
 
         snapshot.presentations.put(
@@ -4587,7 +4579,7 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
             openHouseWebInstalled
                 ? StagePresentation.complete(this, "OpenHouse Web 已安装并完成服务注册。")
                 : (!smallPhoneStarted
-                    ? StagePresentation.blocked(this, "请先启动正式 pi-web 30141。")
+                    ? StagePresentation.blocked(this, "请先启动 WuxianPi 核心运行时 20765。")
                     : failedOrReady(installOpenHouseWebExitCode,
                         "OpenHouse Web 安装失败，请查看该阶段日志。",
                         "准备安装并注册 OpenHouse Web。"))
@@ -4684,12 +4676,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.RUNTIME_COMPONENTS,
             runtimeComponentsInstalled
-                ? StagePresentation.complete(this, "service-manager、pi-agent、pi-web 与 SmallPhone 兼容组件已安装；openhouse-connect 可后续修复配置。")
+                ? StagePresentation.complete(this, "service-manager、WuxianPi 核心运行时与 SmallPhone 兼容组件已安装；openhouse-connect 可后续修复配置。")
                 : (!officialDocsSynced
                     ? StagePresentation.blocked(this, "请先完成同步官方文档阶段。")
                     : failedOrReady(runtimeComponentsExitCode,
                         "运行组件安装失败，请查看该阶段日志。",
-                        "准备安装 pi-agent、pi-web、service-manager 和 SmallPhone 兼容组件；openhouse-connect 会作为可修复服务注册。"))
+                        "准备安装 WuxianPi 核心运行时、service-manager 和 SmallPhone 兼容组件；openhouse-connect 会作为可修复服务注册。"))
         );
 
         snapshot.presentations.put(
@@ -4706,12 +4698,12 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
         snapshot.presentations.put(
             StageAction.START_SMALLPHONE,
             smallPhoneStarted
-                ? StagePresentation.complete(this, "WuxianPi Node runtime 8765 与 pi-web 30141 已启动。")
+                ? StagePresentation.complete(this, "WuxianPi 核心运行时 20765 已启动。")
                 : (!piServicesRegistered
-                    ? StagePresentation.blocked(this, "请先完成 pi-agent、pi-web 服务注册。")
+                    ? StagePresentation.blocked(this, "请先完成 WuxianPi 服务注册。")
                     : failedOrReady(startSmallPhoneExitCode,
-                        "WuxianPi Node runtime 8765 或 pi-web 30141 启动失败，请查看该阶段日志。",
-                        "准备通过 service-manager 启动 WuxianPi Node runtime 8765 与 pi-web 30141。"))
+                        "WuxianPi 核心运行时 20765 启动失败，请查看该阶段日志。",
+                        "准备通过 service-manager 启动 WuxianPi 核心运行时 20765。"))
         );
 
         snapshot.presentations.put(
@@ -4821,15 +4813,13 @@ public class MaintenanceCenterActivity extends AppCompatActivity {
     private boolean arePiServicesRegistered() {
         File serviceDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH,
             ".config/openhouseai/service-manager/services.d");
-        return new File(serviceDir, "pi-agent.json").isFile()
-            && new File(serviceDir, "pi-web.json").isFile();
+        return new File(serviceDir, "pi-agent.json").isFile();
     }
 
-    private boolean isManagedPiWebReachable() {
+    private boolean isManagedWuxianPiReachable() {
         return runTermuxCommand(
             "curl -fsS --max-time 2 " + shellQuote(serviceManagerBaseUrl() + "/api/v1/health") + " >/dev/null 2>&1"
-                + " && curl -fsS --max-time 3 http://127.0.0.1:8765/health >/dev/null 2>&1"
-                + " && curl -fsS --max-time 3 http://127.0.0.1:30141/ >/dev/null 2>&1"
+                + " && curl -fsS --max-time 3 http://127.0.0.1:20765/health >/dev/null 2>&1"
         ).isSuccess();
     }
 

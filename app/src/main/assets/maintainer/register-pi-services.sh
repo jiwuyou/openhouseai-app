@@ -5,7 +5,7 @@ bootstrap="${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}
 payload_dir="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}"
 [ -d "$payload_dir" ] || { log "未找到 APK 内置 payload：$payload_dir"; exit 1; }
 
-log "只把已经安装的 WuxianPi Node(pi-agent) 与 pi-web 注册到 service-manager；不重新解压或安装。"
+log "只把已经安装的 WuxianPi Node(pi-agent) 注册到 service-manager；不重新解压或安装。"
 run_logged env \
   OPENHOUSE_PI_RUNTIME=termux \
   SMALLPHONEAI_PI_RUNTIME=termux \

@@ -235,10 +235,10 @@ final class OpenHouseInstallFailureReport {
             return new Diagnosis("PI_WEB_RESCUE_START_FAILED", "pi-web 30142 紧急救援入口启动或健康检查失败。");
         }
         if ("register_pi_services".equals(stage)) {
-            return new Diagnosis("PI_SERVICE_REGISTRATION_FAILED", "pi-agent/pi-web 注册到 service-manager 失败。");
+            return new Diagnosis("PI_SERVICE_REGISTRATION_FAILED", "WuxianPi 注册到 service-manager 失败。");
         }
         if ("start_smallphone".equals(stage)) {
-            return new Diagnosis("MANAGED_PI_WEB_START_FAILED", "正式 pi-web 30141 启动或就绪检查失败。");
+            return new Diagnosis("MANAGED_WUXIANPI_START_FAILED", "WuxianPi 20765 启动或就绪检查失败。");
         }
         if ("install_openhouse_web".equals(stage)) {
             return new Diagnosis("OPENHOUSE_WEB_INSTALL_FAILED", "OpenHouse Web 安装或注册失败。");
@@ -557,8 +557,8 @@ final class OpenHouseInstallFailureReport {
             case "install_pi_web": return "安装 pi-web (install_pi_web)";
             case "start_pi_web_rescue": return "启动紧急救援 30142 (start_pi_web_rescue)";
             case "install_service_manager": return "安装 service-manager (install_service_manager)";
-            case "register_pi_services": return "注册 pi 服务 (register_pi_services)";
-            case "start_smallphone": return "启动正式 pi-web 30141 (start_smallphone)";
+            case "register_pi_services": return "注册 WuxianPi 服务 (register_pi_services)";
+            case "start_smallphone": return "启动 WuxianPi 20765 (start_smallphone)";
             case "install_openhouse_web": return "安装 OpenHouse Web (install_openhouse_web)";
             default: return slug;
         }

@@ -66,7 +66,7 @@ service_json="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./config/openhouse-web
 printf '%s' "$service_json" | grep -Fq '"residentByDefault": true' || fail 'residentByDefault=true missing'
 printf '%s' "$service_json" | grep -Fq '"preferred": 22110' || fail 'fixed port 22110 missing'
 
-grep -Fq 'wuyou,service-manager,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes,openhouse-web' "$BOOTSTRAP" \
+grep -Fq 'wuyou,service-manager,pi-agent,github-config-helper,cc-connect,smallphone,hermes,openhouse-web' "$BOOTSTRAP" \
   || fail 'bootstrap default order does not install openhouse-web last'
 grep -Fq 'run_component "OpenHouse Web"' "$BOOTSTRAP" || fail 'bootstrap does not install openhouse-web'
 python3 - "$FULL_INSTALL" <<'PY'
@@ -77,11 +77,9 @@ markers = [
     "SMALLPHONEAI_COMPONENT_TARGETS=wuyou",
     "run_stage 13-install-termux-node.sh",
     "SMALLPHONEAI_COMPONENT_TARGETS=pi-agent",
-    "SMALLPHONEAI_COMPONENT_TARGETS=pi-web",
-    "run_stage start-pi-web-rescue.sh",
     "SMALLPHONEAI_COMPONENT_TARGETS=service-manager",
     "SMALLPHONEAI_COMPONENT_ACTION=register-only",
-    "SMALLPHONEAI_START_TARGETS=pi-agent,pi-web",
+    "SMALLPHONEAI_START_TARGETS=pi-agent",
     "SMALLPHONEAI_COMPONENT_TARGETS=openhouse-web",
 ]
 positions = [source.index(marker) for marker in markers]
@@ -91,7 +89,7 @@ grep -Fq 'install-check|install-only|defer-registration' "$BOOTSTRAP" \
   || fail 'component installer does not expose deferred pi registration mode'
 grep -Fq 'SMALLPHONEAI_COMPONENT_ACTION=register-only' "$FULL_INSTALL" \
   || fail 'full first install does not register pi after service-manager'
-grep -Fq 'wuyou,service-manager,pi-agent,pi-web,openhouse-web' "$INSTALLER" \
+grep -Fq 'wuyou,service-manager,pi-agent,openhouse-web' "$INSTALLER" \
   || fail 'maintainer default order does not install openhouse-web last'
 
 printf 'openhouse-web payload focused tests passed\n'

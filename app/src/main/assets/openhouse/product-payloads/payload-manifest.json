@@ -95,27 +95,6 @@
       }
     },
     {
-      "id": "pi-web",
-      "archive": "pi-web.tar",
-      "sha256": "4e8d1ff47625ea43cfa85b5774c3e0e9be116796e2f37c39c1e6fe7d37e5650f",
-      "size": 113326080,
-      "platform": "termux-android-arm64",
-      "buildPlatform": "android-arm64",
-      "version": "0.7.12",
-      "sourceRepo": "https://github.com/jiwuyou/openhouseai-app.git",
-      "sourceBranch": "feature/wuxianpi-ai-web-ui",
-      "sourceCommit": "6687cbb20f86c7c80d9cf9d8320b6f244a12d7d2",
-      "sourceTreeSha256": "881b9aa4e591a68c13e4657e4f3e2feb3ff9bcc39f9c6cf485bde1260ad507fe",
-      "requires": {
-        "termuxNode": ">=24"
-      },
-      "registrationRequires": {
-        "serviceManager": ">=0.3.1",
-        "registryApiVersion": 2
-      },
-      "transport": "wuxianpi-sdk-v1"
-    },
-    {
       "id": "wuyou",
       "archive": "wuyou.tar",
       "sha256": "73c50cd4f45b9c8cb02563a4ac3bc2a3e185e3da12b56dfe26e46f577c7f32c8",
@@ -134,18 +113,6 @@
       "targetDir": "github-config-helper",
       "sha256": "406013d4306109748b224abea3ac6e3d249b09f8054c1ec6ee11f7c59f73e717",
       "size": 81920
-    },
-    {
-      "id": "aionui-web",
-      "archive": "aionui-web-2.1.32-linux-arm64.tgz",
-      "sha256": "f0e368d6cf8ba9c404343143d8b22193012a85c0e62f969b6820e077d137023a",
-      "size": 419979294,
-      "platform": "linux-arm64",
-      "version": "2.1.32",
-      "requires": {
-        "serviceManager": ">=0.3.0",
-        "registryApiVersion": 2
-      }
     },
     {
       "id": "cc-switch",

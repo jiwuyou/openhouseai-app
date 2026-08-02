@@ -5,8 +5,8 @@ expected_size="419979294"
 default_install_dir="/root/.local/share/openhouseai/aionui-web-versions/2.1.32"
 
 if [ ! -f "$payload" ]; then
-  log "未找到 APK 内置 AionUi 离线包：$payload"
-  exit 1
+  log "当前精简 APK 不内置 AionUi，跳过离线安装。"
+  return 0 2>/dev/null || exit 0
 fi
 
 log "正在安装 AionUi 离线工作台。"

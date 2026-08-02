@@ -31,7 +31,7 @@ public final class OpenHouseStatusRepository {
     private static final String KEY_OVERLAY_STEP = "step";
     private static final String KEY_OVERLAY_BATTERY_SKIPPED = "battery_skipped";
     private static final String KEY_OVERLAY_GUIDE_DISMISSED = "guide_dismissed";
-    private static final String PI_RUNTIME_HEALTH_URL = "http://127.0.0.1:8765/health";
+    private static final String PI_RUNTIME_HEALTH_URL = "http://127.0.0.1:20765/health";
     private static final String AIONUI_DEFAULT_URL = "http://127.0.0.1:25808/";
 
     private final Context context;

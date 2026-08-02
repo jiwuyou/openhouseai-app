@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-[[ "${SKIP_RUNTIME_BUILD:-0}" == "1" ]] || "$repo_dir/scripts/build-runtime.sh"
+[[ "${SKIP_RUNTIME_BUILD:-0}" == "1" ]] || "$repo_dir/scripts/build-pi-node-payload.sh"
 "$repo_dir/scripts/generate-native-install-resources.sh"
 asset="$repo_dir/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz"
 [[ -s "$asset" ]] || { printf 'Missing Native ARM64 runtime asset: %s\n' "$asset" >&2; exit 1; }

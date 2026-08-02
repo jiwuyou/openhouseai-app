@@ -55,6 +55,66 @@ grep -Fq 'readiness_object "yuanshengwuxianpi"' "$STATUS" || fail 'status readin
 grep -Fq 'yuanshengwuxianpi' "$PI_SUBJECT" || fail 'Pi subject still references the legacy service id'
 grep -Fq '127.0.0.1:20765' "$PI_SUBJECT" || fail 'Pi subject still references port 8765'
 grep -Fq 'yuanshengwuxianpi' "$SERVICE_SUBJECT" || fail 'service-control subject still references the legacy service id'
+if grep -Fq -e 'pi-web' -e 'aionui-web' "$SERVICE_SUBJECT" "$PI_SUBJECT"; then
+  fail 'lean WuxianPi subjects still reference standalone pi-web or AionUI'
+fi
+grep -Fq 'export SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-pi-agent}"' "$START" \
+  || fail 'start lifecycle does not default to pi-agent only'
+if grep -Fq 'readiness_object "pi-web"' "$STATUS"; then
+  fail 'status readiness still requires standalone pi-web'
+fi
+
+(
+  status_root="$(mktemp -d)"
+  status_pid=""
+  cleanup_status_fixture() {
+    [ -z "$status_pid" ] || kill "$status_pid" >/dev/null 2>&1 || true
+    rm -rf "$status_root"
+  }
+  trap cleanup_status_fixture EXIT INT HUP TERM
+  mkdir -p "$status_root/bin" "$status_root/home" "$status_root/pi-runtime/bin" \
+    "$status_root/pi-runtime/node/dist" "$status_root/pi-runtime/scripts"
+  cat > "$status_root/bin/curl" <<'EOF'
+#!/usr/bin/env sh
+exit 0
+EOF
+  chmod 755 "$status_root/bin/curl"
+  for executable in wuxianpi wuxianpi-node wuxianpi-node-start; do
+    printf '#!/usr/bin/env sh\nexit 0\n' > "$status_root/pi-runtime/bin/$executable"
+    chmod 755 "$status_root/pi-runtime/bin/$executable"
+  done
+  : > "$status_root/pi-runtime/node/dist/index.js"
+  for script in install.sh check.sh register-service.sh; do
+    : > "$status_root/pi-runtime/scripts/$script"
+  done
+  status_port="$(python3 - <<'PY'
+import socket
+with socket.socket() as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+PY
+)"
+  python3 -m http.server "$status_port" --bind 127.0.0.1 > "$status_root/http.log" 2>&1 &
+  status_pid=$!
+  for _ in $(seq 1 20); do
+    bash -c ': >/dev/tcp/127.0.0.1/$1' _ "$status_port" >/dev/null 2>&1 && break
+    sleep 0.1
+  done
+  env \
+    HOME="$status_root/home" \
+    PATH="$status_root/bin:/usr/bin:/bin" \
+    OPENHOUSE_PI_AGENT_DIR="$status_root/pi-runtime" \
+    OPENHOUSE_PI_RUNTIME_PORT="$status_port" \
+    SERVICE_MANAGER_URL="http://127.0.0.1:20087" \
+    bash "$STATUS" status > "$status_root/status.json"
+  jq -e '
+    .ready == true
+    and ([.readiness.requirements[] | select(.required == true) | .id] == ["service-manager", "yuanshengwuxianpi"])
+    and ([.readiness.requirements[].id] | index("pi-web") | not)
+  ' "$status_root/status.json" >/dev/null \
+    || fail 'status readiness is not limited to service-manager and WuxianPi 20765'
+)
+
 grep -Fq 'stable_service_id="yuanshengwuxianpi"' "$COMPONENTS" || fail 'component registration does not map to the stable service id'
 grep -Fq 'stable_service_id="yuanshengwuxianpi"' "$START" || fail 'start registration does not map to the stable service id'
 grep -Fq '不会启动脱离 runit 的临时进程' "$REPAIR" || fail 'repair still permits detached fallback'

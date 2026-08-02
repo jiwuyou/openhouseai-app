@@ -11,10 +11,10 @@ public class ServiceManagerServiceResolverTest {
     public void resolvesPiAgentComponentToAvailablePiWebService() throws Exception {
         ServiceManagerServiceResolver.Resolution resolution = ServiceManagerServiceResolver.resolve(
             "pi-agent",
-            Arrays.asList("pi-web", "pi-agent"),
-            Arrays.asList(service("pi-web", "pi-web", "openhouse-component:pi-web")));
+            Arrays.asList("yuanshengwuxianpi", "pi-agent"),
+            Arrays.asList(service("yuanshengwuxianpi", "WuxianPi", "openhouse-component:pi-agent")));
 
-        Assert.assertEquals(Arrays.asList("pi-web"), resolution.serviceIds);
+        Assert.assertEquals(Arrays.asList("yuanshengwuxianpi"), resolution.serviceIds);
         Assert.assertTrue(resolution.missingServiceIds.isEmpty());
     }
 

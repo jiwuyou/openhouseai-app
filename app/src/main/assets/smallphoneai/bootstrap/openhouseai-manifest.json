@@ -45,7 +45,7 @@
   "runtimePayloads": {
     "firstRunSource": "apk_bundled_packages",
     "networkRole": "required_for_termux_node_and_ubuntu_ai_workbench_packages",
-    "description": "APK 内置运行组件包；稳定组件 ID pi-agent 映射到直接嵌入官方 Pi SDK 的 WuxianPi Node 服务，pi-web 和 wuyou 默认解包到 Termux native。Pi 原生 JSONL、扩展与设置保留在 $HOME/.pi。",
+    "description": "APK 内置核心运行组件包；稳定组件 ID pi-agent 映射到直接嵌入官方 Pi SDK 的 WuxianPi Node 服务。AionUI 和 pi-web 不再内置，Pi 原生 JSONL、扩展与设置保留在 $HOME/.pi。",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
     "installRoot": "$HOME/smallphoneai-repos",
@@ -76,12 +76,6 @@
         "targetDir": "$HOME/smallphoneai-repos/pi-runtime"
       },
       {
-        "id": "pi-web",
-        "title": "Pi Web",
-        "apkAssetPath": "openhouse/product-payloads/pi-web.tar",
-        "targetDir": "$HOME/smallphoneai-repos/pi-web"
-      },
-      {
         "id": "wuyou",
         "title": "wuyou",
         "apkAssetPath": "openhouse/product-payloads/wuyou.tar",
@@ -108,12 +102,12 @@
   "stageFlow": [
     {
       "title": "准备手机环境",
-      "description": "先准备 Termux、Node 和 wuyou，再安装嵌入官方 Pi SDK 的 WuxianPi Node runtime，并开放 30142 紧急救援；随后安装 service-manager、注册按需 20765 runtime 与正式 30141 Web 入口。",
-      "stages": ["env_check", "prepare", "termux_packages", "install_wuyou", "termux_node", "install_pi_agent", "install_pi_web", "start_pi_web_rescue", "install_service_manager", "register_pi_services", "start_smallphone", "install_openhouse_web", "install_ubuntu", "ubuntu_packages"]
+      "description": "先准备 Termux、Node 和 wuyou，再安装嵌入官方 Pi SDK 的 WuxianPi Node runtime；随后安装 service-manager、注册按需 20765 runtime 与 OpenHouse Web。",
+      "stages": ["env_check", "prepare", "termux_packages", "install_wuyou", "termux_node", "install_pi_agent", "install_service_manager", "register_pi_services", "start_smallphone", "install_openhouse_web", "install_ubuntu", "ubuntu_packages"]
     },
     {
       "title": "准备 Ubuntu AI 工作台依赖",
-      "description": "安装 Ubuntu Node.js 并同步 OpenHouse 文档；Termux Node 同时承载 WuxianPi SDK 服务与 pi-web。",
+      "description": "安装 Ubuntu Node.js 并同步 OpenHouse 文档；Termux Node 承载 WuxianPi SDK 服务。",
       "stages": ["install_node", "sync_official_docs"]
     },
     {
@@ -123,7 +117,7 @@
     },
     {
       "title": "启动 pi-agent 运行栈",
-      "description": "启动 service-manager，通过 group:local-stack 启动 pi-web、SmallPhone 兼容入口和已注册服务，并读取最终健康状态。",
+      "description": "启动 service-manager 与已注册的 WuxianPi 服务，并读取最终健康状态。",
       "stages": ["start_smallphone"]
     }
   ],
@@ -138,7 +132,7 @@
           "id": "install",
           "type": "button",
           "label": "安装 OpenHouse 控制平面",
-          "description": "一键完整准备 Termux 常驻层，先启动 Pi Agent/pi-web，再继续 Ubuntu AI 工作台层、openhouse-connect 和 SmallPhone 兼容服务，并输出最终健康状态；内部分阶段固定执行。",
+          "description": "一键完整准备 Termux 常驻层与 WuxianPi Node runtime，再继续 Ubuntu AI 工作台层、openhouse-connect 和 SmallPhone 兼容服务，并输出最终健康状态；内部分阶段固定执行。",
           "action": {
             "type": "bootstrap",
             "args": ["install"],
@@ -181,7 +175,7 @@
           "id": "sync_core_stack",
           "type": "button",
           "label": "同步核心运行栈",
-          "description": "APK 更新后同步内置 service-manager、GitHub 配置助手、openhouse-connect、SmallPhone 兼容组件、Pi Agent、pi-web 和 wuyou 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
+          "description": "APK 更新后同步内置 service-manager、GitHub 配置助手、openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 wuyou 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
           "action": {
             "type": "bootstrap",
             "args": ["sync-core-stack"],
@@ -273,18 +267,6 @@
       "action": { "type": "bootstrap", "args": ["install-pi-agent"] }
     },
     {
-      "id": "install_pi_web",
-      "title": "安装 pi-web",
-      "description": "安装并检查 pi-web standalone runtime；暂不依赖 service-manager，不执行服务注册。",
-      "action": { "type": "bootstrap", "args": ["install-pi-web"] }
-    },
-    {
-      "id": "start_pi_web_rescue",
-      "title": "启动紧急 AI 救援",
-      "description": "在 30142 启动并验证不依赖 service-manager 的 pi-web 救援入口。",
-      "action": { "type": "bootstrap", "args": ["start-pi-web-rescue"] }
-    },
-    {
       "id": "install_service_manager",
       "title": "安装运行中枢",
       "description": "安装并启动 Termux native service-manager，等待健康与认证接口就绪；WuxianPi 只注册，不在首次安装阶段启动。",
@@ -293,13 +275,13 @@
     {
       "id": "register_pi_services",
       "title": "注册 pi 服务",
-      "description": "只把已经安装的 pi-agent、pi-web 注册到 service-manager，不重复安装 payload。",
+      "description": "只把已经安装的 pi-agent 注册到 service-manager，不重复安装 payload。",
       "action": { "type": "bootstrap", "args": ["register-pi-services"] }
     },
     {
       "id": "install_openhouse_web",
       "title": "安装 OpenHouse Web",
-      "description": "在正式 pi-web 30141 启动后安装、检查并注册 OpenHouse Web。",
+      "description": "安装、检查并注册 OpenHouse Web。",
       "action": { "type": "bootstrap", "args": ["install-openhouse-web"] }
     },
     {
@@ -359,7 +341,7 @@
     {
       "id": "runtime_components",
       "title": "安装 OpenHouse 运行组件",
-      "description": "默认先在 Termux native 确保 service-manager，再安装、检查并注册 pi-agent/pi-web；Ubuntu 仅用于 AI 工作台/显式 fallback 和后置兼容组件。",
+      "description": "默认先在 Termux native 确保 service-manager，再安装、检查并注册 pi-agent；Ubuntu 仅用于 AI 工作台/显式 fallback 和后置兼容组件。",
       "action": { "type": "bootstrap", "args": ["components"] }
     },
     {
@@ -371,7 +353,7 @@
     {
       "id": "start_smallphone",
       "title": "启动 pi-agent 运行栈",
-      "description": "启动 service-manager，通过 group:local-stack 启动 pi-web、SmallPhone 运行栈，并输出最终健康状态。",
+      "description": "启动 service-manager 与 WuxianPi 运行栈，并输出最终健康状态。",
       "action": {
         "type": "bootstrap",
         "args": ["start"],

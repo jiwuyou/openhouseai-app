@@ -44,8 +44,8 @@ public final class OpenHouseInstallController {
     private static final String DEFAULT_AIONUI_WEB_PORT = "25808";
     private static final long POLL_INTERVAL_MS = 2000L;
     private static final long STALE_RUNNING_MARKER_MS = 6 * 60 * 60 * 1000L;
-    private static final long FINAL_PI_WEB_READY_TIMEOUT_MS = 3 * 60 * 1000L;
-    private static final long FINAL_PI_WEB_READY_POLL_INTERVAL_MS = 3000L;
+    private static final long FINAL_WUXIANPI_READY_TIMEOUT_MS = 3 * 60 * 1000L;
+    private static final long FINAL_WUXIANPI_READY_POLL_INTERVAL_MS = 3000L;
     private static final long STUCK_NO_LOG_MS = 30L * 60L * 1000L;
     private static final long TOTAL_INSTALL_DURATION_MS = 30L * 60L * 1000L;
     private static final double FAST_STAGE_PROGRESS_RATIO = 0.90d;
@@ -61,8 +61,6 @@ public final class OpenHouseInstallController {
         Stage.INSTALL_WUYOU,
         Stage.INSTALL_TERMUX_NODE,
         Stage.INSTALL_PI_AGENT,
-        Stage.INSTALL_PI_WEB,
-        Stage.START_PI_WEB_RESCUE,
         Stage.INSTALL_SERVICE_MANAGER,
         Stage.REGISTER_PI_SERVICES,
         Stage.START_SMALLPHONE,
@@ -73,7 +71,6 @@ public final class OpenHouseInstallController {
     private static final Stage[] AI_FEATURES_STAGE_SEQUENCE = new Stage[] {
         Stage.INSTALL_NODE,
         Stage.SYNC_OFFICIAL_DOCS,
-        Stage.INSTALL_AIONUI,
         Stage.INSTALL_SMALLPHONE,
         Stage.SYNC_OPENHOUSE_REGISTRY,
     };
@@ -83,8 +80,6 @@ public final class OpenHouseInstallController {
         Stage.INSTALL_WUYOU,
         Stage.INSTALL_TERMUX_NODE,
         Stage.INSTALL_PI_AGENT,
-        Stage.INSTALL_PI_WEB,
-        Stage.START_PI_WEB_RESCUE,
         Stage.INSTALL_SERVICE_MANAGER,
         Stage.REGISTER_PI_SERVICES,
         Stage.START_SMALLPHONE,
@@ -93,7 +88,6 @@ public final class OpenHouseInstallController {
         Stage.UBUNTU_PACKAGES,
         Stage.INSTALL_NODE,
         Stage.SYNC_OFFICIAL_DOCS,
-        Stage.INSTALL_AIONUI,
         Stage.INSTALL_SMALLPHONE,
         Stage.SYNC_OPENHOUSE_REGISTRY,
     };
@@ -1253,7 +1247,7 @@ public final class OpenHouseInstallController {
 
     private boolean verifyCoreDeploymentComplete(VerificationMode mode) {
         long deadlineMs = mode == VerificationMode.WAIT_BRIEFLY
-            ? System.currentTimeMillis() + FINAL_PI_WEB_READY_TIMEOUT_MS
+            ? System.currentTimeMillis() + FINAL_WUXIANPI_READY_TIMEOUT_MS
             : System.currentTimeMillis();
         while (true) {
             try {
@@ -1270,7 +1264,7 @@ public final class OpenHouseInstallController {
             }
 
             try {
-                Thread.sleep(Math.min(FINAL_PI_WEB_READY_POLL_INTERVAL_MS, remainingMs));
+                Thread.sleep(Math.min(FINAL_WUXIANPI_READY_POLL_INTERVAL_MS, remainingMs));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return false;
@@ -1899,7 +1893,7 @@ public final class OpenHouseInstallController {
         if (resolvedTaskScope == OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
             return "已检测到基础运行环境准备完成，可以继续安装 AI 功能。";
         }
-        return "已检测到 AI 功能和本地 AI 页面可用，首次安装完成；SmallPhone、openhouse-connect 等附属服务可稍后在运行控制中查看或修复。";
+        return "已检测到 service-manager 和 WuxianPi 核心运行时可用，首次安装完成；SmallPhone、openhouse-connect 等附属服务可稍后在运行控制中查看或修复。";
     }
 
     private String taskAlreadyCompleteDetail(OpenHouseInstallState.TaskScope taskScope) {
@@ -1918,7 +1912,7 @@ public final class OpenHouseInstallController {
         if (resolvedTaskScope == OpenHouseInstallState.TaskScope.RUNTIME_ENVIRONMENT) {
             return "安装脚本已经退出，但尚未确认基础运行环境准备完成。请等待状态刷新；如果仍停留在这里，请手动重试当前步骤。";
         }
-        return "安装脚本已经退出，但 3 分钟内没有确认 AI 功能和本地 AI 页面可用。请等待状态刷新；如果仍停留在这里，请手动重试当前步骤。";
+        return "安装脚本已经退出，但 3 分钟内没有确认 service-manager 和 WuxianPi 核心运行时可用。请等待状态刷新；如果仍停留在这里，请手动重试当前步骤。";
     }
 
     private String taskLogLabel(OpenHouseInstallState.TaskScope taskScope) {
@@ -2564,19 +2558,19 @@ public final class OpenHouseInstallController {
         PREPARE("prepare", "prepare-product.sh", "准备本机目录", "正在创建文档目录和工作区。"),
         TERMUX_PACKAGES("termux_packages", "update-termux-packages.sh", "准备 Linux 环境", "正在安装 proot-distro、openssh、curl、jq 和证书依赖。"),
         INSTALL_WUYOU("install_wuyou", "install-wuyou.sh", "安装 wuyou", "正在安装或检查 Termux native wuyou 基础工具。"),
-        INSTALL_TERMUX_NODE("install_termux_node", "install-termux-node.sh", "安装 Termux Node.js 24 LTS", "正在安装或检查 Termux native Node.js 24 LTS/npm，供 pi-agent 和 pi-web 常驻服务使用。"),
+        INSTALL_TERMUX_NODE("install_termux_node", "install-termux-node.sh", "安装 Termux Node.js 24 LTS", "正在安装或检查 Termux native Node.js 24 LTS/npm，供 WuxianPi 核心运行时使用。"),
         INSTALL_PI_AGENT("install_pi_agent", "install-pi-agent.sh", "安装 pi-agent", "正在从 APK 内置 payload 安装并检查 Termux native pi-agent，不依赖 service-manager。"),
         INSTALL_PI_WEB("install_pi_web", "install-pi-web.sh", "安装 pi-web", "正在从 APK 内置 payload 安装并检查 Termux native pi-web，不依赖 service-manager。"),
         START_PI_WEB_RESCUE("start_pi_web_rescue", "start-pi-web-rescue.sh", "启动紧急 AI 救援", "正在启动并检查独立的 pi-web 30142 紧急救援入口。"),
         INSTALL_SERVICE_MANAGER("install_service_manager", "install-service-manager.sh", "安装 service-manager", "正在安装并启动 Termux native service-manager 控制中枢。"),
-        REGISTER_PI_SERVICES("register_pi_services", "register-pi-services.sh", "注册 pi 服务", "正在把已安装的 pi-agent 和 pi-web 注册到 service-manager。"),
+        REGISTER_PI_SERVICES("register_pi_services", "register-pi-services.sh", "注册 WuxianPi 服务", "正在把已安装的 WuxianPi 核心运行时注册到 service-manager。"),
         INSTALL_UBUNTU("install_ubuntu", "install-ubuntu.sh", "下载 Linux 系统", "正在下载并安装 Ubuntu。"),
         SYNC_OFFICIAL_DOCS("sync_official_docs", "sync-official-docs.sh", "同步使用文档", "正在同步 OpenHouseAI 使用文档。"),
         UBUNTU_PACKAGES("ubuntu_packages", "update-ubuntu-packages.sh", "安装 Linux 基础工具", "正在安装 curl、git 等基础工具。"),
         CONFIGURE_ENTRY_UBUNTU("entry_ubuntu", "configure-entry-ubuntu.sh", "设置启动方式", "正在配置默认进入 Ubuntu。"),
-        INSTALL_NODE("install_node", "install-node.sh", "安装 Ubuntu Node.js 24 LTS", "正在 Ubuntu AI 工作台层安装或检查 Node.js 24 LTS，供 AionUI、OpenHouseAI 工作台和 AI CLI 工具使用。"),
+        INSTALL_NODE("install_node", "install-node.sh", "安装 Ubuntu Node.js 24 LTS", "正在 Ubuntu AI 工作台层安装或检查 Node.js 24 LTS，供 OpenHouseAI 工作台和 AI CLI 工具使用。"),
         SYNC_OPENHOUSE_REGISTRY("sync_openhouse_registry", "sync-openhouse-registry.sh", "同步 OpenHouseAI 注册表", "正在把 Ubuntu mirror 同步到 Termux canonical，供 App、SmallPhone 和 AI 读取。"),
-        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动正式 pi-web", "正在通过 Termux native service-manager 启动正式 pi-agent 和 pi-web 30141；紧急救援 30142 保持可用。"),
+        START_SMALLPHONE("start_smallphone", "start-smallphone.sh", "启动 WuxianPi", "正在通过 Termux native service-manager 启动并检查 WuxianPi 核心运行时 20765。"),
         INSTALL_OPENHOUSE_WEB("install_openhouse_web", "install-openhouse-web.sh", "安装 OpenHouse Web", "正在安装并注册 Termux native OpenHouse Web 服务。"),
         INSTALL_AIONUI("install_aionui", "install-aionui.sh", "安装 AI 工作台", "正在从 APK 内置离线包安装 AionUi 工作台，并检查本机入口。"),
         INSTALL_SMALLPHONE("install_smallphone", "install-smallphone.sh", "安装 SmallPhone", "正在使用版本化 payload 安装、注册并启动 SmallPhone 动态 endpoint；AionUi 不作为该步骤的前置依赖。"),

@@ -8,7 +8,7 @@ are post-install capabilities that pi-agent can guide later.
 
 The intended runtime split is:
 
-- Termux native: installer, `service-manager`, Pi Agent/pi-web, Ubuntu/proot
+- Termux native: installer, `service-manager`, Pi Agent, Ubuntu/proot
   launcher, bridge, and recovery fallback.
 - Ubuntu/proot: AI workbench tools and explicit compatibility components such
   as SmallPhone and optional `cc-connect` / `openhouse-connect`.
@@ -49,7 +49,7 @@ bash bootstrap.sh sync-core-stack
 
 ```text
 env-check -> prepare -> termux-packages -> termux-node ->
-components(service-manager,pi-agent,pi-web) -> start(pi-agent,pi-web) ->
+components(service-manager,pi-agent) -> start(pi-agent) ->
 ubuntu -> ubuntu-packages -> node -> sync-docs ->
 components(github-config-helper,cc-connect,smallphone) -> registry-sync ->
 start -> status
@@ -71,7 +71,6 @@ delegates to child repo contracts. Termux-native targets stay in Termux;
 Ubuntu/proot is used only for targets that explicitly require it:
 
 - `pi-agent`
-- `pi-web`
 - `wuyou`
 - `service-manager`
 - `cc-connect` / `openhouse-connect`
@@ -82,7 +81,7 @@ Ubuntu/proot is used only for targets that explicitly require it:
 The default component order is:
 
 ```text
-install service-manager -> install/check/register pi-agent/pi-web ->
+install service-manager -> install/check/register pi-agent ->
 install/check/register openhouse-connect -> install/check/register
 SmallPhone compatibility service
 ```
@@ -95,7 +94,6 @@ The required APK asset archives are:
 | cc-connect/openhouse-connect | `openhouse/product-payloads/openhouse-connect.tar` | `$HOME/smallphoneai-repos/openhouse-connect` |
 | SmallPhone | `openhouse/product-payloads/smallphone.tar` | `$HOME/smallphoneai-repos/smallphone-active` |
 | pi-agent (stable service ID) | `openhouse/product-payloads/pi-runtime.tar` | `$HOME/smallphoneai-repos/pi-runtime` |
-| pi-web | `openhouse/product-payloads/pi-web.tar` | `$HOME/smallphoneai-repos/pi-web` |
 | wuyou | `openhouse/product-payloads/wuyou.tar` | `$HOME/smallphoneai-repos/wuyou`; installs `$PREFIX/bin/wuyou` |
 
 In the APK source tree these packages live under
@@ -114,10 +112,9 @@ installs the Node/Pi SDK payload from `pi-runtime.tar`; runtime code is
 installed under `$HOME/.local/share/openhouseai/runtime`, Pi conversations and
 extensions remain under `$HOME/.pi`, and the tokenless service listens on
 `127.0.0.1:8765` using `wuxianpi-sdk-v1`. It requires Termux Node.js 22.19 or
-newer. pi-web and wuyou also use APK-bundled payloads first; pi-web is shipped
-as a complete runtime and should not run `npm install` during first-run setup.
-The `pi-web` and `wuyou` commands are installed as Termux global commands and
-can be run without service-manager.
+newer. The lean APK does not bundle AionUI or pi-web. `wuyou` continues to use
+the APK-bundled payload and installs a Termux global command that can run
+without service-manager.
 
 GitHub source updates are a separate path through
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=git-update` and

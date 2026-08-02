@@ -13,8 +13,6 @@ fi
 python3 - \
   "$PAYLOAD_DIR" \
   "$REPO_DIR/app/src/main/assets/openhouse/pi-prompts" \
-  "${PI_WEB_REQUIRED_BRANCH:-openhouse}" \
-  "${PI_WEB_REQUIRED_COMMIT:-19a4496149bf8198be1362e31d81d79b5d250051}" \
   "${PI_SDK_REQUIRED_VERSION:-0.80.10}" \
   "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/subjects.d/service-control.json" \
   "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/openhouseai-manifest.json" \
@@ -34,18 +32,16 @@ import tarfile
 
 payload_dir = os.path.abspath(sys.argv[1])
 prompt_assets_dir = os.path.abspath(sys.argv[2])
-required_pi_web_branch = sys.argv[3]
-required_pi_web_commit = sys.argv[4].lower()
-required_pi_sdk_version = sys.argv[5]
-service_control_path = os.path.abspath(sys.argv[6])
-bootstrap_manifest_path = os.path.abspath(sys.argv[7])
-pi_agent_subject_path = os.path.abspath(sys.argv[8])
-bootstrap_root = os.path.abspath(sys.argv[9])
-component_installer_path = os.path.abspath(sys.argv[10])
-service_starter_path = os.path.abspath(sys.argv[11])
-app_build_gradle_path = os.path.abspath(sys.argv[12])
-termux_package_delegate_path = os.path.abspath(sys.argv[13])
-termux_package_bootstrap_path = os.path.abspath(sys.argv[14])
+required_pi_sdk_version = sys.argv[3]
+service_control_path = os.path.abspath(sys.argv[4])
+bootstrap_manifest_path = os.path.abspath(sys.argv[5])
+pi_agent_subject_path = os.path.abspath(sys.argv[6])
+bootstrap_root = os.path.abspath(sys.argv[7])
+component_installer_path = os.path.abspath(sys.argv[8])
+service_starter_path = os.path.abspath(sys.argv[9])
+app_build_gradle_path = os.path.abspath(sys.argv[10])
+termux_package_delegate_path = os.path.abspath(sys.argv[11])
+termux_package_bootstrap_path = os.path.abspath(sys.argv[12])
 manifest_path = os.path.join(payload_dir, "manifest.json")
 payload_manifest_path = os.path.join(payload_dir, "payload-manifest.json")
 native_runtime_asset_path = os.path.join(
@@ -60,8 +56,6 @@ digest_cache = {}
 if os.path.exists(os.path.join(payload_dir, "pi-agent.tar")):
     errors.append("legacy pi-agent.tar must be removed; pi-runtime.tar is the stable Pi payload")
 
-if not re.fullmatch(r"[0-9a-f]{40}", required_pi_web_commit):
-    raise SystemExit("PI_WEB_REQUIRED_COMMIT must be a full 40-character lowercase Git commit")
 if required_pi_sdk_version != "0.80.10":
     raise SystemExit("PI_SDK_REQUIRED_VERSION must remain pinned to 0.80.10")
 
@@ -78,8 +72,6 @@ def validate_service_control_contract():
     expected = [
         {"id": "openhouse-web", "runtime": "termux", "manager": "service-manager"},
         {"id": "yuanshengwuxianpi", "runtime": "termux", "manager": "service-manager"},
-        {"id": "pi-web", "runtime": "termux", "manager": "service-manager"},
-        {"id": "aionui-web", "runtime": "termux", "manager": "service-manager"},
     ]
     try:
         with open(service_control_path, "r", encoding="utf-8") as handle:
@@ -88,7 +80,7 @@ def validate_service_control_contract():
         fail(f"invalid service-control subject: {exc}")
         return
     if subject.get("serviceRefs") != expected:
-        fail("service-control subject must reference exactly openhouse-web, yuanshengwuxianpi, pi-web, and aionui-web in Termux service-manager")
+        fail("service-control subject must reference exactly openhouse-web and yuanshengwuxianpi in Termux service-manager")
     try:
         with open(component_installer_path, "r", encoding="utf-8") as handle:
             installer = handle.read()
@@ -136,14 +128,13 @@ def validate_pi_dynamic_registration_contract():
             "/api/v1/registry/apply",
             "/api/v1/services/$stable_service_id/register",
             '[ "$service_id" = "pi-agent" ]',
-            '[ "$service_id" = "pi-web" ]',
         ):
             if required not in source:
                 fail(f"{label} is missing stable Pi dynamic registration contract: {required}")
 
     installer = sources["50-install-runtime-components.sh"]
     for required in (
-        "*:pi-agent:scripts/register-service.sh|*:pi-web:scripts/register-service.sh",
+        "*:pi-agent:scripts/register-service.sh",
         "run_with_service_manager_auth",
         "SERVICE_MANAGER_URL=",
         '&& dynamic_register_pi_service "$payload_name" "$sm_token"',
@@ -153,7 +144,7 @@ def validate_pi_dynamic_registration_contract():
             fail(f"50-install-runtime-components.sh is missing Pi dynamic registration orchestration: {required}")
 
     starter = sources["60-start-smallphone.sh"]
-    for component_id in ("pi-agent", "pi-web"):
+    for component_id in ("pi-agent",):
         marker = f'run_register_if_present "{component_id}"'
         if marker not in starter:
             fail(f"60-start-smallphone.sh must dynamically register stable service {component_id}: {marker}")
@@ -162,7 +153,6 @@ def validate_pi_dynamic_registration_contract():
         'SERVICE_MANAGER_URL="$sm_url"',
         'dynamic_register_pi_service "$name"',
         'run_register_if_present "pi-agent" "$pi_agent_dir" || exit 1',
-        'run_register_if_present "pi-web" "$pi_web_dir" || exit 1',
     ):
         if required not in starter:
             fail(f"60-start-smallphone.sh is missing authenticated dynamic registration orchestration: {required}")
@@ -286,7 +276,11 @@ def validate_bootstrap_pi_contract(product_manifest):
             fail("Pi subject pi-agent service must launch wuxianpi-node-start")
         if pi_service.get("workingDirectory") != "$HOME/workspace":
             fail("Pi subject pi-agent service workingDirectory must be $HOME/workspace")
+    if any(isinstance(entry, dict) and entry.get("id") == "pi-web" for entry in service_refs):
+        fail("lean Pi subject must not reference standalone pi-web")
     subject_text = json.dumps(subject, ensure_ascii=False, separators=(",", ":"))
+    if "127.0.0.1:30141" in subject_text or "aionui-web" in subject_text:
+        fail("lean Pi subject must not expose standalone pi-web or AionUI")
     for required in (
         "127.0.0.1:20765",
         "/.local/share/openhouseai/runtime",
@@ -1013,8 +1007,16 @@ validate_native_runtime_asset(manifest, payload_manifest)
 validate_service_control_contract()
 validate_termux_package_contract()
 
-required = ("service-manager", "openhouse-web", "pi-agent", "pi-web", "wuyou", "aionui-web")
-registry_managed = ("openhouse-web", "pi-agent", "pi-web", "aionui-web")
+required = ("service-manager", "openhouse-web", "pi-agent", "wuyou")
+registry_managed = ("openhouse-web", "pi-agent")
+for forbidden_component in ("pi-web", "aionui-web"):
+    if forbidden_component in components:
+        fail(f"manifest.json must not bundle optional component {forbidden_component}")
+    if forbidden_component in payloads:
+        fail(f"payload-manifest.json must not bundle optional component {forbidden_component}")
+for forbidden_archive in ("pi-web.tar", "aionui-web-2.1.32-linux-arm64.tgz"):
+    if os.path.exists(os.path.join(payload_dir, forbidden_archive)):
+        fail(f"lean APK payload directory must not contain {forbidden_archive}")
 for component_id in required:
     if component_id not in components:
         fail(f"manifest.json missing required component {component_id}")
@@ -1072,8 +1074,6 @@ for component_id in sorted(set(components) & set(payloads)):
 
 if "pi-agent" in components and isinstance(components["pi-agent"].get("archive"), str):
     validate_pi_agent_payload(components["pi-agent"])
-if "pi-web" in components and isinstance(components["pi-web"].get("archive"), str):
-    validate_pi_web_payload(components["pi-web"])
 if "service-manager" in components and isinstance(components["service-manager"].get("archive"), str):
     validate_service_manager_payload(components["service-manager"])
 if "openhouse-web" in components and isinstance(components["openhouse-web"].get("archive"), str):

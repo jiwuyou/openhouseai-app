@@ -33,10 +33,10 @@ public final class OpenHouseComponentRegistry {
     private static final String MENU_OVERRIDES_FILE = "menu-overrides.json";
     private static final String REGISTRY_STATE_FILE = "registry-state.json";
     private static final String CONTROL_ENTRY_TYPE_SERVICE_CONTROL = "service-control";
-    private static final String DEFAULT_PI_AGENT_URL = "http://127.0.0.1:30141/";
+    private static final String DEFAULT_PI_AGENT_URL = "http://127.0.0.1:20765/";
     private static final String DEFAULT_CLOUDCLI_URL = "http://127.0.0.1:23083/";
     private static final String DEFAULT_AIONUI_URL = "http://127.0.0.1:25808/";
-    private static final String DEFAULT_HOME_TARGET = "pi-web";
+    private static final String DEFAULT_HOME_TARGET = "pi-agent";
     private static final String AIONUI_COMPONENT_ID = "aionui-web";
     private static final String LEGACY_AIONUI_COMPONENT_ID = "aionui";
     private static final String AIONUI_SERVICE_REF = "service-manager://services/aionui-web";
@@ -382,10 +382,9 @@ public final class OpenHouseComponentRegistry {
             true,
             true,
             "builtin",
-            Arrays.asList("pi-web", "pi-agent"),
-            Arrays.asList(
-                "service-manager://services/pi-web",
-                "service-manager://services/pi-agent")));
+            Arrays.asList("yuanshengwuxianpi", "pi-agent"),
+            Collections.singletonList(
+                "service-manager://services/yuanshengwuxianpi")));
         components.add(createComponent(
             "cloudcli",
             "cc/codex",

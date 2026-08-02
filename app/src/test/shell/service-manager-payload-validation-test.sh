@@ -28,8 +28,6 @@ import json, sys
 expected = [
     {"id": "openhouse-web", "runtime": "termux", "manager": "service-manager"},
     {"id": "yuanshengwuxianpi", "runtime": "termux", "manager": "service-manager"},
-    {"id": "pi-web", "runtime": "termux", "manager": "service-manager"},
-    {"id": "aionui-web", "runtime": "termux", "manager": "service-manager"},
 ]
 subject = json.load(open(sys.argv[1], encoding="utf-8"))
 assert subject.get("serviceRefs") == expected, "service-control serviceRefs contract mismatch"

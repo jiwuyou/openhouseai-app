@@ -24,54 +24,15 @@ if ! declare -F warn >/dev/null 2>&1; then
   }
 fi
 
-find_maintainer_script() {
-  local name="$1"
-  local dir
-  for dir in \
-    "${OPENHOUSEAI_MAINTAINER_DIR:-}" \
-    "${SMALLPHONEAI_MAINTAINER_DIR:-}" \
-    "$HOME/.smallphoneai-bootstrap/apk-assets/maintainer" \
-    "$HOME/.smallphoneai-bootstrap/maintainer"; do
-    [ -n "$dir" ] || continue
-    if [ -f "$dir/$name" ]; then
-      printf '%s\n' "$dir/$name"
-      return 0
-    fi
-  done
-  return 1
-}
-
-run_aionui_repair_hook() {
-  local script
-  script="$(find_maintainer_script install-aionui.sh || true)"
-  if [ -z "$script" ]; then
-    warn "未找到 install-aionui.sh，跳过 AionUi service-manager 注册修复。"
-    return 0
-  fi
-  log "正在复用 AionUi 安装/注册逻辑修复 aionui-web：$script"
-  (
-    # shellcheck disable=SC1090
-    . "$script"
-  )
-}
-
 bootstrap="$(find_smallphoneai_bootstrap || true)"
 if [ -n "$bootstrap" ]; then
   log "正在执行 SmallPhoneAI runtime hook：$bootstrap repair"
-  set +e
   run_logged env \
     OPENHOUSE_PI_RUNTIME="${OPENHOUSE_PI_RUNTIME:-termux}" \
     SMALLPHONEAI_PI_RUNTIME="${SMALLPHONEAI_PI_RUNTIME:-termux}" \
     OPENHOUSE_PI_NODE_RUNTIME="${OPENHOUSE_PI_NODE_RUNTIME:-termux}" \
     bash "$bootstrap" repair
-  bootstrap_status=$?
-  run_aionui_repair_hook
-  aionui_status=$?
-  set -e
-  if [ "$bootstrap_status" -ne 0 ]; then
-    exit "$bootstrap_status"
-  fi
-  exit "$aionui_status"
+  exit $?
 fi
 
 log "未找到 SmallPhoneAI bootstrap.sh，使用 APK 内置修复钩子检查、注册并启动已安装组件。"
@@ -219,12 +180,12 @@ service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path /root/pr
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path /root/cc-connect-fresh openhouse-connect)}"
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path /root/projects/smallphone/smallphone-active smallphone-active)}"
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path /root/projects/pi pi-runtime)}}"
-pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path /root/projects/pi-web pi-web)}}"
 bind="$(configured_service_manager_bind)"
 sm_url="$(configured_service_manager_url)"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
 smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
-pi_web_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
+pi_runtime_host="${OPENHOUSE_PI_RUNTIME_HOST:-127.0.0.1}"
+pi_runtime_port="${OPENHOUSE_PI_RUNTIME_PORT:-20765}"
 cc_url="${SMALLPHONEAI_CC_CONNECT_URL:-http://127.0.0.1:21040/}"
 log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
 failures=0
@@ -300,6 +261,12 @@ probe_url() {
   curl -fsS --max-time 2 "$1" >/dev/null 2>&1
 }
 
+probe_tcp() {
+  local host="$1" port="$2"
+  command -v timeout >/dev/null 2>&1 || return 1
+  timeout 2 bash -c ': >/dev/tcp/$1/$2' _ "$host" "$port" >/dev/null 2>&1
+}
+
 find_service_manager() {
   if command -v service-manager >/dev/null 2>&1; then
     command -v service-manager
@@ -323,9 +290,7 @@ service_manager_ready() {
 
 stack_ready() {
   service_manager_ready \
-    && probe_url "$pi_web_url" \
-    && probe_url "$smallphone_url" \
-    && probe_url "$smallphone_core_url"
+    && probe_tcp "$pi_runtime_host" "$pi_runtime_port"
 }
 
 json_escape() {
@@ -444,14 +409,9 @@ sync_openhouse_service_manager_config() {
 
 log "检查并注册 SmallPhoneAI 运行组件。"
 run_component "service-manager" "$service_manager_dir" "1"
-if cc_connect_disabled; then
-  run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "0"
-else
-  run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "1"
-fi
+run_component "cc-connect/openhouse-connect" "$cc_connect_dir" "0"
 run_component "SmallPhone compatibility service" "$smallphone_dir" "0"
 run_component "pi-agent" "$pi_agent_dir" "1"
-run_component "pi-web" "$pi_web_dir" "1"
 
 if [ "$failures" -ne 0 ]; then
   warn "组件修复存在 $failures 个失败项，继续尝试启动已可用的注册项。"
@@ -500,12 +460,13 @@ cleanup() {
 trap cleanup EXIT INT HUP TERM
 printf 'header = "Authorization: Bearer %s"\n' "$sm_token" > "$work_dir/curl.cfg"
 
-log "正在通过 service-manager 启动 group:local-stack。"
-curl -q -fsS --max-time 10 -X POST -K "$work_dir/curl.cfg" "$sm_url/api/v1/groups/local-stack/start" >/dev/null
+log "正在通过 service-manager 启动 WuxianPi 核心服务。"
+curl -q -fsS --max-time 10 -X POST -K "$work_dir/curl.cfg" \
+  "$sm_url/api/v1/services/yuanshengwuxianpi/start" >/dev/null
 
 for _ in $(seq 1 45); do
   if stack_ready; then
-    log "SmallPhoneAI 运行栈已就绪：pi-web=$pi_web_url service-manager=$sm_url SmallPhone=$smallphone_url SmallPhone core=$smallphone_core_url"
+    log "SmallPhoneAI 运行栈已就绪：pi-agent=${pi_runtime_host}:${pi_runtime_port} service-manager=$sm_url"
     log "cc-connect/openhouse-connect 为可修复的可选服务：$cc_url"
     exit 0
   fi
@@ -513,19 +474,14 @@ for _ in $(seq 1 45); do
 done
 
 warn "SmallPhoneAI 修复后仍未达到 pi 主线就绪条件。"
-printf 'service-manager=%s\npi-web=%s\nSmallPhone=%s\nSmallPhone Core=%s\ncc-connect=%s\n' \
+printf 'service-manager=%s\npi-agent=%s\nSmallPhone=%s\nSmallPhone Core=%s\ncc-connect=%s\n' \
   "$(service_manager_ready && printf reachable || printf down)" \
-  "$(probe_url "$pi_web_url" && printf reachable || printf down)" \
+  "$(probe_tcp "$pi_runtime_host" "$pi_runtime_port" && printf reachable || printf down)" \
   "$(probe_url "$smallphone_url" && printf reachable || printf down)" \
   "$(probe_url "$smallphone_core_url" && printf reachable || printf down)" \
   "$(cc_connect_disabled && printf disabled || { probe_url "$cc_url" && printf reachable || printf down; })"
 exit 1
 SMALLPHONEAI_REPAIR
 smallphone_status=$?
-run_aionui_repair_hook
-aionui_status=$?
 set -e
-if [ "$smallphone_status" -ne 0 ]; then
-  exit "$smallphone_status"
-fi
-exit "$aionui_status"
+exit "$smallphone_status"

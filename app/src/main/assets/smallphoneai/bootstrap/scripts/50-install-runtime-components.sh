@@ -261,7 +261,7 @@ runtime_component_action() {
 }
 
 default_component_targets() {
-  printf '%s\n' "wuyou,service-manager,pi-agent,pi-web,github-config-helper,cc-connect,smallphone,hermes,openhouse-web"
+  printf '%s\n' "wuyou,service-manager,pi-agent,github-config-helper,cc-connect,smallphone,hermes,openhouse-web"
 }
 
 bootstrap_targets_for_runtime() {
@@ -292,7 +292,7 @@ bootstrap_targets_for_runtime() {
         openhouse-web)
           out="$(append_csv "$out" "$normalized")"
           ;;
-        pi-agent|pi-web)
+        pi-agent)
           [ "$pi_runtime" = "termux" ] && out="$(append_csv "$out" "$normalized")"
           ;;
       esac
@@ -300,7 +300,7 @@ bootstrap_targets_for_runtime() {
       case "$normalized" in
         wuyou|service-manager|openhouse-system|openhouse-web)
           ;;
-        pi-agent|pi-web)
+        pi-agent)
           [ "$pi_runtime" = "ubuntu" ] && out="$(append_csv "$out" "$normalized")"
           ;;
         *)
@@ -971,7 +971,7 @@ install_default_subjects() {
   fi
 
   install_default_subject_file "pi-agent.json" <<'JSON'
-{"id":"pi-agent","title":"WuxianPi Node Runtime","kind":"runtime-http","summary":"Node service embedding the official Pi SDK and preserving native Pi JSONL sessions.","serviceRefs":[{"id":"yuanshengwuxianpi","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/workspace","workdir":"$HOME/workspace","command":"wuxianpi-node-start","entryCommand":"wuxianpi-node-start"},{"id":"pi-web","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/smallphoneai-repos/pi-web","workdir":"$HOME/smallphoneai-repos/pi-web","command":"openhouse-pi-web-start","entryCommand":"openhouse-pi-web-start"}],"entries":[{"type":"runtime","label":"WuxianPi SDK API","url":"http://127.0.0.1:20765/"},{"type":"web","label":"Pi Agent Web","url":"http://127.0.0.1:30141/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","purpose":"APK-managed WuxianPi Node payload source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/openhouseai/runtime","purpose":"Installed Node service and Pi SDK"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Pi conversation data, extensions, skills, and settings"}],"ai":{"description":"The yuanshengwuxianpi service starts wuxianpi-node-start on demand on port 20765 and embeds @earendil-works/pi-coding-agent directly.","whenUnavailable":"Start yuanshengwuxianpi through service-manager and verify Node >=22.19."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/bin/wuxianpi-node-start","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.pi/agent/sessions","timeoutSeconds":4}]}}
+{"id":"pi-agent","title":"WuxianPi Node Runtime","kind":"runtime-http","summary":"Node service embedding the official Pi SDK and preserving native Pi JSONL sessions.","serviceRefs":[{"id":"yuanshengwuxianpi","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/workspace","workdir":"$HOME/workspace","command":"wuxianpi-node-start","entryCommand":"wuxianpi-node-start"}],"entries":[{"type":"runtime","label":"WuxianPi SDK API","url":"http://127.0.0.1:20765/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","purpose":"APK-managed WuxianPi Node payload source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/openhouseai/runtime","purpose":"Installed Node service and Pi SDK"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Pi conversation data, extensions, skills, and settings"}],"ai":{"description":"The yuanshengwuxianpi service starts wuxianpi-node-start on demand on port 20765 and embeds @earendil-works/pi-coding-agent directly.","whenUnavailable":"Start yuanshengwuxianpi through service-manager and verify Node >=22.19."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/bin/wuxianpi-node-start","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.pi/agent/sessions","timeoutSeconds":4}]}}
 JSON
   install_default_subject_file "file-inbox.json" <<'JSON'
 {"id":"file-inbox","title":"File Inbox","kind":"file","summary":"Shared staging area for files opened with or shared to OpenHouse.","serviceRefs":[],"entries":[{"type":"file","label":"Android inbox","path":"/storage/emulated/0/OpenHouse/Inbox"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","purpose":"user-visible Android storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse/Inbox","purpose":"Termux-native inbox projection"},{"runtime":"ubuntu","path":"/root/OpenHouse/Inbox","purpose":"Ubuntu/proot inbox projection"}],"ai":{"description":"Files from Android share/open-with flows should be staged here before AI processing.","whenUnavailable":"Check storage permission and projected inbox directories."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","timeoutSeconds":3}]}}
@@ -980,7 +980,7 @@ JSON
 {"id":"openhouse-workspace","title":"OpenHouse Workspace","kind":"file","summary":"Native work partition with Android, Termux, and Ubuntu visible roots.","serviceRefs":[],"entries":[{"type":"file","label":"Android workspace","path":"/storage/emulated/0/OpenHouse"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse","purpose":"shared phone storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse","purpose":"Termux-native workspace"},{"runtime":"ubuntu","path":"/root/OpenHouse","purpose":"Ubuntu/proot workspace"}],"ai":{"description":"Use this workspace when explaining where OpenHouse data lives across Android, Termux, and Ubuntu.","whenUnavailable":"Check storage permission and root directory projections."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse","timeoutSeconds":3},{"type":"pathExists","runtime":"ubuntu","path":"/root/OpenHouse","timeoutSeconds":4}]}}
 JSON
   install_default_subject_file "service-control.json" <<'JSON'
-{"id":"service-control","title":"Service Control","kind":"runtime-http","summary":"Local service-manager control surface for service status, lifecycle actions, and logs.","serviceRefs":[{"id":"openhouse-web","runtime":"termux","manager":"service-manager"},{"id":"yuanshengwuxianpi","runtime":"termux","manager":"service-manager"},{"id":"pi-web","runtime":"termux","manager":"service-manager"},{"id":"aionui-web","runtime":"termux","manager":"service-manager"}],"entries":[{"type":"web","label":"service-manager","url":"http://127.0.0.1:20087/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json","purpose":"OpenHouse service-manager config and token"}],"ai":{"description":"service-manager is the standing service control layer. It answers service status, lifecycle, and logs for explicit service ids; it does not infer runtime or perform subject endpoint/file/skill checks.","whenUnavailable":"Repair the Termux native service-manager control plane before using higher-level subject checks."},"checks":{"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:20087/api/v1/health","timeoutSeconds":3}]}}
+{"id":"service-control","title":"Service Control","kind":"runtime-http","summary":"Local service-manager control surface for service status, lifecycle actions, and logs.","serviceRefs":[{"id":"openhouse-web","runtime":"termux","manager":"service-manager"},{"id":"yuanshengwuxianpi","runtime":"termux","manager":"service-manager"}],"entries":[{"type":"web","label":"service-manager","url":"http://127.0.0.1:20087/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/.config/openhouseai/service-manager/config.json","purpose":"OpenHouse service-manager config and token"}],"ai":{"description":"service-manager is the standing service control layer. It answers service status, lifecycle actions, and logs for explicit service ids; it does not infer runtime or perform subject endpoint/file/skill checks.","whenUnavailable":"Repair the Termux native service-manager control plane before using higher-level subject checks."},"checks":{"afterServiceOk":[{"type":"http","url":"http://127.0.0.1:20087/api/v1/health","timeoutSeconds":3}]}}
 JSON
 }
 
@@ -1843,7 +1843,7 @@ dynamic_register_pi_service() (
   local stable_service_id="$service_id"
   local spec work_dir apply_payload curl_cfg escaped_token
 
-  [ "$service_id" = "pi-agent" ] || [ "$service_id" = "pi-web" ] || {
+  [ "$service_id" = "pi-agent" ] || {
     warn "拒绝动态注册非 Pi 稳定服务 ID：$service_id"
     return 1
   }
@@ -1943,7 +1943,7 @@ run_repo_script_command() {
         SMALLPHONEAI_LOCAL_INSTALL=1 \
         bash "./$script"
       ;;
-    *:pi-agent:scripts/register-service.sh|*:pi-web:scripts/register-service.sh)
+    *:pi-agent:scripts/register-service.sh)
       sm_token="${SERVICE_MANAGER_TOKEN:-${SMALLPHONE_SERVICE_MANAGER_TOKEN:-}}"
       if [ -z "$sm_token" ] && is_termux; then
         sm_token="$(resolve_termux_service_manager_token || true)"
@@ -2035,7 +2035,7 @@ run_component() {
   run_repo_script "$name" "$dir" "scripts/check.sh" "$required" "$payload_name"
   if [ "$component_action" != "install-check" ]; then
     case "$payload_name" in
-      pi-agent|pi-web)
+      pi-agent)
         run_repo_script "$name" "$dir" "scripts/register-service.sh" "1" "$payload_name"
         ;;
       *)
@@ -2053,7 +2053,6 @@ if [ -z "$pi_agent_target_dir" ]; then
   pi_agent_target_dir="pi-runtime"
 fi
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path "$pi_agent_target_dir")}}"
-pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path pi-web)}}"
 wuyou_dir="${OPENHOUSE_WUYOU_DIR:-${SMALLPHONEAI_WUYOU_DIR:-$(default_path wuyou)}}"
 github_config_helper_dir="${OPENHOUSE_GITHUB_CONFIG_HELPER_DIR:-${SMALLPHONEAI_GITHUB_CONFIG_HELPER_DIR:-$(default_path github-config-helper)}}"
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path openhouse-connect)}"
@@ -2074,7 +2073,7 @@ fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"
 else
-  log "本次处理默认组件：openhouse-system、wuyou、service-manager、pi-agent、pi-web、github-config-helper、cc-connect/openhouse-connect、SmallPhone、Hermes，最后安装 OpenHouse Web。"
+  log "本次处理默认组件：openhouse-system、wuyou、service-manager、pi-agent、github-config-helper、cc-connect/openhouse-connect、SmallPhone、Hermes，最后安装 OpenHouse Web。"
 fi
 
 if [ "${SMALLPHONEAI_SKIP_OPENHOUSE_SYSTEM:-0}" != "1" ]; then
@@ -2094,13 +2093,6 @@ if should_run_component "service-manager"; then
 fi
 if should_run_component "pi-agent"; then
   run_component "pi-agent" "$pi_agent_dir" "${OPENHOUSE_PI_AGENT_GIT_URL:-}" "1" "pi-agent"
-fi
-if should_run_component "pi-web"; then
-  if ensure_termux_node_for_web; then
-    run_component "pi-web" "$pi_web_dir" "${OPENHOUSE_PI_WEB_GIT_URL:-}" "1" "pi-web"
-  else
-    failures=$((failures + 1))
-  fi
 fi
 if should_run_component "github-config-helper"; then
   run_component "github-config-helper" "$github_config_helper_dir" "${OPENHOUSE_GITHUB_CONFIG_HELPER_GIT_URL:-}" "1" "github-config-helper"

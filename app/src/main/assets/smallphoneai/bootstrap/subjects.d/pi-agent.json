@@ -13,21 +13,10 @@
       "workdir": "$HOME/workspace",
       "command": "wuxianpi-node-start",
       "entryCommand": "wuxianpi-node-start"
-    },
-    {
-      "id": "pi-web",
-      "runtime": "termux",
-      "manager": "service-manager",
-      "home": "/data/data/com.termux/files/home",
-      "workingDirectory": "$HOME/smallphoneai-repos/pi-web",
-      "workdir": "$HOME/smallphoneai-repos/pi-web",
-      "command": "pi-web --port 30141",
-      "entryCommand": "pi-web --port 30141"
     }
   ],
   "entries": [
-    { "type": "api", "label": "WuxianPi SDK API", "url": "http://127.0.0.1:20765/" },
-    { "type": "web", "label": "Pi Agent Web", "url": "http://127.0.0.1:30141/" }
+    { "type": "api", "label": "WuxianPi SDK API", "url": "http://127.0.0.1:20765/" }
   ],
   "locations": [
     {
@@ -44,11 +33,6 @@
       "runtime": "termux",
       "path": "/data/data/com.termux/files/home/.pi",
       "purpose": "Pi conversations, settings, extensions, skills, and package state preserved across upgrades"
-    },
-    {
-      "runtime": "termux",
-      "path": "/data/data/com.termux/files/home/smallphoneai-repos/pi-web",
-      "purpose": "Termux native pi-web payload install source"
     }
   ],
   "ai": {

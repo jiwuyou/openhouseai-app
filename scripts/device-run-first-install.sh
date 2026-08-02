@@ -239,17 +239,6 @@ run_bootstrap_stage() {
   run_logged "$@"
 }
 
-run_aionui_stage() {
-  local script="$HOME/.smallphoneai-bootstrap/apk-assets/maintainer/install-aionui.sh"
-  stage_begin "install_aionui" "Install AionUi workspace"
-  if [ ! -f "$script" ]; then
-    log "missing AionUi maintainer script: $script"
-    exit 1
-  fi
-  # shellcheck source=/dev/null
-  . "$script"
-}
-
 log "__OPENHOUSE_INSTALL_TASK__:full"
 log "==> OpenHouse first install from synced assets"
 log "bootstrap=$SMALLPHONEAI_BOOTSTRAP"
@@ -270,21 +259,15 @@ run_bootstrap_stage "install_termux_node" "Install Termux Node.js" \
 run_bootstrap_stage "install_pi_agent" "Install pi-agent without service registration" \
   bash "$SMALLPHONEAI_BOOTSTRAP" install-pi-agent
 
-run_bootstrap_stage "install_pi_web" "Install pi-web without service registration" \
-  bash "$SMALLPHONEAI_BOOTSTRAP" install-pi-web
-
-run_bootstrap_stage "start_pi_web_rescue" "Start independent pi-web rescue on 30142" \
-  bash "$SMALLPHONEAI_BOOTSTRAP" start-pi-web-rescue
-
 run_bootstrap_stage "install_service_manager" "Install and start service-manager" \
   bash "$SMALLPHONEAI_BOOTSTRAP" install-service-manager
 
 run_bootstrap_stage "register_pi_services" "Register installed pi services" \
   bash "$SMALLPHONEAI_BOOTSTRAP" register-pi-services
 
-run_bootstrap_stage "start_smallphone" "Start pi-agent and pi-web" \
+run_bootstrap_stage "start_smallphone" "Start pi-agent" \
   env \
-    SMALLPHONEAI_START_TARGETS=pi-agent,pi-web \
+    SMALLPHONEAI_START_TARGETS=pi-agent \
     SMALLPHONEAI_START_READY_TIMEOUT="${SMALLPHONEAI_EARLY_PI_START_READY_TIMEOUT:-45}" \
     bash "$SMALLPHONEAI_BOOTSTRAP" start
 
@@ -302,8 +285,6 @@ run_bootstrap_stage "install_node" "Install Ubuntu Node.js" \
 
 run_bootstrap_stage "sync_official_docs" "Sync official docs" \
   bash "$SMALLPHONEAI_BOOTSTRAP" sync-docs
-
-run_aionui_stage
 
 run_bootstrap_stage "sync_openhouse_registry" "Sync OpenHouse registry" \
   bash "$SMALLPHONEAI_BOOTSTRAP" registry-sync

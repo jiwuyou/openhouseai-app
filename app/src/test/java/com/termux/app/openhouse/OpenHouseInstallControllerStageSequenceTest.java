@@ -22,8 +22,6 @@ public class OpenHouseInstallControllerStageSequenceTest {
             "INSTALL_WUYOU",
             "INSTALL_TERMUX_NODE",
             "INSTALL_PI_AGENT",
-            "INSTALL_PI_WEB",
-            "START_PI_WEB_RESCUE",
             "INSTALL_SERVICE_MANAGER",
             "REGISTER_PI_SERVICES",
             "START_SMALLPHONE",
@@ -40,7 +38,6 @@ public class OpenHouseInstallControllerStageSequenceTest {
         Assert.assertEquals(Arrays.asList(
             "INSTALL_NODE",
             "SYNC_OFFICIAL_DOCS",
-            "INSTALL_AIONUI",
             "INSTALL_SMALLPHONE",
             "SYNC_OPENHOUSE_REGISTRY"
         ), stages);
@@ -55,8 +52,6 @@ public class OpenHouseInstallControllerStageSequenceTest {
             "INSTALL_WUYOU",
             "INSTALL_TERMUX_NODE",
             "INSTALL_PI_AGENT",
-            "INSTALL_PI_WEB",
-            "START_PI_WEB_RESCUE",
             "INSTALL_SERVICE_MANAGER",
             "REGISTER_PI_SERVICES",
             "START_SMALLPHONE",
@@ -65,7 +60,6 @@ public class OpenHouseInstallControllerStageSequenceTest {
             "UBUNTU_PACKAGES",
             "INSTALL_NODE",
             "SYNC_OFFICIAL_DOCS",
-            "INSTALL_AIONUI",
             "INSTALL_SMALLPHONE",
             "SYNC_OPENHOUSE_REGISTRY"
         ), stageNames("FULL_STAGE_SEQUENCE"));
@@ -76,13 +70,28 @@ public class OpenHouseInstallControllerStageSequenceTest {
         OpenHouseStatus status = new OpenHouseStatus(
             true, false, true, true, false, false,
             true, false, false, false, false, false,
-            true, true, true, false, false, false,
+            true, true, false, false, false, false,
             false, false, false, false, false, false,
             "", false, ""
         );
 
         Assert.assertTrue(status.isRuntimeEnvironmentPrepared());
-        Assert.assertEquals("准备 Ubuntu Node.js 24 LTS 工作台运行时", status.getNextStepLabel());
+        Assert.assertEquals("启动 WuxianPi 核心服务", status.getNextStepLabel());
+    }
+
+    @Test
+    public void coreReadinessDoesNotRequireStandalonePiWebOrAionUi() {
+        OpenHouseStatus status = new OpenHouseStatus(
+            true, false, true, true, false, false,
+            true, false, false, false, false, false,
+            true, true, false, false, false, false,
+            false, true, true, false, false, false,
+            "", false, ""
+        );
+
+        Assert.assertTrue(status.isFirstUseReady());
+        Assert.assertEquals(100, status.getProgressPercent());
+        Assert.assertEquals("WuxianPi 核心服务已可使用", status.getNextStepLabel());
     }
 
     @Test
@@ -103,6 +112,12 @@ public class OpenHouseInstallControllerStageSequenceTest {
             "private boolean isCoreOneClickStage",
             "private void ensureStageAfter")
             .contains("CONFIGURE_ENTRY_UBUNTU"));
+        String oneClickSequence = methodSource(
+            maintenance,
+            "private List<StageAction> getOneClickStageSequence()",
+            "private boolean isCoreOneClickStage");
+        Assert.assertFalse(oneClickSequence.contains("INSTALL_PI_WEB"));
+        Assert.assertFalse(oneClickSequence.contains("START_PI_WEB_RESCUE"));
     }
 
     @Test

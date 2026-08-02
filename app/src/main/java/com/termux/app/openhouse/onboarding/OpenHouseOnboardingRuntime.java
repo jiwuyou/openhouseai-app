@@ -247,18 +247,12 @@ public final class OpenHouseOnboardingRuntime {
             return 0;
         }
         int done = 0;
-        int total = 11;
+        int total = 5;
         if (status.termuxNodeInstalled) done++;
-        if (status.ubuntuNodeInstalled) done++;
-        if (status.officialDocsSynced) done++;
         if (status.serviceManagerInstalled) done++;
         if (status.piAgentInstalled) done++;
-        if (status.piWebInstalled) done++;
-        if (status.smallPhoneRuntimeInstalled) done++;
-        if (status.aionUiInstalled) done++;
-        if (status.registrySynced) done++;
+        if (status.serviceManagerReachable) done++;
         if (status.piWebReachable) done++;
-        if (status.aionUiReachable) done++;
         return Math.round((done * 100f) / total);
     }
 
@@ -282,22 +276,13 @@ public final class OpenHouseOnboardingRuntime {
         if (status == null) {
             return "正在安装 AI 功能";
         }
-        if (!status.termuxNodeInstalled || !status.serviceManagerInstalled || !status.piAgentInstalled || !status.piWebInstalled) {
-            return "正在安装 Termux Pi 运行栈";
+        if (!status.serviceManagerInstalled || !status.piAgentInstalled) {
+            return "正在安装 WuxianPi 核心服务";
         }
-        if (!status.ubuntuNodeInstalled) {
-            return "正在安装 Ubuntu Node.js 24 LTS 工作台运行时";
+        if (!status.serviceManagerReachable || !status.piWebReachable) {
+            return "正在启动 WuxianPi 核心服务";
         }
-        if (!status.aionUiInstalled) {
-            return "正在安装本地 AI 页面";
-        }
-        if (!status.officialDocsSynced || !status.registrySynced || !status.smallPhoneRuntimeInstalled) {
-            return "正在同步组件信息";
-        }
-        if (!status.piWebReachable || !status.aionUiReachable) {
-            return "正在启动 AI 功能";
-        }
-        return "正在确认 AI 功能";
+        return "正在确认 WuxianPi 核心服务";
     }
 
     public InstallTask getInstallTask(OpenHouseInstallState state) {

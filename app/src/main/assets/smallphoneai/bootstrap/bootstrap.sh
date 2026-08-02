@@ -626,23 +626,19 @@ run_full_install() {
   SMALLPHONEAI_COMPONENT_TARGETS=wuyou \
     SMALLPHONEAI_COMPONENT_ACTION=install-check \
     run_stage 50-install-runtime-components.sh
+  run_stage 13-install-termux-node.sh
   SMALLPHONEAI_COMPONENT_TARGETS=pi-agent \
     SMALLPHONEAI_COMPONENT_ACTION=install-check \
     run_stage 50-install-runtime-components.sh
-  run_stage 13-install-termux-node.sh
-  SMALLPHONEAI_COMPONENT_TARGETS=pi-web \
-    SMALLPHONEAI_COMPONENT_ACTION=install-check \
-    run_stage 50-install-runtime-components.sh
-  run_stage start-pi-web-rescue.sh
   SMALLPHONEAI_COMPONENT_TARGETS=service-manager \
     SMALLPHONEAI_COMPONENT_ACTION=install-register \
     SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
     run_stage 50-install-runtime-components.sh
-  SMALLPHONEAI_COMPONENT_TARGETS=pi-agent,pi-web \
+  SMALLPHONEAI_COMPONENT_TARGETS=pi-agent \
     SMALLPHONEAI_COMPONENT_ACTION=register-only \
     SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
     run_stage 50-install-runtime-components.sh
-  SMALLPHONEAI_START_TARGETS=pi-agent,pi-web \
+  SMALLPHONEAI_START_TARGETS=pi-agent \
     SMALLPHONEAI_START_READY_TIMEOUT="${SMALLPHONEAI_EARLY_PI_START_READY_TIMEOUT:-45}" \
     run_stage 60-start-smallphone.sh
   SMALLPHONEAI_COMPONENT_TARGETS=openhouse-web \
@@ -758,9 +754,7 @@ main() {
       return
       ;;
     install-pi-web)
-      SMALLPHONEAI_COMPONENT_TARGETS=pi-web \
-        SMALLPHONEAI_COMPONENT_ACTION=install-check \
-        run_stage 50-install-runtime-components.sh
+      log "当前精简 APK 不内置 pi-web，跳过离线安装。"
       return
       ;;
     start-pi-web-rescue)
@@ -775,7 +769,7 @@ main() {
       return
       ;;
     register-pi-services)
-      SMALLPHONEAI_COMPONENT_TARGETS=pi-agent,pi-web \
+      SMALLPHONEAI_COMPONENT_TARGETS=pi-agent \
         SMALLPHONEAI_COMPONENT_ACTION=register-only \
         SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
         run_stage 50-install-runtime-components.sh
@@ -852,9 +846,9 @@ main() {
       return
       ;;
     repair)
-      run_stage 50-install-runtime-components.sh
+      SMALLPHONEAI_COMPONENT_TARGETS=service-manager,pi-agent run_stage 50-install-runtime-components.sh
       run_stage 48-sync-openhouse-registry.sh
-      run_stage 60-start-smallphone.sh
+      SMALLPHONEAI_START_TARGETS=pi-agent run_stage 60-start-smallphone.sh
       run_machine_stage 65-smallphone-status.sh status
       return
       ;;

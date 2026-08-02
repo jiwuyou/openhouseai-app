@@ -254,13 +254,13 @@ if [ -n "$bootstrap" ]; then
     OPENHOUSE_PI_RUNTIME="${OPENHOUSE_PI_RUNTIME:-termux}" \
     SMALLPHONEAI_PI_RUNTIME="${SMALLPHONEAI_PI_RUNTIME:-termux}" \
     OPENHOUSE_PI_NODE_RUNTIME="${OPENHOUSE_PI_NODE_RUNTIME:-termux}" \
-    SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-pi-agent,pi-web}" \
+    SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-pi-agent}" \
     bash "$bootstrap" start
   exit $?
 fi
 
 log "未找到 SmallPhoneAI bootstrap.sh，使用 APK 内置启动钩子启动已安装组件。"
-export SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-pi-agent,pi-web}"
+export SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-pi-agent}"
 require_ubuntu
 
 run_ubuntu_logged env \
@@ -384,12 +384,12 @@ service_manager_dir="${SMALLPHONEAI_SERVICE_MANAGER_DIR:-$(default_path /root/pr
 cc_connect_dir="${SMALLPHONEAI_CC_CONNECT_DIR:-$(default_path /root/cc-connect-fresh openhouse-connect)}"
 smallphone_dir="${SMALLPHONEAI_SMALLPHONE_DIR:-$(default_path /root/projects/smallphone/smallphone-active smallphone-active)}"
 pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$(default_path /root/projects/pi pi-runtime)}}"
-pi_web_dir="${OPENHOUSE_PI_WEB_DIR:-${SMALLPHONEAI_PI_WEB_DIR:-$(default_path /root/projects/pi-web pi-web)}}"
 bind="$(configured_service_manager_bind)"
 sm_url="$(configured_service_manager_url)"
 smallphone_url="${SMALLPHONEAI_SMALLPHONE_URL:-http://127.0.0.1:22082/}"
 smallphone_core_url="${SMALLPHONEAI_SMALLPHONE_CORE_URL:-http://127.0.0.1:22000/}"
-pi_web_url="${OPENHOUSE_PI_WEB_URL:-${PI_WEB_URL:-http://127.0.0.1:30141/}}"
+pi_runtime_host="${OPENHOUSE_PI_RUNTIME_HOST:-127.0.0.1}"
+pi_runtime_port="${OPENHOUSE_PI_RUNTIME_PORT:-20765}"
 cc_url="${SMALLPHONEAI_CC_CONNECT_URL:-http://127.0.0.1:21040/}"
 log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
 
@@ -432,6 +432,12 @@ probe_url() {
   curl -fsS --max-time 2 "$1" >/dev/null 2>&1
 }
 
+probe_tcp() {
+  local host="$1" port="$2"
+  command -v timeout >/dev/null 2>&1 || return 1
+  timeout 2 bash -c ': >/dev/tcp/$1/$2' _ "$host" "$port" >/dev/null 2>&1
+}
+
 service_manager_ready() {
   probe_url "$sm_url/api/v1/health" || probe_url "$sm_url/"
 }
@@ -440,9 +446,6 @@ normalize_start_target() {
   case "${1:-}" in
     pi|pi-agent)
       printf 'pi-agent'
-      ;;
-    web|pi-web)
-      printf 'pi-web'
       ;;
     smallphone|phone)
       printf 'smallphone'
@@ -485,7 +488,7 @@ start_target_requested() {
 
 stack_ready() {
   service_manager_ready || return 1
-  if start_target_requested "pi-web" && ! probe_url "$pi_web_url"; then
+  if start_target_requested "pi-agent" && ! probe_tcp "$pi_runtime_host" "$pi_runtime_port"; then
     return 1
   fi
   if start_target_requested "smallphone" && ! probe_url "$smallphone_url"; then
@@ -656,7 +659,6 @@ fi
 start_target_requested "cc-connect" && register_if_present "cc-connect/openhouse-connect" "$cc_connect_dir"
 start_target_requested "smallphone" && register_if_present "SmallPhone" "$smallphone_dir"
 start_target_requested "pi-agent" && register_if_present "pi-agent" "$pi_agent_dir"
-start_target_requested "pi-web" && register_if_present "pi-web" "$pi_web_dir"
 
 if ! command -v curl >/dev/null 2>&1; then
   warn "缺少 curl，无法调用 service-manager。"
@@ -685,6 +687,7 @@ printf 'header = "Authorization: Bearer %s"\n' "$sm_token" > "$work_dir/curl.cfg
 
 start_service_if_present() {
   local service_id="$1"
+  [ "$service_id" != "pi-agent" ] || service_id="yuanshengwuxianpi"
   if curl -q -fsS --max-time 10 -X POST -K "$work_dir/curl.cfg" "$sm_url/api/v1/services/$service_id/start" >/dev/null 2>&1; then
     log "service-manager: 已请求启动 $service_id。"
   else
@@ -695,7 +698,6 @@ start_service_if_present() {
 if [ -n "${SMALLPHONEAI_START_TARGETS:-}" ]; then
   log "正在通过 service-manager 启动指定服务：${SMALLPHONEAI_START_TARGETS}"
   start_target_requested "pi-agent" && start_service_if_present "pi-agent"
-  start_target_requested "pi-web" && start_service_if_present "pi-web"
   start_target_requested "smallphone-core" && start_service_if_present "smallphone-core"
   start_target_requested "smallphone" && start_service_if_present "smallphone-frontend-beta"
 else
@@ -705,7 +707,7 @@ fi
 
 for _ in $(seq 1 45); do
   if stack_ready; then
-    log "SmallPhoneAI 运行栈已就绪：pi-web=$pi_web_url service-manager=$sm_url SmallPhone=$smallphone_url SmallPhone core=$smallphone_core_url"
+    log "SmallPhoneAI 运行栈已就绪：pi-agent=${pi_runtime_host}:${pi_runtime_port} service-manager=$sm_url SmallPhone=$smallphone_url SmallPhone core=$smallphone_core_url"
     log "cc-connect/openhouse-connect 为可修复的可选服务：$cc_url"
     exit 0
   fi
@@ -713,9 +715,9 @@ for _ in $(seq 1 45); do
 done
 
 warn "SmallPhoneAI 运行栈启动后仍未达到 pi 主线就绪条件。"
-printf 'service-manager=%s\npi-web=%s\nSmallPhone=%s\nSmallPhone Core=%s\ncc-connect=%s\n' \
+printf 'service-manager=%s\npi-agent=%s\nSmallPhone=%s\nSmallPhone Core=%s\ncc-connect=%s\n' \
   "$(service_manager_ready && printf reachable || printf down)" \
-  "$(probe_url "$pi_web_url" && printf reachable || printf down)" \
+  "$(probe_tcp "$pi_runtime_host" "$pi_runtime_port" && printf reachable || printf down)" \
   "$(probe_url "$smallphone_url" && printf reachable || printf down)" \
   "$(probe_url "$smallphone_core_url" && printf reachable || printf down)" \
   "$(cc_connect_disabled && printf disabled || { probe_url "$cc_url" && printf reachable || printf down; })"

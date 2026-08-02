@@ -101,7 +101,7 @@ public final class OpenHouseStatus {
     }
 
     public boolean isFirstUseReady() {
-        return serviceManagerReachable && piWebReachable && aionUiInstalled && aionUiReachable;
+        return serviceManagerReachable && piAgentInstalled && piWebReachable;
     }
 
     public boolean isRuntimeEnvironmentPrepared() {
@@ -110,7 +110,6 @@ public final class OpenHouseStatus {
             && termuxNodeInstalled
             && serviceManagerInstalled
             && piAgentInstalled
-            && piWebInstalled
             && ubuntuInstalled;
     }
 
@@ -139,43 +138,23 @@ public final class OpenHouseStatus {
         }
 
         int done = 0;
-        int total = 16;
+        int total = 7;
         if (termuxReady) done++;
         if (productPrepared) done++;
         if (termuxNodeInstalled) done++;
-        if (ubuntuInstalled) done++;
-        if (ubuntuNodeInstalled) done++;
-        if (officialDocsSynced) done++;
         if (serviceManagerInstalled) done++;
         if (piAgentInstalled) done++;
-        if (piWebInstalled) done++;
-        if (smallPhoneRuntimeInstalled) done++;
-        if (aionUiInstalled) done++;
-        if (registrySynced) done++;
         if (serviceManagerReachable) done++;
         if (piWebReachable) done++;
-        if (smallPhoneReachable) done++;
-        if (aionUiReachable) done++;
         return Math.round((done * 100f) / total);
     }
 
     public String getNextStepLabel() {
-        if (isFirstUseReady()) return "AI 功能已可使用";
+        if (isFirstUseReady()) return "WuxianPi 核心服务已可使用";
         if (!termuxReady || !productPrepared) return "准备基础组件";
         if (!termuxNodeInstalled) return "准备 Termux Node.js 24 LTS/npm";
-        if (!ubuntuInstalled) return "准备运行环境";
-        if (!ubuntuNodeInstalled) return "准备 Ubuntu Node.js 24 LTS 工作台运行时";
-        if (!officialDocsSynced
-            || !serviceManagerInstalled
-            || !piAgentInstalled
-            || !piWebInstalled
-            || !smallPhoneRuntimeInstalled) {
-            return "安装 AI 功能组件";
-        }
-        if (!aionUiInstalled) return "安装本地 AI 页面";
-        if (!registrySynced) return "同步组件信息";
-        if (!serviceManagerReachable || !piWebReachable || !smallPhoneReachable) return "启动本地服务";
-        if (!aionUiReachable) return "启动本地 AI 页面";
-        return "OpenHouse AI 已就绪";
+        if (!serviceManagerInstalled || !piAgentInstalled) return "安装 WuxianPi 核心服务";
+        if (!serviceManagerReachable || !piWebReachable) return "启动 WuxianPi 核心服务";
+        return "WuxianPi 核心服务已就绪";
     }
 }

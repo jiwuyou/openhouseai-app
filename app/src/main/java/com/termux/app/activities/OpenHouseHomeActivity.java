@@ -167,7 +167,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
     private static final String MENU_OVERRIDES_RELATIVE_PATH = ".config/openhouseai/menu-overrides.json";
     private static final String CC_CODEX_TITLE = "cc/codex";
     private static final String PI_WEB_TITLE = "pi-agent";
-    private static final String PI_WEB_DEFAULT_URL = "http://127.0.0.1:30141/";
+    private static final String PI_WEB_DEFAULT_URL = "http://127.0.0.1:20765/";
     private static final String HOME_USAGE_TUTORIAL_TAG = "openhouse_home_usage_tutorial";
     private static final String HOME_CORE_SERVICES_BUTTON_TAG = "openhouse_core_services_start";
     private static final String AI_FRIEND_HELP_ENTRY_TAG = "ai_friend_help_entry";
@@ -1474,7 +1474,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         fallback.addView(title);
 
         TextView body = new TextView(this);
-        body.setText("没有连接到 " + getPiWebUrl() + "。可以先进入运行控制启动或修复 pi-web，然后回到本页刷新。");
+        body.setText("没有连接到 " + getPiWebUrl() + "。可以先进入运行控制启动或修复 WuxianPi，然后回到本页刷新。");
         body.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
         body.setTextSize(14);
         body.setGravity(Gravity.CENTER);
@@ -3615,7 +3615,9 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         }
         for (String name : component.serviceNames) {
             String normalizedName = normalizeId(name);
-            if ("pi-web".equals(normalizedName) || "pi-agent".equals(normalizedName)) {
+            if ("pi-web".equals(normalizedName)
+                || "pi-agent".equals(normalizedName)
+                || "yuanshengwuxianpi".equals(normalizedName)) {
                 return true;
             }
         }
@@ -5237,7 +5239,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         LinearLayout panel = panel();
         addTitle(panel, usageCoreServicesMode ? "启动核心服务" : "使用教学", 19);
         if (usageCoreServicesMode) {
-            addBody(panel, "通常应用在前台会自动保持核心服务运行。这里保留手动启动入口，用于页面提示未运行或需要主动修复时使用。这个动作会拉起 service-manager、pi-agent/pi-web 和 SmallPhone 兼容入口；openhouse-connect 会作为可修复连接服务尝试启动；cc/codex 后续由 pi-agent 安装配置。");
+            addBody(panel, "通常应用在前台会自动保持核心服务运行。这里保留手动启动入口，用于页面提示未运行或需要主动修复时使用。这个动作会拉起 service-manager 和 WuxianPi 核心服务；SmallPhone、openhouse-connect 等兼容服务可在运行控制中按需处理；cc/codex 后续由 pi-agent 安装配置。");
             usageCoreServicesProgressView = new TextView(this);
             usageCoreServicesProgressView.setText(usageCoreServicesFailed
                 ? "上次启动没有完成。请重试启动核心服务，或返回菜单稍后从运行控制处理。"
@@ -5272,7 +5274,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
 
     private void renderManualPage() {
         addManualSection("安装时建议阅读",
-            "第一次安装通常需要 10 分钟到半小时，期间会下载较大的运行环境，建议在 Wi-Fi 下进行。openhouse ai 会准备 Ubuntu、Node、pi-agent、pi-web、service-manager 和 SmallPhone 兼容服务；openhouse-connect 保留为可修复连接服务。");
+            "第一次安装通常需要 10 分钟到半小时，期间会下载较大的运行环境，建议在 Wi-Fi 下进行。openhouse ai 会准备 Ubuntu、Node、WuxianPi 核心运行时和 service-manager；SmallPhone、openhouse-connect 等兼容服务可后续按需处理。");
         addManualSection("首次安装之后",
             "安装链路只负责把环境装好。安装完成后，service-manager 才是运行控制平面，用于查看、启动、停止和修复内置服务。");
         addManualSection("终端里的 AI 怎么用",
@@ -5282,7 +5284,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
         addManualSection("CloudCLI 和 SmallPhone",
             "CloudCLI 提供 cc/codex 统一入口，但不再是首次安装必需项。SmallPhone 是本机页面和兼容运行栈入口。两者的服务状态可从运行控制或维护中心查看。");
         addManualSection("pi-agent",
-            "pi-agent 是默认 agent 和插件体系入口，和 SmallPhone、cc/codex 一样是菜单侧边栏一级服务。完成安装后，它会由 service-manager 管理，默认地址为 " + PI_WEB_DEFAULT_URL + "。");
+            "pi-agent 是 WuxianPi 的默认 agent 和插件体系入口，和 SmallPhone、cc/codex 一样是菜单侧边栏一级服务。完成安装后，它会由 service-manager 管理，默认地址为 " + PI_WEB_DEFAULT_URL + "。");
         addManualSection("底部快捷键",
             "底部按键包含 ESC、TAB、CTRL、ALT、方向键、键盘、Termux、Ubuntu、exit、clear，以及常用 AI 快捷键。exit 用于退出当前 shell；Ubuntu 用于进入 Ubuntu /root。按键支持自定义和多页，可以直接让 AI 帮你修改常用命令。");
     }
@@ -5541,7 +5543,7 @@ public class OpenHouseHomeActivity extends AppCompatActivity {
             usageCoreServicesStartButton.setEnabled(false);
             usageCoreServicesStartButton.setText("启动中...");
         }
-        setUsageCoreServicesProgress("正在启动 service-manager、pi-agent、pi-web 和 SmallPhone 兼容入口，并尝试拉起 openhouse-connect...");
+        setUsageCoreServicesProgress("正在启动 service-manager 和 WuxianPi 核心服务...");
         backgroundExecutor.execute(() -> {
             OpenHouseMaintainerRunner runner = new OpenHouseMaintainerRunner(this);
             OpenHouseMaintainerRunner.Result stackResult =

@@ -101,7 +101,7 @@ public final class ServiceManagerServiceResolver {
         LinkedHashMap<String, String> aliases
     ) {
         if ("pi-agent".equals(aliasKey(componentId))) {
-            addAliasToTargetIfPresent(aliases, servicesById, "pi-agent", "pi-web");
+            addAliasToTargetIfPresent(aliases, servicesById, "pi-agent", "yuanshengwuxianpi");
         }
     }
 
