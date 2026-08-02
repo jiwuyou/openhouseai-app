@@ -315,7 +315,12 @@ fun DrawerContent(
                         Spacer(modifier = Modifier.height(4.dp))
                         CompactNavigationDrawerItem(
                                 icon = Icons.Default.Close,
-                                label = hostedCloseLabel,
+                                label =
+                                        if (hostMode == OperitHostMode.BASIC) {
+                                                "关闭基础模式"
+                                        } else {
+                                                hostedCloseLabel
+                                        },
                                 selected = false,
                                 appearance = appearance,
                                 onClick = handleCloseHostedOperit
@@ -446,7 +451,12 @@ fun CollapsedDrawerContent(
                                 IconButton(onClick = onCloseHostedOperit) {
                                         Icon(
                                                 imageVector = Icons.Default.Close,
-                                                contentDescription = hostedCloseLabel,
+                                                contentDescription =
+                                                        if (hostMode == OperitHostMode.BASIC) {
+                                                                "关闭基础模式"
+                                                        } else {
+                                                                hostedCloseLabel
+                                                        },
                                                 tint = appearance.itemColor,
                                                 modifier = Modifier.size(24.dp)
                                         )
@@ -880,26 +890,27 @@ private fun DrawerBottomShortcutRow(
         hostMode: OperitHostMode,
         onNavItemClick: (NavItem) -> Unit
 ) {
-        if (hostMode.isHosted) return
         Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
         ) {
-                BottomShortcutDrawerItem(
-                        modifier = Modifier.weight(1f),
-                        item = NavItem.About,
-                        selected = selectedItem == NavItem.About,
-                        appearance = appearance,
-                        onClick = { onNavItemClick(NavItem.About) }
-                )
-                BottomShortcutDrawerItem(
-                        modifier = Modifier.weight(1f),
-                        item = NavItem.Help,
-                        selected = selectedItem == NavItem.Help,
-                        appearance = appearance,
-                        onClick = { onNavItemClick(NavItem.Help) }
-                )
+                if (!hostMode.isHosted) {
+                        BottomShortcutDrawerItem(
+                                modifier = Modifier.weight(1f),
+                                item = NavItem.About,
+                                selected = selectedItem == NavItem.About,
+                                appearance = appearance,
+                                onClick = { onNavItemClick(NavItem.About) }
+                        )
+                        BottomShortcutDrawerItem(
+                                modifier = Modifier.weight(1f),
+                                item = NavItem.Help,
+                                selected = selectedItem == NavItem.Help,
+                                appearance = appearance,
+                                onClick = { onNavItemClick(NavItem.Help) }
+                        )
+                }
                 BottomShortcutDrawerItem(
                         modifier = Modifier.weight(1f),
                         item = NavItem.Settings,
