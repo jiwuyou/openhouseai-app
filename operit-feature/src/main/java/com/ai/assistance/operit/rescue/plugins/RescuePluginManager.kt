@@ -1,6 +1,11 @@
 package com.ai.assistance.operit.rescue.plugins
 
 import android.content.Context
+import com.ai.assistance.operit.core.tools.javascript.JsEngine
+import com.ai.assistance.operit.core.tools.javascript.extractJsExecutionFailure
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -96,6 +101,8 @@ class RescuePluginManager private constructor(context: Context) {
     private val catalogClient = RescuePluginCatalogClient(settings)
     private val store = RescuePluginStore(appContext, catalogClient)
     private val workflowRunner = RescuePluginWorkflowRunner(store)
+    private val contextJsEngine by lazy { JsEngine(appContext) }
+    private val contextJsLock = Any()
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val firstInstallPreparation =
         FirstInstallPreparationCoordinator(
@@ -139,14 +146,81 @@ class RescuePluginManager private constructor(context: Context) {
             .put("content", store.readFile(pluginId, path))
     }
 
-    suspend fun assistantInstructions(): List<String> =
-        try {
-            selectRescuePluginAssistantInstructions(store.readActiveAssistantInstructions())
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            emptyList()
+    suspend fun assistantContext(scope: String, userMessage: String? = null): String =
+        withContext(Dispatchers.IO) {
+            try {
+                val normalizedScope = scope.trim().lowercase()
+                require(normalizedScope == "session" || normalizedScope == "turn") {
+                    "assistant context scope must be session or turn"
+                }
+                val resolved = mutableListOf<String>()
+                var executableContexts = 0
+                store.readActiveAssistantContexts()
+                    .filter { it.context.scope == normalizedScope }
+                    .forEach { candidate ->
+                        if (
+                            candidate.context.provider == "javascript" &&
+                                executableContexts++ >= MAX_EXECUTABLE_ASSISTANT_CONTEXTS
+                        ) {
+                            return@forEach
+                        }
+                        try {
+                            resolveAssistantContext(candidate, normalizedScope, userMessage)
+                                ?.let(resolved::add)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // A broken executable provider must not suppress other active plugins.
+                        }
+                    }
+                selectRescuePluginAssistantContexts(resolved).joinToString("\n\n")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                ""
+            }
         }
+
+    private fun resolveAssistantContext(
+        candidate: ActiveRescuePluginAssistantContext,
+        scope: String,
+        userMessage: String?,
+    ): String? {
+        if (candidate.context.provider == "static") return candidate.content
+        val functionName = candidate.context.functionName ?: return null
+        val now = OffsetDateTime.now()
+        val params =
+            mapOf<String, Any?>(
+                "pluginId" to candidate.pluginId,
+                "pluginVersion" to candidate.pluginVersion,
+                "pluginRoot" to candidate.pluginRoot,
+                "contextPath" to candidate.path,
+                "scope" to scope,
+                "message" to userMessage,
+                "__operit_plugin_id" to candidate.pluginId,
+                "nowEpochMs" to System.currentTimeMillis(),
+                "currentTimeIso" to now.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                "timezone" to ZoneId.systemDefault().id,
+            )
+        val result =
+            synchronized(contextJsLock) {
+                contextJsEngine.executeScriptFunction(
+                    script = candidate.content,
+                    functionName = functionName,
+                    params = params,
+                    timeoutSec = ASSISTANT_CONTEXT_TIMEOUT_SECONDS,
+                )
+            }
+        if (extractJsExecutionFailure(result) != null) return null
+        return when (result) {
+            null -> null
+            is JSONObject -> {
+                if (!result.optBoolean("success", true)) null
+                else result.opt("value")?.toString() ?: result.optString("content").takeIf { it.isNotBlank() }
+            }
+            else -> result.toString()
+        }
+    }
 
     fun prewarmFirstInstall() {
         firstInstallPreparation.prewarm()
@@ -284,6 +358,8 @@ class RescuePluginManager private constructor(context: Context) {
 
     companion object {
         private const val FIRST_INSTALL_PREPARATION_TIMEOUT_MILLIS = 30_000L
+        private const val ASSISTANT_CONTEXT_TIMEOUT_SECONDS = 2L
+        private const val MAX_EXECUTABLE_ASSISTANT_CONTEXTS = 4
 
         @Volatile private var instance: RescuePluginManager? = null
 
@@ -294,21 +370,21 @@ class RescuePluginManager private constructor(context: Context) {
     }
 }
 
-internal fun selectRescuePluginAssistantInstructions(
-    candidates: List<ActiveRescuePluginAssistantInstruction>,
-    maxBytesPerInstruction: Int = 4 * 1024,
+internal fun selectRescuePluginAssistantContexts(
+    candidates: List<String>,
+    maxBytesPerContext: Int = 4 * 1024,
     maxTotalBytes: Int = 16 * 1024,
 ): List<String> {
-    require(maxBytesPerInstruction > 0) { "maxBytesPerInstruction must be positive" }
+    require(maxBytesPerContext > 0) { "maxBytesPerContext must be positive" }
     require(maxTotalBytes > 0) { "maxTotalBytes must be positive" }
     val selected = mutableListOf<String>()
     val seen = mutableSetOf<String>()
     var totalBytes = 0
     candidates.forEach { candidate ->
-        val content = candidate.content.trim()
+        val content = candidate.trim()
         if (content.isEmpty() || !seen.add(content)) return@forEach
         val size = content.toByteArray(Charsets.UTF_8).size
-        if (size > maxBytesPerInstruction || totalBytes + size > maxTotalBytes) return@forEach
+        if (size > maxBytesPerContext || totalBytes + size > maxTotalBytes) return@forEach
         selected += content
         totalBytes += size
     }

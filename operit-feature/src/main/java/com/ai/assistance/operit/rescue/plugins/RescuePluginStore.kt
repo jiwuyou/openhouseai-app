@@ -30,8 +30,11 @@ data class InstalledRescuePlugin(
             .put("bundled", bundled)
 }
 
-internal data class ActiveRescuePluginAssistantInstruction(
+internal data class ActiveRescuePluginAssistantContext(
     val pluginId: String,
+    val pluginVersion: String,
+    val pluginRoot: String,
+    val context: RescuePluginAssistantContext,
     val path: String,
     val content: String,
 )
@@ -73,7 +76,7 @@ internal class RescuePluginArchiveInstaller(private val stagingRoot: File) {
             }
             RescuePluginContract.requireCompatible(manifest)
             manifest.entryWorkflow?.let { requirePluginFile(staging, it) }
-            manifest.assistantInstructions.forEach { requirePluginFile(staging, it.path) }
+            manifest.assistantContexts.forEach { requirePluginFile(staging, it.path) }
             manifest.documents.forEach { requirePluginFile(staging, it.path) }
             return staging to manifest
         } catch (failure: Throwable) {
@@ -173,25 +176,45 @@ internal class RescuePluginInstalledReader(private val installedRoot: File) {
         )
     }
 
-    fun readActiveAssistantInstructions(state: JSONObject): List<ActiveRescuePluginAssistantInstruction> =
-        state.keys().asSequence()
-            .toList()
-            .sorted()
-            .flatMap { pluginId ->
-                val installed = readActive(state, pluginId) ?: return@flatMap emptyList()
-                val pluginRoot = versionDirectory(installed.manifest.id, installed.activeVersion)
-                    .canonicalFile
-                installed.manifest.assistantInstructions.mapNotNull { instruction ->
+    fun readActiveAssistantContexts(state: JSONObject): List<ActiveRescuePluginAssistantContext> {
+        val contexts = mutableListOf<ActiveRescuePluginAssistantContext>()
+        var totalSourceBytes = 0L
+        state.keys().asSequence().toList().sorted().forEach { pluginId ->
+            val installed = readActive(state, pluginId) ?: return@forEach
+            val pluginRoot =
+                versionDirectory(installed.manifest.id, installed.activeVersion).canonicalFile
+            installed.manifest.assistantContexts.forEach { context ->
+                if (contexts.size >= MAX_ASSISTANT_CONTEXTS) return@forEach
+                val candidate =
                     runCatching {
-                        val file = requirePluginFile(pluginRoot, instruction.path)
-                        ActiveRescuePluginAssistantInstruction(
+                        val file = requirePluginFile(pluginRoot, context.path)
+                        val sourceBytes = file.length()
+                        val perFileLimit =
+                            if (context.provider == "javascript") {
+                                MAX_JAVASCRIPT_CONTEXT_SOURCE_BYTES
+                            } else {
+                                MAX_STATIC_CONTEXT_SOURCE_BYTES
+                            }
+                        require(sourceBytes in 0..perFileLimit) {
+                            "Plugin assistant context is larger than the supported limit: ${context.path}"
+                        }
+                        require(totalSourceBytes + sourceBytes <= MAX_TOTAL_CONTEXT_SOURCE_BYTES) {
+                            "Plugin assistant contexts exceed the supported total limit"
+                        }
+                        ActiveRescuePluginAssistantContext(
                             pluginId = installed.manifest.id,
-                            path = instruction.path,
+                            pluginVersion = installed.activeVersion,
+                            pluginRoot = pluginRoot.absolutePath,
+                            context = context,
+                            path = context.path,
                             content = file.readText(),
-                        )
+                        ).also { totalSourceBytes += sourceBytes }
                     }.getOrNull()
-                }
+                if (candidate != null) contexts += candidate
             }
+        }
+        return contexts
+    }
 
     private fun readManifest(pluginId: String, version: String): RescuePluginManifest? =
         runCatching {
@@ -207,7 +230,7 @@ internal class RescuePluginInstalledReader(private val installedRoot: File) {
             }
             RescuePluginContract.requireCompatible(manifest)
             manifest.entryWorkflow?.let { requirePluginFile(pluginRoot, it) }
-            manifest.assistantInstructions.forEach { requirePluginFile(pluginRoot, it.path) }
+            manifest.assistantContexts.forEach { requirePluginFile(pluginRoot, it.path) }
             manifest.documents.forEach { requirePluginFile(pluginRoot, it.path) }
             manifest
         }.getOrNull()
@@ -229,6 +252,10 @@ internal class RescuePluginInstalledReader(private val installedRoot: File) {
     private companion object {
         const val MANIFEST_FILE = "manifest.json"
         const val BUNDLED_MARKER = ".bundled"
+        const val MAX_ASSISTANT_CONTEXTS = 32
+        const val MAX_STATIC_CONTEXT_SOURCE_BYTES = 4L * 1024L
+        const val MAX_JAVASCRIPT_CONTEXT_SOURCE_BYTES = 128L * 1024L
+        const val MAX_TOTAL_CONTEXT_SOURCE_BYTES = 256L * 1024L
     }
 }
 
@@ -332,11 +359,11 @@ class RescuePluginStore(
         synchronized(stateLock) { readInstalled(RescuePluginContract.requirePluginId(pluginId)) }
     }
 
-    internal suspend fun readActiveAssistantInstructions(): List<ActiveRescuePluginAssistantInstruction> =
+    internal suspend fun readActiveAssistantContexts(): List<ActiveRescuePluginAssistantContext> =
         withContext(Dispatchers.IO) {
             ensureBundledFirstInstall()
             synchronized(stateLock) {
-                installedReader.readActiveAssistantInstructions(readState())
+                installedReader.readActiveAssistantContexts(readState())
             }
         }
 
@@ -490,7 +517,7 @@ class RescuePluginStore(
                 RescuePluginManifest.parse(JSONObject(File(staging, MANIFEST_FILE).readText()))
             require(copied == manifest) { "Bundled plugin manifest changed while copying" }
             copied.entryWorkflow?.let { requirePluginFile(staging.canonicalFile, it) }
-            copied.assistantInstructions.forEach {
+            copied.assistantContexts.forEach {
                 requirePluginFile(staging.canonicalFile, it.path)
             }
             copied.documents.forEach { requirePluginFile(staging.canonicalFile, it.path) }

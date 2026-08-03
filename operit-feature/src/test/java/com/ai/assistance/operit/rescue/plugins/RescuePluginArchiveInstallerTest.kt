@@ -39,6 +39,43 @@ class RescuePluginArchiveInstallerTest {
     }
 
     @Test
+    fun validatesAssistantContextFilesAndRejectsMissingDeclarationTarget() {
+        val validArchive =
+            zip(
+                "manifest.json" to
+                    """{"schemaVersion":1,"id":"wuxianpi.guide","version":"1.0.0","name":"Guide","description":"Guide plugin","category":"knowledge","minHostVersion":13,"requiredCapabilities":[],"tags":[],"assistantContexts":[{"path":"prompts/instruction.md","scope":"session"},{"path":"scripts/time.js","scope":"turn","provider":"javascript","function":"buildContext"}],"documents":[]}""",
+                "prompts/instruction.md" to "Read the guide first.",
+                "scripts/time.js" to "function buildContext() { return new Date().toISOString(); }",
+            )
+        val installer = RescuePluginArchiveInstaller(temporaryFolder.newFolder("contexts"))
+
+        val (_, manifest) =
+            installer.extractAndValidate(
+                validArchive,
+                RescuePluginArchiveInstaller.sha256(validArchive),
+                "wuxianpi.guide",
+                "1.0.0",
+            )
+        assertEquals(listOf("session", "turn"), manifest.assistantContexts.map { it.scope })
+
+        val missingArchive =
+            zip(
+                "manifest.json" to
+                    """{"schemaVersion":1,"id":"wuxianpi.guide","version":"1.0.1","name":"Guide","description":"Guide plugin","category":"knowledge","minHostVersion":13,"requiredCapabilities":[],"tags":[],"assistantContexts":[{"path":"prompts/instruction.md","scope":"session"}],"documents":[]}""",
+            )
+        val failure =
+            runCatching {
+                installer.extractAndValidate(
+                    missingArchive,
+                    RescuePluginArchiveInstaller.sha256(missingArchive),
+                    "wuxianpi.guide",
+                    "1.0.1",
+                )
+            }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException)
+    }
+
+    @Test
     fun rejectsZipTraversalBeforeWritingOutsideStaging() {
         val root = temporaryFolder.newFolder("traversal")
         val archive = zip("../escaped.txt" to "bad")
@@ -76,7 +113,7 @@ class RescuePluginArchiveInstallerTest {
         val archive =
             zip(
                 "manifest.json" to
-                    """{"schemaVersion":1,"id":"wuxianpi.test","version":"1.0.0","name":"Test","description":"Test plugin","category":"test","minHostVersion":13,"requiredCapabilities":[],"tags":[],"documents":[]}"""
+                    """{"schemaVersion":1,"id":"wuxianpi.test","version":"1.0.0","name":"Test","description":"Test plugin","category":"test","minHostVersion":14,"requiredCapabilities":[],"tags":[],"documents":[]}"""
             )
         val installer = RescuePluginArchiveInstaller(temporaryFolder.newFolder("incompatible"))
 

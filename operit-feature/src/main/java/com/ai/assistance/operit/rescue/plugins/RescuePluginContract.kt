@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 object RescuePluginContract {
     const val SCHEMA_VERSION = 1
-    const val HOST_API_VERSION = 12
+    const val HOST_API_VERSION = 13
     const val DEFAULT_HUB_URL = "https://wuxianpirescue.webefficacy.com"
     const val FIRST_INSTALL_PLUGIN_ID = "wuxianpi.first-install"
 
@@ -147,7 +147,7 @@ data class RescuePluginManifest(
     val requiredCapabilities: List<String>,
     val tags: List<String>,
     val minHostVersion: Int,
-    val assistantInstructions: List<RescuePluginAssistantInstruction> = emptyList(),
+    val assistantContexts: List<RescuePluginAssistantContext> = emptyList(),
 ) {
     fun toJson(): JSONObject =
         JSONObject()
@@ -159,8 +159,8 @@ data class RescuePluginManifest(
             .put("category", category)
             .put("entryWorkflow", entryWorkflow ?: JSONObject.NULL)
             .put(
-                "assistantInstructions",
-                JSONArray(assistantInstructions.map(RescuePluginAssistantInstruction::toJson)),
+                "assistantContexts",
+                JSONArray(assistantContexts.map(RescuePluginAssistantContext::toJson)),
             )
             .put("documents", JSONArray(documents.map(RescuePluginDocument::toJson)))
             .put("requiredCapabilities", JSONArray(requiredCapabilities))
@@ -181,18 +181,45 @@ data class RescuePluginManifest(
             val category = json.getString("category").trim()
             require(category.isNotEmpty()) { "Plugin category must not be blank" }
             val entryWorkflow = json.optionalString("entryWorkflow")?.let(::requireRelativePath)
-            val assistantInstructions =
-                json.optJSONArray("assistantInstructions")?.objectList().orEmpty().mapIndexed {
+            val assistantContexts =
+                json.optJSONArray("assistantContexts")?.objectList().orEmpty().mapIndexed {
                         index,
-                        instruction,
+                        context,
                     ->
-                    RescuePluginAssistantInstruction(
-                        path = requireRelativePath(instruction.getString("path")),
-                    ).also {
-                        require(instruction.length() == 1) {
-                            "assistantInstructions[$index] may only contain path"
+                    require(
+                        context.keys().asSequence().all { it in ASSISTANT_CONTEXT_FIELDS }
+                    ) { "assistantContexts[$index] contains unsupported fields" }
+                    val provider =
+                        if (context.has("provider")) context.getString("provider").trim()
+                        else "static"
+                    require(provider == "static" || provider == "javascript") {
+                        "assistantContexts[$index].provider must be static or javascript"
+                    }
+                    val scope = context.getString("scope").trim()
+                    require(scope == "session" || scope == "turn") {
+                        "assistantContexts[$index].scope must be session or turn"
+                    }
+                    val functionName =
+                        if (context.has("function")) context.getString("function").trim()
+                        else null
+                    if (provider == "javascript") {
+                        require(!functionName.isNullOrBlank()) {
+                            "assistantContexts[$index].function is required for javascript provider"
+                        }
+                        require(SAFE_FUNCTION_NAME.matches(functionName)) {
+                            "assistantContexts[$index].function has an invalid format"
+                        }
+                    } else {
+                        require(functionName == null) {
+                            "assistantContexts[$index].function is only valid for javascript provider"
                         }
                     }
+                    RescuePluginAssistantContext(
+                        path = requireRelativePath(context.getString("path")),
+                        scope = scope,
+                        provider = provider,
+                        functionName = functionName,
+                    )
                 }
             val documents =
                 json.getJSONArray("documents").objectList().mapIndexed { index, document ->
@@ -214,7 +241,7 @@ data class RescuePluginManifest(
                 minHostVersion = json.getInt("minHostVersion").also {
                     require(it >= 1) { "minHostVersion must be positive" }
                 },
-                assistantInstructions = assistantInstructions,
+                assistantContexts = assistantContexts,
             )
         }
 
@@ -228,11 +255,24 @@ data class RescuePluginManifest(
             ) { "Invalid plugin relative path: $path" }
             return normalized
         }
+
+        private val SAFE_FUNCTION_NAME = Regex("^[A-Za-z_$][0-9A-Za-z_$]*$")
+        private val ASSISTANT_CONTEXT_FIELDS = setOf("path", "scope", "provider", "function")
     }
 }
 
-data class RescuePluginAssistantInstruction(val path: String) {
-    fun toJson(): JSONObject = JSONObject().put("path", path)
+data class RescuePluginAssistantContext(
+    val path: String,
+    val scope: String,
+    val provider: String = "static",
+    val functionName: String? = null,
+) {
+    fun toJson(): JSONObject =
+        JSONObject()
+            .put("path", path)
+            .put("scope", scope)
+            .put("provider", provider)
+            .apply { functionName?.let { put("function", it) } }
 }
 
 data class RescuePluginDocument(val path: String, val title: String) {

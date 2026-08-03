@@ -20,6 +20,42 @@ class RescuePluginContractTest {
         assertEquals("workflows/install.json", manifest.entryWorkflow)
         assertEquals(listOf("docs/README.md"), manifest.documents.map { it.path })
         assertEquals("Guide", manifest.documents.single().title)
+        assertTrue(manifest.assistantContexts.isEmpty())
+    }
+
+    @Test
+    fun parsesOptionalAssistantContextsAndRejectsInvalidDeclarations() {
+        val manifest =
+            RescuePluginManifest.parse(
+                JSONObject(
+                    """{"schemaVersion":1,"id":"wuxianpi.guide","version":"1.0.0","name":"Guide","description":"Guide plugin","category":"knowledge","minHostVersion":13,"assistantContexts":[{"path":"prompts/instruction.md","scope":"session"},{"path":"scripts/time.js","scope":"turn","provider":"javascript","function":"buildContext"}],"documents":[],"requiredCapabilities":[],"tags":[]}"""
+                )
+            )
+
+        assertEquals(listOf("static", "javascript"), manifest.assistantContexts.map { it.provider })
+        assertEquals(listOf("session", "turn"), manifest.assistantContexts.map { it.scope })
+        assertEquals("buildContext", manifest.assistantContexts.last().functionName)
+        assertThrows(IllegalArgumentException::class.java) {
+            RescuePluginManifest.parse(
+                JSONObject(
+                    """{"schemaVersion":1,"id":"wuxianpi.guide","version":"1.0.0","name":"Guide","description":"Guide plugin","category":"knowledge","minHostVersion":13,"assistantContexts":[{"path":"../instruction.md","scope":"session"}],"documents":[],"requiredCapabilities":[],"tags":[]}"""
+                )
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RescuePluginManifest.parse(
+                JSONObject(
+                    """{"schemaVersion":1,"id":"wuxianpi.guide","version":"1.0.0","name":"Guide","description":"Guide plugin","category":"knowledge","minHostVersion":13,"assistantContexts":[{"path":"prompts/instruction.md","scope":"session","extra":true}],"documents":[],"requiredCapabilities":[],"tags":[]}"""
+                )
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RescuePluginManifest.parse(
+                JSONObject(
+                    """{"schemaVersion":1,"id":"wuxianpi.guide","version":"1.0.0","name":"Guide","description":"Guide plugin","category":"knowledge","minHostVersion":13,"assistantContexts":[{"path":"scripts/time.js","scope":"turn","provider":"javascript","function":"provider.build"}],"documents":[],"requiredCapabilities":[],"tags":[]}"""
+                )
+            )
+        }
     }
 
     @Test
@@ -102,7 +138,7 @@ class RescuePluginContractTest {
 
     @Test
     fun declaresCurrentHostCompatibility() {
-        assertEquals(12, RescuePluginContract.HOST_API_VERSION)
+        assertEquals(13, RescuePluginContract.HOST_API_VERSION)
         assertEquals(
             setOf(
                 "setup-tools",
@@ -155,7 +191,7 @@ class RescuePluginContractTest {
         assertEquals(compatible, RescuePluginContract.requireCompatible(compatible))
 
         assertThrows(IllegalArgumentException::class.java) {
-            RescuePluginContract.requireCompatible(manifest(minHostVersion = 13))
+            RescuePluginContract.requireCompatible(manifest(minHostVersion = 14))
         }
         assertThrows(IllegalArgumentException::class.java) {
             RescuePluginContract.requireCompatible(
@@ -179,5 +215,6 @@ class RescuePluginContractTest {
             requiredCapabilities = capabilities,
             tags = emptyList(),
             minHostVersion = minHostVersion,
+            assistantContexts = emptyList(),
         )
 }

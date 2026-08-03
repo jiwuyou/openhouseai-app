@@ -98,13 +98,18 @@ Keep execution environments explicit. When request_termux_home_access reports te
 
 Rescue plugins provide updateable documents and ordered workflows, not new Android execution privileges. Use search_rescue_plugins and get_rescue_plugin_comments when current repair knowledge is useful. Agent comments must be created with draft_rescue_plugin_comment. publish_rescue_plugin_comment only creates a user-confirmation card; never claim publication until the user clicks it."""
 
-        internal fun composeSystemPrompt(pluginInstructions: List<String>): String {
-            if (pluginInstructions.isEmpty()) return RESCUE_SYSTEM_PROMPT
+        internal fun composeSystemPrompt(pluginContext: String): String {
+            if (pluginContext.isBlank()) return RESCUE_SYSTEM_PROMPT
             return buildString {
                 append(RESCUE_SYSTEM_PROMPT.trimEnd())
-                append("\n\nInstalled and active Rescue plugins provide these short instructions:\n\n")
-                append(pluginInstructions.joinToString("\n\n"))
+                append("\n\nInstalled and active Rescue plugin session context:\n\n")
+                append(pluginContext.trim())
             }
+        }
+
+        internal fun composeTurnMessage(userMessage: String, pluginContext: String): String {
+            if (pluginContext.isBlank()) return userMessage
+            return "<assistant_context>\n${pluginContext.trim()}\n</assistant_context>\n\n$userMessage"
         }
 
         @Volatile private var INSTANCE: RescuePiChatEngine? = null
@@ -126,6 +131,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
     private val activeRequestByChatId = ConcurrentHashMap<String, String>()
     private val usageByChatId = ConcurrentHashMap<String, Usage>()
     private val openedSessionKeys = ConcurrentHashMap.newKeySet<String>()
+    private val sessionPluginContexts = ConcurrentHashMap<String, String>()
     private val androidToolJobs = ConcurrentHashMap<String, Job>()
     private val remoteEventHub = RescuePiRemoteEventHub()
     val remoteEvents: SharedFlow<RescuePiRemoteEvent> = remoteEventHub.events
@@ -170,6 +176,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
             RescueNativeBridge.nativeCancel(previousSessionKey)
             RescueNativeBridge.nativeCloseSession(previousSessionKey)
             openedSessionKeys.remove(previousSessionKey)
+            sessionPluginContexts.remove(previousSessionKey)
             activeSessionPreferences.edit().putString(chatId, newSessionKey).commit()
         }
     }
@@ -193,6 +200,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
             RescueNativeBridge.nativeCancel(sessionKey)
             RescueNativeBridge.nativeCloseSession(sessionKey)
             openedSessionKeys.remove(sessionKey)
+            sessionPluginContexts.remove(sessionKey)
             if (getActiveSessionKey(chatId) == sessionKey) {
                 activeSessionPreferences.edit().remove(chatId).commit()
             }
@@ -204,6 +212,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
         cancel(chatId)
         RescueNativeBridge.nativeCloseSession(previousSessionKey)
         openedSessionKeys.remove(previousSessionKey)
+        sessionPluginContexts.remove(previousSessionKey)
         val sessionKey = "$chatId::room::${UUID.randomUUID()}"
         activateSession(chatId, sessionKey)
         return sessionKey
@@ -289,11 +298,20 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
             try {
                 request.onState(InputProcessingState.Connecting("Connecting to Pi Agent"))
                 openSession(request, toolCatalog)
+                val turnContext =
+                    try {
+                        rescuePluginManager.assistantContext("turn", request.message)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        AppLogger.w(TAG, "Unable to load Rescue plugin turn context", failure)
+                        ""
+                    }
                 val accepted =
                     JSONObject(
                         RescueNativeBridge.nativePrompt(
                             request.sessionKey,
-                            request.message,
+                            composeTurnMessage(request.message, turnContext),
                             requestId,
                         )
                     )
@@ -446,6 +464,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
         usageByChatId.remove(chatId)
         activeSessionPreferences.edit().remove(chatId).apply()
         openedSessionKeys.remove(sessionKey)
+        sessionPluginContexts.remove(sessionKey)
         return RescueNativeBridge.nativeCloseSession(sessionKey)
     }
 
@@ -462,15 +481,16 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
             (contextWindow * (1.0 - normalizedThreshold)).toInt().coerceAtLeast(1024)
         val compactionKeepRecentTokens =
             (contextWindow * 0.2).toInt().coerceAtLeast(1024)
-        val pluginInstructions =
-            try {
-                rescuePluginManager.assistantInstructions()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                AppLogger.w(TAG, "Unable to load Rescue plugin assistant instructions", failure)
-                emptyList()
-            }
+        val pluginContext =
+            sessionPluginContexts[request.sessionKey]
+                ?: try {
+                    rescuePluginManager.assistantContext("session")
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    AppLogger.w(TAG, "Unable to load Rescue plugin session context", failure)
+                    ""
+                }
         val configJson =
             JSONObject()
                 .put("chatId", request.sessionKey)
@@ -483,7 +503,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
                 .put("baseUrl", config.apiEndpoint)
                 .put("apiKey", resolveApiKey(config))
                 .put("headers", parseJsonObject(config.customHeaders, "customHeaders"))
-                .put("systemPrompt", composeSystemPrompt(pluginInstructions))
+                .put("systemPrompt", composeSystemPrompt(pluginContext))
                 .put("maxTokens", if (config.maxTokensEnabled) config.maxTokens else JSONObject.NULL)
                 .put(
                     "temperature",
@@ -501,6 +521,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
         check(result.optBoolean("ok", false)) {
             result.optString("error", "Unable to open Pi Agent session")
         }
+        sessionPluginContexts.putIfAbsent(request.sessionKey, pluginContext)
         openedSessionKeys.add(request.sessionKey)
     }
 
