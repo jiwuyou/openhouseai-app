@@ -15,6 +15,24 @@ android {
         versionName "0.2.0"
     }
 
+    signingConfigs {
+        debug {
+            storeFile file("../app/testkey_untrusted.jks")
+            keyAlias "alias"
+            storePassword "xrj45yWGLbsO7W0v"
+            keyPassword "xrj45yWGLbsO7W0v"
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+
     compileOptions {
         coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_17
@@ -48,8 +66,7 @@ tasks.register("generateNativeInstallResources", Exec) {
     inputs.files(
         new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/manifest.json"),
         new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/payload-manifest.json"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/service-manager.tar"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/pi-runtime.tar")
+        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/service-manager.tar")
     )
     outputs.files(
         new File(nativeInstallAssets, "pre-tmux.sh"),

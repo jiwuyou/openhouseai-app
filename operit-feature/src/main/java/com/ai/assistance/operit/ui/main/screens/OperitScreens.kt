@@ -81,7 +81,6 @@ import com.ai.assistance.operit.ui.features.toolbox.screens.UIDebuggerToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.DefaultAssistantGuideToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.ProcessLimitRemoverToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.sqlviewer.SqlViewerToolScreen
-import com.ai.assistance.operit.ui.features.toolbox.screens.ffmpegtoolbox.FFmpegToolboxScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.htmlpackager.HtmlPackagerScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.speechtotext.SpeechToTextToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.texttospeech.TextToSpeechToolScreen
@@ -1292,23 +1291,6 @@ sealed class Screen(
                 onGestureConsumed: (Boolean) -> Unit
         ) {
             SqlViewerToolScreen(navController = navController)
-        }
-    }
-
-    // FFmpeg Toolbox screen
-    data object FFmpegToolbox :
-            Screen(navItem = NavItem.Toolbox, titleRes = R.string.screen_title_ffmpeg_toolbox) {
-        @Composable
-        override fun Content(
-                navController: NavController,
-                navigateTo: ScreenNavigationHandler,
-                onGoBack: () -> Unit,
-                hasBackgroundImage: Boolean,
-                onLoading: (Boolean) -> Unit,
-                onError: (String) -> Unit,
-                onGestureConsumed: (Boolean) -> Unit
-        ) {
-            FFmpegToolboxScreen(navController = navController)
         }
     }
 

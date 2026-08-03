@@ -108,10 +108,11 @@ object VoiceServiceFactory {
                     )
                 }
                 VoiceServiceType.VITS_TTS -> {
-                    val vitsConfig = prefs.ttsVitsPackageConfigFlow.first()
-                    VitsVoiceProvider(
+                    val httpConfig = prefs.ttsHttpConfigFlow.first()
+                    SimpleVoiceProvider(
                         context = context,
-                        config = vitsConfig
+                        initialLocaleTag = httpConfig.localeTag,
+                        initialVoiceId = httpConfig.voiceId
                     )
                 }
             }

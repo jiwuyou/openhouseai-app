@@ -46,7 +46,6 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.llmprovider.EndpointCompleter
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.llmprovider.AIServiceFactory
-import com.ai.assistance.operit.api.chat.llmprovider.LlamaProvider
 import com.ai.assistance.operit.api.chat.llmprovider.ModelDiscoveryCoordinator
 import com.ai.assistance.operit.api.chat.llmprovider.ModelListFetcher
 import com.ai.assistance.operit.data.collects.ApiProviderConfigs
@@ -1196,7 +1195,9 @@ private fun getProviderDisplayName(providerTypeId: String, context: android.cont
 
 private fun getProviderSelectionOptions(context: android.content.Context): List<ProviderSelectionOption> {
     val builtInProviders =
-        ApiProviderType.values().map { provider ->
+        ApiProviderType.values()
+            .filterNot { it == ApiProviderType.MNN || it == ApiProviderType.LLAMA_CPP }
+            .map { provider ->
             ProviderSelectionOption(
                 id = provider.name,
                 displayName = getBuiltInProviderDisplayName(provider, context)
@@ -1603,7 +1604,12 @@ private fun LlamaSettingsBlock(
                     "\n" +
                     stringResource(
                         R.string.llama_local_model_dir,
-                        LlamaProvider.getModelsDir().absolutePath
+                        java.io.File(
+                            android.os.Environment.getExternalStoragePublicDirectory(
+                                android.os.Environment.DIRECTORY_DOWNLOADS
+                            ),
+                            "Operit/models/llama"
+                        ).absolutePath
                     )
         )
 

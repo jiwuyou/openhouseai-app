@@ -553,36 +553,6 @@ def check_unquoted_heredocs(script_text):
         index += 1
 
 
-def validate_native_install_bundle(manifest, payload_manifest):
-    left = manifest.get("nativeInstallBundle")
-    right = payload_manifest.get("nativeInstallBundle")
-    if not isinstance(left, dict) or not isinstance(right, dict):
-        fail("both manifests must declare nativeInstallBundle")
-        return
-    if left != right:
-        fail("nativeInstallBundle differs between manifest.json and payload-manifest.json")
-        return
-    if left.get("applicationId") != "com.wuxianpi":
-        fail("nativeInstallBundle.applicationId must be com.wuxianpi")
-    archive = left.get("archive")
-    if archive != "wuxianpi-native-install.tar":
-        fail("nativeInstallBundle.archive must be wuxianpi-native-install.tar")
-        return
-    path = os.path.join(payload_dir, archive)
-    if not os.path.isfile(path):
-        fail(f"native install bundle is missing: {archive}")
-        return
-    actual_size, actual_sha = file_digest(path)
-    if left.get("size") != actual_size or left.get("sha256") != actual_sha:
-        fail("native install bundle checksum or size mismatch")
-    with tarfile.open(path, "r:*") as tar:
-        members = {member.name.lstrip("./"): member for member in tar.getmembers()}
-        for required in ("install.sh", "payload/pi-runtime.tar", "payload/pi-runtime.tar.sha256"):
-            member = members.get(required)
-            if member is None or not member.isfile() or member.size <= 0:
-                fail(f"native install bundle is missing non-empty {required}")
-
-
 def validate_pi_web_payload(pi_web_entry):
     archive_path = os.path.join(payload_dir, pi_web_entry["archive"])
     prompt_names = (
@@ -1002,7 +972,6 @@ validate_bootstrap_pi_contract(manifest)
 
 components = by_id(component_array(manifest, "components"), "manifest.json")
 payloads = by_id(component_array(payload_manifest, "payloads"), "payload-manifest.json")
-validate_native_install_bundle(manifest, payload_manifest)
 validate_native_runtime_asset(manifest, payload_manifest)
 validate_service_control_contract()
 validate_termux_package_contract()

@@ -14,8 +14,10 @@ internal const val TERMUX_HOME_BOOKMARK = "termux-home"
 internal const val TERMUX_HOME_ENVIRONMENT = "repo:$TERMUX_HOME_BOOKMARK"
 internal const val PRE_TMUX_ASSET = "wuxianpi-install/pre-tmux.sh"
 internal const val SETUP_RESOURCES_ASSET = "wuxianpi-install/resources.tar"
+internal const val RUNTIME_ASSET = "openhouse-runtime/runtime-aarch64.tgz"
 internal const val PRE_TMUX_HOME_PATH = ".local/share/wuxianpi/bootstrap/pre-tmux.sh"
 internal const val SETUP_RESOURCES_HOME_PATH = ".local/share/wuxianpi/install-resources/resources.tar"
+internal const val RUNTIME_HOME_PATH = ".local/share/wuxianpi/install-resources/runtime-aarch64.tgz"
 internal const val SETUP_REQUEST_HOME_PATH = ".local/state/wuxianpi-setup/request.json"
 
 internal class NativeTermuxHomeRepository(context: Context) {

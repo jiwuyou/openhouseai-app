@@ -48,8 +48,7 @@ gradle.beforeProject { target ->
 def sharedModules = [
     "pi-client", "operit-feature", "termux-shared",
     "terminal-emulator", "terminal-view",
-    "operit-dragonbones", "operit-mnn", "operit-llama", "operit-mmd",
-    "operit-fbx", "operit-quickjs", "operit-showerclient",
+    "operit-quickjs", "operit-showerclient",
     "openhouse-core", "openhouse-feature", "service-control-feature",
     "native-host-adapter", "termux-host-adapter"
 ]

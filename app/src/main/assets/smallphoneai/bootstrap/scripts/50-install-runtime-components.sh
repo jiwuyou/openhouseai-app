@@ -798,6 +798,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
       SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU=0 \
       SMALLPHONEAI_ROOT="$bootstrap_root" \
       SMALLPHONEAI_COMPONENT_TARGETS="$termux_pi_targets" \
+      SMALLPHONEAI_PI_RUNTIME_ARCHIVE="${SMALLPHONEAI_PI_RUNTIME_ARCHIVE:-}" \
       SMALLPHONEAI_SERVICE_MANAGER_CONFIG_PATH="$native_config" \
       SERVICE_MANAGER_CONFIG_PATH="$native_config" \
       SERVICE_MANAGER_URL="${SERVICE_MANAGER_URL:-http://${SMALLPHONEAI_SERVICE_MANAGER_BIND:-127.0.0.1:20087}}" \
@@ -837,6 +838,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
         SMALLPHONEAI_COMPONENTS_AUTO_CLONE="${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}" \
         SMALLPHONEAI_COMPONENTS_STRICT="${SMALLPHONEAI_COMPONENTS_STRICT:-1}" \
         SMALLPHONEAI_COMPONENT_TARGETS="$ubuntu_targets" \
+        SMALLPHONEAI_PI_RUNTIME_ARCHIVE="${SMALLPHONEAI_PI_RUNTIME_ARCHIVE:-}" \
         OPENHOUSE_PI_RUNTIME="${OPENHOUSE_PI_RUNTIME:-${SMALLPHONEAI_PI_RUNTIME:-termux}}" \
         SMALLPHONEAI_PI_RUNTIME="${SMALLPHONEAI_PI_RUNTIME:-${OPENHOUSE_PI_RUNTIME:-termux}}" \
         SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
@@ -896,6 +898,7 @@ fi
 
 repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
 payload_root="${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}}"
+runtime_archive_override="${SMALLPHONEAI_PI_RUNTIME_ARCHIVE:-}"
 payload_manifest="$payload_root/manifest.json"
 component_source_mode="${SMALLPHONEAI_COMPONENT_SOURCE_MODE:-bundle}"
 allow_git_update="${SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE:-${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}}"
@@ -1608,6 +1611,13 @@ find_payload_source() {
   local payload_name="$1"
   local archive
   local candidate
+
+  if [ "$payload_name" = "pi-agent" ] \
+    && [ -n "$runtime_archive_override" ] \
+    && [ -f "$runtime_archive_override" ]; then
+    printf '%s\n' "$runtime_archive_override"
+    return 0
+  fi
 
   if [ "$payload_name" = "pi-agent" ] && [ -f "$payload_manifest" ]; then
     archive="$(payload_manifest_component_value "$payload_name" archive || true)"

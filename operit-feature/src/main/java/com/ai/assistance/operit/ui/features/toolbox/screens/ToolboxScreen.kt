@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.toolbox.screens.apppermissions.AppPermissionsScreen
-import com.ai.assistance.operit.ui.features.toolbox.screens.ffmpegtoolbox.FFmpegToolboxScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.FileManagerScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.hostterminal.HostedTerminalScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.logcat.LogcatScreen
@@ -242,17 +241,6 @@ fun UIDebuggerToolScreen(navController: NavController) {
         CustomScaffold() { paddingValues ->
                 Box(modifier = Modifier.padding(paddingValues)) {
                         UIDebuggerScreen(navController = navController)
-                }
-        }
-}
-
-/** 显示FFmpeg工具箱屏幕 */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FFmpegToolboxToolScreen(navController: NavController) {
-        CustomScaffold() { paddingValues ->
-                Box(modifier = Modifier.padding(paddingValues)) {
-                        FFmpegToolboxScreen(navController = navController)
                 }
         }
 }

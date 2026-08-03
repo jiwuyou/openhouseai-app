@@ -123,7 +123,7 @@ object SpeechServiceFactory {
                 } else {
                     val service =
                         when (type) {
-                            SpeechServiceType.SHERPA_NCNN -> SherpaSpeechProvider(appContext)
+                            SpeechServiceType.SHERPA_NCNN -> UnavailableSpeechService()
                             else -> throw IllegalArgumentException("Not a local SpeechService type: $type")
                         }
                     LocalEntry(type = type, service = service, refCount = 1).also { localEntry = it }

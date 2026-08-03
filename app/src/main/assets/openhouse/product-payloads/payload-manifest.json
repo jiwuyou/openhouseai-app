@@ -127,13 +127,6 @@
       "binarySize": 15427096
     }
   ],
-  "nativeInstallBundle": {
-    "id": "wuxianpi-native-install",
-    "archive": "wuxianpi-native-install.tar",
-    "sha256": "73c1f01ba71840bafe0d052bd67f20714d695bbec87a3a41cbd4f49ecf3bf1bd",
-    "size": 168263680,
-    "applicationId": "com.wuxianpi"
-  },
   "nativeRuntimeAsset": {
     "archive": "runtime-aarch64.tgz",
     "sha256": "11ca8076f74552f96f48b96a16d1bb77b8e831a0ef1ba9008e3e7eb52478d7d8",

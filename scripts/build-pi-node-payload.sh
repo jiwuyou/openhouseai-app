@@ -6,7 +6,6 @@ source_dir="$repo_dir/runtime/wuxianpi-node"
 web_source_dir="$repo_dir/ai-web-ui"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 output="$payload_dir/pi-runtime.tar"
-native_output="$payload_dir/wuxianpi-native-install.tar"
 native_asset_dir="$repo_dir/native-app/src/main/assets/openhouse-runtime"
 native_asset="$native_asset_dir/runtime-aarch64.tgz"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-payload.XXXXXX")"
@@ -191,40 +190,17 @@ tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf
 mv "$output.tmp" "$output"
 chmod 0644 "$output"
 
-native_stage="$stage/native-bundle"
-mkdir -p "$native_stage/payload"
-cp "$output" "$native_stage/payload/pi-runtime.tar"
-sha256sum "$output" | awk '{print $1 "  pi-runtime.tar"}' > "$native_stage/payload/pi-runtime.tar.sha256"
-cat > "$native_stage/install.sh" <<'EOF'
-#!/data/data/com.termux/files/usr/bin/sh
-set -eu
-root=$(CDPATH= cd "$(dirname "$0")" && pwd)
-expected=$(cut -d ' ' -f 1 "$root/payload/pi-runtime.tar.sha256")
-actual=$(sha256sum "$root/payload/pi-runtime.tar" | cut -d ' ' -f 1)
-[ "$expected" = "$actual" ] || { printf 'WuxianPi payload checksum mismatch\n' >&2; exit 1; }
-stage=$(mktemp -d "${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/wuxianpi-install.XXXXXX")
-trap 'rm -rf "$stage"' EXIT
-tar -xf "$root/payload/pi-runtime.tar" -C "$stage"
-"$stage/scripts/install.sh"
-"$stage/scripts/register-service.sh"
-printf 'WuxianPi Node runtime deployment completed.\n'
-EOF
-chmod 0755 "$native_stage/install.sh"
-tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf "$native_output.tmp" -C "$native_stage" .
-mv "$native_output.tmp" "$native_output"
-chmod 0644 "$native_output"
-
 mkdir -p "$native_asset_dir"
-tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner --exclude='./native-bundle' -cf - -C "$stage" . | gzip -n > "$native_asset.tmp"
+tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf - -C "$stage" . | gzip -n > "$native_asset.tmp"
 mv "$native_asset.tmp" "$native_asset"
 chmod 0644 "$native_asset"
 
-python3 - "$payload_dir/manifest.json" "$payload_dir/payload-manifest.json" "$output" "$native_output" "$native_asset" <<'PY'
+python3 - "$payload_dir/manifest.json" "$payload_dir/payload-manifest.json" "$output" "$native_asset" <<'PY'
 import hashlib, json, pathlib, sys
-manifest_path, payload_manifest_path, archive, native_archive, native_asset = map(pathlib.Path, sys.argv[1:])
+manifest_path, payload_manifest_path, archive, native_asset = map(pathlib.Path, sys.argv[1:])
 def digest(path):
     data = path.read_bytes(); return len(data), hashlib.sha256(data).hexdigest()
-size, sha = digest(archive); native_size, native_sha = digest(native_archive); asset_size, asset_sha = digest(native_asset)
+size, sha = digest(archive); asset_size, asset_sha = digest(native_asset)
 for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloads")):
     doc = json.loads(path.read_text(encoding="utf-8"))
     entry = next(item for item in doc[key] if item.get("id") == "pi-agent")
@@ -239,13 +215,10 @@ for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloa
                      "staticWebUi": True, "uiMetadata": True},
     })
     if key == "components": entry["targetDir"] = "pi-runtime"
-    doc["nativeInstallBundle"] = {"id": "wuxianpi-native-install", "archive": native_archive.name,
-        "sha256": native_sha, "size": native_size, "applicationId": "com.wuxianpi"}
     doc["nativeRuntimeAsset"] = {"archive": native_asset.name, "sha256": asset_sha,
         "size": asset_size, "abi": "arm64-v8a", "applicationId": "com.wuxianpi"}
     path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
 log "runtime payload: $(sha256sum "$output")"
-log "native install: $(sha256sum "$native_output")"
 log "native asset: $(sha256sum "$native_asset")"

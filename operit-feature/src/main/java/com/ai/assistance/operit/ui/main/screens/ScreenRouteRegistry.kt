@@ -265,15 +265,6 @@ object ScreenRouteRegistry {
                 order = 90
             ),
             hostEntryDefinition(
-                entryId = "toolbox.ffmpeg_toolbox",
-                screen = Screen.FFmpegToolbox,
-                surface = NavigationSurface.TOOLBOX,
-                titleResId = R.string.tool_ffmpeg_toolbox,
-                descriptionResId = R.string.tool_ffmpeg_toolbox_desc,
-                icon = Icons.Default.VideoSettings,
-                order = 100
-            ),
-            hostEntryDefinition(
                 entryId = "toolbox.shell_executor",
                 screen = Screen.ShellExecutor,
                 surface = NavigationSurface.TOOLBOX,

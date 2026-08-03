@@ -54,6 +54,11 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        languageVersion = "1.9"
+        apiVersion = "1.9"
+        // Keep the lean host build predictable on constrained CI workers; the Android shrinker still
+        // performs release optimization after compilation.
+        freeCompilerArgs += ["-Xno-optimize"]
     }
 
     packagingOptions {
@@ -82,15 +87,9 @@ android {
 dependencies {
     implementation project(":pi-client")
     implementation project(":remote-assist-protocol")
-    implementation project(":operit-dragonbones")
-    implementation project(":operit-mnn")
-    implementation project(":operit-llama")
-    implementation project(":operit-mmd")
-    implementation project(":operit-fbx")
     implementation project(":operit-quickjs")
     implementation project(":operit-showerclient")
     implementation fileTree(dir: "libs", include: ["*.jar"])
-    implementation "com.arthenica:ffmpeg-kit-full-gpl:6.0-2"
 
     implementation "androidx.annotation:annotation:1.9.0"
     implementation "androidx.appcompat:appcompat:1.6.1"
@@ -142,18 +141,7 @@ dependencies {
     implementation "io.objectbox:objectbox-kotlin:5.3.0"
     kapt "io.objectbox:objectbox-processor:5.3.0"
 
-    implementation "com.google.mlkit:text-recognition:16.0.0"
-    implementation "com.google.mlkit:text-recognition-chinese:16.0.0"
-    implementation "com.google.mlkit:text-recognition-japanese:16.0.0"
-    implementation "com.google.mlkit:text-recognition-korean:16.0.0"
-    implementation "com.google.mlkit:text-recognition-devanagari:16.0.0"
     implementation "com.google.zxing:core:3.5.3"
-    implementation "org.tensorflow:tensorflow-lite:2.10.0"
-    implementation "com.google.mediapipe:tasks-text:0.10.11"
-    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.17.1"
-    implementation "com.google.android.filament:filament-android:1.69.2"
-    implementation "com.google.android.filament:gltfio-android:1.69.2"
-    implementation "com.google.android.filament:filament-utils-android:1.69.2"
 
     implementation "commons-io:commons-io:2.13.0"
     implementation "org.apache.commons:commons-compress:1.25.0"

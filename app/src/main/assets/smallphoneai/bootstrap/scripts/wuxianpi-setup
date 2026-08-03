@@ -18,6 +18,7 @@ SETUP_UBUNTU_ROOTFS_MIRROR="auto"
 SETUP_UBUNTU_APT_MIRROR="auto"
 SETUP_NODE_DIST_MIRROR="auto"
 SETUP_NPM_REGISTRY="auto"
+SETUP_RUNTIME_ARCHIVE=""
 
 log() {
   printf '[WuxianPi Setup] %s\n' "$*"
@@ -125,6 +126,7 @@ run_bootstrap() {
     SMALLPHONEAI_SKIP_OPENHOUSE_SYSTEM=1 \
     SMALLPHONEAI_COMPONENT_TARGETS="${SMALLPHONEAI_COMPONENT_TARGETS:-}" \
     SMALLPHONEAI_COMPONENT_ACTION="${SMALLPHONEAI_COMPONENT_ACTION:-}" \
+    SMALLPHONEAI_PI_RUNTIME_ARCHIVE="$SETUP_RUNTIME_ARCHIVE" \
     SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY="${SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY:-0}" \
     SMALLPHONEAI_START_TARGETS="${SMALLPHONEAI_START_TARGETS:-}" \
     SMALLPHONEAI_FORCE_PAYLOAD_REFRESH="${SMALLPHONEAI_FORCE_PAYLOAD_REFRESH:-0}" \
@@ -321,13 +323,14 @@ run_install_job() {
 
 write_request() {
   ensure_state_dir
-  printf '{"region":"%s","termuxRepo":"%s","ubuntuRootfsMirror":"%s","ubuntuAptMirror":"%s","nodeDistMirror":"%s","npmRegistry":"%s","updatedAt":%s}\n' \
+  printf '{"region":"%s","termuxRepo":"%s","ubuntuRootfsMirror":"%s","ubuntuAptMirror":"%s","nodeDistMirror":"%s","npmRegistry":"%s","runtimeArchive":"%s","updatedAt":%s}\n' \
     "$(json_escape "$SETUP_REGION")" \
     "$(json_escape "$SETUP_TERMUX_REPO")" \
     "$(json_escape "$SETUP_UBUNTU_ROOTFS_MIRROR")" \
     "$(json_escape "$SETUP_UBUNTU_APT_MIRROR")" \
     "$(json_escape "$SETUP_NODE_DIST_MIRROR")" \
     "$(json_escape "$SETUP_NPM_REGISTRY")" \
+    "$(json_escape "$SETUP_RUNTIME_ARCHIVE")" \
     "$(date +%s)" > "$REQUEST_FILE.tmp"
   mv "$REQUEST_FILE.tmp" "$REQUEST_FILE"
 }
@@ -346,6 +349,7 @@ load_request() {
   value="$(request_json_value "$file" ubuntuAptMirror)"; [ -z "$value" ] || SETUP_UBUNTU_APT_MIRROR="$value"
   value="$(request_json_value "$file" nodeDistMirror)"; [ -z "$value" ] || SETUP_NODE_DIST_MIRROR="$value"
   value="$(request_json_value "$file" npmRegistry)"; [ -z "$value" ] || SETUP_NPM_REGISTRY="$value"
+  value="$(request_json_value "$file" runtimeArchive)"; [ -z "$value" ] || SETUP_RUNTIME_ARCHIVE="$value"
 }
 
 apply_options() {
@@ -409,6 +413,10 @@ start_install() {
   }
   install_runtime_script "$SCRIPT_DIR/wuxianpi-setup" "$TERMUX_PREFIX/bin/wuxianpi-setup"
   install_runtime_script "$SCRIPT_DIR/wuxianpi-pre-tmux.sh" "$TERMUX_PREFIX/bin/wuxianpi-pre-tmux.sh"
+  if [ -z "$SETUP_RUNTIME_ARCHIVE" ] \
+    && [ -f "$TERMUX_HOME/.local/share/wuxianpi/install-resources/runtime-aarch64.tgz" ]; then
+    SETUP_RUNTIME_ARCHIVE="$TERMUX_HOME/.local/share/wuxianpi/install-resources/runtime-aarch64.tgz"
+  fi
   write_request
   write_state running start '安装任务已在持久 Termux 会话中启动'
   run_install_job

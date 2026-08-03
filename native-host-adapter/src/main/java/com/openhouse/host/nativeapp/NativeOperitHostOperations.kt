@@ -202,10 +202,12 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     }.getOrElse { failure("prepare_persistent_termux", it.message ?: "Unable to stage pre-tmux setup") }
 
     override suspend fun startWuxianPiSetup(): OperitHostOperationResult = runCatching {
+        val runtimeBytes = termuxHomeRepository.stageAsset(RUNTIME_ASSET, RUNTIME_HOME_PATH)
         val bytes = termuxHomeRepository.stageAsset(SETUP_RESOURCES_ASSET, SETUP_RESOURCES_HOME_PATH)
         val request = JSONObject()
             .put("version", 1)
             .put("region", "auto")
+            .put("runtimeArchive", "$TERMUX_HOME/$RUNTIME_HOME_PATH")
             .put("resourcesArchive", "$TERMUX_HOME/$SETUP_RESOURCES_HOME_PATH")
         termuxHomeRepository.writeText(SETUP_REQUEST_HOME_PATH, request.toString(2))
         val command = buildWuxianPiSetupLaunchCommand(TERMUX_PREFIX, TERMUX_HOME)
@@ -213,6 +215,8 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             "start_wuxianpi_setup",
             setupLaunchDetails(command)
                 .put("asset", SETUP_RESOURCES_ASSET)
+                .put("runtimeAsset", RUNTIME_ASSET)
+                .put("runtimeStagedBytes", runtimeBytes)
                 .put("stagedBytes", bytes)
                 .put("request", "$TERMUX_HOME/$SETUP_REQUEST_HOME_PATH"),
         )

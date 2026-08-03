@@ -21,13 +21,16 @@ for required in \
   ./bootstrap/scripts/wuxianpi-pre-tmux.sh \
   ./product-payloads/manifest.json \
   ./product-payloads/payload-manifest.json \
-  ./product-payloads/service-manager.tar \
-  ./product-payloads/pi-runtime.tar; do
+  ./product-payloads/service-manager.tar; do
   grep -Fxq "$required" <<<"$members" \
     || { printf 'Native install archive is missing %s\n' "$required" >&2; exit 1; }
 done
 if grep -Eiq 'aionui|pi-web\.tar|wuxianpi-native-install\.tar' <<<"$members"; then
   printf 'Native install archive contains an excluded optional payload\n' >&2
+  exit 1
+fi
+if grep -Eq '(^|/)pi-runtime\.tar$' <<<"$members"; then
+  printf 'Native install archive must not duplicate the separately staged WuxianPi runtime\n' >&2
   exit 1
 fi
 

@@ -550,17 +550,6 @@ internal fun PiModelSetupSection(
                 Text("保存并启用")
             }
         }
-
-        HorizontalDivider()
-        Text("Android 本地引擎", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { scope.launch { configManager.switchToLocalModelEngine(config.id, ApiProviderType.MNN) } }) {
-                Text("切换到 MNN")
-            }
-            TextButton(onClick = { scope.launch { configManager.switchToLocalModelEngine(config.id, ApiProviderType.LLAMA_CPP) } }) {
-                Text("切换到 llama.cpp")
-            }
-        }
     }
 
     if (modelDialogVisible) {

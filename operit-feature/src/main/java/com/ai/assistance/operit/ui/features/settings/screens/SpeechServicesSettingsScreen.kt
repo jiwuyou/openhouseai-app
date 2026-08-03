@@ -425,7 +425,9 @@ fun SpeechServicesSettingsScreen(
                                 expanded = ttsDropdownExpanded,
                                 onDismissRequest = { ttsDropdownExpanded = false }
                             ) {
-                                VoiceServiceFactory.VoiceServiceType.values().forEach { type ->
+                                VoiceServiceFactory.VoiceServiceType.values()
+                                    .filterNot { it == VoiceServiceFactory.VoiceServiceType.VITS_TTS }
+                                    .forEach { type ->
                                     DropdownMenuItem(
                                         text = {
                                             Text(
@@ -2033,7 +2035,9 @@ fun SpeechServicesSettingsScreen(
                                 expanded = sttDropdownExpanded,
                                 onDismissRequest = { sttDropdownExpanded = false }
                             ) {
-                                SpeechServiceFactory.SpeechServiceType.values().forEach { type ->
+                                SpeechServiceFactory.SpeechServiceType.values()
+                                    .filterNot { it == SpeechServiceFactory.SpeechServiceType.SHERPA_NCNN }
+                                    .forEach { type ->
                                     DropdownMenuItem(
                                         text = {
                                             Text(
