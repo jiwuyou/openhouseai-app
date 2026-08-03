@@ -130,7 +130,11 @@ class PiModelSetupRepository internal constructor(
                     )
                 }
                 .forEach(::add)
-            existing?.models.orEmpty().filter { saved -> none { it.id == saved.id } }.forEach(::add)
+            existing?.models.orEmpty()
+                .filter { saved ->
+                    saved.id != modelId && draft.discoveredModels.none { discovered -> discovered.id == saved.id }
+                }
+                .forEach(::add)
         }
         val provider = PiModelProviderConfig(
             baseUrl = draft.baseUrl.trim().takeIf(String::isNotEmpty),

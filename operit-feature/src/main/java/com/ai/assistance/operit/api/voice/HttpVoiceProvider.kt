@@ -646,8 +646,9 @@ open class HttpVoiceProvider(
                 }
         }
 
-        return when (current) {
-            is PipelineValue.Binary -> current.payload
+        val finalValue = current
+        return when (finalValue) {
+            is PipelineValue.Binary -> finalValue.payload
             else -> throw TtsException(context.getString(R.string.http_tts_response_pipeline_final_not_audio))
         }
     }

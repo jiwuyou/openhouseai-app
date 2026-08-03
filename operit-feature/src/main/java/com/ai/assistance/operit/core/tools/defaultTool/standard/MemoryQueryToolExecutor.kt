@@ -122,11 +122,12 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
             return existingSnapshot to false
         }
 
+        val snapshotId = requireNotNull(requestedSnapshotId)
         val requestedSnapshot = QuerySnapshotState(
-            id = requestedSnapshotId,
+            id = snapshotId,
             lastAccessAtMs = now
         )
-        val existingSnapshot = store.putIfAbsent(requestedSnapshotId, requestedSnapshot)
+        val existingSnapshot = store.putIfAbsent(snapshotId, requestedSnapshot)
         val resolvedSnapshot = existingSnapshot ?: requestedSnapshot
         val snapshotCreated = existingSnapshot == null
         resolvedSnapshot.lastAccessAtMs = now
