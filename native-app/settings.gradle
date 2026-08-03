@@ -46,11 +46,11 @@ gradle.beforeProject { target ->
 }
 
 def sharedModules = [
-    "pi-client", "operit-feature", "termux-shared",
+    "pi-client", "remote-assist-protocol", "operit-feature", "termux-shared",
     "terminal-emulator", "terminal-view",
     "operit-quickjs", "operit-showerclient",
     "openhouse-core", "openhouse-feature", "service-control-feature",
-    "native-host-adapter", "termux-host-adapter"
+    "native-host-adapter", "termux-host-adapter", "controlled-browser-feature"
 ]
 
 sharedModules.each { moduleName ->

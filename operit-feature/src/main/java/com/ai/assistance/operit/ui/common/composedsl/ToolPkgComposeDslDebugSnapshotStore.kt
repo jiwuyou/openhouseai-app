@@ -102,12 +102,10 @@ object ToolPkgComposeDslDebugSnapshotStore {
         if (snapshot == null) {
             writeText(
                 File(outputDir, "dump_manifest.json"),
-                JSONObject(
-                    linkedMapOf<String, Any?>(
-                        "success" to false,
-                        "error" to "No active compose_dsl snapshot available"
-                    )
-                ).toString(2)
+                JSONObject().apply {
+                    put("success", false)
+                    put("error", "No active compose_dsl snapshot available")
+                }.toString(2)
             )
             return outputDir
         }
@@ -239,13 +237,11 @@ object ToolPkgComposeDslDebugSnapshotStore {
     }
 
     private fun renderResultToJson(renderResult: ToolPkgComposeDslRenderResult): JSONObject {
-        return JSONObject(
-            linkedMapOf<String, Any?>(
-                "tree" to nodeToJson(renderResult.tree),
-                "state" to mapToJson(renderResult.state),
-                "memo" to mapToJson(renderResult.memo)
-            )
-        )
+        return JSONObject().apply {
+            put("tree", nodeToJson(renderResult.tree))
+            put("state", mapToJson(renderResult.state))
+            put("memo", mapToJson(renderResult.memo))
+        }
     }
 
     private fun nodeToJson(node: ToolPkgComposeDslNode): JSONObject {
@@ -421,21 +417,19 @@ object ToolPkgComposeDslDebugSnapshotStore {
     }
 
     private fun layoutToJson(layout: ToolPkgComposeDslLayoutSnapshot): JSONObject {
-        return JSONObject(
-            linkedMapOf<String, Any?>(
-                "routeInstanceId" to layout.routeInstanceId,
-                "nodePath" to layout.nodePath,
-                "nodeType" to layout.nodeType,
-                "nodeKey" to layout.nodeKey,
-                "rootX" to layout.rootX,
-                "rootY" to layout.rootY,
-                "width" to layout.width,
-                "height" to layout.height,
-                "windowX" to layout.windowX,
-                "windowY" to layout.windowY,
-                "updatedAtMillis" to layout.updatedAtMillis
-            )
-        )
+        return JSONObject().apply {
+            put("routeInstanceId", layout.routeInstanceId)
+            put("nodePath", layout.nodePath)
+            put("nodeType", layout.nodeType)
+            put("nodeKey", layout.nodeKey)
+            put("rootX", layout.rootX)
+            put("rootY", layout.rootY)
+            put("width", layout.width)
+            put("height", layout.height)
+            put("windowX", layout.windowX)
+            put("windowY", layout.windowY)
+            put("updatedAtMillis", layout.updatedAtMillis)
+        }
     }
 
     private fun Float.format2(): String = String.format(Locale.ROOT, "%.2f", this)
