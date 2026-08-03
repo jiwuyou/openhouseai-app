@@ -45,9 +45,7 @@ private val SettingsScreenScrollPosition = mutableStateOf(0)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-        onNavigateToUserPreferences: () -> Unit,
         navigateToGitHubAccount: () -> Unit,
-        navigateToToolPermissions: () -> Unit,
         navigateToModelConfig: () -> Unit,
         navigateToThemeSettings: () -> Unit,
         navigateToGlobalDisplaySettings: () -> Unit,
@@ -144,13 +142,6 @@ fun SettingsScreen(
                         icon = Icons.Default.Person,
                         containerColor = cardContainerColor
                 ) {
-                        CompactSettingsItem(
-                                title = stringResource(id = R.string.settings_user_preferences),
-                                subtitle = stringResource(id = R.string.settings_user_preferences_subtitle),
-                                icon = Icons.Default.Face,
-                                onClick = onNavigateToUserPreferences
-                        )
-
                         CompactSettingsItem(
                                 title = stringResource(R.string.language_settings),
                                 subtitle = stringResource(id = R.string.settings_language_subtitle),
@@ -259,13 +250,6 @@ fun SettingsScreen(
                         icon = Icons.Default.Security,
                         containerColor = cardContainerColor
                 ) {
-                        CompactSettingsItem(
-                                title = stringResource(id = R.string.settings_tool_permissions),
-                                subtitle = stringResource(id = R.string.settings_tool_permissions_subtitle),
-                                icon = Icons.Default.AdminPanelSettings,
-                                onClick = navigateToToolPermissions
-                        )
-
                         CompactSettingsItem(
                                 title = stringResource(id = R.string.settings_data_backup),
                                 subtitle = stringResource(id = R.string.settings_data_backup_desc),
@@ -533,5 +517,4 @@ private fun CompactSlider(
                 }
         }
 }
-
 

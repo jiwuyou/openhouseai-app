@@ -12,6 +12,7 @@ import com.ai.assistance.operit.rescue.pi.RescueToolCatalog
 import com.ai.assistance.operit.rescue.pi.RescueToolDispatcher
 import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
 import com.ai.assistance.operit.rescue.plugins.RescuePluginContract
+import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
 import com.ai.assistance.operit.rescue.remote.RescuePiRemoteEvent
 import com.ai.assistance.operit.rescue.remote.RescuePiRemoteEventHub
 import com.ai.assistance.operit.util.AppLogger
@@ -97,6 +98,15 @@ Keep execution environments explicit. When request_termux_home_access reports te
 
 Rescue plugins provide updateable documents and ordered workflows, not new Android execution privileges. Use search_rescue_plugins and get_rescue_plugin_comments when current repair knowledge is useful. Agent comments must be created with draft_rescue_plugin_comment. publish_rescue_plugin_comment only creates a user-confirmation card; never claim publication until the user clicks it."""
 
+        internal fun composeSystemPrompt(pluginInstructions: List<String>): String {
+            if (pluginInstructions.isEmpty()) return RESCUE_SYSTEM_PROMPT
+            return buildString {
+                append(RESCUE_SYSTEM_PROMPT.trimEnd())
+                append("\n\nInstalled and active Rescue plugins provide these short instructions:\n\n")
+                append(pluginInstructions.joinToString("\n\n"))
+            }
+        }
+
         @Volatile private var INSTANCE: RescuePiChatEngine? = null
 
         fun getInstance(context: Context): RescuePiChatEngine {
@@ -110,6 +120,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val modelConfigStore = RescueModelConfigStore(appContext)
     private val androidToolDispatcher = RescueToolDispatcher(appContext)
+    private val rescuePluginManager by lazy { RescuePluginManager.get(appContext) }
     private val pendingTurns = ConcurrentHashMap<String, PendingTurn>()
     private val pendingCompactions = ConcurrentHashMap<String, PendingCompaction>()
     private val activeRequestByChatId = ConcurrentHashMap<String, String>()
@@ -451,6 +462,15 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
             (contextWindow * (1.0 - normalizedThreshold)).toInt().coerceAtLeast(1024)
         val compactionKeepRecentTokens =
             (contextWindow * 0.2).toInt().coerceAtLeast(1024)
+        val pluginInstructions =
+            try {
+                rescuePluginManager.assistantInstructions()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                AppLogger.w(TAG, "Unable to load Rescue plugin assistant instructions", failure)
+                emptyList()
+            }
         val configJson =
             JSONObject()
                 .put("chatId", request.sessionKey)
@@ -463,7 +483,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
                 .put("baseUrl", config.apiEndpoint)
                 .put("apiKey", resolveApiKey(config))
                 .put("headers", parseJsonObject(config.customHeaders, "customHeaders"))
-                .put("systemPrompt", RESCUE_SYSTEM_PROMPT)
+                .put("systemPrompt", composeSystemPrompt(pluginInstructions))
                 .put("maxTokens", if (config.maxTokensEnabled) config.maxTokens else JSONObject.NULL)
                 .put(
                     "temperature",

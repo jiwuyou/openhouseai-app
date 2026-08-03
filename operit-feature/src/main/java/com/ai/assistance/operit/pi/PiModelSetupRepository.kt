@@ -117,7 +117,7 @@ class PiModelSetupRepository internal constructor(
         val existing = setup.config.providers[providerId]
         val selected = draft.discoveredModels.firstOrNull { it.id == modelId }
         val existingSelected = existing?.models?.firstOrNull { it.id == modelId }
-        val configuredModels = buildList {
+        val configuredModels = buildList<PiConfiguredModel> {
             add(selected.toConfiguredModel(modelId, resolvedApi, existingSelected))
             draft.discoveredModels
                 .asSequence()

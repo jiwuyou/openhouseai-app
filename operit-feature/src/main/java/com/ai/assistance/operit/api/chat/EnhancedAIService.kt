@@ -896,6 +896,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 suspend {
                     options.onTokenLimitExceeded?.invoke()
                     callbacks?.onTokenLimitExceeded()
+                    Unit
                 }
             } else {
                 null

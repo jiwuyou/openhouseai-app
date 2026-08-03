@@ -139,7 +139,6 @@ private data class CharacterChatMessage(
 @Composable
 fun PersonaCardGenerationScreen(
     onNavigateToSettings: () -> Unit = {},
-    onNavigateToUserPreferences: () -> Unit = {},
     onNavigateToModelConfig: () -> Unit = {},
     onNavigateToModelPrompts: () -> Unit = {}
 ) {

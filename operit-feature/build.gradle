@@ -54,8 +54,6 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
-        languageVersion = "1.9"
-        apiVersion = "1.9"
         // Keep the lean host build predictable on constrained CI workers; the Android shrinker still
         // performs release optimization after compilation.
         freeCompilerArgs += ["-Xno-optimize"]

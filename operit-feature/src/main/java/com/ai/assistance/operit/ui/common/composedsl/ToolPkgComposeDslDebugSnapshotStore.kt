@@ -103,7 +103,7 @@ object ToolPkgComposeDslDebugSnapshotStore {
             writeText(
                 File(outputDir, "dump_manifest.json"),
                 JSONObject(
-                    linkedMapOf(
+                    linkedMapOf<String, Any?>(
                         "success" to false,
                         "error" to "No active compose_dsl snapshot available"
                     )
@@ -115,7 +115,7 @@ object ToolPkgComposeDslDebugSnapshotStore {
         val timestamp =
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.ROOT).format(Date(snapshot.updatedAtMillis))
         val metadata =
-            linkedMapOf(
+            linkedMapOf<String, Any?>(
                 "success" to true,
                 "routeInstanceId" to snapshot.routeInstanceId,
                 "containerPackageName" to snapshot.containerPackageName,
@@ -240,7 +240,7 @@ object ToolPkgComposeDslDebugSnapshotStore {
 
     private fun renderResultToJson(renderResult: ToolPkgComposeDslRenderResult): JSONObject {
         return JSONObject(
-            linkedMapOf(
+            linkedMapOf<String, Any?>(
                 "tree" to nodeToJson(renderResult.tree),
                 "state" to mapToJson(renderResult.state),
                 "memo" to mapToJson(renderResult.memo)
@@ -422,7 +422,7 @@ object ToolPkgComposeDslDebugSnapshotStore {
 
     private fun layoutToJson(layout: ToolPkgComposeDslLayoutSnapshot): JSONObject {
         return JSONObject(
-            linkedMapOf(
+            linkedMapOf<String, Any?>(
                 "routeInstanceId" to layout.routeInstanceId,
                 "nodePath" to layout.nodePath,
                 "nodeType" to layout.nodeType,

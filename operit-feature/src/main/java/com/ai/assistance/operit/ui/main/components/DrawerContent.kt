@@ -59,7 +59,6 @@ import com.ai.assistance.operit.core.tools.system.ShizukuAuthorizer
 import com.ai.assistance.operit.core.tools.system.action.ActionListenerFactory
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.preferences.androidPermissionPreferences
-import com.ai.assistance.operit.data.repository.WorkflowRepository
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.screens.ScreenRouteRegistry
 import com.ai.assistance.operit.ui.main.navigation.NavigationEntrySpec
@@ -171,24 +170,16 @@ fun DrawerContent(
                 setOf(NavItem.Settings, NavItem.Help, NavItem.About)
         }
         val quickActionItems = remember {
-                setOf(NavItem.Packages, NavItem.Workflow)
+                setOf(NavItem.Packages)
         }
         val packageManager = remember(context) {
                 PackageManager.getInstance(context, AIToolHandler.getInstance(context))
         }
-        val workflowRepository = remember(context) { WorkflowRepository(context) }
         val activePackageCount by
                 produceState(initialValue = 0, selectedRouteId) {
                         value =
                                 withContext(Dispatchers.IO) {
                                         packageManager.getEnabledPackageNames().size
-                                }
-                }
-        val workflowCount by
-                produceState(initialValue = 0, selectedRouteId) {
-                        value =
-                                withContext(Dispatchers.IO) {
-                                        workflowRepository.getAllWorkflows().getOrDefault(emptyList()).size
                                 }
                 }
         val permissionStatus by
@@ -287,7 +278,6 @@ fun DrawerContent(
                                 appearance = appearance,
                                 navItems = primaryNavItems,
                                 activePackageCount = activePackageCount,
-                                workflowCount = workflowCount,
                                 permissionStatus = permissionStatus,
                                 hostMode = hostMode,
                                 sidebarActions = sidebarActions,
@@ -589,7 +579,6 @@ private fun NewSidebarTopContent(
         appearance: NavigationDrawerAppearance,
         navItems: List<NavItem>,
         activePackageCount: Int,
-        workflowCount: Int,
         permissionStatus: SidebarPermissionStatus,
         hostMode: OperitHostMode,
         sidebarActions: @Composable RowScope.() -> Unit,
@@ -633,15 +622,6 @@ private fun NewSidebarTopContent(
                                 onClick = { onNavItemClick(NavItem.ShizukuCommands) }
                         )
                 }
-                SidebarQuickActionCard(
-                        modifier = Modifier.weight(1f),
-                        icon = NavItem.Workflow.icon,
-                        label = stringResource(id = NavItem.Workflow.titleResId),
-                        badgeText = workflowCount.toString(),
-                        selected = selectedItem == NavItem.Workflow,
-                        appearance = appearance,
-                        onClick = { onNavItemClick(NavItem.Workflow) }
-                )
         }
 
         if (hostMode.isHosted) {

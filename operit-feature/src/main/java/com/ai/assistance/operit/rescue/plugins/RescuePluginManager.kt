@@ -139,6 +139,15 @@ class RescuePluginManager private constructor(context: Context) {
             .put("content", store.readFile(pluginId, path))
     }
 
+    suspend fun assistantInstructions(): List<String> =
+        try {
+            selectRescuePluginAssistantInstructions(store.readActiveAssistantInstructions())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
+
     fun prewarmFirstInstall() {
         firstInstallPreparation.prewarm()
     }
@@ -283,6 +292,27 @@ class RescuePluginManager private constructor(context: Context) {
                 instance ?: RescuePluginManager(context.applicationContext).also { instance = it }
             }
     }
+}
+
+internal fun selectRescuePluginAssistantInstructions(
+    candidates: List<ActiveRescuePluginAssistantInstruction>,
+    maxBytesPerInstruction: Int = 4 * 1024,
+    maxTotalBytes: Int = 16 * 1024,
+): List<String> {
+    require(maxBytesPerInstruction > 0) { "maxBytesPerInstruction must be positive" }
+    require(maxTotalBytes > 0) { "maxTotalBytes must be positive" }
+    val selected = mutableListOf<String>()
+    val seen = mutableSetOf<String>()
+    var totalBytes = 0
+    candidates.forEach { candidate ->
+        val content = candidate.content.trim()
+        if (content.isEmpty() || !seen.add(content)) return@forEach
+        val size = content.toByteArray(Charsets.UTF_8).size
+        if (size > maxBytesPerInstruction || totalBytes + size > maxTotalBytes) return@forEach
+        selected += content
+        totalBytes += size
+    }
+    return selected
 }
 
 internal suspend fun startFirstInstallWorkflowWithFallback(

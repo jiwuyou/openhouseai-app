@@ -30,6 +30,12 @@ data class InstalledRescuePlugin(
             .put("bundled", bundled)
 }
 
+internal data class ActiveRescuePluginAssistantInstruction(
+    val pluginId: String,
+    val path: String,
+    val content: String,
+)
+
 internal class RescuePluginArchiveInstaller(private val stagingRoot: File) {
     fun extractAndValidate(
         archive: ByteArray,
@@ -67,6 +73,7 @@ internal class RescuePluginArchiveInstaller(private val stagingRoot: File) {
             }
             RescuePluginContract.requireCompatible(manifest)
             manifest.entryWorkflow?.let { requirePluginFile(staging, it) }
+            manifest.assistantInstructions.forEach { requirePluginFile(staging, it.path) }
             manifest.documents.forEach { requirePluginFile(staging, it.path) }
             return staging to manifest
         } catch (failure: Throwable) {
@@ -166,6 +173,26 @@ internal class RescuePluginInstalledReader(private val installedRoot: File) {
         )
     }
 
+    fun readActiveAssistantInstructions(state: JSONObject): List<ActiveRescuePluginAssistantInstruction> =
+        state.keys().asSequence()
+            .toList()
+            .sorted()
+            .flatMap { pluginId ->
+                val installed = readActive(state, pluginId) ?: return@flatMap emptyList()
+                val pluginRoot = versionDirectory(installed.manifest.id, installed.activeVersion)
+                    .canonicalFile
+                installed.manifest.assistantInstructions.mapNotNull { instruction ->
+                    runCatching {
+                        val file = requirePluginFile(pluginRoot, instruction.path)
+                        ActiveRescuePluginAssistantInstruction(
+                            pluginId = installed.manifest.id,
+                            path = instruction.path,
+                            content = file.readText(),
+                        )
+                    }.getOrNull()
+                }
+            }
+
     private fun readManifest(pluginId: String, version: String): RescuePluginManifest? =
         runCatching {
             val pluginRoot = versionDirectory(pluginId, version).canonicalFile
@@ -180,6 +207,7 @@ internal class RescuePluginInstalledReader(private val installedRoot: File) {
             }
             RescuePluginContract.requireCompatible(manifest)
             manifest.entryWorkflow?.let { requirePluginFile(pluginRoot, it) }
+            manifest.assistantInstructions.forEach { requirePluginFile(pluginRoot, it.path) }
             manifest.documents.forEach { requirePluginFile(pluginRoot, it.path) }
             manifest
         }.getOrNull()
@@ -190,11 +218,12 @@ internal class RescuePluginInstalledReader(private val installedRoot: File) {
             RescuePluginContract.requireVersion(version),
         )
 
-    private fun requirePluginFile(root: File, relativePath: String) {
+    private fun requirePluginFile(root: File, relativePath: String): File {
         val file = File(root, relativePath).canonicalFile
         require(file.toPath().startsWith(root.toPath()) && file.isFile) {
             "Plugin manifest references a missing file: $relativePath"
         }
+        return file
     }
 
     private companion object {
@@ -302,6 +331,14 @@ class RescuePluginStore(
         ensureBundledFirstInstall()
         synchronized(stateLock) { readInstalled(RescuePluginContract.requirePluginId(pluginId)) }
     }
+
+    internal suspend fun readActiveAssistantInstructions(): List<ActiveRescuePluginAssistantInstruction> =
+        withContext(Dispatchers.IO) {
+            ensureBundledFirstInstall()
+            synchronized(stateLock) {
+                installedReader.readActiveAssistantInstructions(readState())
+            }
+        }
 
     suspend fun readFile(pluginId: String, relativePath: String): String = withContext(Dispatchers.IO) {
         val installed = getInstalled(pluginId) ?: error("Plugin $pluginId is not installed")
@@ -453,6 +490,9 @@ class RescuePluginStore(
                 RescuePluginManifest.parse(JSONObject(File(staging, MANIFEST_FILE).readText()))
             require(copied == manifest) { "Bundled plugin manifest changed while copying" }
             copied.entryWorkflow?.let { requirePluginFile(staging.canonicalFile, it) }
+            copied.assistantInstructions.forEach {
+                requirePluginFile(staging.canonicalFile, it.path)
+            }
             copied.documents.forEach { requirePluginFile(staging.canonicalFile, it.path) }
             return activate(staging, manifest, bundled = true)
         } catch (failure: Throwable) {

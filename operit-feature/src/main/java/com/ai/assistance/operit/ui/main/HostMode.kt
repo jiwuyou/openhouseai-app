@@ -11,7 +11,7 @@ enum class OperitHostMode {
     val isHosted: Boolean
         get() = this != STANDALONE
 
-    /** Keep hosted surfaces focused on chat, history, settings, and the host tools. */
+    /** Keep hosted surfaces focused on chat, history, packages, and settings. */
     fun allowsDrawerItem(item: NavItem): Boolean = when (this) {
         STANDALONE -> true
         BASIC, RESCUE -> item in hostedDrawerItems
@@ -22,7 +22,6 @@ enum class OperitHostMode {
             NavItem.AiChat,
             NavItem.MemoryBase,
             NavItem.Packages,
-            NavItem.Workflow,
             NavItem.Settings,
         )
 

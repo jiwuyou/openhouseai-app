@@ -147,6 +147,7 @@ data class RescuePluginManifest(
     val requiredCapabilities: List<String>,
     val tags: List<String>,
     val minHostVersion: Int,
+    val assistantInstructions: List<RescuePluginAssistantInstruction> = emptyList(),
 ) {
     fun toJson(): JSONObject =
         JSONObject()
@@ -157,6 +158,10 @@ data class RescuePluginManifest(
             .put("description", description)
             .put("category", category)
             .put("entryWorkflow", entryWorkflow ?: JSONObject.NULL)
+            .put(
+                "assistantInstructions",
+                JSONArray(assistantInstructions.map(RescuePluginAssistantInstruction::toJson)),
+            )
             .put("documents", JSONArray(documents.map(RescuePluginDocument::toJson)))
             .put("requiredCapabilities", JSONArray(requiredCapabilities))
             .put("tags", JSONArray(tags))
@@ -176,6 +181,19 @@ data class RescuePluginManifest(
             val category = json.getString("category").trim()
             require(category.isNotEmpty()) { "Plugin category must not be blank" }
             val entryWorkflow = json.optionalString("entryWorkflow")?.let(::requireRelativePath)
+            val assistantInstructions =
+                json.optJSONArray("assistantInstructions")?.objectList().orEmpty().mapIndexed {
+                        index,
+                        instruction,
+                    ->
+                    RescuePluginAssistantInstruction(
+                        path = requireRelativePath(instruction.getString("path")),
+                    ).also {
+                        require(instruction.length() == 1) {
+                            "assistantInstructions[$index] may only contain path"
+                        }
+                    }
+                }
             val documents =
                 json.getJSONArray("documents").objectList().mapIndexed { index, document ->
                     val path = requireRelativePath(document.getString("path"))
@@ -196,18 +214,25 @@ data class RescuePluginManifest(
                 minHostVersion = json.getInt("minHostVersion").also {
                     require(it >= 1) { "minHostVersion must be positive" }
                 },
+                assistantInstructions = assistantInstructions,
             )
         }
 
         private fun requireRelativePath(path: String): String {
-            val normalized = path.replace('\\', '/').trim().trimStart('/')
+            val normalized = path.trim()
             require(
                 normalized.isNotEmpty() &&
+                    !normalized.startsWith('/') &&
+                    !normalized.contains('\\') &&
                     normalized.split('/').none { it.isBlank() || it == "." || it == ".." }
             ) { "Invalid plugin relative path: $path" }
             return normalized
         }
     }
+}
+
+data class RescuePluginAssistantInstruction(val path: String) {
+    fun toJson(): JSONObject = JSONObject().put("path", path)
 }
 
 data class RescuePluginDocument(val path: String, val title: String) {

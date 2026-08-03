@@ -162,7 +162,6 @@ object OCRUtils {
         /** 识别成功 */
         data class Success(val text: String, val textBlocks: List<TextBlock> = emptyList()) : OCRResult() {
             fun getFullText(): String = text
-            fun getTextBlocks(): List<TextBlock> = textBlocks
             fun getStructuredText(): String = textBlocks.joinToString("\n\n") { block ->
                 block.lines.joinToString("\n") { it.text }
             }.ifBlank { text }
