@@ -321,7 +321,7 @@ APK 构建前必须执行 `scripts/validate-openhouse-payloads.sh`。该校验�
 - 校验 APK 内置 payload 文件的实际 sha256 和 size。
 - 解包检查 `pi-web.tar` 的 `scripts/register-service.sh`，拒绝未转义 `$!/$child` 的 unquoted heredoc。
 - 拒绝 pi-web 注册脚本直接覆盖 `$SPEC_PATH` 或 `$COMPONENT_PATH`，避免失败时留下 0 字节 service spec。
-- 检查 `service-manager.tar` 中存在非空 service-manager 二进制。
+- 检查 `service-manager.tgz` 中存在非空 service-manager 二进制。
 
 首次安装日志或 runtime sync marker 必须打印版本摘要：
 

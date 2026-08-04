@@ -13,6 +13,9 @@ android {
         targetSdkVersion 28
         versionCode 2
         versionName "0.2.0"
+        ndk {
+            abiFilters "arm64-v8a"
+        }
     }
 
     signingConfigs {
@@ -66,7 +69,7 @@ tasks.register("generateNativeInstallResources", Exec) {
     inputs.files(
         new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/manifest.json"),
         new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/payload-manifest.json"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/service-manager.tar")
+        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/service-manager.tgz")
     )
     outputs.files(
         new File(nativeInstallAssets, "pre-tmux.sh"),

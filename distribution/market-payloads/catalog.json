@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-08-04",
+  "abi": "arm64-v8a",
+  "packages": [
+    {
+      "id": "openhouse-connect",
+      "version": "1.2.0",
+      "abi": "arm64-v8a",
+      "archive": "openhouse-connect.tgz",
+      "compression": "gzip",
+      "url": "market-payloads/openhouse-connect.tgz",
+      "mirrors": [],
+      "size": 8176261,
+      "sha256": "da1286236c7f1ed2921603a0d78b059d03e59073213fe9dcb72dc9132237c549",
+      "sourceRepo": "https://github.com/jiwuyou/openhouse-connect-fresh.git",
+      "install": {
+        "download": "verify-size-and-sha256",
+        "activate": "atomic-current-switch"
+      }
+    },
+    {
+      "id": "smallphone",
+      "version": "1.0.0",
+      "abi": "arm64-v8a",
+      "archive": "smallphone.tgz",
+      "compression": "gzip",
+      "url": "market-payloads/smallphone.tgz",
+      "mirrors": [],
+      "size": 407585,
+      "sha256": "28926b0ef6acd1575f19565e085307bdd7818568274283b438397555074d3087",
+      "sourceRepo": "https://github.com/jiwuyou/wuxian-smallphone.git",
+      "install": {
+        "download": "verify-size-and-sha256",
+        "activate": "atomic-current-switch"
+      }
+    },
+    {
+      "id": "github-config-helper",
+      "version": "1.0.0",
+      "abi": "arm64-v8a",
+      "archive": "github-config-helper.tgz",
+      "compression": "gzip",
+      "url": "market-payloads/github-config-helper.tgz",
+      "mirrors": [],
+      "size": 17526,
+      "sha256": "f1c5654731af8a96ce229d92ae559de2ce0342b51327ae25703c2c4a3062daa7",
+      "sourceRepo": "https://github.com/jiwuyou/openhouseai-app.git",
+      "install": {
+        "download": "verify-size-and-sha256",
+        "activate": "atomic-current-switch"
+      }
+    },
+    {
+      "id": "cc-switch",
+      "version": "5.9.0",
+      "abi": "arm64-v8a",
+      "archive": "cc-switch-cli-5.9.0-linux-arm64.tgz",
+      "compression": "gzip",
+      "url": "market-payloads/cc-switch-cli-5.9.0-linux-arm64.tgz",
+      "mirrors": [],
+      "size": 6693477,
+      "sha256": "46ce26be4c1eddfc7a3407eac8820395a2da42db4cb9bf11bf9d4a87b1cfb20e",
+      "sourceRepo": "https://github.com/jiwuyou/cc-switch-cli.git",
+      "install": {
+        "download": "verify-size-and-sha256",
+        "activate": "atomic-current-switch"
+      }
+    }
+  ]
+}

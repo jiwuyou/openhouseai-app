@@ -15,10 +15,17 @@ cd "$repo_dir"
 ./gradlew -p native-app "${NATIVE_GRADLE_TASK:-assembleRelease}" "$@"
 apk="$(find "$repo_dir/native-app/build/outputs/apk" -type f -name '*.apk' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d ' ' -f 2-)"
 [[ -n "$apk" && -f "$apk" ]] || { printf 'Native APK was not produced\n' >&2; exit 1; }
-unzip -Z1 "$apk" | awk '$0 == "assets/openhouse-runtime/runtime-aarch64.tgz" { found = 1 } END { exit found ? 0 : 1 }' \
+apk_entries="$(unzip -Z1 "$apk")"
+awk '$0 == "assets/openhouse-runtime/runtime-aarch64.tgz" { found = 1 } END { exit found ? 0 : 1 }' <<<"$apk_entries" \
   || { printf 'Native APK is missing assets/openhouse-runtime/runtime-aarch64.tgz\n' >&2; exit 1; }
+if grep -Eq '^lib/(armeabi-v7a|x86|x86_64)/' <<<"$apk_entries"; then
+  printf 'Native APK must contain only arm64-v8a native libraries\n' >&2
+  exit 1
+fi
+grep -Eq '^lib/arm64-v8a/' <<<"$apk_entries" \
+  || { printf 'Native APK is missing arm64-v8a native libraries\n' >&2; exit 1; }
 for required_asset in assets/wuxianpi-install/pre-tmux.sh assets/wuxianpi-install/resources.tar; do
-  unzip -Z1 "$apk" | awk -v required="$required_asset" '$0 == required { found = 1 } END { exit found ? 0 : 1 }' \
+  awk -v required="$required_asset" '$0 == required { found = 1 } END { exit found ? 0 : 1 }' <<<"$apk_entries" \
     || { printf 'Native APK is missing %s\n' "$required_asset" >&2; exit 1; }
 done
 expected="$(sha256sum "$asset" | awk '{print $1}')"

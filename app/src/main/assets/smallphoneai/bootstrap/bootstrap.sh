@@ -649,7 +649,7 @@ run_full_install() {
   run_stage 30-update-ubuntu-packages.sh
   run_stage 38-install-node.sh
   run_stage 35-sync-docs.sh
-  SMALLPHONEAI_COMPONENT_TARGETS=github-config-helper,cc-connect,smallphone run_stage 50-install-runtime-components.sh
+  # Optional market payloads are deliberately excluded from the offline core install.
   run_stage 48-sync-openhouse-registry.sh
   run_stage 60-start-smallphone.sh
   run_machine_stage 65-smallphone-status.sh record-full-health-check
@@ -783,7 +783,8 @@ main() {
       return
       ;;
     install-smallphone|smallphone)
-      SMALLPHONEAI_COMPONENT_TARGETS=smallphone \
+      SMALLPHONEAI_COMPONENT_SOURCE_MODE=market \
+        SMALLPHONEAI_COMPONENT_TARGETS=smallphone \
         SMALLPHONEAI_COMPONENT_ACTION=install-register \
         SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
         run_stage 50-install-runtime-components.sh

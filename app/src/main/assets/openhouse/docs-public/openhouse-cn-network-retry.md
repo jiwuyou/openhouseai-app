@@ -395,7 +395,7 @@ sha256 不匹配时：
 
 ```text
 registry=https://registry.npmmirror.com
-artifact=smallphone.tar
+artifact=market-payloads/smallphone.tgz
 expected_sha256=...
 actual_sha256=...
 token=****abcd

@@ -73,11 +73,11 @@ PY
     chmod 755 "$stage/scripts/install.sh" "$stage/scripts/check.sh"
   fi
 
-  rm -f "$fixture/service-manager.tar"
+  rm -f "$fixture/service-manager.tgz"
   if [ "$layout" = repo ]; then
-    tar -cf "$fixture/service-manager.tar" -C "$stage" service-manager scripts
+    tar -cf - -C "$stage" service-manager scripts | gzip -n > "$fixture/service-manager.tgz"
   else
-    tar -cf "$fixture/service-manager.tar" -C "$stage" service-manager
+    tar -cf - -C "$stage" service-manager | gzip -n > "$fixture/service-manager.tgz"
   fi
 
   python3 - "$fixture" "$stage/service-manager" <<'PY'
@@ -87,7 +87,7 @@ import os
 import sys
 
 payload_dir, binary_path = sys.argv[1:]
-archive_path = os.path.join(payload_dir, "service-manager.tar")
+archive_path = os.path.join(payload_dir, "service-manager.tgz")
 
 def digest(path):
     value = hashlib.sha256()
@@ -130,9 +130,9 @@ write_archive raw
 if "$VALIDATOR" "$fixture" > "$work_dir/raw.log" 2>&1; then
   fail 'raw single-binary service-manager archive was accepted'
 fi
-grep -Fq 'service-manager.tar is missing non-empty scripts/install.sh' "$work_dir/raw.log" \
+grep -Fq 'service-manager.tgz is missing non-empty scripts/install.sh' "$work_dir/raw.log" \
   || { cat "$work_dir/raw.log" >&2; fail 'missing install.sh was not reported'; }
-grep -Fq 'service-manager.tar is missing non-empty scripts/check.sh' "$work_dir/raw.log" \
+grep -Fq 'service-manager.tgz is missing non-empty scripts/check.sh' "$work_dir/raw.log" \
   || { cat "$work_dir/raw.log" >&2; fail 'missing check.sh was not reported'; }
 
 printf 'service-manager payload validation focused tests passed\n'

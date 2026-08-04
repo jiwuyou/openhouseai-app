@@ -16,7 +16,7 @@ required=(
   "$bootstrap_dir/scripts/wuxianpi-setup"
   "$payload_dir/manifest.json"
   "$payload_dir/payload-manifest.json"
-  "$payload_dir/service-manager.tar"
+  "$payload_dir/service-manager.tgz"
 )
 for file in "${required[@]}"; do
   [[ -s "$file" ]] || { printf 'Missing Native install input: %s\n' "$file" >&2; exit 1; }
@@ -29,7 +29,7 @@ cp "$pre_tmux" "$stage/bootstrap/wuxianpi-pre-tmux.sh"
 cp "$payload_dir/manifest.json" "$stage/product-payloads/manifest.json"
 cp "$payload_dir/payload-manifest.json" "$stage/product-payloads/payload-manifest.json"
 cp "$payload_dir/AI_UPDATE_GUIDE.md" "$stage/product-payloads/AI_UPDATE_GUIDE.md"
-cp "$payload_dir/service-manager.tar" "$stage/product-payloads/service-manager.tar"
+cp "$payload_dir/service-manager.tgz" "$stage/product-payloads/service-manager.tgz"
 
 cp "$pre_tmux" "$assets_dir/pre-tmux.sh"
 chmod 755 "$assets_dir/pre-tmux.sh"
@@ -46,16 +46,16 @@ EOF
 chmod 755 "$stage/install.sh"
 chmod 755 "$stage/bootstrap/wuxianpi-setup" "$stage/bootstrap/wuxianpi-pre-tmux.sh"
 
-service_manager_sha="$(sha256sum "$stage/product-payloads/service-manager.tar" | awk '{print $1}')"
+service_manager_sha="$(sha256sum "$stage/product-payloads/service-manager.tgz" | awk '{print $1}')"
 bootstrap_sha="$(sha256sum "$stage/bootstrap/scripts/wuxianpi-setup" | awk '{print $1}')"
 pre_tmux_sha="$(sha256sum "$stage/bootstrap/scripts/wuxianpi-pre-tmux.sh" | awk '{print $1}')"
 printf '%s  %s\n' \
-  "$service_manager_sha" product-payloads/service-manager.tar \
+  "$service_manager_sha" product-payloads/service-manager.tgz \
   "$bootstrap_sha" bootstrap/wuxianpi-setup \
   "$pre_tmux_sha" bootstrap/wuxianpi-pre-tmux.sh \
   > "$stage/SHA256SUMS"
 
-printf '{"schema":2,"contents":["bootstrap","service-manager"],"runtimeAsset":"openhouse-runtime/runtime-aarch64.tgz","excluded":["aionui","pi-web","optional-products"]}\n' \
+printf '{"schema":3,"contents":["bootstrap","product-payloads"],"bundledPayloads":["service-manager.tgz"],"runtimeAsset":"openhouse-runtime/runtime-aarch64.tgz","excluded":["aionui","pi-web","market-payloads"]}\n' \
   > "$stage/install-manifest.json"
 printf '{"nativeInstallResources":true}\n' > "$stage/.complete"
 

@@ -168,7 +168,7 @@ openhouse-termux exec -- 'id; echo "$HOME"; echo "$PREFIX"'
 16. `HERMES_SETUP.md`
    - 需要安装 Hermes 时阅读。Hermes 是可选高级能力，安装和配置会花比较久。
 17. `SMALLPHONE_FRONT_BETA_DEPLOY.md`
-   - 需要把 APK 更新后的完整 `smallphone.tar` 部署到 SmallPhone 时阅读；不要做少量文件增量覆盖。
+   - 需要从救援助手市场下载完整 `smallphone.tgz` 并部署到 SmallPhone 时阅读；不要做少量文件增量覆盖。
 
 ## 给 AI agent 的入口
 

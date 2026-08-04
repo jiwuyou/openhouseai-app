@@ -9,7 +9,10 @@
   "defaultOneClickAction": "install",
   "healthSignaturePolicy": {
     "scope": "bootstrap_guidance",
-    "requiredStages": ["bootstrap-stage-1", "bootstrap-stage-2"],
+    "requiredStages": [
+      "bootstrap-stage-1",
+      "bootstrap-stage-2"
+    ],
     "stageLabels": {
       "bootstrap-stage-1": "一阶段引导 AI 签名",
       "bootstrap-stage-2": "二阶段引导 AI 签名"
@@ -24,101 +27,138 @@
   "machineReadable": {
     "status": {
       "type": "bootstrap",
-      "args": ["status"],
+      "args": [
+        "status"
+      ],
       "output": "json",
-      "healthSignatureFields": ["healthSignatures", "completeSignaturePass", "fullHealthCheck", "fullHealthCheckDue"]
+      "healthSignatureFields": [
+        "healthSignatures",
+        "completeSignaturePass",
+        "fullHealthCheck",
+        "fullHealthCheckDue"
+      ]
     },
     "check": {
       "type": "bootstrap",
-      "args": ["check"],
+      "args": [
+        "check"
+      ],
       "output": "json",
-      "healthSignatureFields": ["healthSignatures", "completeSignaturePass", "fullHealthCheck", "fullHealthCheckDue"]
+      "healthSignatureFields": [
+        "healthSignatures",
+        "completeSignaturePass",
+        "fullHealthCheck",
+        "fullHealthCheckDue"
+      ]
     },
-    "hooks": { "type": "bootstrap", "args": ["hooks"], "output": "json" },
+    "hooks": {
+      "type": "bootstrap",
+      "args": [
+        "hooks"
+      ],
+      "output": "json"
+    },
     "postApkUpdate": {
       "type": "bootstrap",
-      "args": ["sync-core-stack"],
+      "args": [
+        "sync-core-stack"
+      ],
       "reportsFinalHealth": true,
-      "finalHealth": { "format": "json", "source": "final stdout object" }
+      "finalHealth": {
+        "format": "json",
+        "source": "final stdout object"
+      }
     }
   },
   "runtimePayloads": {
-    "firstRunSource": "apk_bundled_packages",
-    "networkRole": "required_for_termux_node_and_ubuntu_ai_workbench_packages",
-    "description": "APK 内置核心运行组件包；稳定组件 ID pi-agent 映射到直接嵌入官方 Pi SDK 的 WuxianPi Node 服务。AionUI 和 pi-web 不再内置，Pi 原生 JSONL、扩展与设置保留在 $HOME/.pi。",
+    "firstRunSource": "apk_bundled_core_packages",
+    "networkRole": "optional_for_market_packages_and_environment_updates",
+    "description": "APK 内置核心 ARM64 运行组件；openhouse-connect、SmallPhone、cc-switch 和 GitHub 配置助手由救援助手市场按需安装。",
     "apkAssetRoot": "openhouse/product-payloads",
     "extractedRoot": "$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads",
     "installRoot": "$HOME/smallphoneai-repos",
-    "requiredEntries": ["scripts/install.sh", "scripts/check.sh"],
+    "requiredEntries": [
+      "scripts/install.sh",
+      "scripts/check.sh"
+    ],
     "payloads": [
       {
         "id": "service-manager",
         "title": "service-manager",
-        "apkAssetPath": "openhouse/product-payloads/service-manager.tar",
-        "targetDir": "$HOME/smallphoneai-repos/service-manager"
+        "apkAssetPath": "openhouse/product-payloads/service-manager.tgz",
+        "targetDir": "$HOME/smallphoneai-repos/service-manager",
+        "compression": "gzip",
+        "abi": "arm64-v8a"
       },
       {
-        "id": "openhouse-connect",
-        "title": "cc-connect/openhouse-connect",
-        "apkAssetPath": "openhouse/product-payloads/openhouse-connect.tar",
-        "targetDir": "$HOME/smallphoneai-repos/openhouse-connect"
-      },
-      {
-        "id": "smallphone",
-        "title": "SmallPhone",
-        "apkAssetPath": "openhouse/product-payloads/smallphone.tar",
-        "targetDir": "$HOME/smallphoneai-repos/smallphone-active"
+        "id": "openhouse-web",
+        "title": "OpenHouse Web",
+        "apkAssetPath": "openhouse/product-payloads/openhouse-web.tgz",
+        "targetDir": "$HOME/smallphoneai-repos/openhouse-web",
+        "compression": "gzip",
+        "abi": "arm64-v8a"
       },
       {
         "id": "pi-agent",
         "title": "WuxianPi Node runtime",
-        "apkAssetPath": "openhouse/product-payloads/pi-runtime.tar",
-        "targetDir": "$HOME/smallphoneai-repos/pi-runtime"
+        "apkAssetPath": "openhouse/product-payloads/runtime-aarch64.tgz",
+        "targetDir": "$HOME/smallphoneai-repos/pi-runtime",
+        "compression": "gzip",
+        "abi": "arm64-v8a"
       },
       {
         "id": "wuyou",
         "title": "wuyou",
-        "apkAssetPath": "openhouse/product-payloads/wuyou.tar",
+        "apkAssetPath": "openhouse/product-payloads/wuyou.tgz",
         "targetDir": "$HOME/smallphoneai-repos/wuyou",
         "service": false,
-        "globalCommand": "wuyou"
-      },
-      {
-        "id": "github-config-helper",
-        "title": "GitHub 本地配置助手",
-        "apkAssetPath": "openhouse/product-payloads/github-config-helper.tar",
-        "targetDir": "$HOME/smallphoneai-repos/github-config-helper"
-      },
-      {
-        "id": "cc-switch",
-        "title": "cc-switch provider 配置工具",
-        "apkAssetPath": "openhouse/product-payloads/cc-switch-cli-5.9.0-linux-arm64.tgz",
-        "targetDir": "$HOME/.local/bin",
-        "optional": true,
-        "service": false
+        "globalCommand": "wuyou",
+        "compression": "gzip",
+        "abi": "arm64-v8a"
       }
-    ]
+    ],
+    "schema": 2
   },
   "stageFlow": [
     {
       "title": "准备手机环境",
       "description": "先准备 Termux、Node 和 wuyou，再安装嵌入官方 Pi SDK 的 WuxianPi Node runtime；随后安装 service-manager、注册按需 20765 runtime 与 OpenHouse Web。",
-      "stages": ["env_check", "prepare", "termux_packages", "install_wuyou", "termux_node", "install_pi_agent", "install_service_manager", "register_pi_services", "start_smallphone", "install_openhouse_web", "install_ubuntu", "ubuntu_packages"]
+      "stages": [
+        "env_check",
+        "prepare",
+        "termux_packages",
+        "install_wuyou",
+        "termux_node",
+        "install_pi_agent",
+        "install_service_manager",
+        "register_pi_services",
+        "start_smallphone",
+        "install_openhouse_web",
+        "install_ubuntu",
+        "ubuntu_packages"
+      ]
     },
     {
       "title": "准备 Ubuntu AI 工作台依赖",
       "description": "安装 Ubuntu Node.js 并同步 OpenHouse 文档；Termux Node 承载 WuxianPi SDK 服务。",
-      "stages": ["install_node", "sync_official_docs"]
+      "stages": [
+        "install_node",
+        "sync_official_docs"
+      ]
     },
     {
       "title": "建立 OpenHouse 控制平面",
       "description": "核心 Termux 控制平面已在前一组完成；Ubuntu 准备完成后继续同步 registry。",
-      "stages": ["sync_openhouse_registry"]
+      "stages": [
+        "sync_openhouse_registry"
+      ]
     },
     {
       "title": "启动 pi-agent 运行栈",
       "description": "启动 service-manager 与已注册的 WuxianPi 服务，并读取最终健康状态。",
-      "stages": ["start_smallphone"]
+      "stages": [
+        "start_smallphone"
+      ]
     }
   ],
   "sections": [
@@ -132,12 +172,17 @@
           "id": "install",
           "type": "button",
           "label": "安装 OpenHouse 控制平面",
-          "description": "一键完整准备 Termux 常驻层与 WuxianPi Node runtime，再继续 Ubuntu AI 工作台层、openhouse-connect 和 SmallPhone 兼容服务，并输出最终健康状态；内部分阶段固定执行。",
+          "description": "一键准备 Termux 核心运行层与 WuxianPi Node runtime，再继续 Ubuntu AI 工作台基础阶段，并输出核心健康状态；市场组件按需单独安装。",
           "action": {
             "type": "bootstrap",
-            "args": ["install"],
+            "args": [
+              "install"
+            ],
             "reportsFinalHealth": true,
-            "finalHealth": { "format": "json", "source": "final stdout object" }
+            "finalHealth": {
+              "format": "json",
+              "source": "final stdout object"
+            }
           }
         },
         {
@@ -145,7 +190,13 @@
           "type": "button",
           "label": "读取状态 JSON",
           "description": "输出 SmallPhoneAI 机器可读状态。",
-          "action": { "type": "bootstrap", "args": ["status"], "output": "json" }
+          "action": {
+            "type": "bootstrap",
+            "args": [
+              "status"
+            ],
+            "output": "json"
+          }
         },
         {
           "id": "start_smallphone",
@@ -154,9 +205,14 @@
           "description": "启动 service-manager，请求启动 group:local-stack，并输出最终健康状态。",
           "action": {
             "type": "bootstrap",
-            "args": ["start"],
+            "args": [
+              "start"
+            ],
             "reportsFinalHealth": true,
-            "finalHealth": { "format": "json", "source": "final stdout object" }
+            "finalHealth": {
+              "format": "json",
+              "source": "final stdout object"
+            }
           }
         },
         {
@@ -166,21 +222,31 @@
           "description": "重新执行运行组件 install/check/register-service，然后启动并输出状态。",
           "action": {
             "type": "bootstrap",
-            "args": ["repair"],
+            "args": [
+              "repair"
+            ],
             "reportsFinalHealth": true,
-            "finalHealth": { "format": "json", "source": "final stdout object" }
+            "finalHealth": {
+              "format": "json",
+              "source": "final stdout object"
+            }
           }
         },
         {
           "id": "sync_core_stack",
           "type": "button",
           "label": "同步核心运行栈",
-          "description": "APK 更新后同步内置 service-manager、GitHub 配置助手、openhouse-connect、SmallPhone 兼容组件、Pi Agent 和 wuyou 核心组件，刷新 registry 并启动本机服务；不会执行首次安装的 apt/AI CLI 阶段。",
+          "description": "APK 更新后同步内置 service-manager、OpenHouse Web、Pi Agent 和 wuyou 核心组件，刷新 registry 并启动本机服务；市场组件不随 APK 更新自动安装。",
           "action": {
             "type": "bootstrap",
-            "args": ["sync-core-stack"],
+            "args": [
+              "sync-core-stack"
+            ],
             "reportsFinalHealth": true,
-            "finalHealth": { "format": "json", "source": "final stdout object" }
+            "finalHealth": {
+              "format": "json",
+              "source": "final stdout object"
+            }
           }
         }
       ]
@@ -196,35 +262,60 @@
           "type": "button",
           "label": "安装 Ubuntu Node.js",
           "description": "在 Ubuntu 内安装或检查 Node.js 24 LTS 和 npm。",
-          "action": { "type": "bootstrap", "args": ["node"] }
+          "action": {
+            "type": "bootstrap",
+            "args": [
+              "node"
+            ]
+          }
         },
         {
           "id": "install_codex",
           "type": "button",
           "label": "安装 Codex",
           "description": "后置能力：在 Ubuntu 内安装 OpenAI Codex CLI。",
-          "action": { "type": "bootstrap", "args": ["codex"] }
+          "action": {
+            "type": "bootstrap",
+            "args": [
+              "codex"
+            ]
+          }
         },
         {
           "id": "install_claude_code",
           "type": "button",
           "label": "安装 Claude Code",
           "description": "后置能力：在 Ubuntu 内安装 Anthropic Claude Code。",
-          "action": { "type": "bootstrap", "args": ["claude-code"] }
+          "action": {
+            "type": "bootstrap",
+            "args": [
+              "claude-code"
+            ]
+          }
         },
         {
           "id": "install_claude_code_ui",
           "type": "button",
           "label": "安装 CloudCLI",
           "description": "后置能力：在 Ubuntu 内安装或检查 ClaudeCodeUI / CloudCLI。",
-          "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
+          "action": {
+            "type": "bootstrap",
+            "args": [
+              "claude-code-ui"
+            ]
+          }
         },
         {
           "id": "install_cc_switch",
           "type": "button",
           "label": "安装 cc-switch",
           "description": "后置能力：从 APK 内置 arm64 payload 安装 provider 配置执行器；不注册长期服务。",
-          "action": { "type": "bootstrap", "args": ["cc-switch"] }
+          "action": {
+            "type": "bootstrap",
+            "args": [
+              "cc-switch"
+            ]
+          }
         }
       ]
     }
@@ -234,121 +325,221 @@
       "id": "env_check",
       "title": "检查 Termux",
       "description": "检查当前是否为支持的 Termux/Ubuntu 环境。",
-      "action": { "type": "bootstrap", "args": ["env-check"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "env-check"
+        ]
+      }
     },
     {
       "id": "prepare",
       "title": "准备 Termux",
       "description": "创建 SmallPhoneAI 文档目录、工作区和 Termux 配置。",
-      "action": { "type": "bootstrap", "args": ["prepare"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "prepare"
+        ]
+      }
     },
     {
       "id": "termux_packages",
       "title": "安装 Termux 基础包",
       "description": "pkg 安装 proot-distro、curl、openssl、ca-certificates。",
-      "action": { "type": "bootstrap", "args": ["termux-packages"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "termux-packages"
+        ]
+      }
     },
     {
       "id": "install_wuyou",
       "title": "安装 wuyou",
       "description": "在安装 Node.js 之前，从 APK payload 安装并检查独立 wuyou 命令。",
-      "action": { "type": "bootstrap", "args": ["install-wuyou"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "install-wuyou"
+        ]
+      }
     },
     {
       "id": "termux_node",
       "title": "安装 Termux Node/npm",
       "description": "使用 Termux pkg/apt 优先安装 nodejs-lts、npm 和 native build 依赖，失败才 fallback 到 nodejs；最终验证 Node.js major >= 24。Ubuntu 也以 Node.js 24 LTS 为目标，但由 Ubuntu 阶段使用自己的安装来源；不下载 nodejs.org Linux/glibc tarball。",
-      "action": { "type": "bootstrap", "args": ["termux-node"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "termux-node"
+        ]
+      }
     },
     {
       "id": "install_pi_agent",
       "title": "安装 WuxianPi Node runtime",
       "description": "使用组件 pi-agent 安装并检查 Termux native WuxianPi Node 服务；稳定 service ID 为 yuanshengwuxianpi，按需使用 20765，目标目录为 pi-runtime，直接嵌入 @earendil-works/pi-coding-agent 0.80.10，暂不执行服务注册。",
-      "action": { "type": "bootstrap", "args": ["install-pi-agent"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "install-pi-agent"
+        ]
+      }
     },
     {
       "id": "install_service_manager",
       "title": "安装运行中枢",
       "description": "安装并启动 Termux native service-manager，等待健康与认证接口就绪；WuxianPi 只注册，不在首次安装阶段启动。",
-      "action": { "type": "bootstrap", "args": ["install-service-manager"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "install-service-manager"
+        ]
+      }
     },
     {
       "id": "register_pi_services",
       "title": "注册 pi 服务",
       "description": "只把已经安装的 pi-agent 注册到 service-manager，不重复安装 payload。",
-      "action": { "type": "bootstrap", "args": ["register-pi-services"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "register-pi-services"
+        ]
+      }
     },
     {
       "id": "install_openhouse_web",
       "title": "安装 OpenHouse Web",
       "description": "安装、检查并注册 OpenHouse Web。",
-      "action": { "type": "bootstrap", "args": ["install-openhouse-web"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "install-openhouse-web"
+        ]
+      }
     },
     {
       "id": "install_ubuntu",
       "title": "安装 Ubuntu rootfs",
       "description": "通过 proot-distro 安装可重复进入的 Ubuntu rootfs。",
-      "action": { "type": "bootstrap", "args": ["ubuntu"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "ubuntu"
+        ]
+      }
     },
     {
       "id": "sync_official_docs",
       "title": "同步说明文档",
       "description": "同步 OpenHouseAI 文档到 ~/openhouseai-docs/official，并保留 ~/smallphoneai-docs/official 兼容路径。",
-      "action": { "type": "bootstrap", "args": ["sync-docs"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "sync-docs"
+        ]
+      }
     },
     {
       "id": "ubuntu_packages",
       "title": "安装 Ubuntu 基础包",
       "description": "apt 安装 curl、ca-certificates、git、gh、procps、ripgrep、unzip。",
-      "action": { "type": "bootstrap", "args": ["ubuntu-packages"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "ubuntu-packages"
+        ]
+      }
     },
     {
       "id": "entry_ubuntu",
       "title": "启动后直接进入 Ubuntu",
       "description": "设置打开 Termux 后默认进入 Ubuntu。",
-      "action": { "type": "bootstrap", "args": ["entry-ubuntu"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "entry-ubuntu"
+        ]
+      }
     },
     {
       "id": "install_node",
       "title": "安装 Ubuntu Node.js",
       "description": "安装或检查 Ubuntu AI 工作台和后置 AI 工具共用的 Node.js 24 LTS 和 npm。",
-      "action": { "type": "bootstrap", "args": ["node"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "node"
+        ]
+      }
     },
     {
       "id": "install_codex",
       "title": "安装 Codex CLI",
       "description": "后置能力：通过 npm 安装或检查 @openai/codex。",
-      "action": { "type": "bootstrap", "args": ["codex"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "codex"
+        ]
+      }
     },
     {
       "id": "install_claude_code",
       "title": "安装 Claude Code",
       "description": "后置能力：通过 npm 安装或检查 @anthropic-ai/claude-code。",
-      "action": { "type": "bootstrap", "args": ["claude-code"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "claude-code"
+        ]
+      }
     },
     {
       "id": "install_claude_code_ui",
       "title": "安装 CloudCLI",
       "description": "后置能力：通过 npm 安装或检查 ClaudeCodeUI / CloudCLI。",
-      "action": { "type": "bootstrap", "args": ["claude-code-ui"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "claude-code-ui"
+        ]
+      }
     },
     {
       "id": "install_cc_switch",
       "title": "安装 cc-switch",
       "description": "后置能力：从 APK 内置 arm64 payload 安装 provider 配置执行器；不注册长期服务。",
-      "action": { "type": "bootstrap", "args": ["cc-switch"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "cc-switch"
+        ]
+      }
     },
     {
       "id": "runtime_components",
       "title": "安装 OpenHouse 运行组件",
       "description": "默认先在 Termux native 确保 service-manager，再安装、检查并注册 pi-agent；Ubuntu 仅用于 AI 工作台/显式 fallback 和后置兼容组件。",
-      "action": { "type": "bootstrap", "args": ["components"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "components"
+        ]
+      }
     },
     {
       "id": "sync_openhouse_registry",
       "title": "同步 OpenHouseAI registry",
       "description": "同步组件注册清单和 service-manager 服务配置。",
-      "action": { "type": "bootstrap", "args": ["registry-sync"] }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "registry-sync"
+        ]
+      }
     },
     {
       "id": "start_smallphone",
@@ -356,9 +547,14 @@
       "description": "启动 service-manager 与 WuxianPi 运行栈，并输出最终健康状态。",
       "action": {
         "type": "bootstrap",
-        "args": ["start"],
+        "args": [
+          "start"
+        ],
         "reportsFinalHealth": true,
-        "finalHealth": { "format": "json", "source": "final stdout object" }
+        "finalHealth": {
+          "format": "json",
+          "source": "final stdout object"
+        }
       }
     },
     {
@@ -367,9 +563,14 @@
       "description": "重新安装/检查/注册运行组件，启动后输出状态 JSON。",
       "action": {
         "type": "bootstrap",
-        "args": ["repair"],
+        "args": [
+          "repair"
+        ],
         "reportsFinalHealth": true,
-        "finalHealth": { "format": "json", "source": "final stdout object" }
+        "finalHealth": {
+          "format": "json",
+          "source": "final stdout object"
+        }
       }
     },
     {
@@ -378,16 +579,27 @@
       "description": "APK 更新后同步内置运行组件、GitHub 配置助手、registry 和本机服务状态，不执行首次安装的系统包或 AI CLI 安装阶段。",
       "action": {
         "type": "bootstrap",
-        "args": ["sync-core-stack"],
+        "args": [
+          "sync-core-stack"
+        ],
         "reportsFinalHealth": true,
-        "finalHealth": { "format": "json", "source": "final stdout object" }
+        "finalHealth": {
+          "format": "json",
+          "source": "final stdout object"
+        }
       }
     },
     {
       "id": "status",
       "title": "状态 JSON",
       "description": "输出机器可读状态，供 App Shell 解析。",
-      "action": { "type": "bootstrap", "args": ["status"], "output": "json" }
+      "action": {
+        "type": "bootstrap",
+        "args": [
+          "status"
+        ],
+        "output": "json"
+      }
     }
   ]
 }

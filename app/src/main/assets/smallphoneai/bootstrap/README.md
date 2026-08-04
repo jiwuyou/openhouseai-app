@@ -90,25 +90,23 @@ The required APK asset archives are:
 
 | Component | APK asset path | Runtime target |
 | --- | --- | --- |
-| service-manager | `openhouse/product-payloads/service-manager.tar` | `$HOME/smallphoneai-repos/service-manager` |
-| cc-connect/openhouse-connect | `openhouse/product-payloads/openhouse-connect.tar` | `$HOME/smallphoneai-repos/openhouse-connect` |
-| SmallPhone | `openhouse/product-payloads/smallphone.tar` | `$HOME/smallphoneai-repos/smallphone-active` |
-| pi-agent (stable service ID) | `openhouse/product-payloads/pi-runtime.tar` | `$HOME/smallphoneai-repos/pi-runtime` |
-| wuyou | `openhouse/product-payloads/wuyou.tar` | `$HOME/smallphoneai-repos/wuyou`; installs `$PREFIX/bin/wuyou` |
+| service-manager | `openhouse/product-payloads/service-manager.tgz` | `$HOME/smallphoneai-repos/service-manager` |
+| pi-agent (stable service ID) | `openhouse/product-payloads/runtime-aarch64.tgz` | `$HOME/smallphoneai-repos/pi-runtime` |
+| wuyou | `openhouse/product-payloads/wuyou.tgz` | `$HOME/smallphoneai-repos/wuyou`; installs `$PREFIX/bin/wuyou` |
 
 In the APK source tree these packages live under
 `app/src/main/assets/openhouse/product-payloads`. The Android host or Gradle
 asset-copy step must extract/copy those packages to
 `$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads` before
 first run. The `service-manager` payload is
-`openhouse/product-payloads/service-manager.tar` and must contain the child
+`openhouse/product-payloads/service-manager.tgz` and must contain the child
 repo install/check contract plus a current-environment `service-manager`
 binary. `50-install-runtime-components.sh` defaults to
 `SMALLPHONEAI_COMPONENT_SOURCE_MODE=bundle`; this prevents first-run source
 clones from GitHub. It is not an air-gapped install: apt, npm, pip, model
 providers, and ordinary network checks may still be used when a stage needs
 operating-system or package dependencies. The stable `pi-agent` component ID
-installs the Node/Pi SDK payload from `pi-runtime.tar`; runtime code is
+installs the Node/Pi SDK payload from `runtime-aarch64.tgz`; runtime code is
 installed under `$HOME/.local/share/openhouseai/runtime`, Pi conversations and
 extensions remain under `$HOME/.pi`, and the tokenless service listens on
 `127.0.0.1:8765` using `wuxianpi-sdk-v1`. It requires Termux Node.js 22.19 or

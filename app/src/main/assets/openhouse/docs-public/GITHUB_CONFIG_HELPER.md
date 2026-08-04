@@ -99,7 +99,7 @@ HOME=/root
 助手本体很小，可以作为本地 payload 内置到 APK：
 
 ```text
-app/src/main/assets/openhouse/product-payloads/github-config-helper.tar
+distribution/market-payloads/github-config-helper.tgz
 ```
 
 安装后放到固定路径：

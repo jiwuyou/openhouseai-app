@@ -212,7 +212,7 @@ import tarfile
     expected_binary_sha,
 ) = sys.argv[1:]
 expected_dirty = expected_dirty == "true"
-archive_path = os.path.join(payload_dir, "service-manager.tar")
+archive_path = os.path.join(payload_dir, "service-manager.tgz")
 if not os.path.isfile(archive_path):
     raise SystemExit(f"error: payload archive is missing: {archive_path}")
 
@@ -433,11 +433,12 @@ with open(output_path, "w", encoding="utf-8") as handle:
 PY
 
 find "$stage" -exec touch -h -d '@0' {} +
-archive="$PAYLOAD_DIR/service-manager.tar"
+archive="$PAYLOAD_DIR/service-manager.tgz"
 temporary="$archive.tmp.$$"
 tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --format=gnu \
-  -cf "$temporary" -C "$stage" .
+  -cf - -C "$stage" . | gzip -n > "$temporary"
 mv "$temporary" "$archive"
+rm -f "$PAYLOAD_DIR/service-manager.tar"
 archive_sha256="$(sha256sum "$archive" | awk '{print $1}')"
 archive_size="$(stat -c '%s' "$archive")"
 

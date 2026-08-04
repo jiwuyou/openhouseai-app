@@ -17,7 +17,7 @@ doc = json.load(open(sys.argv[1], encoding="utf-8"))
 items = doc.get("components") or doc.get("payloads") or []
 entry = next((item for item in items if item.get("id") == "openhouse-web"), None)
 assert entry, "openhouse-web entry missing"
-assert entry.get("archive") == "openhouse-web.tar"
+assert entry.get("archive") == "openhouse-web.tgz"
 assert entry.get("version") == "1.1.2"
 assert entry.get("requires", {}).get("serviceManager") == ">=0.3.1"
 PY
@@ -29,22 +29,22 @@ for required in \
   config/openhouse-web.service.json config/openhouse.component.json \
   scripts/build.mjs scripts/check.mjs \
   scripts/install.sh scripts/check.sh scripts/register-service.sh; do
-  tar -tf "$PAYLOAD_DIR/openhouse-web.tar" | sed 's#^\./##' | grep -Fxq "$required" \
+  tar -tzf "$PAYLOAD_DIR/openhouse-web.tgz" | sed 's#^\./##' | grep -Fxq "$required" \
     || fail "openhouse-web payload missing $required"
 done
 
 for executable in scripts/install.sh scripts/check.sh scripts/register-service.sh; do
-  mode="$(tar -tvf "$PAYLOAD_DIR/openhouse-web.tar" "./$executable" | awk '{print $1}')"
+  mode="$(tar -tvzf "$PAYLOAD_DIR/openhouse-web.tgz" "./$executable" | awk '{print $1}')"
   case "$mode" in
     *x*x*x) ;;
     *) fail "openhouse-web payload script is not executable: $executable ($mode)" ;;
   esac
 done
 
-package_json="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./package.json)"
+package_json="$(tar -xOzf "$PAYLOAD_DIR/openhouse-web.tgz" ./package.json)"
 printf '%s' "$package_json" | grep -Fq '"version": "1.1.2"' || fail 'package version 1.1.2 missing'
 
-password_store="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./src/password-store.mjs)"
+password_store="$(tar -xOzf "$PAYLOAD_DIR/openhouse-web.tgz" ./src/password-store.mjs)"
 for required in \
   "DEFAULT_PASSWORD = '123456'" \
   'MIN_PASSWORD_LENGTH = 6' \
@@ -54,7 +54,7 @@ for required in \
     || fail "password store contract missing: $required"
 done
 
-server_source="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./src/server.mjs)"
+server_source="$(tar -xOzf "$PAYLOAD_DIR/openhouse-web.tgz" ./src/server.mjs)"
 for required in \
   '/api/v1/session/password' '/api/v1/password' \
   'auth.revokeSessions()' 'auth.issueSession()'; do
@@ -62,12 +62,12 @@ for required in \
     || fail "password auth server contract missing: $required"
 done
 
-service_json="$(tar -xOf "$PAYLOAD_DIR/openhouse-web.tar" ./config/openhouse-web.service.json)"
+service_json="$(tar -xOzf "$PAYLOAD_DIR/openhouse-web.tgz" ./config/openhouse-web.service.json)"
 printf '%s' "$service_json" | grep -Fq '"residentByDefault": true' || fail 'residentByDefault=true missing'
 printf '%s' "$service_json" | grep -Fq '"preferred": 22110' || fail 'fixed port 22110 missing'
 
-grep -Fq 'wuyou,service-manager,pi-agent,github-config-helper,cc-connect,smallphone,hermes,openhouse-web' "$BOOTSTRAP" \
-  || fail 'bootstrap default order does not install openhouse-web last'
+grep -Fq 'wuyou,service-manager,pi-agent,openhouse-web' "$BOOTSTRAP" \
+  || fail 'bootstrap default core order does not install openhouse-web'
 grep -Fq 'run_component "OpenHouse Web"' "$BOOTSTRAP" || fail 'bootstrap does not install openhouse-web'
 python3 - "$FULL_INSTALL" <<'PY'
 import sys

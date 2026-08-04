@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "assetRoot": "openhouse/product-payloads",
   "registryApiVersion": 2,
   "compatibility": {
@@ -11,9 +11,9 @@
   "payloads": [
     {
       "id": "service-manager",
-      "archive": "service-manager.tar",
-      "sha256": "1cf47740e335345afbf1d695b2733ee7a105032e06cdc87690932b1682a1d76e",
-      "size": 8448000,
+      "archive": "service-manager.tgz",
+      "sha256": "e4753a26e9ea36441d218f945c559433836fee1f8f0af571d51087ff258b0d64",
+      "size": 2640506,
       "binarySha256": "2eb3ff7dd5fa249d967da7eeb219d3d3ad6c3c29558f4c58cafb1cd96cb8329a",
       "platform": "termux-arm64",
       "version": "0.3.4",
@@ -43,38 +43,29 @@
       "sourceDirty": true,
       "sourceStatusSha256": "f0d3277be15aea18566857591a563977f33b8155d787df702b4a7d9fed372e90",
       "sourceTreeId": "sha256:abe0e4ba25c173ba207a7a9f3f0e48dcbad56355561dcb096fbe3a88a885959f",
-      "payloadSourceTreeSha256": "e244a38605ffa78dd60ef223d6f0f8384479a017f8ea7cc2014c01d8d21e37cc"
+      "payloadSourceTreeSha256": "e244a38605ffa78dd60ef223d6f0f8384479a017f8ea7cc2014c01d8d21e37cc",
+      "compression": "gzip",
+      "abi": "arm64-v8a"
     },
     {
       "id": "openhouse-web",
-      "archive": "openhouse-web.tar",
+      "archive": "openhouse-web.tgz",
       "targetDir": "openhouse-web",
-      "sha256": "f405f3d3d9e8fbce436a6ee6f764da881b5bd45741dc1011ca36c9ccd3e8860b",
-      "size": 174080,
+      "sha256": "cd193bb28f40d6c0c7759a125a499aff6e2f1c45f6afa0c276e293eb5b925ad0",
+      "size": 36123,
       "platform": "termux-android-arm64",
       "version": "1.1.2",
       "requires": {
         "serviceManager": ">=0.3.1",
         "registryApiVersion": 2
-      }
-    },
-    {
-      "id": "openhouse-connect",
-      "archive": "openhouse-connect.tar",
-      "sha256": "eb110208972a8763a9fc5297c6fb0ed7e12e870fb3b55c882f6cfac33ab3cdbb",
-      "size": 21729280
-    },
-    {
-      "id": "smallphone",
-      "archive": "smallphone.tar",
-      "sha256": "36a2481d1d2730e0a55a922228941b696d89c6d4d6827c1c592a55a9a9f68115",
-      "size": 1966080
+      },
+      "compression": "gzip"
     },
     {
       "id": "pi-agent",
-      "archive": "pi-runtime.tar",
-      "sha256": "0f26b28056420e8c82c4631d591a5f749ed9507bf056e55695afd172e91ba550",
-      "size": 168253440,
+      "archive": "runtime-aarch64.tgz",
+      "sha256": "11ca8076f74552f96f48b96a16d1bb77b8e831a0ef1ba9008e3e7eb52478d7d8",
+      "size": 31639175,
       "platform": "termux-android-arm64",
       "version": "0.1.0+pi.0.80.10",
       "sourceRepo": "https://github.com/earendil-works/pi.git",
@@ -92,46 +83,34 @@
         "nativeJsonlSessions": true,
         "staticWebUi": true,
         "uiMetadata": true
-      }
+      },
+      "compression": "gzip",
+      "abi": "arm64-v8a",
+      "targetDir": "pi-runtime"
     },
     {
       "id": "wuyou",
-      "archive": "wuyou.tar",
-      "sha256": "73c50cd4f45b9c8cb02563a4ac3bc2a3e185e3da12b56dfe26e46f577c7f32c8",
-      "size": 9451520,
+      "archive": "wuyou.tgz",
+      "sha256": "f7bcaa402fa95273c8abbae3a1642aa3cbb17e44309c56146f260816f1ca2ca2",
+      "size": 3289922,
       "platform": "termux-android-arm64",
       "version": "0.1.0",
       "sourceRepo": "https://github.com/earendil-works/wuyou.git",
       "sourceCommit": "4ce78e6",
       "binarySha256": "3b7dc65f7684f0b7d48237883e8fddc1cabde816cee5c5ae97b3df242dbead3e",
       "binarySize": 9441992,
-      "service": false
-    },
-    {
-      "id": "github-config-helper",
-      "archive": "github-config-helper.tar",
-      "targetDir": "github-config-helper",
-      "sha256": "406013d4306109748b224abea3ac6e3d249b09f8054c1ec6ee11f7c59f73e717",
-      "size": 81920
-    },
-    {
-      "id": "cc-switch",
-      "archive": "cc-switch-cli-5.9.0-linux-arm64.tgz",
-      "sha256": "46ce26be4c1eddfc7a3407eac8820395a2da42db4cb9bf11bf9d4a87b1cfb20e",
-      "size": 6693477,
-      "platform": "linux-arm64",
-      "version": "5.9.0",
-      "sourceRepo": "https://github.com/jiwuyou/cc-switch-cli.git",
-      "sourceCommit": "890c20f3cc39b090a1e79851eee3314eb8fcf2bc",
-      "binarySha256": "5c59e8ea224d263c58f5665b64e54c9c334380e9e81210f3ee84708643d98cad",
-      "binarySize": 15427096
+      "service": false,
+      "compression": "gzip",
+      "abi": "arm64-v8a"
     }
   ],
   "nativeRuntimeAsset": {
     "archive": "runtime-aarch64.tgz",
+    "compression": "gzip",
     "sha256": "11ca8076f74552f96f48b96a16d1bb77b8e831a0ef1ba9008e3e7eb52478d7d8",
     "size": 31639175,
     "abi": "arm64-v8a",
     "applicationId": "com.wuxianpi"
-  }
+  },
+  "description": ""
 }

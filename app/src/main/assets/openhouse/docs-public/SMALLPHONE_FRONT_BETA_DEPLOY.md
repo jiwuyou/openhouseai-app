@@ -1,6 +1,6 @@
 # SmallPhone Front Beta 部署
 
-本文给 OpenHouse 第二阶段 Agent 使用。APK 会携带完整的 `smallphone.tar`，但 APK 更新只负责把资源投递到 Termux；实际替换、注册、启动和验收由第二阶段 Agent 完成。当前默认第二阶段 Agent 是 AionUI，用户明确选择其它 Agent 时可以替换，执行规则不变。
+本文给 OpenHouse 第二阶段 Agent 使用。SmallPhone 通过救援助手市场提供完整的 `smallphone.tgz`，APK 更新只负责核心资源投递；实际下载、替换、注册、启动和验收由第二阶段 Agent 完成。当前默认第二阶段 Agent 是 AionUI，用户明确选择其它 Agent 时可以替换，执行规则不变。
 
 运行分层固定为：
 
@@ -49,7 +49,7 @@ fi
 jq -e '.apkVersionCode and (.verifiedFiles | type == "array")' "$resource_dir/.complete" >/dev/null
 jq -e . "$resource_dir/product-payloads/manifest.json" >/dev/null
 jq -e . "$resource_dir/product-payloads/payload-manifest.json" >/dev/null
-[ -f "$resource_dir/product-payloads/smallphone.tar" ] || { echo "缺少 smallphone.tar" >&2; exit 1; }
+[ -f "$HOME/.local/share/openhouseai/market-payloads/smallphone.tgz" ] || { echo "缺少市场 smallphone.tgz" >&2; exit 1; }
 printf 'resource_dir=%s\nreason=%s\n' "$resource_dir" "${reason:-none}"
 ```
 
@@ -57,7 +57,7 @@ printf 'resource_dir=%s\nreason=%s\n' "$resource_dir" "${reason:-none}"
 
 ## 2. 使用完整 payload 部署
 
-不要只复制 `index.html`、`main.js` 等几个文件。SmallPhone Front Beta 的模块之间有版本依赖，增量复制容易形成新旧文件混用并导致白屏。必须让 APK 中的完整 `smallphone.tar` 经过官方 bootstrap 组件流程安装。
+不要只复制 `index.html`、`main.js` 等几个文件。SmallPhone Front Beta 的模块之间有版本依赖，增量复制容易形成新旧文件混用并导致白屏。必须让市场中的完整 `smallphone.tgz` 经过官方 bootstrap 组件流程安装。
 
 在 Termux native 执行：
 
@@ -101,7 +101,7 @@ done
 - 当前 Beta 的消息、联系人可见入口数量为 `0`；后端历史数据可以保留，但桌面、Dock、Tab 和设置中不应出现入口。
 - `/root/smallphoneai-repos/smallphone-home` 仍存在，用户数据未被覆盖。
 
-如果页面白屏，优先确认完整 payload 是否部署，以及 `generic-mini-phone-beta/apps/workflows/api.js` 等依赖是否来自同一份 `smallphone.tar`；不要再次进行少量文件增量覆盖。
+如果页面白屏，优先确认完整 payload 是否部署，以及 `generic-mini-phone-beta/apps/workflows/api.js` 等依赖是否来自同一份 `smallphone.tgz`；不要再次进行少量文件增量覆盖。
 
 动态地址验收命令：
 
@@ -139,5 +139,5 @@ rm -f -- "$pending_marker"
 ## 给第二阶段 Agent 的话
 
 ```text
-请作为 OpenHouse 第二阶段 Agent（默认 AionUI，除非用户明确改用其它 Agent），阅读 /root/openhouse/docs/SMALLPHONE_FRONT_BETA_DEPLOY.md，优先从 Termux 的 PENDING_APK_RESOURCES.json 读取绝对 resourceDir，使用其中完整 smallphone.tar 和官方 bootstrap 组件流程部署 SmallPhone Front Beta，保留 /root/smallphoneai-repos/smallphone-home；从 ~/.config/openhouseai/runtime/endpoints.json 读取 smallphone-core/api 与 smallphone-frontend-beta/web 的实际 URL，完成 app-registry、proot-distro provider、常驻状态、WebView 非白屏以及消息/联系人入口为 0 的验收，不得回退固定端口；仅当 reason=apk_update 且全部通过时删除待处理标记。
+请作为 OpenHouse 第二阶段 Agent（默认 AionUI，除非用户明确改用其它 Agent），阅读 /root/openhouse/docs/SMALLPHONE_FRONT_BETA_DEPLOY.md，先从救援助手市场下载并校验 catalog.json 中的 smallphone.tgz，再使用官方 bootstrap 组件流程完成 SmallPhone Front Beta，保留 /root/smallphoneai-repos/smallphone-home；从 ~/.config/openhouseai/runtime/endpoints.json 读取 smallphone-core/api 与 smallphone-frontend-beta/web 的实际 URL，完成 app-registry、proot-distro provider、常驻状态、WebView 非白屏以及消息/联系人入口为 0 的验收，不得回退固定端口。
 ```

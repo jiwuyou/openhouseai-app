@@ -21,7 +21,7 @@ for required in \
   ./bootstrap/scripts/wuxianpi-pre-tmux.sh \
   ./product-payloads/manifest.json \
   ./product-payloads/payload-manifest.json \
-  ./product-payloads/service-manager.tar; do
+  ./product-payloads/service-manager.tgz; do
   grep -Fxq "$required" <<<"$members" \
     || { printf 'Native install archive is missing %s\n' "$required" >&2; exit 1; }
 done
@@ -38,6 +38,18 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-native-validate.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 tar -xf "$archive" -C "$tmp"
 (cd "$tmp" && sha256sum -c SHA256SUMS)
+python3 - "$tmp/install-manifest.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+if manifest.get("bundledPayloads") != ["service-manager.tgz"]:
+    raise SystemExit("Native install manifest must list exactly the bundled service-manager payload")
+if manifest.get("runtimeAsset") != "openhouse-runtime/runtime-aarch64.tgz":
+    raise SystemExit("Native install manifest must reference the separate ARM64 runtime asset")
+PY
 bash -n "$pre_tmux"
 bash -n "$tmp/bootstrap/wuxianpi-setup"
 bash -n "$tmp/bootstrap/wuxianpi-pre-tmux.sh"

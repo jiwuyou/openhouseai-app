@@ -5,7 +5,7 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_dir="$repo_dir/runtime/wuxianpi-node"
 web_source_dir="$repo_dir/ai-web-ui"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
-output="$payload_dir/pi-runtime.tar"
+output="$payload_dir/runtime-aarch64.tgz"
 native_asset_dir="$repo_dir/native-app/src/main/assets/openhouse-runtime"
 native_asset="$native_asset_dir/runtime-aarch64.tgz"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-payload.XXXXXX")"
@@ -186,14 +186,15 @@ path.write_text(json.dumps({
 }, indent=2) + "\n", encoding="utf-8")
 PY
 
-tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf "$output.tmp" -C "$stage" .
+gzip -n < <(tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf - -C "$stage" .) > "$output.tmp"
 mv "$output.tmp" "$output"
 chmod 0644 "$output"
 
 mkdir -p "$native_asset_dir"
-tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf - -C "$stage" . | gzip -n > "$native_asset.tmp"
+cp "$output" "$native_asset.tmp"
 mv "$native_asset.tmp" "$native_asset"
 chmod 0644 "$native_asset"
+rm -f "$payload_dir/pi-runtime.tar"
 
 python3 - "$payload_dir/manifest.json" "$payload_dir/payload-manifest.json" "$output" "$native_asset" <<'PY'
 import hashlib, json, pathlib, sys
@@ -205,7 +206,8 @@ for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloa
     doc = json.loads(path.read_text(encoding="utf-8"))
     entry = next(item for item in doc[key] if item.get("id") == "pi-agent")
     entry.clear(); entry.update({
-        "id": "pi-agent", "archive": archive.name, "sha256": sha, "size": size,
+        "id": "pi-agent", "archive": archive.name, "compression": "gzip", "abi": "arm64-v8a",
+        "sha256": sha, "size": size,
         "platform": "termux-android-arm64", "version": "0.1.0+pi.0.80.10",
         "sourceRepo": "https://github.com/earendil-works/pi.git",
         "sdkPackage": "@earendil-works/pi-coding-agent", "sdkVersion": "0.80.10",

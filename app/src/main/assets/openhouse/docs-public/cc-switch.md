@@ -54,7 +54,7 @@ cc-switch 替代 service-manager
 | 版本 | `5.9.0` |
 | 源仓库 | `https://github.com/jiwuyou/cc-switch-cli.git` |
 | 源提交 | `890c20f3cc39b090a1e79851eee3314eb8fcf2bc` |
-| APK payload | `openhouse/product-payloads/cc-switch-cli-5.9.0-linux-arm64.tar.gz` |
+| 市场 payload | `distribution/market-payloads/cc-switch-cli-5.9.0-linux-arm64.tgz` |
 | payload sha256 | `46ce26be4c1eddfc7a3407eac8820395a2da42db4cb9bf11bf9d4a87b1cfb20e` |
 | binary sha256 | `5c59e8ea224d263c58f5665b64e54c9c334380e9e81210f3ee84708643d98cad` |
 

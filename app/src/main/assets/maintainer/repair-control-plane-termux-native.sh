@@ -174,7 +174,7 @@ find_termux_service_manager() {
 prepare_termux_service_manager_repo() {
   local repo="$HOME/smallphoneai-repos/service-manager"
   local payload_root="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}"
-  local archive="$payload_root/service-manager.tar"
+  local archive="$payload_root/service-manager.tgz"
   local work_dir payload_dir
 
   if [ -f "$repo/scripts/install.sh" ] && service_manager_is_current "$repo/service-manager"; then

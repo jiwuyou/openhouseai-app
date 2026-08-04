@@ -261,7 +261,7 @@ runtime_component_action() {
 }
 
 default_component_targets() {
-  printf '%s\n' "wuyou,service-manager,pi-agent,github-config-helper,cc-connect,smallphone,hermes,openhouse-web"
+  printf '%s\n' "wuyou,service-manager,pi-agent,openhouse-web"
 }
 
 bootstrap_targets_for_runtime() {
@@ -834,6 +834,7 @@ if is_termux && [ "${SMALLPHONEAI_RUNTIME_COMPONENTS_IN_UBUNTU:-1}" = "1" ]; the
         SMALLPHONEAI_OFFLINE_PAYLOAD_DIR="${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}" \
         SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT="${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}" \
         SMALLPHONEAI_COMPONENT_SOURCE_MODE="${SMALLPHONEAI_COMPONENT_SOURCE_MODE:-bundle}" \
+        SMALLPHONEAI_MARKET_PAYLOAD_ROOT="${SMALLPHONEAI_MARKET_PAYLOAD_ROOT:-$HOME/.local/share/openhouseai/market-payloads}" \
         SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE="${SMALLPHONEAI_COMPONENTS_ALLOW_GIT_UPDATE:-0}" \
         SMALLPHONEAI_COMPONENTS_AUTO_CLONE="${SMALLPHONEAI_COMPONENTS_AUTO_CLONE:-0}" \
         SMALLPHONEAI_COMPONENTS_STRICT="${SMALLPHONEAI_COMPONENTS_STRICT:-1}" \
@@ -898,6 +899,7 @@ fi
 
 repo_root="${SMALLPHONEAI_COMPONENT_REPO_ROOT:-$HOME/smallphoneai-repos}"
 payload_root="${SMALLPHONEAI_BUNDLED_PAYLOAD_ROOT:-${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-${SMALLPHONEAI_PAYLOAD_ROOT:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}}}"
+market_payload_root="${SMALLPHONEAI_MARKET_PAYLOAD_ROOT:-$HOME/.local/share/openhouseai/market-payloads}"
 runtime_archive_override="${SMALLPHONEAI_PI_RUNTIME_ARCHIVE:-}"
 payload_manifest="$payload_root/manifest.json"
 component_source_mode="${SMALLPHONEAI_COMPONENT_SOURCE_MODE:-bundle}"
@@ -1559,7 +1561,7 @@ validate_payload_source() {
 
   if [ -f "$source" ]; then
     if ! tar -"$tar_list_flags" "$source" >/dev/null 2>&1; then
-      warn "$name: APK payload archive is not a readable tar/tar.gz: $source"
+      warn "$name: APK payload archive is not a readable tar/tar.gz/tgz: $source"
       return 1
     fi
     if [ "$payload_name" = "hermes" ]; then
@@ -1611,6 +1613,33 @@ find_payload_source() {
   local payload_name="$1"
   local archive
   local candidate
+
+  if [ "$component_source_mode" = "market" ]; then
+    case "$payload_name" in
+      openhouse-connect)
+        archive="openhouse-connect.tgz"
+        ;;
+      smallphone)
+        archive="smallphone.tgz"
+        ;;
+      github-config-helper)
+        archive="github-config-helper.tgz"
+        ;;
+      cc-switch)
+        archive="cc-switch-cli-5.9.0-linux-arm64.tgz"
+        ;;
+      *)
+        archive="${payload_name}.tgz"
+        ;;
+    esac
+    candidate="$market_payload_root/$archive"
+    if [ -f "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    printf '%s\n' "$candidate"
+    return 1
+  fi
 
   if [ "$payload_name" = "pi-agent" ] \
     && [ -n "$runtime_archive_override" ] \
@@ -1780,6 +1809,9 @@ prepare_component() {
       ;;
     git-update)
       prepare_component_from_git_update "$name" "$dir" "$url"
+      ;;
+    market)
+      install_payload_if_needed "$name" "$payload_name" "$dir"
       ;;
     *)
       warn "$name: 未知 SMALLPHONEAI_COMPONENT_SOURCE_MODE=$component_source_mode"
@@ -2079,11 +2111,13 @@ if [ "$component_source_mode" = "bundle" ]; then
   if [ "$force_payload_refresh" = "1" ]; then
     log "APK payload 强制刷新：开启"
   fi
+elif [ "$component_source_mode" = "market" ]; then
+  log "市场 payload 根目录：$market_payload_root"
 fi
 if [ -n "$component_targets" ]; then
   log "本次仅处理指定组件：$component_targets"
 else
-  log "本次处理默认组件：openhouse-system、wuyou、service-manager、pi-agent、github-config-helper、cc-connect/openhouse-connect、SmallPhone、Hermes，最后安装 OpenHouse Web。"
+    log "本次处理默认组件：wuyou、service-manager、pi-agent、OpenHouse Web。非核心组件改由市场或显式后置安装。"
 fi
 
 if [ "${SMALLPHONEAI_SKIP_OPENHOUSE_SYSTEM:-0}" != "1" ]; then

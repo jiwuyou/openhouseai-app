@@ -54,7 +54,7 @@ warnings = []
 digest_cache = {}
 
 if os.path.exists(os.path.join(payload_dir, "pi-agent.tar")):
-    errors.append("legacy pi-agent.tar must be removed; pi-runtime.tar is the stable Pi payload")
+    errors.append("legacy pi-agent.tar must be removed; runtime-aarch64.tgz is the stable Pi payload")
 
 if required_pi_sdk_version != "0.80.10":
     raise SystemExit("PI_SDK_REQUIRED_VERSION must remain pinned to 0.80.10")
@@ -234,6 +234,12 @@ def validate_bootstrap_pi_contract(product_manifest):
         component_array(runtime_payloads, "payloads"),
         "bootstrap runtimePayloads.payloads",
     )
+    core_ids = {"service-manager", "openhouse-web", "pi-agent", "wuyou"}
+    if set(bootstrap_payloads) != core_ids:
+        fail(
+            "bootstrap runtimePayloads must contain only core IDs; observed: "
+            + ", ".join(sorted(bootstrap_payloads))
+        )
     pi_bootstrap = bootstrap_payloads.get("pi-agent")
     if not isinstance(pi_bootstrap, dict):
         fail("bootstrap manifest must preserve the stable pi-agent payload id")
@@ -253,8 +259,8 @@ def validate_bootstrap_pi_contract(product_manifest):
             "bootstrap/product pi-agent targetDir mismatch: "
             f"bootstrap={target_dir!r}, product={expected_target!r}"
         )
-    if archive != "pi-runtime.tar" or target_dir != "pi-runtime":
-        fail("stable pi-agent id must map exactly to pi-runtime.tar and targetDir pi-runtime")
+    if archive != "runtime-aarch64.tgz" or target_dir != "pi-runtime":
+        fail("stable pi-agent id must map exactly to runtime-aarch64.tgz and targetDir pi-runtime")
     if archive and not os.path.isfile(os.path.join(payload_dir, archive)):
         fail(f"bootstrap pi-agent archive does not exist in product payloads: {archive}")
 
@@ -391,6 +397,8 @@ def validate_archive(entry, source):
 def compare_entries(left, right, component_id):
     for field in (
         "archive",
+        "compression",
+        "abi",
         "sha256",
         "size",
         "binarySha256",
@@ -725,10 +733,10 @@ def validate_service_manager_payload(entry):
         members = {member.name.lstrip("./"): member for member in tar.getmembers()}
         binary = members.get("service-manager")
         if binary is None or not binary.isfile() or binary.size <= 0:
-            fail("service-manager.tar is missing non-empty service-manager binary")
+            fail("service-manager.tgz is missing non-empty service-manager binary")
         else:
             if binary.mode & 0o111 == 0:
-                fail("service-manager.tar service-manager binary must be executable")
+                fail("service-manager.tgz service-manager binary must be executable")
             extracted = tar.extractfile(binary)
             binary_bytes = extracted.read() if extracted is not None else b""
             if not re.fullmatch(r"[0-9a-f]{64}", expected_binary_sha):
@@ -756,9 +764,9 @@ def validate_service_manager_payload(entry):
         for required_script in ("scripts/install.sh", "scripts/check.sh"):
             member = members.get(required_script)
             if member is None or not member.isfile() or member.size <= 0:
-                fail(f"service-manager.tar is missing non-empty {required_script}")
+                fail(f"service-manager.tgz is missing non-empty {required_script}")
             elif member.mode & 0o111 == 0:
-                fail(f"service-manager.tar {required_script} must be executable")
+                fail(f"service-manager.tgz {required_script} must be executable")
 
 
 def validate_openhouse_web_payload(entry):
@@ -782,7 +790,7 @@ def validate_openhouse_web_payload(entry):
         ):
             member = members.get(required_file)
             if member is None or member.size <= 0:
-                fail(f"openhouse-web.tar is missing non-empty {required_file}")
+                fail(f"openhouse-web.tgz is missing non-empty {required_file}")
         for required_script in (
             "scripts/install.sh",
             "scripts/check.sh",
@@ -790,7 +798,7 @@ def validate_openhouse_web_payload(entry):
         ):
             member = members.get(required_script)
             if member is not None and member.mode & 0o111 == 0:
-                fail(f"openhouse-web.tar {required_script} must be executable")
+                fail(f"openhouse-web.tgz {required_script} must be executable")
         package_member = members.get("package.json")
         if package_member is not None:
             extracted = tar.extractfile(package_member)
@@ -864,13 +872,13 @@ def validate_wuyou_payload(entry):
         members = {member.name.lstrip("./"): member for member in tar.getmembers()}
         binary = members.get("wuyou")
         if binary is None or binary.size <= 0:
-            fail("wuyou.tar is missing non-empty wuyou binary")
+            fail("wuyou.tgz is missing non-empty wuyou binary")
         elif isinstance(expected_binary_size, int) and binary.size != expected_binary_size:
             fail(f"wuyou binarySize mismatch: expected {expected_binary_size}, actual {binary.size}")
         for required_script in ("scripts/install.sh", "scripts/check.sh"):
             member = members.get(required_script)
             if member is None or member.size <= 0:
-                fail(f"wuyou.tar is missing non-empty {required_script}")
+                fail(f"wuyou.tgz is missing non-empty {required_script}")
         if binary is not None and re.fullmatch(r"[0-9a-f]{64}", expected_binary_sha):
             extracted = tar.extractfile(binary)
             if extracted is not None:
@@ -884,8 +892,8 @@ def validate_wuyou_payload(entry):
 # Rust/gateway validators above while retaining the rest of the product checks.
 def validate_pi_agent_payload(pi_agent_entry):
     archive_path = os.path.join(payload_dir, pi_agent_entry["archive"])
-    if os.path.basename(archive_path) != "pi-runtime.tar":
-        fail("pi-agent must use the stable pi-runtime.tar archive")
+    if os.path.basename(archive_path) != "runtime-aarch64.tgz":
+        fail("pi-agent must use the stable runtime-aarch64.tgz archive")
     if pi_agent_entry.get("sdkPackage") != "@earendil-works/pi-coding-agent":
         fail("pi-agent sdkPackage must be @earendil-works/pi-coding-agent")
     if pi_agent_entry.get("sdkVersion") != required_pi_sdk_version:
@@ -903,12 +911,12 @@ def validate_pi_agent_payload(pi_agent_entry):
         for name in required:
             member = members.get(name)
             if member is None or not member.isfile() or member.size <= 0:
-                fail(f"pi-runtime.tar is missing non-empty {name}")
+                fail(f"runtime-aarch64.tgz is missing non-empty {name}")
         for name in ("install.sh", "bin/wuxianpi", "bin/wuxianpi-node", "bin/wuxianpi-node-start",
                      "scripts/install.sh", "scripts/check.sh", "scripts/register-service.sh"):
             member = members.get(name)
             if member is not None and member.mode & 0o111 == 0:
-                fail(f"pi-runtime.tar executable bit is missing: {name}")
+                fail(f"runtime-aarch64.tgz executable bit is missing: {name}")
         package = members.get("node/node_modules/@earendil-works/pi-coding-agent/package.json")
         if package is not None:
             extracted = tar.extractfile(package)
@@ -918,7 +926,7 @@ def validate_pi_agent_payload(pi_agent_entry):
         forbidden = ("bin/" + "pi", "bin/openhouse-" + "pi-runtime", "openhouse-tools/android-bridge-" + "request.sh")
         for name in forbidden:
             if name in members:
-                fail(f"pi-runtime.tar contains removed runtime member: {name}")
+                fail(f"runtime-aarch64.tgz contains removed runtime member: {name}")
     register_script = read_tar_member(archive_path, ["scripts/register-service.sh"])
     install_script = read_tar_member(archive_path, ["scripts/install.sh"])
     if "wuxianpi-node-start" not in register_script:
@@ -964,6 +972,22 @@ def validate_native_runtime_asset(manifest, payload_manifest):
                 fail(f"Native runtime asset is missing non-empty {name}")
 
 
+def validate_shared_runtime_asset(pi_agent_entry):
+    archive_name = str(pi_agent_entry.get("archive") or "")
+    if archive_name != "runtime-aarch64.tgz":
+        return
+    all_in_one_path = os.path.join(payload_dir, archive_name)
+    if not os.path.isfile(all_in_one_path) or not os.path.isfile(native_runtime_asset_path):
+        return
+    all_in_one_size, all_in_one_sha = file_digest(all_in_one_path)
+    native_size, native_sha = file_digest(native_runtime_asset_path)
+    if (all_in_one_size, all_in_one_sha) != (native_size, native_sha):
+        fail(
+            "runtime-aarch64.tgz must be byte-identical in All-in-One and Native assets: "
+            f"all-in-one={all_in_one_sha}/{all_in_one_size}, native={native_sha}/{native_size}"
+        )
+
+
 manifest = load_json(manifest_path)
 payload_manifest = load_json(payload_manifest_path)
 validate_release_upgrade_contract()
@@ -983,7 +1007,11 @@ for forbidden_component in ("pi-web", "aionui-web"):
         fail(f"manifest.json must not bundle optional component {forbidden_component}")
     if forbidden_component in payloads:
         fail(f"payload-manifest.json must not bundle optional component {forbidden_component}")
-for forbidden_archive in ("pi-web.tar", "aionui-web-2.1.32-linux-arm64.tgz"):
+for forbidden_archive in (
+    "pi-web.tar", "aionui-web-2.1.32-linux-arm64.tgz", "pi-runtime.tar",
+    "openhouse-connect.tar", "openhouse-connect.tgz", "smallphone.tar", "smallphone.tgz",
+    "github-config-helper.tar", "github-config-helper.tgz", "cc-switch-cli-5.9.0-linux-arm64.tgz",
+):
     if os.path.exists(os.path.join(payload_dir, forbidden_archive)):
         fail(f"lean APK payload directory must not contain {forbidden_archive}")
 for component_id in required:
@@ -991,6 +1019,16 @@ for component_id in required:
         fail(f"manifest.json missing required component {component_id}")
     if component_id not in payloads:
         fail(f"payload-manifest.json missing required payload {component_id}")
+if set(components) != set(required):
+    fail(
+        "manifest.json must contain only core APK components; market components found: "
+        + ", ".join(sorted(set(components) - set(required)))
+    )
+if set(payloads) != set(required):
+    fail(
+        "payload-manifest.json must contain only core APK payloads; market payloads found: "
+        + ", ".join(sorted(set(payloads) - set(required)))
+    )
 
 manifest_registry_api_version = manifest_registry_api(manifest, "manifest.json")
 payload_registry_api_version = manifest_registry_api(payload_manifest, "payload-manifest.json")
@@ -1043,6 +1081,7 @@ for component_id in sorted(set(components) & set(payloads)):
 
 if "pi-agent" in components and isinstance(components["pi-agent"].get("archive"), str):
     validate_pi_agent_payload(components["pi-agent"])
+    validate_shared_runtime_asset(components["pi-agent"])
 if "service-manager" in components and isinstance(components["service-manager"].get("archive"), str):
     validate_service_manager_payload(components["service-manager"])
 if "openhouse-web" in components and isinstance(components["openhouse-web"].get("archive"), str):
@@ -1071,4 +1110,7 @@ PY
 native_archive="$REPO_DIR/native-app/src/main/assets/wuxianpi-install/resources.tar"
 if [[ -f "$native_archive" ]]; then
   "$REPO_DIR/scripts/validate-native-install-resources.sh"
+fi
+if [[ -f "$REPO_DIR/distribution/market-payloads/catalog.json" ]]; then
+  "$REPO_DIR/scripts/validate-market-payloads.sh"
 fi

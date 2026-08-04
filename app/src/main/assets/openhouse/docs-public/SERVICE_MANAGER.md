@@ -498,7 +498,7 @@ OpenHouse Web 是独立的本地桌面与服务控制服务，不负责聊天。
 service-manager：http://127.0.0.1:20087
 ```
 
-首次安装必须消费 APK 中同版本、已校验的 `openhouse-web.tar`，然后依次执行 payload 自带的 `scripts/install.sh`、`scripts/check.sh` 和 `scripts/register-service.sh`。注册脚本通过 `/api/v1/registry/apply` 同时写入服务和 component；不要只启动 Node 进程，也不要长期使用散落的 `nohup`。
+首次安装必须消费 APK 中同版本、已校验的 `openhouse-web.tgz`，然后依次执行 payload 自带的 `scripts/install.sh`、`scripts/check.sh` 和 `scripts/register-service.sh`。注册脚本通过 `/api/v1/registry/apply` 同时写入服务和 component；不要只启动 Node 进程，也不要长期使用散落的 `nohup`。
 
 从最新 APK 资源目录单独重装或修复该组件：
 

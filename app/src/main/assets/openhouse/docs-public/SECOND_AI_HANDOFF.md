@@ -6,7 +6,7 @@ pi-web 是推荐的第一阶段 Agent 工作台，通过它执行任务时可以
 
 当前内测默认由 pi-web 完成第一阶段，再由已真实测通的 AionUI 完成第二阶段独立复核与签名。其它 Agent 组合保留为高级或备用路径。
 
-如果本次 APK 更新包含 SmallPhone Front Beta，SmallPhone 部署属于第二阶段任务，不由 Android 自动完成。第二阶段 Agent 应先阅读 `SMALLPHONE_FRONT_BETA_DEPLOY.md`，从 `PENDING_APK_RESOURCES.json` 读取并校验绝对 `resourceDir`，使用完整 `smallphone.tar` 和官方 bootstrap 组件流程完成部署、注册、启动与验收；不得用几个前端文件做增量覆盖。默认由 AionUI 执行，用户明确指定其它 Agent 时再替换。
+SmallPhone Front Beta 属于市场中的可选后置任务，不由 Android 首次安装自动完成。第二阶段 Agent 应先阅读 `SMALLPHONE_FRONT_BETA_DEPLOY.md`，从市场 `catalog.json` 下载并校验完整 `smallphone.tgz`，再用官方 bootstrap 组件流程完成部署、注册、启动与验收；不得用几个前端文件做增量覆盖。默认由 AionUI 执行，用户明确指定其它 Agent 时再替换。
 
 ## 唯一交接目录
 

@@ -40,16 +40,16 @@ cp "$work_dir/generic-android-aarch64" "$cargo_output"
 "$BUILDER" --build-local
 [ "$(sha256sum "$cargo_output" | awk '{print $1}')" != "$generic_sha" ] \
   || fail 'builder packaged the substituted generic canonical target instead of relinking service-manager'
-first_sha="$(sha256sum "$PAYLOAD_DIR/service-manager.tar" | awk '{print $1}')"
-cp "$PAYLOAD_DIR/service-manager.tar" "$work_dir/first.tar"
+first_sha="$(sha256sum "$PAYLOAD_DIR/service-manager.tgz" | awk '{print $1}')"
+cp "$PAYLOAD_DIR/service-manager.tgz" "$work_dir/first.tgz"
 "$BUILDER" --build-local
-second_sha="$(sha256sum "$PAYLOAD_DIR/service-manager.tar" | awk '{print $1}')"
+second_sha="$(sha256sum "$PAYLOAD_DIR/service-manager.tgz" | awk '{print $1}')"
 [ "$first_sha" = "$second_sha" ] || fail 'identical authoritative builds were not deterministic'
-cmp -s "$work_dir/first.tar" "$PAYLOAD_DIR/service-manager.tar" \
+cmp -s "$work_dir/first.tgz" "$PAYLOAD_DIR/service-manager.tgz" \
   || fail 'identical authoritative builds produced byte-different payloads'
 
 "$BUILDER" --verify-only
-tar -tf "$PAYLOAD_DIR/service-manager.tar" > "$work_dir/archive-list.txt"
+tar -tzf "$PAYLOAD_DIR/service-manager.tgz" > "$work_dir/archive-list.txt"
 grep -Eq '^\./metadata/build\.json$' "$work_dir/archive-list.txt" \
   || fail 'payload build metadata is missing'
 
@@ -94,9 +94,9 @@ source_status_sha = hashlib.sha256(source_status).hexdigest()
 source_dirty = bool(source_status)
 binary_path = source_repo / "target/service-manager-payload-build/aarch64-linux-android/release/service-manager"
 binary_sha = hashlib.sha256(binary_path.read_bytes()).hexdigest()
-archive_path = payload_dir / "service-manager.tar"
+archive_path = payload_dir / "service-manager.tgz"
 
-with tarfile.open(archive_path, "r:") as archive:
+with tarfile.open(archive_path, "r:*") as archive:
     members = {
         (member.name[2:] if member.name.startswith("./") else member.name): member
         for member in archive.getmembers()
@@ -136,7 +136,7 @@ fixture="$work_dir/stale-payload"
 stage="$work_dir/stale-stage"
 mkdir -p "$fixture" "$stage"
 cp "$PAYLOAD_DIR/manifest.json" "$PAYLOAD_DIR/payload-manifest.json" "$fixture/"
-tar -xf "$PAYLOAD_DIR/service-manager.tar" -C "$stage"
+tar -xzf "$PAYLOAD_DIR/service-manager.tgz" -C "$stage"
 python3 - "$stage/metadata/build.json" "$fixture" <<'PY'
 import json
 import pathlib
@@ -156,9 +156,9 @@ for name, array_name in (("manifest.json", "components"), ("payload-manifest.jso
 PY
 find "$stage" -exec touch -h -d '@0' {} +
 tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --format=gnu \
-  -cf "$fixture/service-manager.tar" -C "$stage" .
-fixture_sha="$(sha256sum "$fixture/service-manager.tar" | awk '{print $1}')"
-fixture_size="$(stat -c '%s' "$fixture/service-manager.tar")"
+  -cf - -C "$stage" . | gzip -n > "$fixture/service-manager.tgz"
+fixture_sha="$(sha256sum "$fixture/service-manager.tgz" | awk '{print $1}')"
+fixture_size="$(stat -c '%s' "$fixture/service-manager.tgz")"
 python3 - "$fixture" "$fixture_sha" "$fixture_size" <<'PY'
 import json
 import pathlib
