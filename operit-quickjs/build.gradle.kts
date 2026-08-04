@@ -11,6 +11,7 @@ android {
 
     defaultConfig {
         minSdk = 26
+        consumerProguardFiles("consumer-rules.pro")
 
         externalNativeBuild {
             cmake {
@@ -52,5 +53,6 @@ kotlin {
 }
 
 dependencies {
+    compileOnly("androidx.annotation:annotation:1.9.0")
     implementation(libs.kotlinx.serialization)
 }

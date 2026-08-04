@@ -19,6 +19,13 @@ mapfile -t apks < <(find "$apk_root" -type f -name '*.apk' -printf '%T@ %p\n' 2>
   | awk -v min="$min_mtime" '$1 >= min { $1=""; sub(/^ /, ""); print }' | sort -r)
 [[ "${#apks[@]}" -gt 0 ]] || { printf 'no APK outputs found under %s\n' "$apk_root" >&2; exit 1; }
 
+for apk in "${apks[@]}"; do
+  if [[ "$apk" == */release/* ]]; then
+    "$repo_dir/scripts/validate-quickjs-jni-contract.sh"
+    break
+  fi
+done
+
 checked=0
 for apk in "${apks[@]}"; do
   name="$(basename "$apk")"

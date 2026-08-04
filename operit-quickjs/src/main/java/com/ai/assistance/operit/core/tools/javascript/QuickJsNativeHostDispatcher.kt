@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.core.tools.javascript
 
+import androidx.annotation.Keep
 import java.io.Closeable
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -18,6 +19,7 @@ class QuickJsNativeHostDispatcher(
     }
     private val timerTasks = ConcurrentHashMap<Int, ScheduledFuture<*>>()
 
+    @Keep
     override fun onCall(method: String, argsJson: String?): String? {
         return when {
             method.startsWith("console.") -> null
