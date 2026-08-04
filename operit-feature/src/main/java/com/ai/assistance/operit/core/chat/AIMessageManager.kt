@@ -27,7 +27,6 @@ import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.process.WorkspaceAttachmentProcessor
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.process.WorkspaceChangeTracker
 import com.ai.assistance.operit.util.ImagePoolManager
-import com.ai.assistance.operit.util.MediaPoolManager
 import com.ai.assistance.operit.util.ChatUtils
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.LocaleUtils
@@ -217,44 +216,6 @@ object AIMessageManager {
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "添加图片到池失败: ${attachment.filePath}", e)
                         // 失败时回退到普通附件格式
-                        val attributes = buildString {
-                            append("id=\"${attachment.filePath}\" ")
-                            append("filename=\"${attachment.fileName}\" ")
-                            append("type=\"${attachment.mimeType}\"")
-                            if (attachment.fileSize > 0) {
-                                append(" size=\"${attachment.fileSize}\"")
-                            }
-                        }
-                        "<attachment $attributes>${attachment.content}</attachment>"
-                    }
-                } else if (enableDirectAudioProcessing && attachment.mimeType.startsWith("audio/", ignoreCase = true)) {
-                    try {
-                        val audioId = MediaPoolManager.addMedia(attachment.filePath, attachment.mimeType)
-                        if (audioId == "error") {
-                            throw IllegalStateException("addMedia returned error")
-                        }
-                        MediaLinkBuilder.audio(context, audioId)
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "添加音频到池失败: ${attachment.filePath}", e)
-                        val attributes = buildString {
-                            append("id=\"${attachment.filePath}\" ")
-                            append("filename=\"${attachment.fileName}\" ")
-                            append("type=\"${attachment.mimeType}\"")
-                            if (attachment.fileSize > 0) {
-                                append(" size=\"${attachment.fileSize}\"")
-                            }
-                        }
-                        "<attachment $attributes>${attachment.content}</attachment>"
-                    }
-                } else if (enableDirectVideoProcessing && attachment.mimeType.startsWith("video/", ignoreCase = true)) {
-                    try {
-                        val videoId = MediaPoolManager.addMedia(attachment.filePath, attachment.mimeType)
-                        if (videoId == "error") {
-                            throw IllegalStateException("addMedia returned error")
-                        }
-                        MediaLinkBuilder.video(context, videoId)
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "添加视频到池失败: ${attachment.filePath}", e)
                         val attributes = buildString {
                             append("id=\"${attachment.filePath}\" ")
                             append("filename=\"${attachment.fileName}\" ")

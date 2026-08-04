@@ -51,8 +51,6 @@ import com.ai.assistance.operit.host.control.OperitControlProtocol
 import com.ai.assistance.operit.host.control.OperitControlStateStore
 import com.ai.assistance.operit.host.control.OperitShutdownController
 import com.ai.assistance.operit.ui.common.NavItem
-import com.ai.assistance.operit.ui.features.agreement.screens.AgreementScreen
-import com.ai.assistance.operit.ui.features.permission.screens.PermissionGuideScreen
 import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingScreenWithState
 import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingState
 import com.ai.assistance.operit.ui.features.startup.screens.LocalPluginLoadingState
@@ -759,7 +757,7 @@ class MainActivity : ComponentActivity() {
         // 初始化用户偏好管理器并直接检查初始化状态
         preferencesManager = UserPreferencesManager.getInstance(this)
         showPreferencesGuide =
-            hostMode != OperitHostMode.BASIC && !preferencesManager.isPreferencesInitialized()
+            !hostMode.isHosted && !preferencesManager.isPreferencesInitialized()
         AppLogger.d(
                 TAG,
                 "初始化检查: 用户偏好已初始化=${!showPreferencesGuide}，将${if(showPreferencesGuide) "" else "不"}显示引导界面"
@@ -828,7 +826,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             preferencesManager.getUserPreferencesFlow().collect { profile ->
                 // 只有当状态变化时才更新UI
-                if (hostMode == OperitHostMode.BASIC) return@collect
+                if (hostMode.isHosted) return@collect
                 val newValue = !profile.isInitialized
                 if (showPreferencesGuide != newValue) {
                     AppLogger.d(TAG, "偏好变更: 从 $showPreferencesGuide 变为 $newValue")
@@ -892,54 +890,15 @@ class MainActivity : ComponentActivity() {
                             CircularProgressIndicator()
                         }
                     } else {
-                        // Hosted modes intentionally bypass Operit's onboarding screens.  The
-                        // screens and stored agreement state remain available in standalone mode.
-                        if (!hostMode.isHosted && !agreementPreferences.isAgreementAccepted()) {
-                            AgreementScreen(
-                                    onAgreementAccepted = {
-                                        agreementPreferences.setAgreementAccepted(true)
-                                        // 协议接受后，检查权限级别设置
-                                        lifecycleScope.launch {
-                                            // 确保使用非阻塞方式更新UI
-                                            delay(300) // 短暂延迟确保UI状态更新
-                                            checkPermissionLevelSet()
-                                            if (!showPermissionGuide) {
-                                                startPluginLoading()
-                                            }
-                                            // 重新设置应用内容
-                                            setAppContent()
-                                        }
-                                    }
-                            )
-                        }
-                        // 检查是否需要显示权限引导界面
-                        else if (!hostMode.isHosted && showPermissionGuide) {
-                            PermissionGuideScreen(
-                                    onComplete = {
-                                        showPermissionGuide = false
-                                        // 权限设置完成后，启动插件加载并更新内容
-                                        startPluginLoading()
-                                        setAppContent()
-                                    }
-                            )
-                        }
-                        // 显示主应用界面
-                        else {
-                            // 处理待处理的分享文件
-                            processPendingSharedFiles()
-                            processPendingSharedText()
-                            val shortcutNavItem = if (!showPreferencesGuide) pendingShortcutNavItem else null
-                            val shortcutNavRequestId =
-                                if (!showPreferencesGuide) pendingShortcutRequestId else 0L
-                            val routeNavRequest = if (!showPreferencesGuide) pendingRouteId else null
-                            val routeNavArgs = if (!showPreferencesGuide) pendingRouteArgs else emptyMap()
-                            val routeNavRequestId =
-                                if (!showPreferencesGuide) pendingRouteRequestId else 0L
-                            val initialNavItem = when {
-                                !hostMode.isHosted && showPreferencesGuide -> NavItem.UserPreferencesGuide
-                                shortcutNavItem != null -> shortcutNavItem
-                                else -> currentMainNavItem
-                            }
+                        // Lean hosts always enter the main surface directly.
+                        processPendingSharedFiles()
+                        processPendingSharedText()
+                        val shortcutNavItem = pendingShortcutNavItem
+                        val shortcutNavRequestId = pendingShortcutRequestId
+                        val routeNavRequest = pendingRouteId
+                        val routeNavArgs = pendingRouteArgs
+                        val routeNavRequestId = pendingRouteRequestId
+                        val initialNavItem = shortcutNavItem ?: currentMainNavItem
 
                             CompositionLocalProvider(LocalPluginLoadingState provides pluginLoadingState) {
                                 Box(modifier = Modifier.fillMaxSize()) {
@@ -1000,7 +959,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                        }
                     }
                     // 插件加载界面 (带有淡出效果) - 始终在最上层
                     PluginLoadingScreenWithState(

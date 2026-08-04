@@ -596,22 +596,22 @@ private fun NewSidebarTopContent(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        Row(
-                modifier =
-                        Modifier.fillMaxWidth()
-                                .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-                SidebarQuickActionCard(
-                        modifier = Modifier.weight(1f),
-                        icon = NavItem.Packages.icon,
-                        label = stringResource(id = NavItem.Packages.titleResId),
-                        badgeText = activePackageCount.toString(),
-                        selected = selectedItem == NavItem.Packages,
-                        appearance = appearance,
-                        onClick = { onNavItemClick(NavItem.Packages) }
-                )
-                if (!hostMode.isHosted) {
+        if (!hostMode.isHosted) {
+                Row(
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                        SidebarQuickActionCard(
+                                modifier = Modifier.weight(1f),
+                                icon = NavItem.Packages.icon,
+                                label = stringResource(id = NavItem.Packages.titleResId),
+                                badgeText = activePackageCount.toString(),
+                                selected = selectedItem == NavItem.Packages,
+                                appearance = appearance,
+                                onClick = { onNavItemClick(NavItem.Packages) }
+                        )
                         SidebarQuickActionCard(
                                 modifier = Modifier.weight(1f),
                                 icon = NavItem.ShizukuCommands.icon,

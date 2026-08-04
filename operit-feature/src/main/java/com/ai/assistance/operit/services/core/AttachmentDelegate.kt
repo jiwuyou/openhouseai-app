@@ -16,7 +16,6 @@ import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.skill.SkillRepository
-import com.ai.assistance.operit.util.OCRUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +35,6 @@ import java.util.Locale
 class AttachmentDelegate(private val context: Context, private val toolHandler: AIToolHandler) {
     companion object {
         private const val TAG = "AttachmentDelegate"
-        private const val OCR_INLINE_INSTRUCTION = "Do not read the file, answer the user\'s question directly based on the attachment content and the user\'s question."
         private const val PACKAGE_ATTACHMENT_PREFIX = "package_attach:"
         private const val WORKSPACE_MENTION_ATTACHMENT_PREFIX = "workspace_mention:"
     }
@@ -546,34 +544,14 @@ class AttachmentDelegate(private val context: Context, private val toolHandler: 
                             context.getString(R.string.attachment_location_full_screen_simple)
                         }
 
-                    val ocrText = OCRUtils.recognizeText(
-                        context = context,
-                        uri = Uri.fromFile(File(screenshotPath)),
-                        quality = OCRUtils.Quality.HIGH
-                    ).trim()
-
-                    if (ocrText.isBlank()) {
-                        _toastEvent.emit(context.getString(R.string.attachment_no_screen_text))
-                        return@withContext
-                    }
-
-                    val captureId = "screen_ocr_${System.currentTimeMillis()}"
-                    val content =
-                        buildString {
-                            append(context.getString(R.string.attachment_screen_content))
-                            append(positionInfo)
-                            append("\n\n")
-                            append(ocrText)
-                            append("\n\n")
-                            append(OCR_INLINE_INSTRUCTION)
-                        }
+                    val screenshotFile = File(screenshotPath)
                     val attachmentInfo =
                         AttachmentInfo(
-                            filePath = captureId,
-                            fileName = "screen_content.txt",
-                            mimeType = "text/plain",
-                            fileSize = content.length.toLong(),
-                            content = content
+                            filePath = screenshotPath,
+                            fileName = screenshotFile.name.ifBlank { "screen_capture.png" },
+                            mimeType = "image/png",
+                            fileSize = screenshotFile.length(),
+                            content = positionInfo
                         )
 
                     val currentList = _attachments.value
@@ -581,10 +559,6 @@ class AttachmentDelegate(private val context: Context, private val toolHandler: 
 
                     _toastEvent.emit(context.getString(R.string.attachment_screen_content_added))
 
-                    // 清理临时截图文件
-                    try {
-                        File(screenshotPath).delete()
-                    } catch (_: Exception) {}
                 } catch (e: Exception) {
                     _toastEvent.emit(context.getString(R.string.attachment_screen_content_failed, e.message ?: ""))
                     AppLogger.e(TAG, "Error capturing screen content", e)

@@ -21,7 +21,6 @@ import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
-import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.ui.common.displays.UIOperationOverlay
 import com.ai.assistance.operit.ui.common.displays.UIAutomationProgressOverlay
 import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay

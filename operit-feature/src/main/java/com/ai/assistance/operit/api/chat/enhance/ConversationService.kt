@@ -31,8 +31,6 @@ import com.ai.assistance.operit.data.preferences.ActivePromptManager
 import com.ai.assistance.operit.data.preferences.CharacterCardToolAccessResolver
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.preferences.preferencesManager
-import com.ai.assistance.operit.core.avatar.impl.factory.AvatarModelFactoryImpl
-import com.ai.assistance.operit.data.repository.AvatarRepository
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.ChatUtils
 import com.ai.assistance.operit.core.tools.ToolProgressBus
@@ -53,8 +51,6 @@ import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.api.chat.enhance.MultiServiceManager
 import com.ai.assistance.operit.data.repository.CustomEmojiRepository
 import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkBuilder
-import com.ai.assistance.operit.data.repository.getCustomMoodDefinitions
-import com.ai.assistance.operit.data.repository.getMoodAnimationMapping
 
 /** 处理会话相关功能的服务类，包括会话总结、偏好处理和对话切割准备 */
 class ConversationService(
@@ -78,9 +74,6 @@ class ConversationService(
     private val characterCardToolAccessResolver = CharacterCardToolAccessResolver.getInstance(context)
     private val activePromptManager = ActivePromptManager.getInstance(context)
     private val userPreferencesManager = preferencesManager
-    private val avatarRepository by lazy {
-        AvatarRepository.getInstance(context, AvatarModelFactoryImpl())
-    }
     private val conversationMutex = Mutex()
 
     /**
@@ -531,18 +524,8 @@ class ConversationService(
 
                 // 构建waifu特殊规则
                 val waifuRulesText = if(waifuPreferences.enableWaifuModeFlow.first()) buildWaifuRulesText() else ""
-                // 语音头像模式：添加 <mood> 标签协议
-                val avatarMoodRulesText =
-                    if (shouldInjectMoodRules(promptFunctionType)) {
-                        buildAvatarMoodRulesText(useEnglish)
-                    } else {
-                        ""
-                    }
-                AppLogger.d("petRules", avatarMoodRulesText)
-
                 // 构建最终的系统提示词
                 val finalSystemPrompt = buildString {
-                    append(avatarMoodRulesText)
                     append(systemPrompt)
                     append(waifuRulesText)
                     if (!disableUserPreferenceDescription && preferencesText.isNotEmpty()) {
@@ -998,41 +981,6 @@ class ConversationService(
     }
 
     /**
-     * 虚拟形象的 <mood> 标签规则，仅在语音头像环境下添加到系统提示中。
-     * 会自动拼接当前头像启用的自定义 mood 类型。
-     */
-    private fun buildAvatarMoodRulesText(useEnglish: Boolean): String {
-        val currentAvatarId = avatarRepository.currentAvatar.value?.id
-        val currentConfig =
-            avatarRepository.configs.value.firstOrNull { config ->
-                config.id == currentAvatarId
-            }
-
-        val moodAnimationMapping = currentConfig?.getMoodAnimationMapping().orEmpty()
-        val customMoodDefinitions =
-            currentConfig?.getCustomMoodDefinitions()
-                .orEmpty()
-                .filter { definition ->
-                    moodAnimationMapping[definition.key]?.isNotBlank() == true
-                }
-
-        return FunctionalPrompts.avatarMoodRulesText(
-            customMoodDefinitions = customMoodDefinitions,
-            useEnglish = useEnglish
-        )
-    }
-
-    private fun shouldInjectMoodRules(promptFunctionType: PromptFunctionType): Boolean {
-        if (promptFunctionType != PromptFunctionType.VOICE) {
-            return false
-        }
-
-        val settings = avatarRepository.settings.value
-        val currentAvatar = avatarRepository.currentAvatar.value
-        return settings.isVoiceCallAvatarEnabled && currentAvatar != null
-    }
-
-    /**
      * Replaces placeholders in the system prompt with actual values.
      * This is necessary because the AI might return placeholders like {{user}} or {{char}}.
      *
@@ -1233,42 +1181,7 @@ ${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
         userIntent: String?,
         multiServiceManager: MultiServiceManager
     ): String {
-        return try {
-            val service = multiServiceManager.getServiceForFunction(FunctionType.AUDIO_RECOGNITION)
-
-            val mimeType = android.webkit.MimeTypeMap.getSingleton()
-                .getMimeTypeFromExtension(java.io.File(audioPath).extension.lowercase())
-                ?: "audio/*"
-
-            val mediaId = com.ai.assistance.operit.util.MediaPoolManager.addMedia(audioPath, mimeType)
-            if (mediaId == "error") {
-                return "Failed to load audio: $audioPath"
-            }
-
-            val audioLink = MediaLinkBuilder.audio(context, mediaId)
-            val prompt = if (userIntent.isNullOrBlank()) {
-                "$audioLink\n${context.getString(R.string.conversation_analyze_audio_prompt)}"
-            } else {
-                "$audioLink\n$userIntent"
-            }
-
-            val modelParameters = multiServiceManager.getModelParametersForFunction(FunctionType.AUDIO_RECOGNITION)
-
-            val result = StringBuilder()
-            service.sendMessage(
-                context = context,
-                chatHistory = listOf(PromptTurn(kind = PromptTurnKind.USER, content = prompt)),
-                modelParameters = modelParameters
-            ).collect { chunk ->
-                result.append(chunk)
-            }
-
-            com.ai.assistance.operit.util.MediaPoolManager.removeMedia(mediaId)
-            ChatUtils.removeThinkingContent(result.toString()).trim()
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "音频识别失败", e)
-            "Audio recognition failed: ${e.message}"
-        }
+        return "Audio recognition is unavailable in this host build"
     }
 
     suspend fun analyzeVideoWithIntent(
@@ -1276,41 +1189,6 @@ ${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
         userIntent: String?,
         multiServiceManager: MultiServiceManager
     ): String {
-        return try {
-            val service = multiServiceManager.getServiceForFunction(FunctionType.VIDEO_RECOGNITION)
-
-            val mimeType = android.webkit.MimeTypeMap.getSingleton()
-                .getMimeTypeFromExtension(java.io.File(videoPath).extension.lowercase())
-                ?: "video/*"
-
-            val mediaId = com.ai.assistance.operit.util.MediaPoolManager.addMedia(videoPath, mimeType)
-            if (mediaId == "error") {
-                return "Failed to load video: $videoPath"
-            }
-
-            val videoLink = MediaLinkBuilder.video(context, mediaId)
-            val prompt = if (userIntent.isNullOrBlank()) {
-                "$videoLink\n${context.getString(R.string.conversation_analyze_video_prompt)}"
-            } else {
-                "$videoLink\n$userIntent"
-            }
-
-            val modelParameters = multiServiceManager.getModelParametersForFunction(FunctionType.VIDEO_RECOGNITION)
-
-            val result = StringBuilder()
-            service.sendMessage(
-                context = context,
-                chatHistory = listOf(PromptTurn(kind = PromptTurnKind.USER, content = prompt)),
-                modelParameters = modelParameters
-            ).collect { chunk ->
-                result.append(chunk)
-            }
-
-            com.ai.assistance.operit.util.MediaPoolManager.removeMedia(mediaId)
-            ChatUtils.removeThinkingContent(result.toString()).trim()
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "视频识别失败", e)
-            "Video recognition failed: ${e.message}"
-        }
+        return "Video recognition is unavailable in this host build"
     }
 }

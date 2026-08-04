@@ -2,7 +2,6 @@ package com.ai.assistance.operit.util
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
-import com.github.junrar.Archive
 import java.io.*
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -347,88 +346,8 @@ object ArchiveUtil {
 
     /** Extract a RAR file */
     fun extractRar(rarFile: File, targetDir: File, password: String? = null): Boolean {
-        try {
-            try {
-                // Create Archive with password if provided
-                val archive =
-                        if (password != null) {
-                            try {
-                                Archive(rarFile, password)
-                            } catch (e: Exception) {
-                                // If password doesn't work, try without password
-                                AppLogger.w(
-                                        TAG,
-                                        "Failed to open RAR with password, trying without password",
-                                        e
-                                )
-                                Archive(rarFile)
-                            }
-                        } else {
-                            Archive(rarFile)
-                        }
-
-                archive.use { archive ->
-                    val buffer = ByteArray(BUFFER_SIZE)
-
-                    // Check if RAR is password protected
-                    if (archive.isEncrypted && password == null) {
-                        AppLogger.e(TAG, "Encrypted RAR file detected, but no password provided")
-                        // Create a note file in the target directory to inform the user
-                        val noteFile = File(targetDir, "EXTRACTION_FAILED.txt")
-                        noteFile.writeText(
-                                "The RAR file is password-protected or encrypted.\n" +
-                                        "Please provide a password to extract this archive."
-                        )
-                        return false
-                    }
-
-                    archive.fileHeaders.forEach { fileHeader ->
-                        val fileName = fileHeader.fileName
-                        val newFile = File(targetDir, fileName)
-
-                        // Create directories if needed
-                        if (fileHeader.isDirectory) {
-                            ensureDirectoryExists(newFile)
-                        } else {
-                            newFile.parentFile?.let { ensureDirectoryExists(it) }
-
-                            // Extract file
-                            FileOutputStream(newFile).use { fos ->
-                                BufferedOutputStream(fos).use { bos ->
-                                    archive.extractFile(fileHeader, bos)
-                                }
-                            }
-                        }
-                    }
-                }
-                return true
-            } catch (e: Exception) {
-                // Check if this is an encryption-related error
-                if (e.message?.contains("password", ignoreCase = true) == true ||
-                                e.message?.contains("encrypted", ignoreCase = true) == true
-                ) {
-                    val msg =
-                            if (password != null) {
-                                "The RAR file is encrypted, but the provided password was incorrect.\n" +
-                                        "Please check the password and try again."
-                            } else {
-                                "The RAR file appears to be password-protected or encrypted.\n" +
-                                        "Please provide a password to extract this archive."
-                            }
-
-                    AppLogger.e(TAG, "Encrypted RAR file detected", e)
-                    // Create a note file in the target directory to inform the user
-                    val noteFile = File(targetDir, "EXTRACTION_FAILED.txt")
-                    noteFile.writeText(msg)
-                    return false
-                } else {
-                    throw e
-                }
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error extracting RAR", e)
-            return false
-        }
+        AppLogger.w(TAG, "RAR extraction is unavailable in this host build")
+        return false
     }
 
     /** Create an archive from a directory */

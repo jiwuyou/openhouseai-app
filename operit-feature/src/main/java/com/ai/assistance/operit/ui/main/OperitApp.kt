@@ -335,12 +335,7 @@ fun OperitApp(
 
     val navItems = listOf(
         NavItem.AiChat,
-        NavItem.Packages,
-        NavItem.MemoryBase,
-        NavItem.ShizukuCommands,
         NavItem.Settings,
-        NavItem.Help,
-        NavItem.About
     ).filter(effectiveHostMode::allowsDrawerItem)
 
     // Network state monitoring

@@ -26,16 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.width
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.common.rememberLocal
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.serializer
-
-/**
- * 文件夹展开状态的持久化数据类（与 MemoryFolderSelectionDialog 共享）
- */
-@Serializable
-data class FolderExpandedState(
-    val expandedPaths: Set<String> = emptySet()
-)
 
 /**
  * 配置文件选择器
@@ -659,4 +650,3 @@ private fun FolderDeleteDialog(
         }
     )
 }
-

@@ -9,7 +9,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ai.assistance.operit.api.speech.SpeechServiceFactory
-import com.ai.assistance.operit.api.voice.HttpTtsResponsePipelineStep
 import com.ai.assistance.operit.api.voice.VoiceServiceFactory
 
 import kotlinx.coroutines.flow.Flow
@@ -40,7 +39,7 @@ class SpeechServicesPreferences(private val context: Context) {
         val localeTag: String = "", // 通用 TTS 语言标签，如 zh-CN、en-US
         val voiceId: String = "", // 特定于TTS提供商的音色ID
         val modelName: String = "", // TTS模型名称（用于SiliconFlow等）
-        val responsePipeline: List<HttpTtsResponsePipelineStep> = emptyList()
+        val responsePipeline: List<String> = emptyList()
     )
 
     @Serializable

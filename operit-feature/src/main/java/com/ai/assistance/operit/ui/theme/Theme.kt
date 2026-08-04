@@ -5,10 +5,6 @@ import android.app.Activity
 import android.net.Uri
 import android.os.Build
 import com.ai.assistance.operit.util.AppLogger
-import com.ai.assistance.operit.R
-import android.view.LayoutInflater
-import android.view.ViewGroup
-import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,7 +18,6 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -37,25 +32,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager.Companion.ON_COLOR_MODE_AUTO
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager.Companion.ON_COLOR_MODE_DARK
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager.Companion.ON_COLOR_MODE_LIGHT
-import com.google.android.exoplayer2.DefaultLoadControl
-import com.google.android.exoplayer2.ExoPlayer
-import com.google.android.exoplayer2.MediaItem
-import com.google.android.exoplayer2.Player
-import com.google.android.exoplayer2.ui.AspectRatioFrameLayout
-import com.google.android.exoplayer2.ui.StyledPlayerView
 import java.io.File
 import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
@@ -111,15 +96,6 @@ fun OperitTheme(content: @Composable () -> Unit) {
     val backgroundImageUri by preferencesManager.backgroundImageUri.collectAsState(initial = null)
     val backgroundImageOpacity by
             preferencesManager.backgroundImageOpacity.collectAsState(initial = 0.3f)
-
-    // 获取背景媒体类型和视频设置
-    val backgroundMediaType by
-            preferencesManager.backgroundMediaType.collectAsState(
-                    initial = UserPreferencesManager.MEDIA_TYPE_IMAGE
-            )
-    val videoBackgroundMuted by
-            preferencesManager.videoBackgroundMuted.collectAsState(initial = true)
-    val videoBackgroundLoop by preferencesManager.videoBackgroundLoop.collectAsState(initial = true)
 
     // 获取状态栏颜色设置
     val useCustomStatusBarColor by
@@ -252,103 +228,6 @@ fun OperitTheme(content: @Composable () -> Unit) {
         }
     }
 
-    // 视频播放器状态
-    val exoPlayer =
-            remember(
-                    useBackgroundImage,
-                    backgroundImageUri,
-                    backgroundMediaType,
-                    videoBackgroundLoop,
-                    videoBackgroundMuted
-            ) {
-                if (useBackgroundImage &&
-                                backgroundImageUri != null &&
-                                backgroundMediaType == UserPreferencesManager.MEDIA_TYPE_VIDEO
-                ) {
-                    ExoPlayer.Builder(context)
-                            // Add memory optimizations
-                            .setLoadControl(
-                                    DefaultLoadControl.Builder()
-                                            .setBufferDurationsMs(
-                                                    5000,  // 最小缓冲时间，减少到5秒
-                                                    10000, // 最大缓冲时间，减少到10秒
-                                                    500,   // 回放所需的最小缓冲
-                                                    1000   // 重新缓冲后回放所需的最小缓冲
-                                            )
-                                            .setTargetBufferBytes(5 * 1024 * 1024) // 将缓冲限制为5MB
-                                            .setPrioritizeTimeOverSizeThresholds(true)
-                                            .build()
-                            )
-                            .build()
-                            .apply {
-                                // 设置循环播放
-                                repeatMode =
-                                        if (videoBackgroundLoop) Player.REPEAT_MODE_ALL
-                                        else Player.REPEAT_MODE_OFF
-                                // 设置静音
-                                volume = if (videoBackgroundMuted) 0f else 1f
-                                playWhenReady = true
-
-                                // 加载视频
-                                try {
-                                    val mediaItem = MediaItem.Builder()
-                                        .setUri(Uri.parse(backgroundImageUri))
-                                        .build()
-                                    setMediaItem(mediaItem)
-                                    prepare()
-                                } catch (e: Exception) {
-                                    AppLogger.e(
-                                            "OperitTheme",
-                                            "Error loading video background: ${e.message}",
-                                            e
-                                    )
-                                    // Fallback to no background if video can't be loaded
-                                    coroutineScope.launch {
-                                        preferencesManager.saveThemeSettings(
-                                                useBackgroundImage = false
-                                        )
-                                    }
-                                }
-                            }
-                } else {
-                    null
-                }
-            }
-
-    // 释放ExoPlayer资源
-    DisposableEffect(key1 = Unit) {
-        onDispose {
-            try {
-                exoPlayer?.stop()
-                exoPlayer?.clearMediaItems()
-                exoPlayer?.release()
-            } catch (e: Exception) {
-                AppLogger.e("OperitTheme", "ExoPlayer释放错误", e)
-            }
-        }
-    }
-
-    // 监听应用生命周期，控制视频播放
-    if (exoPlayer != null) {
-        val lifecycleOwner = LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner) {
-            val observer = LifecycleEventObserver { _, event ->
-                when (event) {
-                    Lifecycle.Event.ON_PAUSE -> {
-                        exoPlayer.pause()
-                    }
-                    Lifecycle.Event.ON_RESUME -> {
-                        exoPlayer.play()
-                    }
-                    else -> {}
-                }
-            }
-
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
-    }
-
     // 应用主题和自定义背景
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val liquidGlassBackdrop = rememberLayerBackdrop()
@@ -379,128 +258,56 @@ fun OperitTheme(content: @Composable () -> Unit) {
                     val uri = Uri.parse(backgroundImageUri)
                     val coroutineScope = rememberCoroutineScope()
 
-                    if (backgroundMediaType == UserPreferencesManager.MEDIA_TYPE_IMAGE) {
-                        val painter =
-                            rememberAsyncImagePainter(
-                                model = uri,
-                                error =
-                                    rememberAsyncImagePainter(
-                                        if (darkTheme) Color.Black else Color.White
-                                    ),
+                    val painter =
+                        rememberAsyncImagePainter(
+                            model = uri,
+                            error = rememberAsyncImagePainter(if (darkTheme) Color.Black else Color.White),
+                        )
+
+                    LaunchedEffect(painter) {
+                        if (painter.state is AsyncImagePainter.State.Error) {
+                            AppLogger.e(
+                                "OperitTheme",
+                                "Error loading background image from URI: $backgroundImageUri",
                             )
 
-                        LaunchedEffect(painter) {
-                            if (painter.state is AsyncImagePainter.State.Error) {
-                                AppLogger.e(
-                                    "OperitTheme",
-                                    "Error loading background image from URI: $backgroundImageUri",
-                                )
-
-                                if (uri.scheme == "file") {
-                                    val file = uri.path?.let { File(it) }
-                                    if (file == null || !file.exists()) {
-                                        AppLogger.e(
-                                            "OperitTheme",
-                                            "Internal file doesn't exist: ${file?.absolutePath}",
-                                        )
-                                    } else {
-                                        AppLogger.e(
-                                            "OperitTheme",
-                                            "File exists but couldn't be loaded: ${file.absolutePath}, size: ${file.length()}",
-                                        )
-                                    }
-                                }
-
-                                coroutineScope.launch {
-                                    preferencesManager.saveThemeSettings(useBackgroundImage = false)
+                            if (uri.scheme == "file") {
+                                val file = uri.path?.let { File(it) }
+                                if (file == null || !file.exists()) {
+                                    AppLogger.e(
+                                        "OperitTheme",
+                                        "Internal file doesn't exist: ${file?.absolutePath}",
+                                    )
                                 }
                             }
-                        }
 
-                        Image(
-                            painter = painter,
-                            contentDescription = "Background Image",
-                            modifier =
-                                Modifier.fillMaxSize()
-                                    .alpha(backgroundImageOpacity)
-                                    .then(
-                                        if (useBackgroundBlur) {
-                                            Modifier.blur(radius = backgroundBlurRadius.dp)
-                                        } else {
-                                            Modifier
-                                        },
-                                    ).then(
-                                        if (waterGlassState != null) {
-                                            Modifier.liquefiable(waterGlassState)
-                                        } else {
-                                            Modifier
-                                        },
-                                    ),
-                            contentScale = ContentScale.Crop,
-                        )
-                    } else {
-                        exoPlayer?.let { player ->
-                            val videoBackgroundColor =
-                                if (darkTheme) {
-                                    android.graphics.Color.BLACK
-                                } else {
-                                    android.graphics.Color.WHITE
-                                }
-                            AndroidView(
-                                factory = { ctx ->
-                                    (LayoutInflater.from(ctx).inflate(
-                                        R.layout.view_background_texture_player,
-                                        null,
-                                        false,
-                                    ) as StyledPlayerView).apply {
-                                        this.player = player
-                                        useController = false
-                                        layoutParams =
-                                            ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                        setBackgroundColor(videoBackgroundColor)
-                                        setShutterBackgroundColor(videoBackgroundColor)
-                                        setKeepContentOnPlayerReset(true)
-                                        foreground =
-                                            android.graphics.drawable.ColorDrawable(
-                                                android.graphics.Color.argb(
-                                                    ((1f - backgroundImageOpacity) * 255).toInt(),
-                                                    if (darkTheme) 0 else 255,
-                                                    if (darkTheme) 0 else 255,
-                                                    if (darkTheme) 0 else 255,
-                                                )
-                                            )
-                                    }
-                                },
-                                update = { view ->
-                                    if (view.player != player) {
-                                        view.player = player
-                                    }
-
-                                    view.setBackgroundColor(videoBackgroundColor)
-                                    view.setShutterBackgroundColor(videoBackgroundColor)
-                                    view.setKeepContentOnPlayerReset(true)
-                                    view.foreground =
-                                        android.graphics.drawable.ColorDrawable(
-                                            android.graphics.Color.argb(
-                                                ((1f - backgroundImageOpacity) * 255).toInt(),
-                                                if (darkTheme) 0 else 255,
-                                                if (darkTheme) 0 else 255,
-                                                if (darkTheme) 0 else 255,
-                                            )
-                                        )
-                                },
-                                modifier =
-                                    Modifier.fillMaxSize().then(
-                                        if (waterGlassState != null) {
-                                            Modifier.liquefiable(waterGlassState)
-                                        } else {
-                                            Modifier
-                                        },
-                                    ),
-                            )
+                            coroutineScope.launch {
+                                preferencesManager.saveThemeSettings(useBackgroundImage = false)
+                            }
                         }
                     }
+
+                    Image(
+                        painter = painter,
+                        contentDescription = "Background Image",
+                        modifier =
+                            Modifier.fillMaxSize()
+                                .alpha(backgroundImageOpacity)
+                                .then(
+                                    if (useBackgroundBlur) {
+                                        Modifier.blur(radius = backgroundBlurRadius.dp)
+                                    } else {
+                                        Modifier
+                                    },
+                                ).then(
+                                    if (waterGlassState != null) {
+                                        Modifier.liquefiable(waterGlassState)
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                        contentScale = ContentScale.Crop,
+                    )
                 }
             }
 

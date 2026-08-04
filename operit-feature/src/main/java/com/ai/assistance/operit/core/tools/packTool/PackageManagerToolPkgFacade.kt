@@ -4,25 +4,14 @@ import android.content.Context
 import com.ai.assistance.operit.core.chat.logMessageTiming
 import com.ai.assistance.operit.core.chat.messageTimingNow
 import com.ai.assistance.operit.data.model.Workflow
-import com.ai.assistance.operit.data.repository.WorkflowRepository
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceConfigReader
 import com.ai.assistance.operit.util.AppLogger
 import java.io.File
 import java.nio.charset.StandardCharsets
-import java.util.UUID
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 internal class PackageManagerToolPkgFacade(
     private val packageManager: PackageManager
 ) {
-    private val workflowTemplateJson =
-        Json {
-            ignoreUnknownKeys = true
-            classDiscriminator = "__type"
-        }
-
     private fun buildToolPkgToolboxUiModules(
         container: ToolPkgContainerRuntime,
         localizationContext: Context,
@@ -378,63 +367,11 @@ internal class PackageManagerToolPkgFacade(
         containerPackageName: String,
         templateId: String
     ): Result<Workflow> {
-        packageManager.ensureInitialized()
-        return runCatching {
-            val normalizedContainerPackageName = packageManager.normalizePackageName(containerPackageName)
-            val runtime =
-                packageManager.toolPkgContainersInternal[normalizedContainerPackageName]
-                    ?: throw IllegalArgumentException("ToolPkg container not found: $containerPackageName")
-            val enabledSet = packageManager.getEnabledPackageNameSetInternal()
-            if (!enabledSet.contains(runtime.packageName)) {
-                throw IllegalStateException("ToolPkg container is not enabled: ${runtime.packageName}")
-            }
-
-            val template =
-                runtime.workflowTemplates.firstOrNull {
-                    it.id.equals(templateId.trim(), ignoreCase = true)
-                } ?: throw IllegalArgumentException("Workflow template not found: $templateId")
-            val resource =
-                runtime.resources.firstOrNull {
-                    it.key.equals(template.resourceKey, ignoreCase = true)
-                } ?: throw IllegalStateException(
-                    "Workflow template resource not found: ${template.resourceKey}"
-                )
-            if (ToolPkgArchiveParser.isDirectoryResourceMime(resource.mime)) {
-                throw IllegalStateException(
-                    "Workflow template resource must be a file: ${template.resourceKey}"
-                )
-            }
-
-            val bytes =
-                packageManager.readToolPkgResourceBytes(runtime, resource.path)
-                    ?: throw IllegalStateException(
-                        "Workflow template resource is unavailable: ${template.resourceKey}"
-                    )
-            val templateWorkflowId = UUID.randomUUID().toString()
-            val templateElement =
-                JsonObject(
-                    (workflowTemplateJson.parseToJsonElement(bytes.toString(StandardCharsets.UTF_8)) as JsonObject) +
-                        ("id" to JsonPrimitive(templateWorkflowId))
-                )
-            val decoded =
-                workflowTemplateJson.decodeFromJsonElement(Workflow.serializer(), templateElement)
-            val now = System.currentTimeMillis()
-            val importedWorkflow =
-                decoded.copy(
-                    id = templateWorkflowId,
-                    createdAt = now,
-                    updatedAt = now,
-                    lastExecutionTime = null,
-                    lastExecutionStatus = null,
-                    totalExecutions = 0,
-                    successfulExecutions = 0,
-                    failedExecutions = 0
-                )
-            kotlinx.coroutines.runBlocking {
-                WorkflowRepository(packageManager.contextInternal).createWorkflow(importedWorkflow)
-                    .getOrThrow()
-            }
-        }
+        return Result.failure(
+            UnsupportedOperationException(
+                "Workflow templates are unavailable in this host build"
+            )
+        )
     }
 
     fun getToolPkgWorkspaceTemplates(

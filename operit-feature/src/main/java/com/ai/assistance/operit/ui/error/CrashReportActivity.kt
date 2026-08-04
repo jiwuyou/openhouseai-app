@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
@@ -39,7 +38,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.common.OperitUtilityTheme
-import com.ai.assistance.operit.ui.features.toolbox.screens.logcat.LogcatExportHelper
 import com.ai.assistance.operit.ui.main.MainActivity
 import kotlinx.coroutines.launch
 import java.io.File
@@ -74,9 +72,6 @@ class CrashReportActivity : ComponentActivity() {
 fun CrashReportScreen(stackTrace: String) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var isExportingLogs by remember { mutableStateOf(false) }
-    var logExportMessage by remember { mutableStateOf<String?>(null) }
-    var logExportSuccess by remember { mutableStateOf<Boolean?>(null) }
 
     Scaffold(
             topBar = {
@@ -145,71 +140,6 @@ fun CrashReportScreen(stackTrace: String) {
                             Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                             Spacer(Modifier.size(ButtonDefaults.IconSpacing))
                             Text(stringResource(id = R.string.crash_report_export_button))
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                isExportingLogs = true
-                                logExportMessage = null
-                                logExportSuccess = null
-                                try {
-                                    val result = LogcatExportHelper.exportLogs(context)
-                                    logExportMessage = result.message
-                                    logExportSuccess = result.success
-                                } finally {
-                                    isExportingLogs = false
-                                }
-                            }
-                        },
-                        enabled = !isExportingLogs,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (isExportingLogs) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(ButtonDefaults.IconSize),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.Description,
-                                contentDescription = null,
-                                modifier = Modifier.size(ButtonDefaults.IconSize)
-                            )
-                        }
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(stringResource(id = R.string.crash_report_export_logs_button))
-                    }
-
-                    if (logExportMessage != null) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (logExportSuccess == true) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.errorContainer
-                                }
-                            )
-                        ) {
-                            SelectionContainer {
-                                Text(
-                                    text = logExportMessage.orEmpty(),
-                                    modifier = Modifier.padding(12.dp),
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontFamily = FontFamily.Monospace
-                                    ),
-                                    color = if (logExportSuccess == true) {
-                                        MaterialTheme.colorScheme.onPrimaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.onErrorContainer
-                                    }
-                                )
-                            }
                         }
                     }
 

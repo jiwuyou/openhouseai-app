@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.Base64
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
@@ -54,8 +53,6 @@ import androidx.core.content.FileProvider
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ImageBitmapLimiter
-import com.ai.assistance.operit.util.MediaBase64Limiter
-import com.ai.assistance.operit.util.MediaPoolManager
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -86,56 +83,12 @@ fun AttachmentViewerDialog(
     val isVideo = attachment.mimeType.startsWith("video/")
     val isTextLike = isTextLikeMimeType(attachment.mimeType)
 
-    val mediaPoolId = remember(attachment.id) {
-        attachment.id.takeIf { it.startsWith("media_pool:") }?.removePrefix("media_pool:")
-    }
-
-    val mediaPoolFileState = produceState<File?>(initialValue = null, key1 = mediaPoolId, key2 = attachment.mimeType) {
-        if (mediaPoolId.isNullOrBlank()) return@produceState
-
-        val mediaData = MediaPoolManager.getMedia(mediaPoolId) ?: return@produceState
-        val estimatedBytes = MediaBase64Limiter.estimateDecodedSizeBytes(mediaData.base64)
-        if (estimatedBytes == null || estimatedBytes > 20 * 1024 * 1024) {
-            AppLogger.w("AttachmentViewerDialog", "Media pool item too large to preview: $mediaPoolId, estimatedBytes=$estimatedBytes")
-            return@produceState
-        }
-        val bytes = try {
-            Base64.decode(mediaData.base64, Base64.DEFAULT)
-        } catch (e: Exception) {
-            AppLogger.e("AttachmentViewerDialog", "Failed to decode media base64: $mediaPoolId", e)
-            return@produceState
-        }
-
-        if (bytes.size > 20 * 1024 * 1024) {
-            AppLogger.w("AttachmentViewerDialog", "Media pool item too large to preview after decode: $mediaPoolId, bytes=${bytes.size}")
-            return@produceState
-        }
-
-        val dir = File(context.cacheDir, "media_pool_preview")
-        withContext(Dispatchers.IO) {
-            if (!dir.exists()) {
-                dir.mkdirs()
-            }
-        }
-
-        val ext = fileExtForMimeType(mediaData.mimeType)
-        val outFile = File(dir, "$mediaPoolId.$ext")
-        try {
-            withContext(Dispatchers.IO) {
-                outFile.writeBytes(bytes)
-            }
-            value = outFile
-        } catch (e: Exception) {
-            AppLogger.e("AttachmentViewerDialog", "Failed to write media pool file: $mediaPoolId", e)
-        }
-    }
-
     val fileFromPath = remember(attachment.id) {
         val maybe = runCatching { File(attachment.id) }.getOrNull()
         if (maybe != null && maybe.exists()) maybe else null
     }
 
-    val file = mediaPoolFileState.value ?: fileFromPath
+    val file = fileFromPath
 
     val fileUri = remember(attachment.id, file) {
         when {
@@ -257,37 +210,19 @@ fun AttachmentViewerDialog(
                     }
 
                     isAudio -> {
-                        if (fileUri != null) {
-                            AudioAttachmentPlayer(
-                                uri = fileUri,
-                                modifier = Modifier.fillMaxWidth(),
-                                autoPlay = false
-                            )
-                        } else {
-                            Text(
-                                text = stringResource(R.string.cannot_open_file, attachment.filename),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = stringResource(R.string.cannot_open_file, attachment.filename),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
                     isVideo -> {
-                        if (fileUri != null) {
-                            VideoAttachmentPlayer(
-                                uri = fileUri,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 180.dp, max = 420.dp),
-                                autoPlay = false
-                            )
-                        } else {
-                            Text(
-                                text = stringResource(R.string.cannot_open_file, attachment.filename),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = stringResource(R.string.cannot_open_file, attachment.filename),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
                     textContentState.value != null -> {
@@ -365,20 +300,6 @@ private fun isTextLikeMimeType(mimeType: String): Boolean {
         mt.contains("yaml") ||
         mt.contains("yml") ||
         mt.contains("csv")
-}
-
-private fun fileExtForMimeType(mimeType: String): String {
-    val mt = mimeType.lowercase().substringBefore(';')
-    return when (mt) {
-        "audio/mpeg", "audio/mp3" -> "mp3"
-        "audio/wav", "audio/x-wav" -> "wav"
-        "audio/ogg", "audio/opus" -> "ogg"
-        "audio/webm" -> "webm"
-        "video/mp4" -> "mp4"
-        "video/webm" -> "webm"
-        "video/ogg" -> "ogv"
-        else -> mt.substringAfter('/', "bin").ifBlank { "bin" }
-    }
 }
 
 private fun openFile(context: Context, file: File, mimeType: String, fileNameForToast: String) {

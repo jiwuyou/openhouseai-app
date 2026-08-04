@@ -73,7 +73,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.math.*
 import kotlin.random.Random
-import com.ai.assistance.operit.ui.floating.ui.ball.rememberParticleSystem
 import androidx.core.graphics.drawable.toBitmap
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.R

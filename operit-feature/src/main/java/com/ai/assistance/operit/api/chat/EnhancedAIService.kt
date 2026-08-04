@@ -40,8 +40,6 @@ import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.preferences.ApiPreferences
-import com.ai.assistance.operit.data.preferences.ExternalHttpApiPreferences
-import com.ai.assistance.operit.data.preferences.WakeWordPreferences
 import com.ai.assistance.operit.util.stream.MutableSharedStream
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.StreamCollector
@@ -2977,16 +2975,8 @@ class EnhancedAIService private constructor(private val context: Context) {
     private fun startAiService(characterName: String? = null, avatarUri: String? = null) {
         val refCount = FOREGROUND_REF_COUNT.incrementAndGet()
         val appInForeground = ActivityLifecycleManager.getCurrentActivity() != null
-        val alwaysListeningEnabled = runCatching {
-            runBlocking { WakeWordPreferences(context).alwaysListeningEnabledFlow.first() }
-        }.getOrDefault(false)
-        val externalHttpEnabled = runCatching {
-            runBlocking { ExternalHttpApiPreferences.getInstance(context).enabledFlow.first() }
-        }.getOrDefault(false)
         if (!appInForeground &&
-            !AIForegroundService.isRunning.get() &&
-            !alwaysListeningEnabled &&
-            !externalHttpEnabled
+            !AIForegroundService.isRunning.get()
         ) {
             AppLogger.d(TAG, "应用不在前台，跳过启动 AIForegroundService")
             return

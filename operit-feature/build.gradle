@@ -143,35 +143,17 @@ dependencies {
 
     implementation "commons-io:commons-io:2.13.0"
     implementation "org.apache.commons:commons-compress:1.25.0"
-    implementation "org.apache.commons:commons-compress:1.24.0"
-    implementation "com.github.junrar:junrar:7.5.0"
     implementation "net.lingala.zip4j:zip4j:2.11.5"
-    implementation "org.apache.poi:poi:5.2.3"
-    implementation "org.apache.poi:poi-ooxml:5.2.3"
-    implementation "org.apache.poi:poi-scratchpad:5.2.3"
-    implementation "com.itextpdf:itextg:5.5.10"
-    implementation("com.tom-roush:pdfbox-android:2.0.27.0") {
-        exclude group: "org.bouncycastle", module: "bcprov-jdk15to18"
-        exclude group: "org.bouncycastle", module: "bcpkix-jdk15to18"
-        exclude group: "org.bouncycastle", module: "bcutil-jdk15to18"
-    }
 
     implementation "io.coil-kt:coil:2.5.0"
     implementation "io.coil-kt:coil-compose:2.5.0"
     implementation "io.coil-kt:coil-gif:2.5.0"
-    implementation "com.github.bumptech.glide:glide:4.16.0"
     implementation "com.caverock:androidsvg-aar:1.4"
-    implementation "pl.droidsonroids.gif:android-gif-drawable:1.2.28"
     implementation "com.vanniktech:android-image-cropper:4.5.0"
-    implementation "com.google.android.exoplayer:exoplayer:2.19.1"
-    implementation "com.google.android.exoplayer:exoplayer-core:2.19.1"
-    implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
 
     implementation "com.github.topjohnwu.libsu:core:6.0.0"
     implementation "com.github.topjohnwu.libsu:service:6.0.0"
     implementation "com.github.topjohnwu.libsu:nio:6.0.0"
-    implementation "dev.rikka.shizuku:api:13.1.5"
-    implementation "com.joaomgcd:taskerpluginlibrary:0.4.10"
     implementation "androidx.work:work-runtime-ktx:2.9.0"
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
     implementation "org.bouncycastle:bcprov-jdk18on:1.78"
@@ -209,9 +191,6 @@ dependencies {
 def sharedRescueRustLibrary =
     file("src/main/jniLibs/arm64-v8a/libwuxianpi_rescue.so")
 def repositoryDir = file("${projectDir}/..")
-def buildingNativeHost = gradle.startParameter.taskNames.any {
-    it == "assembleDebug" || it == "assembleRelease" || it.contains(":native-app:")
-}
 
 tasks.register("buildSharedPiRustAndroid", Exec) {
     group = "build"
@@ -230,7 +209,10 @@ tasks.register("buildSharedPiRustAndroid", Exec) {
     outputs.file sharedRescueRustLibrary
 }
 
-// native-app already invokes the same script; every other host gets the shared JNI automatically.
-if (!buildingNativeHost) {
-    tasks.named("preBuild").configure { dependsOn("buildSharedPiRustAndroid") }
+// Kotlin/resource validation does not consume this JNI library. Build it only when a variant
+// actually merges native libraries for an AAR or APK.
+tasks.configureEach { task ->
+    if (task.name ==~ /merge.*JniLibFolders/) {
+        task.dependsOn("buildSharedPiRustAndroid")
+    }
 }

@@ -24,7 +24,6 @@ import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.preferences.AndroidPermissionPreferences
 import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.androidPermissionPreferences
-import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.ui.common.displays.UIAutomationProgressOverlay
 import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay
 import com.ai.assistance.operit.util.AppLogger
@@ -359,7 +358,6 @@ class PhoneAgent(
         isPausedFlow: StateFlow<Boolean>? = null,
         targetApp: String? = null
     ): String {
-        val floatingService = FloatingChatService.getInstance()
         val job = currentCoroutineContext()[Job]
 
         if (job != null) {
@@ -401,8 +399,7 @@ class PhoneAgent(
         val pausedMutable = isPausedFlow as? MutableStateFlow<Boolean>
 
         try {
-            // Setup UI for agent run: hide window, then choose indicator based on whether Shower virtual display is active
-            floatingService?.setFloatingWindowVisible(false)
+            // Choose the progress surface based on whether Shower virtual display is active.
             if (useShowerUi) {
                 useShowerIndicatorForAgent(context, agentId)
             } else {
@@ -567,10 +564,7 @@ class PhoneAgent(
         } finally {
             AppLogger.d("PhoneAgent", "[$agentId] run: finishing, restoring UI")
             pauseFlow = null
-            floatingService?.setFloatingWindowVisible(true)
-            if (isMainScreenAgent) {
-                floatingService?.setStatusIndicatorVisible(false)
-            } else {
+            if (!isMainScreenAgent) {
                 clearAgentIndicators(context, agentId)
             }
             if (useShowerUi) {
@@ -725,13 +719,8 @@ class PhoneAgent(
 }
 
 private suspend fun useFullscreenStatusIndicatorForAgent(context: Context, agentId: String) {
-    val floatingService = FloatingChatService.getInstance()
-    if (floatingService != null) {
-        floatingService.setStatusIndicatorVisible(true)
-    } else {
-        AppLogger.d("PhoneAgent", "[$agentId] No FloatingChatService instance, using standalone rainbow border overlay")
-        UIAutomationProgressOverlay.getInstance(context).setBorderEnabled(true)
-    }
+    AppLogger.d("PhoneAgent", "[$agentId] Using the standalone automation progress overlay")
+    UIAutomationProgressOverlay.getInstance(context).setBorderEnabled(true)
 }
 
 private suspend fun useShowerIndicatorForAgent(context: Context, agentId: String) {
@@ -742,8 +731,6 @@ private suspend fun useShowerIndicatorForAgent(context: Context, agentId: String
     } catch (e: Exception) {
         AppLogger.e("PhoneAgent", "[$agentId] Error enabling Shower border indicator", e)
     }
-    val floatingService = FloatingChatService.getInstance()
-    floatingService?.setStatusIndicatorVisible(false)
 }
 
 private suspend fun clearAgentIndicators(context: Context, agentId: String) {
@@ -754,8 +741,6 @@ private suspend fun clearAgentIndicators(context: Context, agentId: String) {
     } catch (e: Exception) {
         AppLogger.e("PhoneAgent", "[$agentId] Error disabling Shower border indicator", e)
     }
-    val floatingService = FloatingChatService.getInstance()
-    floatingService?.setStatusIndicatorVisible(false)
 }
 
 /** Handles the execution of parsed actions. */
@@ -825,7 +810,6 @@ class ActionHandler(
 
     suspend fun captureScreenshotForAgent(): String? {
         val showerCtx = resolveShowerUsageContext()
-        val floatingService = FloatingChatService.getInstance()
         val progressOverlay = UIAutomationProgressOverlay.getInstance(context)
 
         var screenshotLink: String? = null
@@ -833,7 +817,6 @@ class ActionHandler(
 
         try {
             // Keep screenshot captures clean: hide overlays first, then restore after capture.
-            floatingService?.setStatusIndicatorVisible(false)
             progressOverlay.setOverlayVisible(false)
             delay(200)
 
@@ -860,9 +843,6 @@ class ActionHandler(
             } catch (e: Exception) {
                 AppLogger.e("ActionHandler", "[$agentId] Error checking Shower display state in finally", e)
                 false
-            }
-            if (isMainScreenAgent() || !hasShowerDisplayNow) {
-                floatingService?.setStatusIndicatorVisible(true)
             }
             progressOverlay.setOverlayVisible(true)
         }
@@ -1151,12 +1131,8 @@ class ActionHandler(
         val shouldHideUiDuringAction = isMainScreenAgent() || !showerCtx.canUseShowerForInput
         if (!shouldHideUiDuringAction) return block()
 
-        val floatingService = FloatingChatService.getInstance()
         val progressOverlay = UIAutomationProgressOverlay.getInstance(context)
         try {
-            if (isMainScreenAgent()) {
-                floatingService?.setStatusIndicatorVisible(false)
-            }
             progressOverlay.setOverlayVisible(false)
             delay(200)
             return block()
@@ -1167,9 +1143,6 @@ class ActionHandler(
                 } catch (e: Exception) {
                     AppLogger.e("ActionHandler", "[$agentId] Error checking Shower display state after action", e)
                     false
-                }
-                if (isMainScreenAgent() || !hasShowerDisplayNow) {
-                    floatingService?.setStatusIndicatorVisible(true)
                 }
             }
             progressOverlay.setOverlayVisible(true)

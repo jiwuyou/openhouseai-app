@@ -3,23 +3,6 @@ package com.ai.assistance.operit.ui.main.screens
 import android.content.Context
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoMode
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.DataObject
-import androidx.compose.material.icons.filled.DeviceHub
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Html
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Policy
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.TableView
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.Token
-import androidx.compose.material.icons.filled.VideoSettings
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.common.NavItem
@@ -118,72 +101,12 @@ object ScreenRouteRegistry {
                 order = 10
             ),
             hostEntryDefinition(
-                entryId = "main.memory_base",
-                screen = Screen.MemoryBase,
-                surface = NavigationSurface.MAIN_SIDEBAR_AI,
-                launchNavItem = NavItem.MemoryBase,
-                icon = NavItem.MemoryBase.icon,
-                order = 30
-            ),
-            hostEntryDefinition(
-                entryId = "main.packages",
-                screen = Screen.Packages,
-                surface = NavigationSurface.MAIN_SIDEBAR_TOOLS,
-                launchNavItem = NavItem.Packages,
-                icon = NavItem.Packages.icon,
-                order = 10
-            ),
-            hostEntryDefinition(
-                entryId = "main.shizuku_commands",
-                screen = Screen.ShizukuCommands,
-                surface = NavigationSurface.MAIN_SIDEBAR_TOOLS,
-                launchNavItem = NavItem.ShizukuCommands,
-                icon = NavItem.ShizukuCommands.icon,
-                order = 20
-            ),
-            hostEntryDefinition(
                 entryId = "main.settings",
                 screen = Screen.Settings,
                 surface = NavigationSurface.MAIN_SIDEBAR_SYSTEM,
                 launchNavItem = NavItem.Settings,
                 icon = NavItem.Settings.icon,
                 order = 10
-            ),
-            hostEntryDefinition(
-                entryId = "main.help",
-                screen = Screen.Help,
-                surface = NavigationSurface.MAIN_SIDEBAR_SYSTEM,
-                launchNavItem = NavItem.Help,
-                icon = NavItem.Help.icon,
-                order = 20
-            ),
-            hostEntryDefinition(
-                entryId = "main.about",
-                screen = Screen.About,
-                surface = NavigationSurface.MAIN_SIDEBAR_SYSTEM,
-                launchNavItem = NavItem.About,
-                icon = NavItem.About.icon,
-                order = 30
-            ),
-            hostEntryDefinition(
-                entryId = "hidden.tool_permissions",
-                screen = Screen.ToolPermission,
-                launchNavItem = NavItem.ToolPermissions
-            ),
-            hostEntryDefinition(
-                entryId = "hidden.user_preferences_guide",
-                screen = Screen.UserPreferencesGuide(),
-                launchNavItem = NavItem.UserPreferencesGuide
-            ),
-            hostEntryDefinition(
-                entryId = "hidden.user_preferences_settings",
-                screen = Screen.UserPreferencesSettings,
-                launchNavItem = NavItem.UserPreferencesSettings
-            ),
-            hostEntryDefinition(
-                entryId = "hidden.chat_history_settings",
-                screen = Screen.ChatHistorySettings,
-                launchNavItem = NavItem.ChatHistorySettings
             )
         )
 
@@ -223,9 +146,8 @@ object ScreenRouteRegistry {
     fun toolboxEntries(context: Context): List<NavigationEntrySpec> = emptyList()
 
     fun defaultScreenForNavItem(navItem: NavItem): Screen {
-        return requireNotNull(defaultScreenByNavItem[navItem]) {
-            "No default native screen registered for nav item ${navItem::class.simpleName}"
-        }
+        return defaultScreenByNavItem[navItem]
+            ?: if (navItem == NavItem.Settings) Screen.Settings else Screen.AiChat
     }
 
     fun initialEntry(navItem: NavItem): RouteEntry {

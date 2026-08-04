@@ -17,8 +17,6 @@ import com.ai.assistance.operit.core.tools.agent.ShowerController
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.core.tools.system.ScreenCaptureService
 import com.ai.assistance.operit.core.tools.system.Terminal
-import com.ai.assistance.operit.services.FloatingChatService
-import com.ai.assistance.operit.services.UIDebuggerService
 import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay
 import com.ai.assistance.operit.util.AnrMonitor
 import com.ai.assistance.operit.util.AppLogger
@@ -174,8 +172,6 @@ object OperitShutdownController {
             runCleanupStep("stop foreground services") {
                 AIForegroundService.stopExternalHttp(context)
                 stopService(context, AIForegroundService::class.java)
-                stopService(context, FloatingChatService::class.java)
-                stopService(context, UIDebuggerService::class.java)
                 stopService(context, ScreenCaptureService::class.java)
             }
         }

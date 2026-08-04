@@ -25,7 +25,6 @@ import com.ai.assistance.operit.core.tools.BluetoothBondedDevicesData
 import com.ai.assistance.operit.core.tools.BluetoothDeviceData
 import com.ai.assistance.operit.core.tools.BluetoothStateData
 import com.ai.assistance.operit.core.tools.LocationData
-import com.ai.assistance.operit.core.tools.NotificationData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.SystemSettingData
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionPermissionRequestCoordinator
@@ -47,7 +46,6 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import java.io.File
-import com.ai.assistance.operit.services.notification.OperitNotificationStore
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AndroidUserPathUtils
 import com.ai.assistance.operit.util.OperitPaths
@@ -607,58 +605,12 @@ open class StandardSystemOperationTools(private val context: Context) {
 
     /** 读取设备通知内容 获取当前设备上的通知信息 */
     open suspend fun getNotifications(tool: AITool): ToolResult {
-        val limit = tool.parameters.find { it.name == "limit" }?.value?.toIntOrNull() ?: 10
-        val includeOngoing =
-            tool.parameters.find { it.name == "include_ongoing" }?.value?.toBoolean() ?: false
-
-        val enabledListeners =
-            Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
-                ?: ""
-        val myPackageName = context.packageName
-
-        val hasNotificationAccess = enabledListeners
-            .split(":")
-            .asSequence()
-            .mapNotNull { ComponentName.unflattenFromString(it) }
-            .any { it.packageName == myPackageName }
-
-        if (!hasNotificationAccess) {
-            try {
-                val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "打开通知使用权设置页面失败", e)
-            }
-
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Cannot read notifications. This app needs to be authorized as a Notification Listener Service."
-            )
-        }
-
-        return try {
-            val notifications = OperitNotificationStore.snapshot(
-                limit = limit,
-                includeOngoing = includeOngoing
-            )
-            val resultData = NotificationData(
-                notifications = notifications,
-                timestamp = System.currentTimeMillis()
-            )
-            ToolResult(toolName = tool.name, success = true, result = resultData, error = "")
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "获取通知时出错", e)
-            ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Error getting notifications: ${e.message}"
-            )
-        }
+        return ToolResult(
+            toolName = tool.name,
+            success = false,
+            result = StringResultData(""),
+            error = "Notification access is unavailable in this host build"
+        )
     }
 
     /** 获取应用使用时长（前台使用时间） */

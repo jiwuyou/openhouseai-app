@@ -11,8 +11,6 @@ import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.preferences.CharacterCardToolAccessResolver
 import com.ai.assistance.operit.data.preferences.ResolvedCharacterCardToolAccess
-import com.ai.assistance.operit.integrations.tasker.triggerAIAgentAction
-import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay
 import com.ai.assistance.operit.util.LocaleUtils
 import kotlinx.coroutines.Dispatchers
@@ -42,20 +40,8 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
         delayMs: Long = 50,
         action: suspend (AITool) -> ToolResult
     ): ToolResult {
-        val floatingService = FloatingChatService.getInstance()
-        return try {
-            floatingService?.setFloatingWindowVisible(false)
-            if (showStatusIndicator) {
-                floatingService?.setStatusIndicatorVisible(true)
-            } else {
-                floatingService?.setStatusIndicatorVisible(false)
-            }
-            delay(delayMs)
-            action(tool)
-        } finally {
-            floatingService?.setFloatingWindowVisible(true)
-            floatingService?.setStatusIndicatorVisible(false)
-        }
+        delay(delayMs)
+        return action(tool)
     }
 
     fun s(resId: Int, vararg args: Any): String = context.getString(resId, *args)
@@ -460,85 +446,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             executor = { tool ->
                 val terminalTool = ToolGetter.getTerminalCommandExecutor(context)
                 terminalTool.getSessionScreen(tool)
-            }
-    )
-
-    // 音乐播放工具
-    val musicPlaybackTools = ToolGetter.getMusicPlaybackTools(context)
-
-    handler.registerTool(
-            name = "music_play",
-            descriptionGenerator = { tool ->
-                val source = tool.parameters.find { it.name == "source" }?.value ?: ""
-                "Play music: $source"
-            },
-            executor = { tool ->
-                runBlocking(Dispatchers.IO) { musicPlaybackTools.play(tool) }
-            }
-    )
-
-    handler.registerTool(
-            name = "music_play_queue",
-            descriptionGenerator = { tool ->
-                val items = tool.parameters.find { it.name == "items" }?.value ?: ""
-                "Play music queue: $items"
-            },
-            executor = { tool ->
-                runBlocking(Dispatchers.IO) { musicPlaybackTools.playQueue(tool) }
-            }
-    )
-
-    handler.registerTool(
-            name = "music_pause",
-            descriptionGenerator = { _ -> "Pause music playback" },
-            executor = { tool ->
-                runBlocking(Dispatchers.IO) { musicPlaybackTools.pause(tool) }
-            }
-    )
-
-    handler.registerTool(
-            name = "music_resume",
-            descriptionGenerator = { _ -> "Resume music playback" },
-            executor = { tool ->
-                runBlocking(Dispatchers.IO) { musicPlaybackTools.resume(tool) }
-            }
-    )
-
-    handler.registerTool(
-            name = "music_stop",
-            descriptionGenerator = { _ -> "Stop music playback" },
-            executor = { tool ->
-                runBlocking(Dispatchers.IO) { musicPlaybackTools.stop(tool) }
-            }
-    )
-
-    handler.registerTool(
-            name = "music_seek",
-            descriptionGenerator = { tool ->
-                val positionMs = tool.parameters.find { it.name == "position_ms" }?.value ?: ""
-                "Seek music playback to ${positionMs}ms"
-            },
-            executor = { tool ->
-                runBlocking(Dispatchers.IO) { musicPlaybackTools.seek(tool) }
-            }
-    )
-
-    handler.registerTool(
-            name = "music_set_volume",
-            descriptionGenerator = { tool ->
-                val volume = tool.parameters.find { it.name == "volume" }?.value ?: ""
-                "Set music playback volume to $volume"
-            },
-            executor = { tool ->
-                runBlocking(Dispatchers.IO) { musicPlaybackTools.setVolume(tool) }
-            }
-    )
-
-    handler.registerTool(
-            name = "music_status",
-            descriptionGenerator = { _ -> "Get music playback status" },
-            executor = { tool ->
-                runBlocking(Dispatchers.IO) { musicPlaybackTools.status(tool) }
             }
     )
 
@@ -1419,167 +1326,8 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
-    // Tasker事件触发工具
-    handler.registerTool(
-            name = "trigger_tasker_event",
-            descriptionGenerator = { tool ->
-                val taskType = tool.parameters.find { it.name == "task_type" }?.value ?: ""
-                val args = tool.parameters.filter { it.name.startsWith("arg1") }.joinToString(",")
-                s(R.string.toolreg_trigger_tasker_event_desc, taskType, args)
-            },
-            executor = { tool ->
-                val params = tool.parameters.associate { it.name to it.value }
-                val taskType = params["task_type"]
-                if (taskType.isNullOrBlank()) {
-                    ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = StringResultData(""),
-                        error = s(R.string.toolreg_missing_required_param, "task_type")
-                    )
-                } else {
-                    val args = params.filterKeys { it != "task_type" }
-                    try {
-                        context.triggerAIAgentAction(
-                            taskType,
-                            args
-                        )
-                        ToolResult(
-                            toolName = tool.name,
-                            success = true,
-                            result =
-                                    StringResultData(
-                                            s(R.string.toolreg_tasker_event_triggered_result, taskType)
-                                    )
-                        )
-                    } catch (e: Exception) {
-                        ToolResult(
-                            toolName = tool.name,
-                            success = false,
-                            result = StringResultData(""),
-                            error =
-                                    s(
-                                            R.string.toolreg_failed_trigger_tasker_event,
-                                            e.message ?: ""
-                                    )
-                        )
-                    }
-                }
-            }
-    )
-
-
-    // 工作流工具
-    val workflowTools = ToolGetter.getWorkflowTools(context)
-
-    // 获取所有工作流
-    handler.registerTool(
-            name = "get_all_workflows",
-            descriptionGenerator = { _ -> s(R.string.toolreg_get_all_workflows_desc) },
-            executor = { tool -> runBlocking(Dispatchers.IO) { workflowTools.getAllWorkflows(tool) } }
-    )
-
-    // 创建工作流
-    handler.registerTool(
-            name = "create_workflow",
-            descriptionGenerator = { tool ->
-                val name = tool.parameters.find { it.name == "name" }?.value ?: ""
-                s(R.string.toolreg_create_workflow_desc, name)
-            },
-            executor = { tool -> runBlocking(Dispatchers.IO) { workflowTools.createWorkflow(tool) } }
-    )
-
-    // 获取工作流详情
-    handler.registerTool(
-            name = "get_workflow",
-            descriptionGenerator = { tool ->
-                val id = tool.parameters.find { it.name == "workflow_id" }?.value ?: ""
-                s(R.string.toolreg_get_workflow_desc, id)
-            },
-            executor = { tool -> runBlocking(Dispatchers.IO) { workflowTools.getWorkflow(tool) } }
-    )
-
-    // 更新工作流
-    handler.registerTool(
-            name = "update_workflow",
-            descriptionGenerator = { tool ->
-                val id = tool.parameters.find { it.name == "workflow_id" }?.value ?: ""
-                val name = tool.parameters.find { it.name == "name" }?.value
-                if (name != null) {
-                    s(R.string.toolreg_update_workflow_with_name_desc, id, name)
-                } else {
-                    s(R.string.toolreg_update_workflow_desc, id)
-                }
-            },
-            executor = { tool -> runBlocking(Dispatchers.IO) { workflowTools.updateWorkflow(tool) } }
-    )
-
-    // 差异更新工作流
-    handler.registerTool(
-            name = "patch_workflow",
-            descriptionGenerator = { tool ->
-                val id = tool.parameters.find { it.name == "workflow_id" }?.value ?: ""
-                s(R.string.toolreg_patch_workflow_desc, id)
-            },
-            executor = { tool -> runBlocking(Dispatchers.IO) { workflowTools.patchWorkflow(tool) } }
-    )
-
-    // 启用工作流
-    handler.registerTool(
-            name = "enable_workflow",
-            descriptionGenerator = { tool ->
-                val id = tool.parameters.find { it.name == "workflow_id" }?.value ?: ""
-                s(R.string.toolreg_enable_workflow_desc, id)
-            },
-            executor = { tool -> runBlocking(Dispatchers.IO) { workflowTools.enableWorkflow(tool) } }
-    )
-
-    // 禁用工作流
-    handler.registerTool(
-            name = "disable_workflow",
-            descriptionGenerator = { tool ->
-                val id = tool.parameters.find { it.name == "workflow_id" }?.value ?: ""
-                s(R.string.toolreg_disable_workflow_desc, id)
-            },
-            executor = { tool -> runBlocking(Dispatchers.IO) { workflowTools.disableWorkflow(tool) } }
-    )
-
-    // 删除工作流
-    handler.registerTool(
-            name = "delete_workflow",
-            descriptionGenerator = { tool ->
-                val id = tool.parameters.find { it.name == "workflow_id" }?.value ?: ""
-                s(R.string.toolreg_delete_workflow_desc, id)
-            },
-            executor = { tool -> runBlocking(Dispatchers.IO) { workflowTools.deleteWorkflow(tool) } }
-    )
-
-    // 触发工作流执行
-    handler.registerTool(
-            name = "trigger_workflow",
-            descriptionGenerator = { tool ->
-                val id = tool.parameters.find { it.name == "workflow_id" }?.value ?: ""
-                s(R.string.toolreg_trigger_workflow_desc, id)
-            },
-            executor = { tool -> runBlocking(Dispatchers.IO) { workflowTools.triggerWorkflow(tool) } }
-    )
-
     // 对话管理工具
     val chatManagerTool = ToolGetter.getChatManagerTool(context)
-
-    // 启动聊天服务
-    handler.registerTool(
-            name = "start_chat_service",
-            descriptionGenerator = { _ -> s(R.string.toolreg_start_chat_service_desc) },
-            executor = { tool -> runBlocking(Dispatchers.IO) { chatManagerTool.startChatService(tool) } }
-    )
-
-    // 停止聊天服务
-    handler.registerTool(
-            name = "stop_chat_service",
-            descriptionGenerator = { _ -> s(R.string.toolreg_stop_chat_service_desc) },
-            executor = { tool -> runBlocking(Dispatchers.IO) { chatManagerTool.stopChatService(tool) } }
-    )
 
     // 新建对话
     handler.registerTool(

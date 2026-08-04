@@ -2,6 +2,7 @@ package com.ai.assistance.operit.ui.features.chat.webview.workspace
 
 import android.annotation.SuppressLint
 import android.net.Uri
+import android.util.Base64
 import com.ai.assistance.operit.util.AppLogger
 import android.view.MotionEvent
 import android.webkit.WebView
@@ -55,8 +56,6 @@ import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
 import com.ai.assistance.operit.ui.common.rememberLocal
-import com.ai.assistance.operit.ui.features.chat.components.attachments.AudioAttachmentPlayer
-import com.ai.assistance.operit.ui.features.chat.components.attachments.VideoAttachmentPlayer
 import com.ai.assistance.operit.ui.features.chat.webview.LocalWebServer
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.features.chat.webview.WebViewHandler
@@ -67,6 +66,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 import kotlinx.serialization.Serializable
 
 /** 可序列化的位置数据类，用于持久化FAB位置 */
@@ -100,6 +100,79 @@ private fun isLocalPreviewUrl(url: String): Boolean {
             (host == "localhost" || host == "127.0.0.1")
     }.getOrDefault(false)
 }
+
+internal data class WorkspacePreviewFileState(
+    val loading: Boolean = true,
+    val file: File? = null,
+    val errorMessage: String? = null
+)
+
+@Composable
+internal fun rememberWorkspacePreviewFileState(
+    fileInfo: OpenFileInfo,
+    workspaceEnv: String?,
+    toolHandler: AIToolHandler
+): State<WorkspacePreviewFileState> {
+    val context = LocalContext.current
+    return produceState(
+        initialValue = WorkspacePreviewFileState(),
+        key1 = fileInfo.path,
+        key2 = fileInfo.lastModified,
+        key3 = workspaceEnv
+    ) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                if (workspaceEnv.isNullOrBlank()) {
+                    val localFile = File(fileInfo.path)
+                    if (localFile.exists()) {
+                        return@runCatching WorkspacePreviewFileState(loading = false, file = localFile)
+                    }
+                    return@runCatching WorkspacePreviewFileState(
+                        loading = false,
+                        errorMessage = context.getString(R.string.cannot_open_file, fileInfo.name)
+                    )
+                }
+
+                val result = toolHandler.executeTool(
+                    AITool(
+                        "read_file_binary",
+                        listOf(
+                            ToolParameter("path", fileInfo.path),
+                            ToolParameter("environment", workspaceEnv)
+                        )
+                    )
+                )
+                val binaryData = result.result as? com.ai.assistance.operit.core.tools.BinaryFileContentData
+                if (!result.success || binaryData == null) {
+                    return@runCatching WorkspacePreviewFileState(
+                        loading = false,
+                        errorMessage = result.error
+                            ?: context.getString(R.string.cannot_open_file, fileInfo.name)
+                    )
+                }
+
+                val previewDir = File(context.cacheDir, "workspace_image_preview").apply { mkdirs() }
+                val extension = fileInfo.name.substringAfterLast('.', "bin").ifBlank { "bin" }
+                val previewFile = File(
+                    previewDir,
+                    "${fileInfo.path.hashCode()}_${fileInfo.lastModified}.$extension"
+                )
+                FileOutputStream(previewFile).use { output ->
+                    output.write(Base64.decode(binaryData.contentBase64, Base64.DEFAULT))
+                }
+                WorkspacePreviewFileState(loading = false, file = previewFile)
+            }.getOrElse { error ->
+                AppLogger.e("WorkspaceManager", "Failed to resolve image preview", error)
+                WorkspacePreviewFileState(
+                    loading = false,
+                    errorMessage = context.getString(R.string.cannot_open_file, fileInfo.name)
+                )
+            }
+        }
+    }
+}
+
+internal fun workspacePreviewUriFromFile(file: File?): Uri? = file?.let(Uri::fromFile)
 
 private fun previewWebViewOptions(url: String): WebViewHandler.WebViewOptions {
     if (!isLocalPreviewUrl(url)) {
@@ -807,85 +880,25 @@ fun WorkspaceManager(
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
-                            fileInfo.isAudio -> {
-                                val previewFileState by rememberWorkspacePreviewFileState(
-                                    fileInfo = fileInfo,
-                                    workspaceEnv = workspaceEnv,
-                                    toolHandler = toolHandler
-                                )
-                                val previewUri = remember(previewFileState.file?.absolutePath) {
-                                    workspacePreviewUriFromFile(previewFileState.file)
-                                }
-
+                            fileInfo.isAudio ||
+                                fileInfo.isVideo ||
+                                fileInfo.isReadOnlyDocumentPreviewable -> {
                                 Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(16.dp),
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .padding(16.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (previewFileState.loading) {
-                                        CircularProgressIndicator()
-                                    } else if (previewUri != null) {
-                                        AudioAttachmentPlayer(
-                                            uri = previewUri,
-                                            modifier = Modifier.fillMaxWidth(),
-                                            autoPlay = false
-                                        )
-                                    } else {
-                                        Text(
-                                            text = previewFileState.errorMessage
-                                                ?: context.getString(R.string.cannot_open_file, fileInfo.name),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
+                                    Text(
+                                        text = context.getString(
+                                            R.string.cannot_open_file,
+                                            fileInfo.name
+                                        ),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
-                            }
-                            fileInfo.isVideo -> {
-                                val previewFileState by rememberWorkspacePreviewFileState(
-                                    fileInfo = fileInfo,
-                                    workspaceEnv = workspaceEnv,
-                                    toolHandler = toolHandler
-                                )
-                                val previewUri = remember(previewFileState.file?.absolutePath) {
-                                    workspacePreviewUriFromFile(previewFileState.file)
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black)
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (previewFileState.loading) {
-                                        CircularProgressIndicator(color = Color.White)
-                                    } else if (previewUri != null) {
-                                        VideoAttachmentPlayer(
-                                            uri = previewUri,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(min = 180.dp, max = 420.dp),
-                                            autoPlay = false
-                                        )
-                                    } else {
-                                        Text(
-                                            text = previewFileState.errorMessage
-                                                ?: context.getString(R.string.cannot_open_file, fileInfo.name),
-                                            color = Color.White,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
-                                }
-                            }
-                            fileInfo.isReadOnlyDocumentPreviewable -> {
-                                WorkspaceReadOnlyDocumentPreview(
-                                    fileInfo = fileInfo,
-                                    workspaceEnv = workspaceEnv,
-                                    toolHandler = toolHandler,
-                                    modifier = Modifier.fillMaxSize()
-                                )
                             }
                             fileInfo.isMarkdown && isPreviewMode -> {
                                 WorkspaceMarkdownPreview(

@@ -1,11 +1,6 @@
 package com.ai.assistance.operit.core.tools.defaultTool.standard
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
-import android.os.Build
-import android.os.IBinder
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.ChatRuntimeHolder
 import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
@@ -36,10 +31,7 @@ import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.WaifuPreferences
 import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import com.ai.assistance.operit.services.ChatServiceCore
-import com.ai.assistance.operit.services.FloatingChatService
-import com.ai.assistance.operit.ui.floating.FloatingMode
 import java.time.ZoneId
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,7 +73,6 @@ class StandardChatManagerTool(private val context: Context) {
 
     companion object {
         private const val TAG = "StandardChatManagerTool"
-        private const val SERVICE_CONNECTION_TIMEOUT = 15000L // 15秒超时
         private const val RESPONSE_STREAM_ACQUIRE_TIMEOUT = 15000L
         private const val AI_RESPONSE_TIMEOUT = 180000L
     }
@@ -132,9 +123,9 @@ class StandardChatManagerTool(private val context: Context) {
 
     private fun parseMessageRuntimeSlot(value: String?): ChatRuntimeSlot? {
         return when (value?.trim()?.lowercase()) {
-            null, "" -> ChatRuntimeSlot.FLOATING
+            null, "" -> ChatRuntimeSlot.MAIN
             "main" -> ChatRuntimeSlot.MAIN
-            "floating" -> ChatRuntimeSlot.FLOATING
+            "floating" -> ChatRuntimeSlot.MAIN
             else -> null
         }
     }
@@ -570,311 +561,29 @@ class StandardChatManagerTool(private val context: Context) {
     private val appContext = context.applicationContext
     private val chatRuntimeHolder by lazy { ChatRuntimeHolder.getInstance(appContext) }
 
-    // Service 连接状态
-    private var chatCore: ChatServiceCore? = null
-    private var floatingService: FloatingChatService? = null
-    private var isBound = false
-    private var connectionDeferred = CompletableDeferred<Boolean>().apply { complete(false) }
+    private val chatCore: ChatServiceCore
+        get() = chatRuntimeHolder.getCore(ChatRuntimeSlot.MAIN)
 
-    // Service 连接回调
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            AppLogger.d(TAG, "Service connected")
-            val binder = service as? FloatingChatService.LocalBinder
-            if (binder != null) {
-                floatingService = binder.getService()
-                chatCore = binder.getChatCore()
-                isBound = true
-                binder.setCloseCallback {
-                    AppLogger.d(TAG, "Received close callback from FloatingChatService")
-                    unbindService()
-                }
-                if (!connectionDeferred.isCompleted) {
-                    connectionDeferred.complete(true)
-                }
-                AppLogger.d(TAG, "ChatServiceCore obtained successfully")
-            } else {
-                AppLogger.e(TAG, "Failed to cast binder")
-                if (!connectionDeferred.isCompleted) {
-                    connectionDeferred.complete(false)
-                }
-            }
-        }
+    private suspend fun ensureServiceConnected(): Boolean = true
 
-        override fun onServiceDisconnected(name: ComponentName?) {
-            AppLogger.d(TAG, "Service disconnected")
-            chatCore = null
-            floatingService = null
-            isBound = false
-            if (!connectionDeferred.isCompleted) {
-                connectionDeferred.complete(false)
-            }
-        }
-    }
+    fun unbindService() = Unit
 
-    /**
-     * 确保服务已连接
-     * @return 是否成功连接
-     */
-    private suspend fun ensureServiceConnected(startIntent: Intent? = null): Boolean {
-        // 如果已经连接，直接返回
-        if (isBound && chatCore != null) {
-            if (startIntent != null) {
-                withContext(Dispatchers.Main) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        appContext.startForegroundService(startIntent)
-                    } else {
-                        appContext.startService(startIntent)
-                    }
-                }
-            }
-            return true
-        }
-
-        if (startIntent == null && FloatingChatService.getInstance() == null) {
-            AppLogger.w(TAG, "FloatingChatService not running; skip auto-start in ensureServiceConnected")
-            if (!connectionDeferred.isCompleted) {
-                connectionDeferred.complete(false)
-            }
-            return false
-        }
-
-        val prefs = appContext.getSharedPreferences("floating_chat_prefs", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("service_disabled_due_to_crashes", false)) {
-            AppLogger.w(TAG, "FloatingChatService is disabled due to frequent crashes")
-            if (!connectionDeferred.isCompleted) {
-                connectionDeferred.complete(false)
-            }
-            return false
-        }
-
-        // 如果正在连接中，等待连接完成
-        if (!connectionDeferred.isCompleted) {
-            return try {
-                withTimeout(SERVICE_CONNECTION_TIMEOUT) {
-                    connectionDeferred.await()
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Service connection timeout", e)
-                if (!connectionDeferred.isCompleted) {
-                    connectionDeferred.complete(false)
-                }
-                false
-            }
-        }
-
-        // 重新启动和绑定服务
-        return try {
-            // 重置 deferred
-            connectionDeferred = CompletableDeferred()
-
-            val intent = startIntent ?: Intent(appContext, FloatingChatService::class.java)
-
-            val bound =
-                withContext(Dispatchers.Main) {
-                    if (startIntent != null) {
-                        // 启动服务
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            appContext.startForegroundService(intent)
-                        } else {
-                            appContext.startService(intent)
-                        }
-                    }
-
-                    // 绑定服务
-                    appContext.bindService(
-                        intent,
-                        serviceConnection,
-                        Context.BIND_AUTO_CREATE
-                    )
-                }
-
-            if (!bound) {
-                AppLogger.e(TAG, "Failed to bind service")
-                connectionDeferred.complete(false)
-                return false
-            }
-
-            // 等待连接完成
-            withTimeout(SERVICE_CONNECTION_TIMEOUT) {
-                connectionDeferred.await()
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to ensure service connected", e)
-            connectionDeferred.completeExceptionally(e)
-            false
-        }
-    }
-
-    /**
-     * 解绑服务
-     */
-    fun unbindService() {
-        if (isBound) {
-            try {
-                appContext.unbindService(serviceConnection)
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Error unbinding service", e)
-            }
-        }
-
-        isBound = false
-        chatCore = null
-        floatingService = null
-        connectionDeferred = CompletableDeferred<Boolean>().apply { complete(false) }
-        AppLogger.d(TAG, "Service unbound")
-    }
-
-    /**
-     * 启动对话服务
-     */
     suspend fun startChatService(tool: AITool): ToolResult {
-        return try {
-            val initialModeParam = tool.parameters.find { it.name == "initial_mode" }?.value?.trim()
-            val autoEnterVoiceChatParam =
-                tool.parameters.find { it.name == "auto_enter_voice_chat" }?.value?.trim()
-            val wakeLaunchedParam = tool.parameters.find { it.name == "wake_launched" }?.value?.trim()
-            val timeoutMsParam = tool.parameters.find { it.name == "timeout_ms" }?.value?.trim()
-            val keepIfExistsParam = tool.parameters.find { it.name == "keep_if_exists" }?.value?.trim()
-
-            val initialMode =
-                initialModeParam
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { raw ->
-                        runCatching { FloatingMode.valueOf(raw.uppercase()) }.getOrNull()
-                    }
-            if (initialModeParam != null && initialModeParam.isNotBlank() && initialMode == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = ChatServiceStartResultData(isConnected = false),
-                    error = "Invalid parameter: initial_mode is invalid: $initialModeParam"
-                )
-            }
-
-            fun parseBooleanOrNull(value: String?): Boolean? {
-                return when (value?.lowercase()) {
-                    "true" -> true
-                    "false" -> false
-                    else -> null
-                }
-            }
-
-            val autoEnterVoiceChat = parseBooleanOrNull(autoEnterVoiceChatParam)
-            if (autoEnterVoiceChatParam != null && autoEnterVoiceChat == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = ChatServiceStartResultData(isConnected = false),
-                    error = "Invalid parameter: auto_enter_voice_chat must be true/false"
-                )
-            }
-
-            val wakeLaunched = parseBooleanOrNull(wakeLaunchedParam)
-            if (wakeLaunchedParam != null && wakeLaunched == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = ChatServiceStartResultData(isConnected = false),
-                    error = "Invalid parameter: wake_launched must be true/false"
-                )
-            }
-
-            val timeoutMs = timeoutMsParam?.takeIf { it.isNotBlank() }?.toLongOrNull()
-            if (timeoutMsParam != null && timeoutMsParam.isNotBlank() && timeoutMs == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = ChatServiceStartResultData(isConnected = false),
-                    error = "Invalid parameter: timeout_ms must be an integer (milliseconds)"
-                )
-            }
-
-            val keepIfExists = parseBooleanOrNull(keepIfExistsParam)
-            if (keepIfExistsParam != null && keepIfExists == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = ChatServiceStartResultData(isConnected = false),
-                    error = "Invalid parameter: keep_if_exists must be true/false"
-                )
-            }
-
-            val intent = Intent(appContext, FloatingChatService::class.java)
-            if (initialMode != null) {
-                intent.putExtra("INITIAL_MODE", initialMode.name)
-            }
-            if (autoEnterVoiceChat == true) {
-                intent.putExtra(FloatingChatService.EXTRA_AUTO_ENTER_VOICE_CHAT, true)
-            }
-            if (wakeLaunched != null) {
-                intent.putExtra(FloatingChatService.EXTRA_WAKE_LAUNCHED, wakeLaunched)
-            }
-            if (timeoutMs != null) {
-                intent.putExtra(FloatingChatService.EXTRA_AUTO_EXIT_AFTER_MS, timeoutMs)
-            }
-            if (keepIfExists == true) {
-                intent.putExtra(FloatingChatService.EXTRA_KEEP_IF_EXISTS, true)
-            }
-
-            val connected = ensureServiceConnected(intent)
-
-            if (connected) {
-                try {
-                    floatingService?.setFloatingWindowVisible(true)
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Failed to set floating window visible", e)
-                }
-                ToolResult(
-                    toolName = tool.name,
-                    success = true,
-                    result = ChatServiceStartResultData(isConnected = true)
-                )
-            } else {
-                ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = ChatServiceStartResultData(isConnected = false),
-                    error = "Chat service failed to start or connection timed out"
-                )
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to start chat service", e)
-            ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = ChatServiceStartResultData(isConnected = false),
-                error = "Error starting chat service: ${e.message}"
-            )
-        }
+        return ToolResult(
+            toolName = tool.name,
+            success = false,
+            result = ChatServiceStartResultData(isConnected = false),
+            error = "Floating chat is not supported in this host build",
+        )
     }
 
     suspend fun stopChatService(tool: AITool): ToolResult {
-        return try {
-            try {
-                floatingService?.setFloatingWindowVisible(false)
-            } catch (_: Exception) {
-            }
-
-            unbindService()
-
-            val intent = Intent(appContext, FloatingChatService::class.java)
-            val stopped = runCatching { appContext.stopService(intent) }.getOrDefault(false)
-
-            ToolResult(
-                toolName = tool.name,
-                success = true,
-                result = StringResultData(if (stopped) "Chat service stopped" else "Requested to stop chat service")
-            )
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to stop chat service", e)
-            ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Error stopping chat service: ${e.message}"
-            )
-        }
+        return ToolResult(
+            toolName = tool.name,
+            success = false,
+            result = StringResultData(""),
+            error = "Floating chat is not supported in this host build",
+        )
     }
 
     /**
@@ -891,12 +600,7 @@ class StandardChatManagerTool(private val context: Context) {
                 )
             }
 
-            val core = chatCore ?: return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = ChatCreationResultData(chatId = ""),
-                error = "ChatServiceCore not initialized"
-            )
+            val core = chatCore
 
             // 获取创建前的 chat list
             val previousChatIds = core.chatHistories.value.map { it.id }.toSet()
@@ -1125,12 +829,7 @@ class StandardChatManagerTool(private val context: Context) {
                 )
             }
 
-            val core = chatCore ?: return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = ChatSwitchResultData(chatId = "", chatTitle = ""),
-                error = "ChatServiceCore not initialized"
-            )
+            val core = chatCore
 
             val chatId = tool.parameters.find { it.name == "chat_id" }?.value
             if (chatId.isNullOrBlank()) {
@@ -1209,7 +908,7 @@ class StandardChatManagerTool(private val context: Context) {
                 )
             }
 
-            val core = chatRuntimeHolder.getCore(runtimeSlot ?: ChatRuntimeSlot.FLOATING)
+            val core = chatRuntimeHolder.getCore(runtimeSlot ?: ChatRuntimeSlot.MAIN)
 
             val message = tool.parameters.find { it.name == "message" }?.value
             if (message.isNullOrBlank()) {

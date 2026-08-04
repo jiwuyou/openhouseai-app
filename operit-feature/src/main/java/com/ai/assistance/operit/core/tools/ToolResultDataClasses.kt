@@ -1,6 +1,5 @@
 package com.ai.assistance.operit.core.tools
 
-import com.ai.assistance.operit.api.voice.HttpTtsResponsePipelineStep
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -2457,7 +2456,7 @@ data class SpeechTtsHttpConfigResultItem(
     val localeTag: String,
     val voiceId: String,
     val modelName: String,
-    val responsePipeline: List<HttpTtsResponsePipelineStep>
+    val responsePipeline: List<String>
 )
 
 /** 语音服务 TTS VITS/Piper 包配置条目 */

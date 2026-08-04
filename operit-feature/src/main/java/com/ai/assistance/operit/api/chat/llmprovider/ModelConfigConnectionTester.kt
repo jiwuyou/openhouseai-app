@@ -15,7 +15,6 @@ import com.ai.assistance.operit.core.chat.hooks.toPromptTurns
 import com.ai.assistance.operit.util.AssetCopyUtils
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.ImagePoolManager
-import com.ai.assistance.operit.util.MediaPoolManager
 import kotlinx.coroutines.CancellationException
 
 enum class ModelConnectionTestType {
@@ -173,61 +172,6 @@ object ModelConfigConnectionTester {
                 }
             }
 
-            if (configForTest.enableDirectAudioProcessing) {
-                runCase(ModelConnectionTestType.AUDIO) {
-                    val audioFile = AssetCopyUtils.copyAssetToCache(context, "test/1.mp3")
-                    val audioId = MediaPoolManager.addMedia(audioFile.absolutePath, "audio/mpeg")
-                    if (audioId == "error") {
-                        throw IllegalStateException("Failed to create test audio")
-                    }
-                    try {
-                        val prompt =
-                            buildString {
-                                append(MediaLinkBuilder.audio(context, audioId))
-                                append("\n")
-                                append(context.getString(R.string.conversation_analyze_audio_prompt))
-                            }
-                        service.sendMessage(
-                            context,
-                            listOf(PromptTurn(kind = PromptTurnKind.USER, content = prompt)),
-                            parameters,
-                            stream = false,
-                            enableRetry = false
-                        ).collect { }
-                    } finally {
-                        MediaPoolManager.removeMedia(audioId)
-                        runCatching { audioFile.delete() }
-                    }
-                }
-            }
-
-            if (configForTest.enableDirectVideoProcessing) {
-                runCase(ModelConnectionTestType.VIDEO) {
-                    val videoFile = AssetCopyUtils.copyAssetToCache(context, "test/1.mp4")
-                    val videoId = MediaPoolManager.addMedia(videoFile.absolutePath, "video/mp4")
-                    if (videoId == "error") {
-                        throw IllegalStateException("Failed to create test video")
-                    }
-                    try {
-                        val prompt =
-                            buildString {
-                                append(MediaLinkBuilder.video(context, videoId))
-                                append("\n")
-                                append(context.getString(R.string.conversation_analyze_video_prompt))
-                            }
-                        service.sendMessage(
-                            context,
-                            listOf(PromptTurn(kind = PromptTurnKind.USER, content = prompt)),
-                            parameters,
-                            stream = false,
-                            enableRetry = false
-                        ).collect { }
-                    } finally {
-                        MediaPoolManager.removeMedia(videoId)
-                        runCatching { videoFile.delete() }
-                    }
-                }
-            }
         } catch (e: CancellationException) {
             runCatching { service.cancelStreaming() }
             throw e

@@ -1,8 +1,6 @@
 package com.ai.assistance.operit.api.chat.llmprovider
 
 import com.ai.assistance.operit.util.ImagePoolManager
-import com.ai.assistance.operit.util.MediaBase64Limiter
-import com.ai.assistance.operit.util.MediaPoolManager
 
 data class MediaLink(
     val type: String,
@@ -121,41 +119,7 @@ object MediaLinkParser {
     }
 
     fun extractMediaLinks(message: String): List<MediaLink> {
-        val links = mutableListOf<MediaLink>()
-        val seenIds = mutableSetOf<String>()
-
-        fun collectFromPattern(pattern: Regex) {
-            pattern.findAll(message).forEach { match ->
-                val type = match.groupValues[1]
-                val id = match.groupValues[2]
-
-                if (id == "error") {
-                    return@forEach
-                }
-
-                if (!seenIds.add("$type:$id")) {
-                    return@forEach
-                }
-
-                val mediaData = MediaPoolManager.getMedia(id) ?: return@forEach
-
-                val limited = MediaBase64Limiter.limitBase64ForAi(mediaData.base64, mediaData.mimeType)
-                    ?: return@forEach
-                links.add(
-                    MediaLink(
-                        type = type,
-                        id = id,
-                        base64Data = limited.base64,
-                        mimeType = limited.mimeType
-                    )
-                )
-            }
-        }
-
-        collectFromPattern(LINK_PATTERN_PLAIN)
-        collectFromPattern(LINK_PATTERN_ESCAPED)
-
-        return links
+        return emptyList()
     }
 
     fun extractMediaLinkTags(message: String): List<MediaLinkTag> {

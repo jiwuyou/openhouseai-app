@@ -77,7 +77,6 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.services.ServiceLifecycleOwner
-import com.ai.assistance.operit.ui.floating.FloatingWindowTheme
 import kotlinx.coroutines.delay
 
 
@@ -101,7 +100,7 @@ private fun PermissionRequestContent(
 
     val contentScrollState = rememberScrollState()
 
-    FloatingWindowTheme(colorScheme = colorScheme) {
+    MaterialTheme(colorScheme = colorScheme ?: MaterialTheme.colorScheme) {
         Box(
             modifier = Modifier
                 .fillMaxSize()

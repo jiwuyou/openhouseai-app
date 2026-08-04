@@ -67,6 +67,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "MarkdownImageRenderer"
+private val MARKDOWN_VIDEO_EXTENSIONS =
+    setOf("mp4", "webm", "mkv", "mov", "m4v", "3gp", "avi", "ogv")
+private val MARKDOWN_AUDIO_EXTENSIONS =
+    setOf("mp3", "wav", "ogg", "oga", "m4a", "aac", "flac", "opus", "weba")
+
+private fun markdownMediaExtension(url: String): String =
+    url.substringBefore('#')
+        .substringBefore('?')
+        .trim()
+        .lowercase()
+        .substringAfterLast('.', "")
+
+private fun isLikelyVideoUrl(url: String): Boolean =
+    markdownMediaExtension(url) in MARKDOWN_VIDEO_EXTENSIONS
+
+private fun isLikelyAudioUrl(url: String): Boolean =
+    markdownMediaExtension(url) in MARKDOWN_AUDIO_EXTENSIONS
 
 /** 判断Markdown图片语法是否完整 检查是否有完整的 ![alt](url) 语法 */
 internal fun isCompleteImageMarkdown(content: String): Boolean {
@@ -127,18 +144,25 @@ fun MarkdownImageRenderer(
     }
 
     if (isLikelyVideoUrl(imageUrl)) {
-        MarkdownVideoRenderer(
-            videoMarkdown = imageMarkdown,
-            modifier = modifier,
-            maxVideoHeight = 220
+        Text(
+            text = imageAlt.ifBlank { imageUrl },
+            modifier = modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
         )
         return
     }
 
     if (isLikelyAudioUrl(imageUrl)) {
-        MarkdownAudioRenderer(
-            audioMarkdown = imageMarkdown,
-            modifier = modifier
+        Text(
+            text = imageAlt.ifBlank { imageUrl },
+            modifier = modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
         )
         return
     }

@@ -148,15 +148,6 @@ object ToolGetter {
     }
 
     /**
-     * 获取音乐播放工具执行器
-     * @param context 应用上下文
-     * @return 音乐播放工具执行器实现（标准版本）
-     */
-    fun getMusicPlaybackTools(context: Context): StandardMusicPlaybackTools {
-        return StandardMusicPlaybackTools(context)
-    }
-
-    /**
      * 获取内存查询工具执行器
      * @param context 应用上下文
      * @return 内存查询工具执行器实现（只有标准版本）
@@ -170,15 +161,6 @@ object ToolGetter {
      * @return 计算器实现（只有标准版本）
      */
     fun getCalculator() = StandardCalculator
-
-    /**
-     * 获取工作流工具
-     * @param context 应用上下文
-     * @return 工作流工具实现（只有标准版本）
-     */
-    fun getWorkflowTools(context: Context): StandardWorkflowTools {
-        return StandardWorkflowTools(context)
-    }
 
     /**
      * 获取对话管理工具

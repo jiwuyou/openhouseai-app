@@ -21,19 +21,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission
-        android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
-        tools:ignore="ForegroundServicePermission" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
@@ -93,23 +86,6 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
-            android:name=".services.assistant.OperitAssistActivity"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:finishOnTaskLaunch="true"
-            android:noHistory="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VOICE_ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
-        <activity
             android:name=".ui.error.CrashReportActivity"
             android:exported="false"
             android:label="@string/title_activity_crash_report"
@@ -125,26 +101,6 @@
             <intent-filter>
                 <action android:name="com.ai.assistance.operit.action.OPEN_DATA_RECOVERY" />
                 <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".integrations.tasker.ActivityConfigAIAgentAction"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_simple"
-            android:label="AI Agent Action">
-            <intent-filter>
-                <action android:name="net.dinglisch.android.tasker.ACTION_EDIT_EVENT" />
-            </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".integrations.tasker.WorkflowTaskerActivityConfig"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_simple"
-            android:label="Operit Workflow">
-            <intent-filter>
-                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
             </intent-filter>
         </activity>
 
@@ -185,11 +141,7 @@
             android:name=".api.chat.AIForegroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync|microphone|specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Keeps the user-requested assistant runtime alive for external HTTP control when no standard foreground service type fully describes that mode." />
-        </service>
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name=".rescue.remote.RescueRemoteAssistService"
@@ -199,54 +151,10 @@
             android:process=":rescue_ui" />
 
         <service
-            android:name=".services.FloatingChatService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <service
-            android:name=".services.UIDebuggerService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Shows a user-triggered floating UI debugger overlay across apps for inspection tasks that do not match other foreground service types." />
-        </service>
-
-        <service
             android:name=".core.tools.system.ScreenCaptureService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
-
-        <service
-            android:name=".services.notification.OperitNotificationListenerService"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
-        <service
-            android:name=".services.assistant.OperitVoiceInteractionService"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:permission="android.permission.BIND_VOICE_INTERACTION">
-            <meta-data
-                android:name="android.voice_interaction"
-                android:resource="@xml/interaction_service" />
-            <intent-filter>
-                <action android:name="android.service.voice.VoiceInteractionService" />
-            </intent-filter>
-        </service>
-
-        <service
-            android:name=".services.assistant.OperitVoiceInteractionSessionService"
-            android:exported="true"
-            android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
         <service
             android:name=".core.tools.defaultTool.websession.userscript.runtime.UserscriptCookieService"
@@ -332,37 +240,6 @@
             <intent-filter>
                 <action android:name="com.ai.assistance.operit.EXTERNAL_CHAT" />
             </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".integrations.tasker.WorkflowTaskerReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.ai.assistance.operit.TRIGGER_WORKFLOW" />
-                <action android:name="com.twofortyfouram.locale.intent.action.FIRE_SETTING" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".integrations.tasker.WorkflowBootReceiver"
-            android:enabled="false"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".widget.VoiceAssistantWidgetReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/voice_assistant_widget_info" />
         </receiver>
 
         <receiver

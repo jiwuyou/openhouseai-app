@@ -42,9 +42,7 @@ import java.util.zip.ZipOutputStream
 import com.ai.assistance.operit.util.FileUtils
 import com.ai.assistance.operit.util.PathMapper
 import com.ai.assistance.operit.util.ImagePoolManager
-import com.ai.assistance.operit.util.MediaPoolManager
 import com.ai.assistance.operit.util.HttpMultiPartDownloader
-import com.ai.assistance.operit.util.FFmpegUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -1381,441 +1379,78 @@ open class StandardFileSystemTools(protected val context: Context) {
         fileExt: String
     ): ToolResult? {
         return when (fileExt) {
-            "doc", "docx" -> {
-                AppLogger.d(
-                    TAG,
-                    "Detected Word document, attempting to extract text"
+            "doc", "docx", "pdf" ->
+                ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Office and PDF parsing are unavailable in this host build"
                 )
-                val tempFilePath =
-                    "${path}_converted_${System.currentTimeMillis()}.txt"
-                try {
-                    val sourceFile = File(path)
-                    val tempFile = File(tempFilePath)
-                    val success = com.ai.assistance.operit.util.DocumentConversionUtil
-                        .extractTextFromWord(sourceFile, tempFile, fileExt)
 
-                    if (success && tempFile.exists()) {
-                        AppLogger.d(
-                            TAG,
-                            "Successfully extracted text from Word document"
-                        )
-                        val content = tempFile.readText()
-                        tempFile.delete() // Clean up
-                        ToolResult(
-                            toolName = tool.name,
-                            success = true,
-                            result =
-                            FileContentData(
-                                path = path,
-                                content = content,
-                                size = content.length.toLong(),
-                            ),
-                            error = ""
-                        )
-                    } else {
-                        AppLogger.w(
-                            TAG,
-                            "Word text extraction failed, returning error"
-                        )
-                        ToolResult(
-                            toolName = tool.name,
-                            success = false,
-                            result = StringResultData(""),
-                            error = "Failed to extract text from Word document"
-                        )
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error during Word document text extraction", e)
-                    ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = StringResultData(""),
-                        error = "Error extracting text from Word document: ${e.message}"
-                    )
-                }
-            }
-
-            "pdf" -> {
-                AppLogger.d(
-                    TAG,
-                    "Detected PDF document, attempting to extract text"
-                )
-                val tempFilePath =
-                    "${path}_converted_${System.currentTimeMillis()}.txt"
-                try {
-                    val sourceFile = File(path)
-                    val tempFile = File(tempFilePath)
-                    val success = com.ai.assistance.operit.util.DocumentConversionUtil
-                        .extractTextFromPdf(context, sourceFile, tempFile)
-
-                    if (success && tempFile.exists()) {
-                        AppLogger.d(
-                            TAG,
-                            "Successfully extracted text from PDF document"
-                        )
-                        val content = tempFile.readText()
-                        tempFile.delete() // Clean up
-                        ToolResult(
-                            toolName = tool.name,
-                            success = true,
-                            result =
-                            FileContentData(
-                                path = path,
-                                content = content,
-                                size = content.length.toLong(),
-                            ),
-                            error = ""
-                        )
-                    } else {
-                        AppLogger.w(
-                            TAG,
-                            "PDF text extraction failed, returning error"
-                        )
-                        ToolResult(
-                            toolName = tool.name,
-                            success = false,
-                            result = StringResultData(""),
-                            error = "Failed to extract text from PDF document"
-                        )
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error during PDF document text extraction", e)
-                    ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = StringResultData(""),
-                        error = "Error extracting text from PDF document: ${e.message}"
-                    )
-                }
-            }
-
-            "jpg", "jpeg", "png", "gif", "bmp" -> {
-                // 获取可选的intent参数和direct_image参数
+            "jpg", "jpeg", "png", "gif", "bmp", "webp" -> {
                 val intent = tool.parameters.find { it.name == "intent" }?.value
-                val directImage = tool.parameters.find { it.name == "direct_image" }?.value?.toBoolean() ?: false
+                val directImage =
+                    tool.parameters.find { it.name == "direct_image" }?.value?.toBoolean() ?: false
 
-                AppLogger.d(
-                    TAG,
-                    "Detected image file, intent=${intent ?: "无"}, direct_image=$directImage"
-                )
-
-                // 情况1：direct_image 为 true，直接返回图片链接，供支持识图的聊天模型自己查看
                 if (directImage) {
-                    try {
-                        val imageId = ImagePoolManager.addImage(path)
-                        if (imageId == "error") {
-                            AppLogger.e(TAG, "Failed to register image for direct_image, falling back to intent/OCR: $path")
-                        } else {
-                            val link = "<link type=\"image\" id=\"$imageId\"></link>"
-                            AppLogger.d(TAG, "Generated image link for direct_image: $link")
-                            return ToolResult(
-                                toolName = tool.name,
-                                success = true,
-                                result = FileContentData(
-                                    path = path,
-                                    content = link,
-                                    size = link.length.toLong()
-                                ),
-                                error = ""
-                            )
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "Error generating direct image link, falling back to intent/OCR", e)
-                    }
-                    // 如果生成图片链接失败，则继续走下面的 intent/OCR 逻辑
-                }
-
-                // 情况2：提供了 intent，使用后端识图模型
-                if (!intent.isNullOrBlank()) {
-                    try {
-                        val enhancedService =
-                            com.ai.assistance.operit.api.chat.EnhancedAIService.getInstance(context)
-                        val analysisResult = kotlinx.coroutines.runBlocking {
-                            enhancedService.analyzeImageWithIntent(path, intent)
-                        }
-
+                    val imageId = ImagePoolManager.addImage(path)
+                    if (imageId != "error") {
+                        val link = "<link type=\"image\" id=\"$imageId\"></link>"
                         return ToolResult(
                             toolName = tool.name,
                             success = true,
                             result = FileContentData(
                                 path = path,
-                                content = analysisResult,
-                                size = analysisResult.length.toLong()
+                                content = link,
+                                size = link.length.toLong()
                             ),
                             error = ""
                         )
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "识图模型调用失败，回退到OCR", e)
-                        // 回退到默认OCR处理
                     }
                 }
 
-                // 情况3：默认OCR处理
-                try {
-                    val bitmap = withContext(Dispatchers.IO) {
-                        android.graphics.BitmapFactory.decodeFile(path)
-                    }
-                    if (bitmap != null) {
-                        val ocrText =
-                            kotlinx.coroutines.runBlocking {
-                                com.ai.assistance.operit.util
-                                    .OCRUtils.recognizeText(
-                                        context,
-                                        bitmap
-                                    )
-                            }
-                        if (ocrText.isNotBlank()) {
-                            AppLogger.d(
-                                TAG,
-                                "Successfully extracted text from image using OCR"
-                            )
-                            ToolResult(
-                                toolName = tool.name,
-                                success = true,
-                                result =
-                                FileContentData(
-                                    path = path,
-                                    content = ocrText,
-                                    size =
-                                    ocrText.length
-                                        .toLong()
-                                ),
-                                error = ""
-                            )
-                        } else {
-                            AppLogger.w(
-                                TAG,
-                                "OCR extraction returned empty text, returning no text detected message"
-                            )
-                            ToolResult(
-                                toolName = tool.name,
-                                success = true,
-                                result =
-                                FileContentData(
-                                    path = path,
-                                    content =
-                                    "No text detected in image.",
-                                    size =
-                                    "No text detected in image."
-                                        .length
-                                        .toLong()
-                                ),
-                                error = ""
-                            )
-                        }
-                    } else {
-                        AppLogger.w(
-                            TAG,
-                            "Failed to decode image file, returning error message"
-                        )
-                        ToolResult(
-                            toolName = tool.name,
-                            success = true,
-                            result =
-                            FileContentData(
-                                path = path,
-                                content =
-                                "Failed to decode image file.",
-                                size =
-                                "Failed to decode image file."
-                                    .length
-                                    .toLong()
-                            ),
-                            error = ""
-                        )
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error during OCR text extraction", e)
-                    ToolResult(
+                if (!intent.isNullOrBlank()) {
+                    val analysisResult =
+                        com.ai.assistance.operit.api.chat.EnhancedAIService
+                            .getInstance(context)
+                            .analyzeImageWithIntent(path, intent)
+                    return ToolResult(
                         toolName = tool.name,
                         success = true,
-                        result =
-                        FileContentData(
+                        result = FileContentData(
                             path = path,
-                            content =
-                            "Error extracting text from image: ${e.message}",
-                            size =
-                            "Error extracting text from image: ${e.message}"
-                                .length.toLong()
+                            content = analysisResult,
+                            size = analysisResult.length.toLong()
                         ),
                         error = ""
                     )
                 }
-            }
-
-            "mp3", "wav", "m4a", "aac", "flac", "ogg", "opus" -> {
-                val intent = tool.parameters.find { it.name == "intent" }?.value
-                val directAudio = tool.parameters.find { it.name == "direct_audio" }?.value?.toBoolean() ?: false
-
-                AppLogger.d(TAG, "Detected audio file, intent=${intent ?: "无"}, direct_audio=$directAudio")
-
-                if (directAudio) {
-                    try {
-                        val derivedMimeType =
-                            MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileExt)
-                                ?: "audio/*"
-                        val audioId = MediaPoolManager.addMedia(path, derivedMimeType)
-                        if (audioId == "error") {
-                            AppLogger.e(TAG, "Failed to register audio for direct_audio, falling back to intent/info: $path")
-                        } else {
-                            val link = "<link type=\"audio\" id=\"$audioId\"></link>"
-                            AppLogger.d(TAG, "Generated audio link for direct_audio: $link")
-                            return ToolResult(
-                                toolName = tool.name,
-                                success = true,
-                                result = FileContentData(
-                                    path = path,
-                                    content = link,
-                                    size = link.length.toLong()
-                                ),
-                                error = ""
-                            )
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "Error generating direct audio link, falling back to intent/info", e)
-                    }
-                }
-
-                if (!intent.isNullOrBlank()) {
-                    try {
-                        val enhancedService = com.ai.assistance.operit.api.chat.EnhancedAIService.getInstance(context)
-                        val analysisResult = kotlinx.coroutines.runBlocking {
-                            enhancedService.analyzeAudioWithIntent(path, intent)
-                        }
-
-                        return ToolResult(
-                            toolName = tool.name,
-                            success = true,
-                            result = FileContentData(
-                                path = path,
-                                content = analysisResult,
-                                size = analysisResult.length.toLong()
-                            ),
-                            error = ""
-                        )
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "音频识别模型调用失败，回退到媒体信息", e)
-                    }
-                }
 
                 val file = File(path)
-                val mediaInfo = FFmpegUtil.getMediaInfo(path)
-                val infoText = buildString {
-                    appendLine("Audio file info:")
-                    appendLine("- path: $path")
-                    appendLine("- size_bytes: ${file.length()}")
-                    appendLine("- extension: $fileExt")
-                    if (mediaInfo != null) {
-                        appendLine("- format: ${mediaInfo.format}")
-                        appendLine("- duration: ${mediaInfo.duration}")
-                        appendLine("- bitrate: ${mediaInfo.bitrate}")
-                        val streams = mediaInfo.streams
-                        if (!streams.isNullOrEmpty()) {
-                            val audioStreams = streams.filter { it.type.equals("audio", ignoreCase = true) }
-                            appendLine("- audio_streams: ${audioStreams.size}")
-                        }
-                    }
-                }.trim()
-
+                val content =
+                    "Image file: $path\n" +
+                        "size_bytes: ${file.length()}\n" +
+                        "OCR is unavailable; use direct_image=true or provide an intent for model vision."
                 ToolResult(
                     toolName = tool.name,
                     success = true,
                     result = FileContentData(
                         path = path,
-                        content = infoText,
-                        size = infoText.length.toLong()
+                        content = content,
+                        size = content.length.toLong()
                     ),
                     error = ""
                 )
             }
 
-            "mp4", "mkv", "mov", "webm", "avi", "m4v" -> {
-                val intent = tool.parameters.find { it.name == "intent" }?.value
-                val directVideo = tool.parameters.find { it.name == "direct_video" }?.value?.toBoolean() ?: false
-
-                AppLogger.d(TAG, "Detected video file, intent=${intent ?: "无"}, direct_video=$directVideo")
-
-                if (directVideo) {
-                    try {
-                        val derivedMimeType =
-                            MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileExt)
-                                ?: "video/*"
-                        val videoId = MediaPoolManager.addMedia(path, derivedMimeType)
-                        if (videoId == "error") {
-                            AppLogger.e(TAG, "Failed to register video for direct_video, falling back to intent/info: $path")
-                        } else {
-                            val link = "<link type=\"video\" id=\"$videoId\"></link>"
-                            AppLogger.d(TAG, "Generated video link for direct_video: $link")
-                            return ToolResult(
-                                toolName = tool.name,
-                                success = true,
-                                result = FileContentData(
-                                    path = path,
-                                    content = link,
-                                    size = link.length.toLong()
-                                ),
-                                error = ""
-                            )
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "Error generating direct video link, falling back to intent/info", e)
-                    }
-                }
-
-                if (!intent.isNullOrBlank()) {
-                    try {
-                        val enhancedService = com.ai.assistance.operit.api.chat.EnhancedAIService.getInstance(context)
-                        val analysisResult = kotlinx.coroutines.runBlocking {
-                            enhancedService.analyzeVideoWithIntent(path, intent)
-                        }
-
-                        return ToolResult(
-                            toolName = tool.name,
-                            success = true,
-                            result = FileContentData(
-                                path = path,
-                                content = analysisResult,
-                                size = analysisResult.length.toLong()
-                            ),
-                            error = ""
-                        )
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "视频识别模型调用失败，回退到媒体信息", e)
-                    }
-                }
-
-                val file = File(path)
-                val mediaInfo = FFmpegUtil.getMediaInfo(path)
-                val infoText = buildString {
-                    appendLine("Video file info:")
-                    appendLine("- path: $path")
-                    appendLine("- size_bytes: ${file.length()}")
-                    appendLine("- extension: $fileExt")
-                    if (mediaInfo != null) {
-                        appendLine("- format: ${mediaInfo.format}")
-                        appendLine("- duration: ${mediaInfo.duration}")
-                        appendLine("- bitrate: ${mediaInfo.bitrate}")
-                        val streams = mediaInfo.streams
-                        if (!streams.isNullOrEmpty()) {
-                            val videoStreams = streams.filter { it.type.equals("video", ignoreCase = true) }
-                            val audioStreams = streams.filter { it.type.equals("audio", ignoreCase = true) }
-                            appendLine("- video_streams: ${videoStreams.size}")
-                            appendLine("- audio_streams: ${audioStreams.size}")
-                        }
-                    }
-                }.trim()
-
+            "mp3", "wav", "m4a", "aac", "flac", "ogg", "opus",
+            "mp4", "mkv", "mov", "webm", "avi", "m4v" ->
                 ToolResult(
                     toolName = tool.name,
-                    success = true,
-                    result = FileContentData(
-                        path = path,
-                        content = infoText,
-                        size = infoText.length.toLong()
-                    ),
-                    error = ""
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Audio and video processing are unavailable in this host build"
                 )
-            }
 
             else -> null
         }
