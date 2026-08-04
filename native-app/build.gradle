@@ -131,6 +131,7 @@ tasks.register("verifyDebugRuntimeAsset") {
 }
 
 dependencies {
+    implementation "com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava"
     implementation project(":operit-feature")
     implementation project(":openhouse-core")
     implementation project(":openhouse-feature")
