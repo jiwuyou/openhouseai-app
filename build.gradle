@@ -31,3 +31,17 @@ allprojects {
         }
     }
 }
+
+def nonBlockingLintVersionChecks = [
+    "GradleDependency",
+    "NewerVersionAvailable",
+    "AndroidGradlePluginVersion",
+]
+
+subprojects { subproject ->
+    ["com.android.application", "com.android.library"].each { pluginId ->
+        subproject.pluginManager.withPlugin(pluginId) {
+            subproject.extensions.getByName("android").lint.disable.addAll(nonBlockingLintVersionChecks)
+        }
+    }
+}
