@@ -1,15 +1,26 @@
 # APK 发布收敛清单
 
-本文记录下一次正式 APK 发布需要永久收敛的安装契约。当前版本不修改 APK；WuxianPi 桌面入口由 `wuxianpi.first-install` 市场插件注册，公开说明见 `openhouse-docs`。市场插件必须继续保留，作为旧 APK 的兼容修复路径。
+本文记录正式 APK 发布需要永久收敛的安装契约。市场插件必须继续保留，作为旧 APK 的兼容修复路径。
+
+## 产品与发布基线
+
+- 正式开发和发布基线固定为 `feature/wuxianpi-ai-web-ui`。
+- `feature/operit-lean-host` 只保留为本次整合历史，不再直接用于对外构建。
+- 正式构建必须来自与 `origin/feature/wuxianpi-ai-web-ui` 相同的干净提交。
+- 基线必须包含 `a8844dd1` 和 `fd30e815`。
+- `scripts/validate-product-baseline.sh` 校验提交、工作区和 lean 设置页契约。
+- `scripts/report-apk-build.sh` 记录 commit、APK 路径、大小、SHA-256、ABI、签名证书和资产检查。
 
 ## Native WuxianPi 桌面组件注册
 
-- [ ] 在 APK bootstrap 中内置标准 `components.d/pi-agent.json` 模板。
+- [ ] 在 APK bootstrap 中内置标准 `components.d/yuanshengwuxianpi.json` 模板。
 - [ ] `yuanshengwuxianpi` 安装完成后自动执行桌面组件注册。
 - [ ] 注册步骤调用 canonical service-manager 的 registry apply/PUT 和 sync API。
-- [ ] `GET /api/v1/registry/components` 返回 `pi-agent`。
+- [ ] registry PUT 路径使用 `/api/v1/registry/components/yuanshengwuxianpi`。
+- [ ] `GET /api/v1/registry/components` 返回 `yuanshengwuxianpi`。
 - [ ] 原生桌面重启后显示并可打开 WuxianPi AI。
-- [ ] 重跑安装保持幂等，只更新 `pi-agent`。
+- [ ] 重跑安装保持幂等，只更新 `yuanshengwuxianpi`。
+- [ ] 仅迁移确认属于 WuxianPi 的旧 `pi-agent.json`，不删除用户自定义组件。
 - [ ] 不删除用户已有的 `components.d/*.json` 或 service-manager 服务。
 - [ ] `SMALLPHONEAI_SKIP_OPENHOUSE_SYSTEM=1` 不能同时跳过桌面组件注册。
 - [ ] 保留 `wuxianpi.first-install` 市场插件作为旧 APK 的补救路径。
@@ -19,9 +30,9 @@
 - `app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-setup`
 - `app/src/main/assets/smallphoneai/bootstrap/scripts/50-install-runtime-components.sh`
 - `app/src/main/assets/smallphoneai/bootstrap/scripts/48-sync-openhouse-registry.sh`
-- `app/src/main/assets/smallphoneai/bootstrap/components.d/pi-agent.json`
+- `app/src/main/assets/smallphoneai/bootstrap/components.d/yuanshengwuxianpi.json`
 
-“主体/系统目录同步”和“桌面组件 registry”必须是两个可独立重试的步骤；不得因为跳过 OpenHouse 系统目录而跳过 `pi-agent` 注册。
+“主体/系统目录同步”和“桌面组件 registry”必须是两个可独立重试的步骤；不得因为跳过 OpenHouse 系统目录而跳过 `yuanshengwuxianpi` 注册。Runtime payload ID 仍可使用 `pi-agent`，但桌面组件 ID 和 service-manager 服务 ID 必须统一为 `yuanshengwuxianpi`。
 
 ## 自动化门禁
 
