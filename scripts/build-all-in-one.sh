@@ -13,12 +13,11 @@ done
   || { printf 'Legacy pi-runtime.tar must not be bundled\n' >&2; exit 1; }
 "$repo_dir/scripts/validate-openhouse-payloads.sh"
 cd "$repo_dir"
-build_started_at="$(date +%s)"
 ./gradlew "${ALL_IN_ONE_GRADLE_TASK:-:app:assembleRelease}" "$@"
-if [[ "${SKIP_APK_VALIDATION:-0}" != "1" ]]; then
-  OPENHOUSE_APK_MIN_MTIME="$build_started_at" "$repo_dir/scripts/validate-openhouse-apk.sh"
-fi
 mapfile -t release_apks < <(find "$repo_dir/app/build/outputs/apk/release" -type f \
-  \( -name '*arm64-v8a.apk' -o -name '*_universal.apk' \) -newermt "@$build_started_at" | sort)
+  \( -name '*arm64-v8a.apk' -o -name '*_universal.apk' \) | sort)
 [[ "${#release_apks[@]}" -gt 0 ]] || { printf 'No release arm64 or universal APK was produced\n' >&2; exit 1; }
+if [[ "${SKIP_APK_VALIDATION:-0}" != "1" ]]; then
+  "$repo_dir/scripts/validate-openhouse-apk.sh" "${release_apks[@]}"
+fi
 "$repo_dir/scripts/report-apk-build.sh" "${release_apks[@]}"

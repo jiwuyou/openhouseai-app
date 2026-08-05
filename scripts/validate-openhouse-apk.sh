@@ -15,8 +15,15 @@ runtime_sha="$(sha256sum "$runtime_source" | awk '{print $1}')"
 native_sha="$(sha256sum "$native_source" | awk '{print $1}')"
 [[ "$runtime_sha" = "$native_sha" ]] || { printf 'shared runtime source checksum mismatch\n' >&2; exit 1; }
 
-mapfile -t apks < <(find "$apk_root" -type f -name '*.apk' -printf '%T@ %p\n' 2>/dev/null \
-  | awk -v min="$min_mtime" '$1 >= min { $1=""; sub(/^ /, ""); print }' | sort -r)
+if [[ "$#" -gt 0 ]]; then
+  apks=("$@")
+  for apk in "${apks[@]}"; do
+    [[ -s "$apk" ]] || { printf 'APK output is missing or empty: %s\n' "$apk" >&2; exit 1; }
+  done
+else
+  mapfile -t apks < <(find "$apk_root" -type f -name '*.apk' -printf '%T@ %p\n' 2>/dev/null \
+    | awk -v min="$min_mtime" '$1 >= min { $1=""; sub(/^ /, ""); print }' | sort -r)
+fi
 [[ "${#apks[@]}" -gt 0 ]] || { printf 'no APK outputs found under %s\n' "$apk_root" >&2; exit 1; }
 
 for apk in "${apks[@]}"; do

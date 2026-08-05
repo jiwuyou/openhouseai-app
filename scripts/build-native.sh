@@ -13,9 +13,17 @@ done
 "$repo_dir/scripts/validate-openhouse-payloads.sh"
 "$repo_dir/scripts/validate-native-install-resources.sh"
 cd "$repo_dir"
-./gradlew -p native-app "${NATIVE_GRADLE_TASK:-assembleRelease}" "$@"
-apk="$(find "$repo_dir/native-app/build/outputs/apk" -type f -name '*.apk' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d ' ' -f 2-)"
-[[ -n "$apk" && -f "$apk" ]] || { printf 'Native APK was not produced\n' >&2; exit 1; }
+native_gradle_task="${NATIVE_GRADLE_TASK:-:native-app:assembleRelease}"
+case "$native_gradle_task" in
+  :*) ;;
+  native-app:*) native_gradle_task=":$native_gradle_task" ;;
+  *) native_gradle_task=":native-app:$native_gradle_task" ;;
+esac
+./gradlew "$native_gradle_task" "$@"
+mapfile -t release_apks < <(find "$repo_dir/native-app/build/outputs/apk/release" -type f -name '*.apk' | sort)
+[[ "${#release_apks[@]}" -eq 1 ]] \
+  || { printf 'Expected exactly one Native release APK, found %s\n' "${#release_apks[@]}" >&2; exit 1; }
+apk="${release_apks[0]}"
 apk_entries="$(unzip -Z1 "$apk")"
 awk '$0 == "assets/openhouse-runtime/runtime-aarch64.tgz" { found = 1 } END { exit found ? 0 : 1 }' <<<"$apk_entries" \
   || { printf 'Native APK is missing assets/openhouse-runtime/runtime-aarch64.tgz\n' >&2; exit 1; }
