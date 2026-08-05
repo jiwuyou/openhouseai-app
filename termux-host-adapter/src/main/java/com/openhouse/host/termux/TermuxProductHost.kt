@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
@@ -28,6 +30,7 @@ import com.wuxianpi.openhouse.servicecontrol.ServiceControlRequest
 class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatureLauncher {
     private val appContext = context.applicationContext
     private val host = TermuxOpenHouseHost(appContext)
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val registryCatalog = BackgroundRegistryCatalog(loadComponents = {
         RegistryRepository(
             ServiceManagerClient(host.runtimeConnection()),
@@ -45,6 +48,12 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     override fun capabilities(): HostCapabilities = host.capabilities()
 
     override fun desktopComponents(): List<OpenHouseComponent> = registryCatalog.components()
+
+    override fun refreshDesktopComponents(onComplete: () -> Unit) {
+        registryCatalog.refresh {
+            mainHandler.post { onComplete() }
+        }
+    }
 
     override fun launchHostRoute(activity: Activity, route: ProductRoute) {
         when (route) {

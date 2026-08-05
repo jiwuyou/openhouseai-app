@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -49,6 +50,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private var currentRoute = ProductRoute.DESKTOP
     private var bindingPage = false
     private var released = false
+    private var lastRegistryRefreshAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,11 +79,18 @@ class OpenHouseActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         parseRoute(intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_ROUTE))?.let(::openRoute)
+        requestDesktopRefresh(force = true)
     }
 
     override fun onStart() {
         super.onStart()
         residency.onReturn()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Installation flows and external app setup return here while this Activity stays alive.
+        requestDesktopRefresh()
     }
 
     override fun onStop() {
@@ -151,6 +160,21 @@ class OpenHouseActivity : AppCompatActivity() {
         layoutState = layoutStore.merge(components)
     }
 
+    private fun requestDesktopRefresh(
+        force: Boolean = false,
+        onComplete: (() -> Unit)? = null,
+    ) {
+        val now = SystemClock.uptimeMillis()
+        if (!force && now - lastRegistryRefreshAt < REGISTRY_REFRESH_DEBOUNCE_MS) return
+        lastRegistryRefreshAt = now
+        host.refreshDesktopComponents {
+            if (isFinishing || isDestroyed) return@refreshDesktopComponents
+            refreshComponents()
+            if (currentRoute == ProductRoute.DESKTOP) bindDesktopState()
+            onComplete?.invoke()
+        }
+    }
+
     private fun openRoute(route: ProductRoute) {
         drawer.closeDrawer(GravityCompat.START)
         when (route) {
@@ -200,6 +224,7 @@ class OpenHouseActivity : AppCompatActivity() {
             FrameLayout.LayoutParams.WRAP_CONTENT,
         ).apply { gravity = Gravity.TOP })
         bindDesktopState(state)
+        requestDesktopRefresh()
     }
 
     private fun bindDesktopState(state: DesktopLayoutState? = layoutState) {
@@ -336,10 +361,15 @@ class OpenHouseActivity : AppCompatActivity() {
         panel.addView(keepResident, matchWrap())
         panel.addView(body("关闭时，离开桌面 10 分钟后释放桌面 Activity 和显示资源；返回桌面会取消计时。"))
 
+        panel.addView(actionButton("刷新桌面组件") {
+            requestDesktopRefresh(force = true) {
+                Toast.makeText(this, "桌面组件已刷新。", Toast.LENGTH_SHORT).show()
+            }
+        })
         panel.addView(actionButton("重置桌面布局") {
             layoutState = layoutStore.reset(components)
             Toast.makeText(this, "桌面布局已重置。", Toast.LENGTH_SHORT).show()
-        }.apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(20) })
+        })
         panel.addView(actionButton(getString(R.string.oh_open_host_settings)) {
             host.launchHostRoute(this, ProductRoute.SETTINGS)
         })
@@ -473,4 +503,8 @@ class OpenHouseActivity : AppCompatActivity() {
 
     private fun matchWrap() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+    private companion object {
+        const val REGISTRY_REFRESH_DEBOUNCE_MS = 750L
+    }
 }
