@@ -36,6 +36,8 @@ import kotlinx.coroutines.withContext
 internal fun selectSafDocumentId(treeId: String, documentId: String?): String =
     documentId?.takeIf { it.isNotBlank() } ?: treeId
 
+internal fun selectSafOutputMode(append: Boolean): String = if (append) "wa" else "rwt"
+
 class SafFileSystemTools(
     private val context: Context,
     private val apiPreferences: ApiPreferences
@@ -212,7 +214,7 @@ class SafFileSystemTools(
                         )
                 }
 
-                val output = openOutputStreamOrNull(targetUri, "w")
+                val output = openOutputStreamOrNull(targetUri, append = false)
                     ?: return@withContext ToolResult(
                         toolName = tool.name,
                         success = false,
@@ -349,7 +351,7 @@ class SafFileSystemTools(
                     }
 
                     sourceFile.inputStream().use { input ->
-                        openOutputStreamOrNull(targetUri, "w").use { output ->
+                        openOutputStreamOrNull(targetUri, append = false).use { output ->
                             if (output == null) throw IllegalStateException("Failed to open output stream")
                             val buffer = ByteArray(64 * 1024)
                             while (true) {
@@ -602,12 +604,13 @@ class SafFileSystemTools(
 
     private fun openInputStreamOrNull(uri: Uri) = runCatching { contentResolver.openInputStream(uri) }.getOrNull()
 
-    private fun openOutputStreamOrNull(uri: Uri, mode: String) = runCatching { contentResolver.openOutputStream(uri, mode) }.getOrNull()
+    private fun openOutputStreamOrNull(uri: Uri, append: Boolean) =
+        runCatching { contentResolver.openOutputStream(uri, selectSafOutputMode(append)) }.getOrNull()
 
     private fun copyStreams(src: Uri, dst: Uri) {
         openInputStreamOrNull(src).use { input ->
             if (input == null) throw IllegalStateException("Failed to open input stream")
-            openOutputStreamOrNull(dst, "w").use { output ->
+            openOutputStreamOrNull(dst, append = false).use { output ->
                 if (output == null) throw IllegalStateException("Failed to open output stream")
                 val buffer = ByteArray(64 * 1024)
                 while (true) {
@@ -912,8 +915,7 @@ class SafFileSystemTools(
                     )
                 }
 
-                val mode = if (append) "wa" else "w"
-                val output = openOutputStreamOrNull(targetUri, mode)
+                val output = openOutputStreamOrNull(targetUri, append)
                     ?: return@withContext ToolResult(
                         toolName = tool.name,
                         success = false,

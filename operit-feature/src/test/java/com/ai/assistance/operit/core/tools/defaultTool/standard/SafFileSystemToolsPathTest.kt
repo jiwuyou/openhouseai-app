@@ -22,4 +22,14 @@ class SafFileSystemToolsPathTest {
             selectSafDocumentId(treeId = "termux-home:", documentId = null),
         )
     }
+
+    @Test
+    fun overwriteRequiresReadWriteTruncateMode() {
+        assertEquals("rwt", selectSafOutputMode(append = false))
+    }
+
+    @Test
+    fun appendKeepsWriteAppendMode() {
+        assertEquals("wa", selectSafOutputMode(append = true))
+    }
 }
