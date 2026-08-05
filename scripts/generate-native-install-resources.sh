@@ -6,6 +6,7 @@ assets_dir="$repo_dir/native-app/src/main/assets/wuxianpi-install"
 bootstrap_dir="$repo_dir/app/src/main/assets/smallphoneai/bootstrap"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 pre_tmux="$bootstrap_dir/scripts/wuxianpi-pre-tmux.sh"
+runtime_asset="$repo_dir/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz"
 output="$assets_dir/resources.tar"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-native-resources.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
@@ -17,10 +18,16 @@ required=(
   "$payload_dir/manifest.json"
   "$payload_dir/payload-manifest.json"
   "$payload_dir/service-manager.tgz"
+  "$runtime_asset"
 )
 for file in "${required[@]}"; do
   [[ -s "$file" ]] || { printf 'Missing Native install input: %s\n' "$file" >&2; exit 1; }
 done
+
+tar -tzf "$runtime_asset" >/dev/null \
+  || { printf 'Native Runtime asset is not a readable gzip tar: %s\n' "$runtime_asset" >&2; exit 1; }
+runtime_sha="$(sha256sum "$runtime_asset" | awk '{print $1}')"
+runtime_size="$(wc -c < "$runtime_asset" | tr -d '[:space:]')"
 
 mkdir -p "$assets_dir" "$stage/bootstrap" "$stage/product-payloads"
 cp -a "$bootstrap_dir/." "$stage/bootstrap/"
@@ -55,7 +62,8 @@ printf '%s  %s\n' \
   "$pre_tmux_sha" bootstrap/wuxianpi-pre-tmux.sh \
   > "$stage/SHA256SUMS"
 
-printf '{"schema":3,"contents":["bootstrap","product-payloads"],"bundledPayloads":["service-manager.tgz"],"runtimeAsset":"openhouse-runtime/runtime-aarch64.tgz","excluded":["aionui","pi-web","market-payloads"]}\n' \
+printf '{"schema":3,"contents":["bootstrap","product-payloads"],"bundledPayloads":["service-manager.tgz"],"runtimeAsset":"openhouse-runtime/runtime-aarch64.tgz","runtimeSha256":"%s","runtimeSize":%s,"excluded":["aionui","pi-web","market-payloads"]}\n' \
+  "$runtime_sha" "$runtime_size" \
   > "$stage/install-manifest.json"
 printf '{"nativeInstallResources":true}\n' > "$stage/.complete"
 

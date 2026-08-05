@@ -1211,6 +1211,93 @@ payload_manifest_component_value() {
   ' "$payload_manifest" 2>/dev/null
 }
 
+payload_manifest_component_number() {
+  local component_id="$1"
+  local field="$2"
+
+  [ -f "$payload_manifest" ] || return 1
+  if ! command -v jq >/dev/null 2>&1; then
+    warn "APK payload manifest 存在，但 jq 不可用，无法按组件 ID 解析数字字段：$payload_manifest"
+    return 1
+  fi
+  jq -er --arg id "$component_id" --arg field "$field" '
+    first(.components[] | select(.id == $id) | .[$field])
+    | select(type == "number")
+  ' "$payload_manifest" 2>/dev/null
+}
+
+runtime_archive_manifest_matches() {
+  local candidate="$1"
+  local expected_archive expected_sha expected_size actual_sha actual_size
+
+  [ -s "$candidate" ] || {
+    warn "pi-agent: Runtime archive is missing or empty: $candidate"
+    return 1
+  }
+  tar -tzf "$candidate" >/dev/null 2>&1 || {
+    warn "pi-agent: Runtime archive is not a readable gzip tar: $candidate"
+    return 1
+  }
+  expected_archive="$(payload_manifest_component_value pi-agent archive || true)"
+  expected_sha="$(payload_manifest_component_value pi-agent sha256 || true)"
+  expected_size="$(payload_manifest_component_number pi-agent size || true)"
+  if [ "$expected_archive" != "runtime-aarch64.tgz" ]; then
+    warn "pi-agent: manifest.json must map pi-agent to runtime-aarch64.tgz: $payload_manifest"
+    return 1
+  fi
+  if [ -z "$expected_sha" ] || [ -z "$expected_size" ]; then
+    warn "pi-agent: manifest.json 缺少 Runtime 的 archive/sha256/size 校验字段：$payload_manifest"
+    return 1
+  fi
+  actual_size="$(wc -c < "$candidate" | tr -d '[:space:]')"
+  actual_sha="$(sha256sum "$candidate" | awk '{print $1}')"
+  if [ "$actual_size" != "$expected_size" ]; then
+    warn "pi-agent: Runtime archive size mismatch: expected=$expected_size actual=$actual_size path=$candidate"
+    return 1
+  fi
+  if [ "$actual_sha" != "$expected_sha" ]; then
+    warn "pi-agent: Runtime archive SHA-256 mismatch: expected=$expected_sha actual=$actual_sha path=$candidate"
+    return 1
+  fi
+  return 0
+}
+
+runtime_archive_candidates() {
+  [ -n "$runtime_archive_override" ] \
+    && printf '%s\n' "$runtime_archive_override"
+  printf '%s/.local/share/wuxianpi/install-resources/runtime-aarch64.tgz\n' "$HOME"
+  printf '%s/runtime-aarch64.tgz\n' "$payload_root"
+}
+
+find_runtime_archive_source() {
+  local candidate
+  local -a candidates=()
+  local -a rejected=()
+
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    case " ${candidates[*]} " in
+      *" $candidate "*) continue ;;
+    esac
+    candidates+=("$candidate")
+    if runtime_archive_manifest_matches "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    rejected+=("$candidate")
+  done < <(runtime_archive_candidates)
+
+  warn "pi-agent: no valid Runtime archive found; checked all candidates:"
+  if [ "${#candidates[@]}" -eq 0 ]; then
+    warn "pi-agent:   (no candidate paths)"
+  else
+    for candidate in "${rejected[@]}"; do
+      warn "pi-agent:   $candidate"
+    done
+  fi
+  return 1
+}
+
 payload_target_dir() {
   local payload_name="$1"
 
@@ -1560,6 +1647,9 @@ validate_payload_source() {
   fi
 
   if [ -f "$source" ]; then
+    if [ "$payload_name" = "pi-agent" ] && ! runtime_archive_manifest_matches "$source"; then
+      return 1
+    fi
     if ! tar -"$tar_list_flags" "$source" >/dev/null 2>&1; then
       warn "$name: APK payload archive is not a readable tar/tar.gz/tgz: $source"
       return 1
@@ -1641,22 +1731,9 @@ find_payload_source() {
     return 1
   fi
 
-  if [ "$payload_name" = "pi-agent" ] \
-    && [ -n "$runtime_archive_override" ] \
-    && [ -f "$runtime_archive_override" ]; then
-    printf '%s\n' "$runtime_archive_override"
-    return 0
-  fi
-
-  if [ "$payload_name" = "pi-agent" ] && [ -f "$payload_manifest" ]; then
-    archive="$(payload_manifest_component_value "$payload_name" archive || true)"
-    if [ -z "$archive" ]; then
-      warn "pi-agent: APK payload manifest 缺少 id=pi-agent 的 archive：$payload_manifest"
-      printf '%s\n' "$payload_root/.manifest-missing-pi-agent-archive"
-      return 1
-    fi
-    printf '%s/%s\n' "$payload_root" "$archive"
-    return 0
+  if [ "$payload_name" = "pi-agent" ]; then
+    find_runtime_archive_source
+    return $?
   fi
 
   for candidate in \

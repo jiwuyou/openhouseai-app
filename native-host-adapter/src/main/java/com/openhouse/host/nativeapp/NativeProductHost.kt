@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
@@ -35,6 +37,7 @@ import kotlinx.coroutines.withContext
 class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatureLauncher {
     private val appContext = context.applicationContext
     private val host = NativeOpenHouseHost(appContext)
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val registryCatalog = BackgroundRegistryCatalog(loadComponents = {
         RegistryRepository(
             ServiceManagerClient(host.runtimeConnection()),
@@ -61,6 +64,12 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
             OpenHouseBuiltins.sharedBrowser(
                 "com.openhouse.host.nativeapp.browser.NativeSharedBrowserActivity",
             )
+
+    override fun refreshDesktopComponents(onComplete: () -> Unit) {
+        registryCatalog.refresh {
+            mainHandler.post { onComplete() }
+        }
+    }
 
     override fun launchHostRoute(activity: Activity, route: ProductRoute) {
         when (route) {

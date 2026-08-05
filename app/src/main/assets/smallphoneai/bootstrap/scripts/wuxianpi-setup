@@ -19,6 +19,7 @@ SETUP_UBUNTU_APT_MIRROR="auto"
 SETUP_NODE_DIST_MIRROR="auto"
 SETUP_NPM_REGISTRY="auto"
 SETUP_RUNTIME_ARCHIVE=""
+SETUP_RUNTIME_ARCHIVE_EXPLICIT=0
 
 log() {
   printf '[WuxianPi Setup] %s\n' "$*"
@@ -102,6 +103,60 @@ payload_dir() {
   root="$(resource_dir)"
   [ -n "$root" ] || return 1
   printf '%s/product-payloads\n' "$root"
+}
+
+runtime_archive_candidates() {
+  local root
+  [ -n "$SETUP_RUNTIME_ARCHIVE" ] && printf '%s\n' "$SETUP_RUNTIME_ARCHIVE"
+  printf '%s/.local/share/wuxianpi/install-resources/runtime-aarch64.tgz\n' "$TERMUX_HOME"
+  root="$(resource_dir || true)"
+  [ -n "$root" ] && printf '%s/product-payloads/runtime-aarch64.tgz\n' "$root"
+}
+
+runtime_archive_has_required_members() {
+  local archive="$1" member listing
+  [ -s "$archive" ] || return 1
+  listing="$(tar -tzf "$archive" 2>/dev/null | sed 's#^\./##')" || return 1
+  for member in \
+    './bin/wuxianpi-node' \
+    './bin/wuxianpi-node-start' \
+    './node/dist/index.js' \
+    './scripts/install.sh'; do
+    grep -Fxq "${member#./}" <<<"$listing" || return 1
+  done
+}
+
+resolve_runtime_archive() {
+  local candidate
+  local -a candidates=()
+  local -a rejected=()
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    case " ${candidates[*]} " in
+      *" $candidate "*) continue ;;
+    esac
+    candidates+=("$candidate")
+    if [ ! -s "$candidate" ]; then
+      rejected+=("$candidate (missing or empty)")
+      continue
+    fi
+    if ! runtime_archive_has_required_members "$candidate"; then
+      rejected+=("$candidate (not a valid WuxianPi Runtime archive)")
+      continue
+    fi
+    SETUP_RUNTIME_ARCHIVE="$candidate"
+    log "最终选中的 Runtime 路径：$SETUP_RUNTIME_ARCHIVE"
+    return 0
+  done < <(runtime_archive_candidates)
+
+  log 'Runtime 载荷缺失或校验失败；已检查以下候选路径：'
+  for candidate in "${rejected[@]}"; do
+    log "  - $candidate"
+  done
+  if [ "${#candidates[@]}" -eq 0 ]; then
+    log '  - (没有可用候选路径)'
+  fi
+  return 1
 }
 
 run_bootstrap() {
@@ -349,7 +404,10 @@ load_request() {
   value="$(request_json_value "$file" ubuntuAptMirror)"; [ -z "$value" ] || SETUP_UBUNTU_APT_MIRROR="$value"
   value="$(request_json_value "$file" nodeDistMirror)"; [ -z "$value" ] || SETUP_NODE_DIST_MIRROR="$value"
   value="$(request_json_value "$file" npmRegistry)"; [ -z "$value" ] || SETUP_NPM_REGISTRY="$value"
-  value="$(request_json_value "$file" runtimeArchive)"; [ -z "$value" ] || SETUP_RUNTIME_ARCHIVE="$value"
+  value="$(request_json_value "$file" runtimeArchive)"
+  if [ "$SETUP_RUNTIME_ARCHIVE_EXPLICIT" -eq 0 ] && [ -n "$value" ]; then
+    SETUP_RUNTIME_ARCHIVE="$value"
+  fi
 }
 
 apply_options() {
@@ -362,6 +420,12 @@ apply_options() {
       --ubuntu-apt-mirror) SETUP_UBUNTU_APT_MIRROR="${2:-}"; shift 2 ;;
       --node-dist-mirror) SETUP_NODE_DIST_MIRROR="${2:-}"; shift 2 ;;
       --npm-registry) SETUP_NPM_REGISTRY="${2:-}"; shift 2 ;;
+      --runtime-archive)
+        [ -n "${2:-}" ] || { log '缺少 --runtime-archive 的文件路径。'; return 2; }
+        SETUP_RUNTIME_ARCHIVE="${2:-}"
+        SETUP_RUNTIME_ARCHIVE_EXPLICIT=1
+        shift 2
+        ;;
       *) log "未知安装参数：$1"; return 2 ;;
     esac
   done
@@ -411,12 +475,9 @@ start_install() {
     log 'tmux 尚未准备完成；请先执行 prepare-tmux。'
     return 1
   }
+  resolve_runtime_archive || return 1
   install_runtime_script "$SCRIPT_DIR/wuxianpi-setup" "$TERMUX_PREFIX/bin/wuxianpi-setup"
   install_runtime_script "$SCRIPT_DIR/wuxianpi-pre-tmux.sh" "$TERMUX_PREFIX/bin/wuxianpi-pre-tmux.sh"
-  if [ -z "$SETUP_RUNTIME_ARCHIVE" ] \
-    && [ -f "$TERMUX_HOME/.local/share/wuxianpi/install-resources/runtime-aarch64.tgz" ]; then
-    SETUP_RUNTIME_ARCHIVE="$TERMUX_HOME/.local/share/wuxianpi/install-resources/runtime-aarch64.tgz"
-  fi
   write_request
   write_state running start '安装任务已在持久 Termux 会话中启动'
   run_install_job
@@ -455,6 +516,7 @@ Options:
   --ubuntu-apt-mirror URL|auto
   --node-dist-mirror URL|auto
   --npm-registry URL|auto
+  --runtime-archive FILE
 EOF
 }
 

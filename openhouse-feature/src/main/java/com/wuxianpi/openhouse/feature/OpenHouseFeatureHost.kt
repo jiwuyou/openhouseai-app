@@ -13,6 +13,11 @@ interface OpenHouseFeatureHost {
 
     fun desktopComponents(): List<OpenHouseComponent> = emptyList()
 
+    /** Reloads host-provided desktop components without blocking the caller. */
+    fun refreshDesktopComponents(onComplete: () -> Unit = {}) {
+        onComplete()
+    }
+
     fun launchHostRoute(activity: Activity, route: ProductRoute) = Unit
 
     fun launchAiMode(activity: Activity, route: ProductRoute) {

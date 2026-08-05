@@ -69,7 +69,8 @@ tasks.register("generateNativeInstallResources", Exec) {
     inputs.files(
         new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/manifest.json"),
         new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/payload-manifest.json"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/service-manager.tgz")
+        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/service-manager.tgz"),
+        new File(repoRoot, "native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz")
     )
     outputs.files(
         new File(nativeInstallAssets, "pre-tmux.sh"),

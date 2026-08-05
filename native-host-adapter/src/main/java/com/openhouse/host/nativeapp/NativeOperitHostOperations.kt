@@ -379,10 +379,13 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
 
 internal fun buildWuxianPiSetupLaunchCommand(prefix: String, home: String): String =
     "set -e; root='$home/.local/share/wuxianpi/install-resources/current'; " +
+        "runtime='$home/$RUNTIME_HOME_PATH'; " +
+        "[ -s \"\$runtime\" ] || { printf '%s\\n' 'Native WuxianPi Runtime asset is missing: \$runtime' >&2; exit 1; }; " +
         "rm -rf \"\$root\"; mkdir -p \"\$root\"; " +
         "'$prefix/bin/tar' -xf '$home/$SETUP_RESOURCES_HOME_PATH' -C \"\$root\"; " +
         "'$prefix/bin/bash' \"\$root/bootstrap/wuxianpi-setup\" install " +
-        "--request '$home/$SETUP_REQUEST_HOME_PATH'"
+        "--request '$home/$SETUP_REQUEST_HOME_PATH' " +
+        "--runtime-archive \"\$runtime\""
 
 internal fun setupLaunchDetails(command: String): JSONObject =
     JSONObject()
