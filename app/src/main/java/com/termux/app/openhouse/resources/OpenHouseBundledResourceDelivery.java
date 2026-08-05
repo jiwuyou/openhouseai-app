@@ -67,7 +67,8 @@ public final class OpenHouseBundledResourceDelivery {
         "bootstrap/scripts/60-start-smallphone.sh",
         "maintainer/install-runtime-components.sh",
         "product-payloads/manifest.json",
-        "product-payloads/payload-manifest.json"
+        "product-payloads/payload-manifest.json",
+        "product-payloads/runtime-aarch64.tgz"
     };
     private static final String[] INTEGRITY_ROOTS = {
         "bootstrap", "maintainer", "scripts-public"

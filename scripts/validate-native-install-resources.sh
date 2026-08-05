@@ -5,9 +5,15 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 assets_dir="$repo_dir/native-app/src/main/assets/wuxianpi-install"
 archive="$assets_dir/resources.tar"
 pre_tmux="$assets_dir/pre-tmux.sh"
+runtime_asset="$repo_dir/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz"
 
 [[ -s "$archive" ]] || { printf 'Missing Native install archive: %s\n' "$archive" >&2; exit 1; }
 [[ -s "$pre_tmux" ]] || { printf 'Missing Native pre-tmux asset: %s\n' "$pre_tmux" >&2; exit 1; }
+[[ -s "$runtime_asset" ]] || { printf 'Missing Native runtime asset: %s\n' "$runtime_asset" >&2; exit 1; }
+tar -tzf "$runtime_asset" >/dev/null \
+  || { printf 'Native runtime asset is not a readable gzip tar: %s\n' "$runtime_asset" >&2; exit 1; }
+runtime_sha="$(sha256sum "$runtime_asset" | awk '{print $1}')"
+runtime_size="$(wc -c < "$runtime_asset" | tr -d '[:space:]')"
 
 members="$(tar -tf "$archive")"
 for required in \
@@ -38,7 +44,7 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-native-validate.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 tar -xf "$archive" -C "$tmp"
 (cd "$tmp" && sha256sum -c SHA256SUMS)
-python3 - "$tmp/install-manifest.json" <<'PY'
+python3 - "$tmp/install-manifest.json" "$runtime_sha" "$runtime_size" <<'PY'
 import json
 import sys
 
@@ -49,6 +55,10 @@ if manifest.get("bundledPayloads") != ["service-manager.tgz"]:
     raise SystemExit("Native install manifest must list exactly the bundled service-manager payload")
 if manifest.get("runtimeAsset") != "openhouse-runtime/runtime-aarch64.tgz":
     raise SystemExit("Native install manifest must reference the separate ARM64 runtime asset")
+if manifest.get("runtimeSha256") != sys.argv[2]:
+    raise SystemExit("Native install manifest runtimeSha256 does not match the staged runtime asset")
+if int(manifest.get("runtimeSize", -1)) != int(sys.argv[3]):
+    raise SystemExit("Native install manifest runtimeSize does not match the staged runtime asset")
 PY
 bash -n "$pre_tmux"
 bash -n "$tmp/bootstrap/wuxianpi-setup"

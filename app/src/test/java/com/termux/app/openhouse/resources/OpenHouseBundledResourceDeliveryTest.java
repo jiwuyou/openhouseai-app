@@ -122,6 +122,22 @@ public class OpenHouseBundledResourceDeliveryTest {
     }
 
     @Test
+    public void missingRuntimeAssetFailsResourceDelivery() throws Exception {
+        File home = readyHome();
+        FakeAssets failing = completeAssets();
+        failing.failurePath = "openhouse/product-payloads/runtime-aarch64.tgz";
+
+        OpenHouseBundledResourceDelivery.Result result =
+            OpenHouseBundledResourceDelivery.deliverForTesting(
+                home, "2.1", 51L, utcMillis("20260713"),
+                OpenHouseBundledResourceDelivery.Reason.FIRST_INSTALL, failing);
+
+        assertFalse(result.isSuccess());
+        assertFalse(new File(home, OpenHouseBundledResourceDelivery.ROOT_RELATIVE_PATH)
+            .toPath().resolve(OpenHouseBundledResourceDelivery.PENDING_MARKER_NAME).toFile().exists());
+    }
+
+    @Test
     public void failureCreatesNoPendingAndKeepsUnrelatedDirectoriesWhileRemovingOwnTemporary() throws Exception {
         File home = readyHome();
         File root = new File(home, OpenHouseBundledResourceDelivery.ROOT_RELATIVE_PATH);
@@ -360,6 +376,7 @@ public class OpenHouseBundledResourceDeliveryTest {
         files.put("openhouse/product-payloads/payload-manifest.json", bytes("payload manifest"));
         files.put("openhouse/product-payloads/AI_UPDATE_GUIDE.md",
             bytes(OpenHouseBundledResourceDelivery.AI_REQUEST_SENTENCE));
+        files.put("openhouse/product-payloads/runtime-aarch64.tgz", bytes("runtime"));
         files.put("openhouse/product-payloads/core.tar", bytes("tar"));
         files.put("openhouse/product-payloads/nested/data.bin", bytes("nested"));
         return new FakeAssets(files);

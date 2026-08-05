@@ -321,6 +321,10 @@ class NativeOperitHostOperationsTest {
 
         assertTrue(command.contains("resources.tar"))
         assertTrue(command.contains("bootstrap/wuxianpi-setup"))
+        assertTrue(command.contains("--runtime-archive"))
+        assertTrue(command.contains(".local/share/wuxianpi/install-resources/runtime-aarch64.tgz"))
+        assertTrue(command.contains("Native WuxianPi Runtime asset is missing"))
+        assertTrue(command.contains("--request"))
         assertEquals("termux_exec_command", details.getString("executorTool"))
         assertEquals("wuxianpi-setup", details.getString("session_name"))
         assertTrue(details.getBoolean("persistent"))
