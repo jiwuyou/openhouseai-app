@@ -5,6 +5,8 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 apk_root="$repo_dir/app/build/outputs/apk"
 max_arm64_bytes=$((220 * 1024 * 1024))
 max_universal_bytes=$((300 * 1024 * 1024))
+max_debug_arm64_bytes=$((512 * 1024 * 1024))
+max_debug_universal_bytes=$((1536 * 1024 * 1024))
 runtime_source="$repo_dir/app/src/main/assets/openhouse/product-payloads/runtime-aarch64.tgz"
 native_source="$repo_dir/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz"
 min_mtime="${OPENHOUSE_APK_MIN_MTIME:-0}"
@@ -38,11 +40,19 @@ for apk in "${apks[@]}"; do
   name="$(basename "$apk")"
   case "$name" in
     *arm64-v8a.apk)
-      limit="$max_arm64_bytes"
+      if [[ "$apk" == */debug/* ]]; then
+        limit="${OPENHOUSE_DEBUG_MAX_ARM64_BYTES:-$max_debug_arm64_bytes}"
+      else
+        limit="$max_arm64_bytes"
+      fi
       label="arm64"
       ;;
     *_universal.apk)
-      limit="$max_universal_bytes"
+      if [[ "$apk" == */debug/* ]]; then
+        limit="${OPENHOUSE_DEBUG_MAX_UNIVERSAL_BYTES:-$max_debug_universal_bytes}"
+      else
+        limit="$max_universal_bytes"
+      fi
       label="universal"
       ;;
     *)

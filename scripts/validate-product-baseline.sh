@@ -21,10 +21,14 @@ for commit in "${required_commits[@]}"; do
     || { printf 'Product baseline does not contain required commit: %s\n' "$commit" >&2; exit 1; }
 done
 
-git show-ref --verify --quiet "$product_ref" \
-  || { printf 'Product baseline ref is unavailable: %s\n' "$product_ref" >&2; exit 1; }
 head_sha="$(git rev-parse HEAD)"
-product_sha="$(git rev-parse "$product_ref")"
+if [[ "$product_ref" == "HEAD" ]]; then
+  product_sha="$head_sha"
+else
+  git show-ref --verify --quiet "$product_ref" \
+    || { printf 'Product baseline ref is unavailable: %s\n' "$product_ref" >&2; exit 1; }
+  product_sha="$(git rev-parse "$product_ref")"
+fi
 [[ "$head_sha" == "$product_sha" ]] \
   || { printf 'Formal builds must use %s (%s), found %s\n' "$product_ref" "$product_sha" "$head_sha" >&2; exit 1; }
 

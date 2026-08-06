@@ -11,6 +11,17 @@
 - `scripts/validate-product-baseline.sh` 校验提交、工作区和 lean 设置页契约。
 - `scripts/report-apk-build.sh` 记录 commit、APK 路径、大小、SHA-256、ABI、签名证书和资产检查。
 
+## Debug 分发基线
+
+- [ ] `scripts/build-all-in-one.sh` 默认执行 `:app:assembleDebug`。
+- [ ] `scripts/build-native.sh` 默认执行 `:native-app:assembleDebug`。
+- [ ] All-in-One 默认保留 `arm64-v8a` 和 `universal`，Native 默认仅保留 `arm64-v8a`。
+- [ ] Debug APK 必须由 `app/testkey_untrusted.jks` 签名，并保持包名和签名连续性。
+- [ ] Debug APK 必须由校验器确认 `application-debuggable`、APK v2 签名、ZIP 对齐、Runtime SHA-256 和必需资产。
+- [ ] 每个 APK 生成同名 `.txt` 和 `.json` 构建报告，包含 commit、版本、大小、SHA-256、ABI 和证书指纹。
+- [ ] GitHub Debug 构建同时产出 All-in-One 和 Native；Release 上传流程不得只构建 All-in-One。
+- [ ] Release 构建仍可通过 `ALL_IN_ONE_GRADLE_TASK=:app:assembleRelease` 或 `NATIVE_GRADLE_TASK=:native-app:assembleRelease` 显式调用。
+
 ## Native WuxianPi 桌面组件注册
 
 - [ ] 在 APK bootstrap 中内置标准 `components.d/yuanshengwuxianpi.json` 模板。

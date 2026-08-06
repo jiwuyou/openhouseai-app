@@ -14,7 +14,8 @@
 
 本项目不是 Termux 官方发布版本。不要把 OpenHouseAI APK 描述为官方 Termux 构建。
 
-Debug APK 可能使用上游公开测试签名，只适合开发和测试，不应作为生产信任锚。
+对外 Debug 分发使用仓库内固定测试签名，并以 GitHub Release 与官方网站为唯一可信下载渠道；不要安装其他来源的同包名 APK。
+Debug 分发构建会在发布前校验 APK 的 SHA-256、包名、ABI、签名证书、Runtime 载荷和 `debuggable` 标志。
 
 ## 不应提交的内容
 

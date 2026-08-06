@@ -13,11 +13,21 @@ done
   || { printf 'Legacy pi-runtime.tar must not be bundled\n' >&2; exit 1; }
 "$repo_dir/scripts/validate-openhouse-payloads.sh"
 cd "$repo_dir"
-./gradlew "${ALL_IN_ONE_GRADLE_TASK:-:app:assembleRelease}" "$@"
-mapfile -t release_apks < <(find "$repo_dir/app/build/outputs/apk/release" -type f \
+gradle_task="${ALL_IN_ONE_GRADLE_TASK:-:app:assembleDebug}"
+case "${gradle_task##*:}" in
+  *Debug) build_type=debug ;;
+  *Release) build_type=release ;;
+  *)
+    printf 'Unsupported All-in-One APK task: %s (expected an assembleDebug/assembleRelease task)\n' "$gradle_task" >&2
+    exit 2
+    ;;
+esac
+./gradlew "$gradle_task" "$@"
+mapfile -t distribution_apks < <(find "$repo_dir/app/build/outputs/apk/$build_type" -type f \
   \( -name '*arm64-v8a.apk' -o -name '*_universal.apk' \) | sort)
-[[ "${#release_apks[@]}" -gt 0 ]] || { printf 'No release arm64 or universal APK was produced\n' >&2; exit 1; }
+[[ "${#distribution_apks[@]}" -eq 2 ]] \
+  || { printf 'Expected arm64 and universal All-in-One %s APKs, found %s\n' "$build_type" "${#distribution_apks[@]}" >&2; exit 1; }
 if [[ "${SKIP_APK_VALIDATION:-0}" != "1" ]]; then
-  "$repo_dir/scripts/validate-openhouse-apk.sh" "${release_apks[@]}"
+  "$repo_dir/scripts/validate-openhouse-apk.sh" "${distribution_apks[@]}"
 fi
-"$repo_dir/scripts/report-apk-build.sh" "${release_apks[@]}"
+"$repo_dir/scripts/report-apk-build.sh" "${distribution_apks[@]}"

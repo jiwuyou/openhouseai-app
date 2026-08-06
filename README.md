@@ -47,17 +47,28 @@ All-in-One 使用 `com.termux`，不能与官方 Termux 共存；WuxianPi Native
 
 OpenHouseAI 的文档和安装链路应区分“当前默认核心”和“可选构建/外部工具”，避免把可选能力误写成首次安装必需项。
 
-## Quick Build
+## Debug Distribution Build
 
 ```bash
+# Both scripts default to the long-term Debug distribution channel.
 ./scripts/build-all-in-one.sh
 ./scripts/build-native.sh
 ```
 
-Debug APK output can be located with:
+The default outputs are the All-in-One `arm64-v8a` and `universal` APKs, plus the Native `arm64-v8a` APK. Each build validates the shared Runtime, APK signature, ZIP alignment, package identity, and Debug flag, then writes text and JSON reports under `build/reports/apk-build/`.
+
+To build the legacy Release variant explicitly:
+
+```bash
+ALL_IN_ONE_GRADLE_TASK=:app:assembleRelease ./scripts/build-all-in-one.sh
+NATIVE_GRADLE_TASK=:native-app:assembleRelease ./scripts/build-native.sh
+```
+
+Debug APK output can also be located with:
 
 ```bash
 find app/build/outputs/apk -name 'termux-app_*debug*_universal.apk' -print
+find native-app/build/outputs/apk/debug -name '*.apk' -print
 ```
 
 ## Upstream Termux README
