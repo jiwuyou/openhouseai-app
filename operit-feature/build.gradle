@@ -83,6 +83,7 @@ android {
 }
 
 dependencies {
+    implementation project(":openhouse-core")
     implementation project(":pi-client")
     implementation project(":remote-assist-protocol")
     implementation project(":operit-quickjs")

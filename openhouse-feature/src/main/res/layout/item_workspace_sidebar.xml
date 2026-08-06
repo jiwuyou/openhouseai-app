@@ -1,5 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Button xmlns:android="http://schemas.android.com/apk/res/android"
-    style="@style/OhDrawerButton"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="50dp" />
+    android:layout_height="50dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <Button
+        android:id="@+id/workspace_item_button"
+        style="@style/OhDrawerButton"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:minWidth="0dp" />
+
+    <ImageButton
+        android:id="@+id/workspace_item_close"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:layout_marginStart="4dp"
+        android:background="@drawable/oh_button_background"
+        android:contentDescription="关闭维修模式"
+        android:padding="10dp"
+        android:src="@drawable/oh_ic_close" />
+</LinearLayout>

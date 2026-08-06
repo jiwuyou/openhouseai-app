@@ -87,11 +87,25 @@ internal object OpenHouseFeatureHosts {
 
 object OpenHouseFeature {
     const val EXTRA_STARTUP_ROUTE = "com.wuxianpi.openhouse.feature.STARTUP_ROUTE"
+    const val EXTRA_STARTUP_COMPONENT_ID = "com.wuxianpi.openhouse.feature.STARTUP_COMPONENT_ID"
 
     @JvmStatic
     fun createIntent(context: Context, route: ProductRoute? = null): Intent {
         return Intent(context, OpenHouseActivity::class.java).apply {
             route?.let { putExtra(EXTRA_STARTUP_ROUTE, it.name) }
+        }
+    }
+
+    @JvmStatic
+    fun createDestinationIntent(context: Context, destination: WorkspaceDestination): Intent {
+        return createIntent(context).apply {
+            when (destination) {
+                WorkspaceDestination.Desktop -> Unit
+                is WorkspaceDestination.Route ->
+                    putExtra(EXTRA_STARTUP_ROUTE, destination.route.name)
+                is WorkspaceDestination.Component ->
+                    putExtra(EXTRA_STARTUP_COMPONENT_ID, destination.normalizedComponentId)
+            }
         }
     }
 

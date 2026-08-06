@@ -2,6 +2,7 @@ package com.ai.assistance.operit.rescue.ui
 
 import com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
 import com.ai.assistance.operit.ui.main.MainActivity
+import com.wuxianpi.openhouse.core.rescue.RescueControlProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -10,7 +11,11 @@ class RescueHostedContractTest {
     @Test
     fun rescueUsesSharedHostReturnExtraAndItsOwnProcess() {
         assertEquals(MainActivity.EXTRA_HOST_RETURN_ACTIVITY, RescueActivity.EXTRA_HOST_RETURN_ACTIVITY)
-        assertEquals(":rescue_ui", RescueActivity.RESCUE_PROCESS_SUFFIX)
+        assertEquals(RescueControlProtocol.PROCESS_SUFFIX, RescueActivity.RESCUE_PROCESS_SUFFIX)
+        assertNotEquals(
+            RescueActivity.EXTRA_HOST_RETURN_ACTIVITY,
+            RescueActivity.EXTRA_HOST_RETURN_INTENT,
+        )
     }
 
     @Test

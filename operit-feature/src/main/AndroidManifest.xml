@@ -69,19 +69,23 @@
         <activity
             android:name=".rescue.ui.RescueActivity"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout"
+            android:excludeFromRecents="true"
             android:exported="false"
             android:label="@string/rescue_ai_title"
             android:launchMode="singleTask"
             android:process=":rescue_ui"
+            android:taskAffinity="${applicationId}.rescue"
             android:theme="@style/Theme.Operit"
             android:windowSoftInputMode="adjustPan" />
 
         <activity
             android:name=".rescue.ui.plugins.RescuePluginMarketActivity"
+            android:excludeFromRecents="true"
             android:exported="false"
             android:label="@string/rescue_plugin_market_title"
             android:launchMode="singleTask"
             android:process=":rescue_ui"
+            android:taskAffinity="${applicationId}.rescue"
             android:theme="@style/Theme.Operit"
             android:windowSoftInputMode="adjustResize" />
 

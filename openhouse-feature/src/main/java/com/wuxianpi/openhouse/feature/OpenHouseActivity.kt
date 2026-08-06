@@ -1,10 +1,13 @@
 package com.wuxianpi.openhouse.feature
 
 import android.content.ClipData
+import android.content.BroadcastReceiver
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.Gravity
@@ -32,6 +35,9 @@ import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
 import com.wuxianpi.openhouse.core.workspace.WorkspaceCatalog
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
+import com.wuxianpi.openhouse.core.rescue.RescueControlProtocol
+import com.wuxianpi.openhouse.core.rescue.RescueControlStateStore
+import com.wuxianpi.openhouse.core.rescue.RescueProcessState
 import com.wuxianpi.openhouse.feature.desktop.DesktopCatalog
 import com.wuxianpi.openhouse.feature.desktop.DesktopComponent
 import com.wuxianpi.openhouse.feature.desktop.DesktopIconOverride
@@ -68,11 +74,21 @@ class OpenHouseActivity : AppCompatActivity() {
     private var bindingPage = false
     private var released = false
     private var lastRegistryRefreshAt = 0L
+    private var rescueState = RescueProcessState.NOT_RUNNING
+    private var rescueStateReceiverRegistered = false
+
+    private val rescueStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != RescueControlProtocol.ACTION_STATE_CHANGED) return
+            refreshRescueState()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_open_house)
         host = OpenHouseFeatureHosts.from(this)
+        registerRescueStateReceiver()
         layoutStore = DesktopLayoutStore(this)
         startupStore = StartupRouteStore(this)
         residency = DesktopResidencyController(DesktopResidencyController.MainThreadScheduler()) {
@@ -89,6 +105,11 @@ class OpenHouseActivity : AppCompatActivity() {
             if (startup != ProductRoute.DESKTOP) {
                 content.post { openRoute(startup) }
             }
+            intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_COMPONENT_ID)
+                ?.takeIf(String::isNotBlank)
+                ?.let { componentId ->
+                    content.post { openWorkspaceDestination(WorkspaceDestination.Component(componentId)) }
+                }
         }
     }
 
@@ -96,6 +117,11 @@ class OpenHouseActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         parseRoute(intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_ROUTE))?.let(::openRoute)
+        intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_COMPONENT_ID)
+            ?.takeIf(String::isNotBlank)
+            ?.let { componentId ->
+                openWorkspaceDestination(WorkspaceDestination.Component(componentId))
+            }
         requestDesktopRefresh(force = true)
     }
 
@@ -106,6 +132,7 @@ class OpenHouseActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        refreshRescueState()
         if (workspaceNavigator.current is WorkspaceDestination.Component && !webMountGate.isPending) webPagePool.onResume()
         else activeWorkspaceContent?.onResume()
         // Installation flows and external app setup return here while this Activity stays alive.
@@ -124,6 +151,10 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (rescueStateReceiverRegistered) {
+            runCatching { unregisterReceiver(rescueStateReceiver) }
+            rescueStateReceiverRegistered = false
+        }
         residency.onDestroy()
         releaseDesktopResources()
         super.onDestroy()
@@ -169,7 +200,12 @@ class OpenHouseActivity : AppCompatActivity() {
         content = findViewById(R.id.oh_content)
         title = findViewById(R.id.oh_title)
         doneEditing = findViewById(R.id.oh_done_editing)
-        workspaceSidebar = WorkspaceSidebar(this, findViewById(R.id.oh_workspace_apps), ::openWorkspaceDestination)
+        workspaceSidebar = WorkspaceSidebar(
+            context = this,
+            container = findViewById(R.id.oh_workspace_apps),
+            onSelected = ::openWorkspaceDestination,
+            onCloseRescue = ::requestRescueShutdown,
+        )
         webPagePool = EmbeddedWebPagePool(this, workspaceWebCallbacks())
         findViewById<Button>(R.id.oh_open_drawer).setOnClickListener { drawer.openDrawer(GravityCompat.START) }
         findViewById<Button>(R.id.oh_top_desktop).setOnClickListener { showDesktop() }
@@ -196,7 +232,43 @@ class OpenHouseActivity : AppCompatActivity() {
         registryComponents = host.desktopComponents()
         components = DesktopCatalog.merge(registryComponents, host.capabilities())
         layoutState = layoutStore.merge(components)
-        workspaceSidebar.bind(WorkspaceCatalog.applications(registryComponents, host.capabilities()))
+        workspaceSidebar.bind(
+            WorkspaceCatalog.applications(registryComponents, host.capabilities()),
+            rescueState,
+        )
+    }
+
+    private fun refreshRescueState() {
+        val nextState = RescueControlStateStore.read(applicationContext).effectiveState
+        if (nextState == rescueState) return
+        rescueState = nextState
+        if (::workspaceSidebar.isInitialized) workspaceSidebar.setRescueState(nextState)
+    }
+
+    private fun requestRescueShutdown() {
+        if (!rescueState.isRunningLike()) return
+        rescueState = RescueProcessState.STOPPING
+        workspaceSidebar.setRescueState(rescueState)
+        sendBroadcast(
+            RescueControlProtocol.createShutdownIntent(
+                this,
+                RescueControlProtocol.SHUTDOWN_REASON_USER,
+            )
+        )
+        content.postDelayed(::refreshRescueState, RESCUE_SHUTDOWN_RECHECK_MS)
+    }
+
+    private fun registerRescueStateReceiver() {
+        if (rescueStateReceiverRegistered) return
+        val filter = IntentFilter(RescueControlProtocol.ACTION_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(rescueStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(rescueStateReceiver, filter)
+        }
+        rescueStateReceiverRegistered = true
+        refreshRescueState()
     }
 
     private fun requestDesktopRefresh(
@@ -244,7 +316,8 @@ class OpenHouseActivity : AppCompatActivity() {
         drawer.closeDrawer(GravityCompat.START)
         when (route) {
             ProductRoute.DESKTOP -> showDesktop()
-            ProductRoute.BASIC, ProductRoute.ADVANCED, ProductRoute.REPAIR -> showEmbeddedRoute(route)
+            ProductRoute.BASIC, ProductRoute.ADVANCED -> showEmbeddedRoute(route)
+            ProductRoute.REPAIR -> host.launchAiMode(this, route)
             ProductRoute.SERVICE_CONTROL -> host.launchServiceControl(this)
             ProductRoute.PERMISSIONS -> host.launchHostRoute(this, route)
             ProductRoute.SETTINGS -> showSettings()
@@ -738,6 +811,7 @@ class OpenHouseActivity : AppCompatActivity() {
 
     private companion object {
         const val REGISTRY_REFRESH_DEBOUNCE_MS = 750L
+        const val RESCUE_SHUTDOWN_RECHECK_MS = 1_500L
         const val MAX_RETAINED_NATIVE_CONTENTS = 2
     }
 }

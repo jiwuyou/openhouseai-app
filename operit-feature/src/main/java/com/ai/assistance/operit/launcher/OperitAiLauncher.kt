@@ -34,7 +34,13 @@ object OperitAiLauncher {
     @JvmStatic
     fun repairIntent(context: Context): Intent =
         RescueActivity.createIntent(context).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            // Rescue has its own task/process so returning to OpenHouse does not destroy the
+            // running repair session. Reusing the task keeps reopening the mode instantaneous.
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            )
         }
 
     @JvmStatic

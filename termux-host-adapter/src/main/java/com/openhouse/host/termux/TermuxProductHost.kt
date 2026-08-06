@@ -10,7 +10,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
-import com.ai.assistance.operit.rescue.remote.RescueRemoteAssistController
 import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.ui.main.OperitHostMode
 import com.ai.assistance.operit.workspace.OperitWorkspaceContent
@@ -94,6 +93,13 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
                     RescueActivity.EXTRA_HOST_RETURN_ACTIVITY,
                     OPENHOUSE_ACTIVITY_CLASS,
                 )
+                putExtra(
+                    RescueActivity.EXTRA_HOST_RETURN_INTENT,
+                    OpenHouseFeature.createDestinationIntent(
+                        activity,
+                        WorkspaceDestination.Desktop,
+                    ),
+                )
             }
             else -> return
         }
@@ -106,11 +112,7 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     ): WorkspaceContent? {
         val componentActivity = activity as? ComponentActivity ?: return null
         val route = (destination as? WorkspaceDestination.Route)?.route ?: return null
-        val hostMode = when (route) {
-            ProductRoute.BASIC -> OperitHostMode.BASIC
-            ProductRoute.REPAIR -> OperitHostMode.RESCUE
-            else -> return null
-        }
+        val hostMode = if (route == ProductRoute.BASIC) OperitHostMode.BASIC else return null
         val returnToDesktop = { componentActivity.onBackPressedDispatcher.onBackPressed() }
         val content =
             OperitWorkspaceContentFactory.create(
@@ -118,18 +120,8 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
                 OperitWorkspaceSpec(
                     hostMode = hostMode,
                     onReturnToHostMainMenu = returnToDesktop,
-                    onCloseHostedOperit = {
-                        if (hostMode == OperitHostMode.RESCUE) {
-                            RescueRemoteAssistController.getInstance(componentActivity).stopSharing()
-                        }
-                        returnToDesktop()
-                    },
-                    hostedCloseLabel =
-                        if (hostMode == OperitHostMode.RESCUE) {
-                            componentActivity.getString(com.ai.assistance.operit.R.string.rescue_ai_close)
-                        } else {
-                            com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
-                        },
+                    onCloseHostedOperit = returnToDesktop,
+                    hostedCloseLabel = com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL,
                 ),
             )
         return content.asOpenHouseWorkspaceContent()

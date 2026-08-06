@@ -227,9 +227,11 @@
 
         <activity
             android:name="com.ai.assistance.operit.rescue.ui.RescueActivity"
+            android:excludeFromRecents="true"
             android:exported="false"
+            android:taskAffinity="${applicationId}.rescue"
             android:process=":rescue_ui"
-            tools:replace="android:exported,android:process" />
+            tools:replace="android:excludeFromRecents,android:exported,android:process,android:taskAffinity" />
 
         <activity
             android:name="com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity"

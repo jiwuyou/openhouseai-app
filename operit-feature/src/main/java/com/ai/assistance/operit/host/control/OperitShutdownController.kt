@@ -83,7 +83,7 @@ object OperitShutdownController {
                 updateControlState = false,
                 stopApplicationServices = false,
             )
-            finishActivity(activity, removeTask = false)
+            finishActivity(activity, removeTask = true)
             killCurrentProcess(activity.applicationContext, rescueProcessSuffix, "Rescue")
         }
     }

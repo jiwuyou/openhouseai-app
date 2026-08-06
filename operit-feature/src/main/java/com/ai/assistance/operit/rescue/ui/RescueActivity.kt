@@ -1,9 +1,11 @@
 package com.ai.assistance.operit.rescue.ui
 
 import android.app.ActivityManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -17,6 +19,8 @@ import androidx.lifecycle.lifecycleScope
 import com.ai.assistance.operit.core.application.OperitApplication
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.host.control.OperitShutdownController
+import com.wuxianpi.openhouse.core.rescue.RescueControlProtocol
+import com.wuxianpi.openhouse.core.rescue.RescueControlStateStore
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.rescue.remote.RescueAssistHostPhase
 import com.ai.assistance.operit.rescue.remote.RescueRemoteAssistController
@@ -40,11 +44,20 @@ import kotlinx.coroutines.withContext
  */
 class RescueActivity : ComponentActivity() {
     private var remoteAssistStopRequested = false
+    private var rescueShutdownReceiverRegistered = false
+
+    private val rescueShutdownReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != RescueControlProtocol.ACTION_REQUEST_SHUTDOWN) return
+            closeRescueAssistant()
+        }
+    }
 
     companion object {
         const val ACTION_OPEN_RESCUE = "com.wuxianpi.action.OPEN_RESCUE_AI"
         const val EXTRA_RESCUE_ENTRY = "com.wuxianpi.extra.RESCUE_ENTRY"
         const val EXTRA_HOST_RETURN_ACTIVITY = MainActivity.EXTRA_HOST_RETURN_ACTIVITY
+        const val EXTRA_HOST_RETURN_INTENT = "com.wuxianpi.extra.RESCUE_HOST_RETURN_INTENT"
         const val RESCUE_PROCESS_SUFFIX = ":rescue_ui"
         private const val TAG = "RescueActivity"
 
@@ -82,6 +95,7 @@ class RescueActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        registerRescueShutdownReceiver()
         OperitApplication.initializeUiProcess(applicationContext)
 
         // The rescue process must initialize only the shared Operit environment.  Loading the Rust
@@ -114,33 +128,73 @@ class RescueActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        RescueControlStateStore.markForeground(applicationContext)
+    }
+
+    override fun onPause() {
+        if (!isFinishing && !OperitShutdownController.isShutdownInProgress()) {
+            RescueControlStateStore.markBackground(applicationContext)
+        }
+        super.onPause()
+    }
+
     private fun returnToHostMainMenu() {
         val requestedActivity =
             intent?.getStringExtra(EXTRA_HOST_RETURN_ACTIVITY)?.trim().orEmpty()
-        val hostIntent =
-            if (requestedActivity.isNotEmpty()) {
-                Intent().setClassName(packageName, requestedActivity)
-            } else {
-                packageManager.getLaunchIntentForPackage(packageName) ?: Intent().setPackage(packageName)
-            }
-        hostIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        @Suppress("DEPRECATION")
+        val suppliedIntent = intent?.getParcelableExtra<Intent>(EXTRA_HOST_RETURN_INTENT)
+        val hostIntent = suppliedIntent ?: if (requestedActivity.isNotEmpty()) {
+            Intent().setClassName(packageName, requestedActivity)
+        } else {
+            packageManager.getLaunchIntentForPackage(packageName) ?: Intent().setPackage(packageName)
+        }
+        hostIntent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP,
+        )
         runCatching { startActivity(hostIntent) }
             .onFailure { AppLogger.e(TAG, "Failed to return from Rescue AI to host main activity", it) }
     }
 
     private fun closeRescueAssistant() {
+        RescueControlStateStore.markStopping(applicationContext)
         stopRemoteAssistanceIfActive()
         OperitShutdownController.shutdownRescueFromActivity(
             activity = this,
             rescueProcessSuffix = RESCUE_PROCESS_SUFFIX,
+            beforeFinish = { RescueControlStateStore.markStopped(applicationContext) },
         )
     }
 
     override fun onDestroy() {
+        if (rescueShutdownReceiverRegistered) {
+            runCatching { unregisterReceiver(rescueShutdownReceiver) }
+            rescueShutdownReceiverRegistered = false
+        }
         if (isFinishing && !isChangingConfigurations) {
             stopRemoteAssistanceIfActive()
         }
         super.onDestroy()
+    }
+
+    private fun registerRescueShutdownReceiver() {
+        if (rescueShutdownReceiverRegistered) return
+        val filter = IntentFilter(RescueControlProtocol.ACTION_REQUEST_SHUTDOWN)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(rescueShutdownReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(rescueShutdownReceiver, filter)
+        }
+        rescueShutdownReceiverRegistered = true
     }
 
     private fun stopRemoteAssistanceIfActive() {
