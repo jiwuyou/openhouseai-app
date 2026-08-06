@@ -19,4 +19,12 @@ class TermuxProductHostTest {
             TermuxProductHost.PERMISSIONS_ACTIVITY_CLASS,
         )
     }
+
+    @Test
+    fun aiFallbackReturnsToSharedOpenHouseWorkspace() {
+        assertEquals(
+            "com.wuxianpi.openhouse.feature.OpenHouseActivity",
+            TermuxProductHost.OPENHOUSE_ACTIVITY_CLASS,
+        )
+    }
 }

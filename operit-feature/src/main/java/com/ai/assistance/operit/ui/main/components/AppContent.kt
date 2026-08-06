@@ -145,6 +145,7 @@ fun AppContent(
         onScreenChange: (Screen) -> Unit,
         onToggleSidebar: () -> Unit,
         isHostedMode: Boolean = false,
+        showHostedLifecycleActions: Boolean = true,
         onOpenHostDesktop: () -> Unit = {},
         navigateToTokenConfig: () -> Unit,
         onLoading: (Boolean) -> Unit = {},
@@ -342,7 +343,7 @@ fun AppContent(
                         }
                     },
                     actions = {
-                        if (isHostedMode) {
+                        if (isHostedMode && showHostedLifecycleActions) {
                             IconButton(onClick = onOpenHostDesktop) {
                                 Icon(
                                     imageVector = Icons.Default.Home,

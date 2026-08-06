@@ -7,9 +7,15 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
+import com.ai.assistance.operit.rescue.remote.RescueRemoteAssistController
 import com.ai.assistance.operit.rescue.ui.RescueActivity
+import com.ai.assistance.operit.ui.main.OperitHostMode
+import com.ai.assistance.operit.workspace.OperitWorkspaceContent
+import com.ai.assistance.operit.workspace.OperitWorkspaceContentFactory
+import com.ai.assistance.operit.workspace.OperitWorkspaceSpec
 import com.wuxianpi.openhouse.core.HostActionResult
 import com.wuxianpi.openhouse.core.HostCapabilities
 import com.wuxianpi.openhouse.core.ProductRoute
@@ -18,10 +24,13 @@ import com.wuxianpi.openhouse.core.registry.OpenHouseBuiltins
 import com.wuxianpi.openhouse.core.registry.RegistryRepository
 import com.wuxianpi.openhouse.core.registry.SharedPreferencesRegistryCache
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
+import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
+import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import com.wuxianpi.openhouse.feature.AdvancedUiEndpoints
 import com.wuxianpi.openhouse.feature.ComponentWebLaunchArgs
 import com.wuxianpi.openhouse.feature.OpenHouseFeature
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost
+import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
 import com.wuxianpi.openhouse.servicecontrol.OpenHouseFeatureLauncher
 import com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity
 import com.wuxianpi.openhouse.servicecontrol.ServiceControlDependencies
@@ -96,6 +105,63 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
             else -> return
         }
         activity.startActivity(intent)
+    }
+
+    override fun createEmbeddedContent(
+        activity: Activity,
+        destination: WorkspaceDestination,
+    ): WorkspaceContent? {
+        val componentActivity = activity as? ComponentActivity ?: return null
+        val route = (destination as? WorkspaceDestination.Route)?.route ?: return null
+        val hostMode = when (route) {
+            ProductRoute.BASIC -> OperitHostMode.BASIC
+            ProductRoute.REPAIR -> OperitHostMode.RESCUE
+            else -> return null
+        }
+        val returnToDesktop = { componentActivity.onBackPressedDispatcher.onBackPressed() }
+        val content =
+            OperitWorkspaceContentFactory.create(
+                componentActivity,
+                OperitWorkspaceSpec(
+                    hostMode = hostMode,
+                    onReturnToHostMainMenu = returnToDesktop,
+                    onCloseHostedOperit = {
+                        if (hostMode == OperitHostMode.RESCUE) {
+                            RescueRemoteAssistController.getInstance(componentActivity).stopSharing()
+                        }
+                        returnToDesktop()
+                    },
+                    hostedCloseLabel =
+                        if (hostMode == OperitHostMode.RESCUE) {
+                            componentActivity.getString(com.ai.assistance.operit.R.string.rescue_ai_close)
+                        } else {
+                            com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
+                        },
+                ),
+            )
+        return content.asOpenHouseWorkspaceContent()
+    }
+
+    override fun resolveComponentWeb(
+        component: OpenHouseComponent,
+        onResolved: (ComponentWebResolution) -> Unit,
+    ) {
+        if (component.entryType != OpenHouseComponent.EntryType.WEBVIEW) {
+            onResolved(ComponentWebResolution.DelegateToHost)
+            return
+        }
+        componentLaunchScope.launch {
+            val resolution =
+                withContext(Dispatchers.IO) {
+                    when (val endpoint = componentEndpointResolver.resolve(component)) {
+                        is NativeComponentEndpointResult.Resolved ->
+                            ComponentWebResolution.resolved(endpoint.url, endpoint.serviceId)
+                        is NativeComponentEndpointResult.Unavailable ->
+                            ComponentWebResolution.Unavailable(endpoint.message)
+                    }
+                }
+            onResolved(resolution)
+        }
     }
 
     override fun launchServiceControl(activity: Activity) {
@@ -220,6 +286,20 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         error.message ?: error.javaClass.simpleName,
     )
 }
+
+private fun OperitWorkspaceContent.asOpenHouseWorkspaceContent(): WorkspaceContent =
+    object : WorkspaceContent {
+        override val view = this@asOpenHouseWorkspaceContent.view
+
+        override fun onResume() = this@asOpenHouseWorkspaceContent.onResume()
+
+        override fun onPause() = this@asOpenHouseWorkspaceContent.onPause()
+
+        override fun onBackPressed(): Boolean =
+            this@asOpenHouseWorkspaceContent.onBackPressed()
+
+        override fun destroy() = this@asOpenHouseWorkspaceContent.destroy()
+    }
 
 internal fun createNativeComponentWebIntent(
     context: Context,

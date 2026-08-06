@@ -14,6 +14,7 @@
     <string name="oh_settings">设置</string>
     <string name="oh_about">关于 WuxianPi</string>
     <string name="oh_modes">模式</string>
+    <string name="oh_daily_apps">日常应用</string>
     <string name="oh_system">系统</string>
     <string name="oh_refresh">刷新</string>
     <string name="oh_back">返回</string>
@@ -40,4 +41,6 @@
     <string name="oh_component_web_unavailable_detail">没有连接到 %1$s。可以刷新，或进入服务控制和维护中心处理。</string>
     <string name="oh_component_web_missing_endpoint">当前组件尚未发布可用地址。可以进入服务控制启动服务，或到维护中心检查环境。</string>
     <string name="oh_component_web_no_address">当前没有可复制的地址</string>
+    <string name="oh_component_web_external_failed">无法打开外部链接</string>
+    <string name="oh_workspace_connecting">正在打开 %1$s…</string>
 </resources>

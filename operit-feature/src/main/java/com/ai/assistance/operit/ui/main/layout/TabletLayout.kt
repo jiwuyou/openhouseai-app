@@ -65,6 +65,7 @@ fun TabletLayout(
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
         hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
+        showHostedLifecycleActions: Boolean = true,
         sidebarActions: @Composable RowScope.() -> Unit = {},
         onOpenHostDesktop: () -> Unit = {},
         onToggleSidebar: () -> Unit,
@@ -165,6 +166,7 @@ fun TabletLayout(
                                                 onReturnToHostMainMenu = onReturnToHostMainMenu,
                                                 onCloseHostedOperit = onCloseHostedOperit,
                                                 hostedCloseLabel = hostedCloseLabel,
+                                                showHostedLifecycleActions = showHostedLifecycleActions,
                                                 sidebarActions = sidebarActions
                                         )
                                 } else {
@@ -178,6 +180,7 @@ fun TabletLayout(
                                                 onScreenSelected = onDrawerItemSelected,
                                                 onNavigationEntrySelected = onNavigationEntrySelected,
                                                 isHostedMode = isHostedMode,
+                                                showHostedLifecycleActions = showHostedLifecycleActions,
                                                 hostMode = hostMode,
                                                 onReturnToHostMainMenu = onReturnToHostMainMenu,
                                                 onCloseHostedOperit = onCloseHostedOperit,
@@ -212,6 +215,7 @@ fun TabletLayout(
                                 onScreenChange = onScreenChange,
                                 onToggleSidebar = onToggleSidebar,
                                 isHostedMode = isHostedMode,
+                                showHostedLifecycleActions = showHostedLifecycleActions,
                                 onOpenHostDesktop = onOpenHostDesktop,
                                 navigateToTokenConfig = navigateToTokenConfig,
                                 onGestureConsumed = { consumed ->

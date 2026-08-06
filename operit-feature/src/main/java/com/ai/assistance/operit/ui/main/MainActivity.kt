@@ -28,7 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -53,7 +52,6 @@ import com.ai.assistance.operit.host.control.OperitShutdownController
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingScreenWithState
 import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingState
-import com.ai.assistance.operit.ui.features.startup.screens.LocalPluginLoadingState
 import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingStateRegistry
 import com.ai.assistance.operit.ui.theme.OperitTheme
 import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay
@@ -74,6 +72,8 @@ import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 import com.ai.assistance.operit.ui.features.github.GitHubOAuthCoordinator
 import com.ai.assistance.operit.widget.ToolPkgDesktopWidgetHost
 import com.ai.assistance.operit.rescue.ui.RescueActivity
+import com.ai.assistance.operit.workspace.OperitWorkspaceContentFactory
+import com.ai.assistance.operit.workspace.OperitWorkspaceSpec
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
@@ -900,10 +900,12 @@ class MainActivity : ComponentActivity() {
                         val routeNavRequestId = pendingRouteRequestId
                         val initialNavItem = shortcutNavItem ?: currentMainNavItem
 
-                            CompositionLocalProvider(LocalPluginLoadingState provides pluginLoadingState) {
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    // 主应用界面 (始终存在于底层)
-                                    OperitApp(
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            // 主应用界面 (始终存在于底层)
+                            OperitWorkspaceContentFactory.Content(
+                                spec =
+                                    OperitWorkspaceSpec(
+                                        hostMode = hostMode,
                                         initialNavItem = initialNavItem,
                                         toolHandler = toolHandler,
                                         shortcutNavRequest = shortcutNavItem,
@@ -911,12 +913,12 @@ class MainActivity : ComponentActivity() {
                                         routeNavRequest = routeNavRequest,
                                         routeNavArgs = routeNavArgs,
                                         routeNavRequestId = routeNavRequestId,
-                                        isHostedMode = isHostedMode,
-                                        hostMode = hostMode,
+                                        pluginLoadingState = pluginLoadingState,
                                         onReturnToHostMainMenu = ::returnToHostMainMenu,
                                         onCloseHostedOperit = {
                                             shutdownOperit(
-                                                requestedBy = OperitControlProtocol.SHUTDOWN_REQUESTED_BY_OPERIT
+                                                requestedBy =
+                                                    OperitControlProtocol.SHUTDOWN_REQUESTED_BY_OPERIT
                                             )
                                         },
                                         onShortcutNavHandled = { handledRequestId ->
@@ -934,31 +936,32 @@ class MainActivity : ComponentActivity() {
                                                 pendingRouteArgs = emptyMap()
                                                 pendingRouteRequestId = 0L
                                             }
-                                        }
-                                    )
-                                    // Keep this entry capability-driven so host manifest overrides
-                                    // can still disable Repair mode without changing the Operit UI.
-                                    val rescueIntentAvailable = remember {
-                                        packageManager.resolveActivity(
-                                            RescueActivity.createIntent(this@MainActivity),
-                                            PackageManager.MATCH_DEFAULT_ONLY,
-                                        ) != null
-                                    }
-                                    if (!isHostedMode && rescueIntentAvailable) {
-                                        TextButton(
-                                            onClick = {
-                                                startActivity(RescueActivity.createIntent(this@MainActivity))
-                                            },
-                                            modifier =
-                                                Modifier.align(Alignment.BottomEnd)
-                                                    .padding(16.dp)
-                                                    .zIndex(5f),
-                                        ) {
-                                            Text(stringResource(R.string.rescue_ai_open))
-                                        }
-                                    }
+                                        },
+                                    ),
+                                applyTheme = false,
+                            )
+                            // Keep this entry capability-driven so host manifest overrides
+                            // can still disable Repair mode without changing the Operit UI.
+                            val rescueIntentAvailable = remember {
+                                packageManager.resolveActivity(
+                                    RescueActivity.createIntent(this@MainActivity),
+                                    PackageManager.MATCH_DEFAULT_ONLY,
+                                ) != null
+                            }
+                            if (!isHostedMode && rescueIntentAvailable) {
+                                TextButton(
+                                    onClick = {
+                                        startActivity(RescueActivity.createIntent(this@MainActivity))
+                                    },
+                                    modifier =
+                                        Modifier.align(Alignment.BottomEnd)
+                                            .padding(16.dp)
+                                            .zIndex(5f),
+                                ) {
+                                    Text(stringResource(R.string.rescue_ai_open))
                                 }
                             }
+                        }
                     }
                     // 插件加载界面 (带有淡出效果) - 始终在最上层
                     PluginLoadingScreenWithState(

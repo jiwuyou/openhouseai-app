@@ -7,9 +7,15 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
+import com.ai.assistance.operit.rescue.remote.RescueRemoteAssistController
 import com.ai.assistance.operit.rescue.ui.RescueActivity
+import com.ai.assistance.operit.ui.main.OperitHostMode
+import com.ai.assistance.operit.workspace.OperitWorkspaceContent
+import com.ai.assistance.operit.workspace.OperitWorkspaceContentFactory
+import com.ai.assistance.operit.workspace.OperitWorkspaceSpec
 import com.wuxianpi.openhouse.core.HostActionResult
 import com.wuxianpi.openhouse.core.HostCapabilities
 import com.wuxianpi.openhouse.core.ProductRoute
@@ -17,14 +23,22 @@ import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.core.registry.RegistryRepository
 import com.wuxianpi.openhouse.core.registry.SharedPreferencesRegistryCache
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
+import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
+import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import com.wuxianpi.openhouse.feature.AdvancedUiEndpoints
 import com.wuxianpi.openhouse.feature.OpenHouseFeature
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost
+import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
 import com.wuxianpi.openhouse.servicecontrol.OpenHouseFeatureLauncher
 import com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity
 import com.wuxianpi.openhouse.servicecontrol.ServiceControlDependencies
 import com.wuxianpi.openhouse.servicecontrol.ServiceControlFeature
 import com.wuxianpi.openhouse.servicecontrol.ServiceControlRequest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Shared product routing backed by the Termux-embedded host. */
 class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatureLauncher {
@@ -38,6 +52,10 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
             host.legacyRegistrySource(),
         ).load().components
     })
+    private val componentEndpointResolver =
+        TermuxComponentEndpointResolver.fromRuntimeConnection(host::runtimeConnection)
+    private val componentResolutionScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     fun install() {
         registryCatalog.start()
@@ -68,18 +86,66 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         val intent = when (route) {
             ProductRoute.BASIC -> OperitAiLauncher.basicIntent(
                 activity,
-                "com.wuxianpi.openhouse.feature.OpenHouseActivity",
+                OPENHOUSE_ACTIVITY_CLASS,
             )
             ProductRoute.ADVANCED -> OpenHouseFeature.createAdvancedUiIntent(activity)
             ProductRoute.REPAIR -> OperitAiLauncher.repairIntent(activity).apply {
                 putExtra(
                     RescueActivity.EXTRA_HOST_RETURN_ACTIVITY,
-                    "com.termux.app.activities.OpenHouseHomeActivity",
+                    OPENHOUSE_ACTIVITY_CLASS,
                 )
             }
             else -> return
         }
         activity.startActivity(intent)
+    }
+
+    override fun createEmbeddedContent(
+        activity: Activity,
+        destination: WorkspaceDestination,
+    ): WorkspaceContent? {
+        val componentActivity = activity as? ComponentActivity ?: return null
+        val route = (destination as? WorkspaceDestination.Route)?.route ?: return null
+        val hostMode = when (route) {
+            ProductRoute.BASIC -> OperitHostMode.BASIC
+            ProductRoute.REPAIR -> OperitHostMode.RESCUE
+            else -> return null
+        }
+        val returnToDesktop = { componentActivity.onBackPressedDispatcher.onBackPressed() }
+        val content =
+            OperitWorkspaceContentFactory.create(
+                componentActivity,
+                OperitWorkspaceSpec(
+                    hostMode = hostMode,
+                    onReturnToHostMainMenu = returnToDesktop,
+                    onCloseHostedOperit = {
+                        if (hostMode == OperitHostMode.RESCUE) {
+                            RescueRemoteAssistController.getInstance(componentActivity).stopSharing()
+                        }
+                        returnToDesktop()
+                    },
+                    hostedCloseLabel =
+                        if (hostMode == OperitHostMode.RESCUE) {
+                            componentActivity.getString(com.ai.assistance.operit.R.string.rescue_ai_close)
+                        } else {
+                            com.ai.assistance.operit.ui.main.DEFAULT_HOSTED_CLOSE_LABEL
+                        },
+                ),
+            )
+        return content.asOpenHouseWorkspaceContent()
+    }
+
+    override fun resolveComponentWeb(
+        component: OpenHouseComponent,
+        onResolved: (ComponentWebResolution) -> Unit,
+    ) {
+        if (component.entryType != OpenHouseComponent.EntryType.WEBVIEW) {
+            onResolved(ComponentWebResolution.DelegateToHost)
+            return
+        }
+        componentResolutionScope.launch {
+            onResolved(withContext(Dispatchers.IO) { componentEndpointResolver.resolve(component) })
+        }
     }
 
     override fun launchServiceControl(activity: Activity) {
@@ -192,8 +258,24 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
             "com.termux.app.openhouse.files.ui.OpenHouseFilesActivity"
         internal const val PERMISSIONS_ACTIVITY_CLASS =
             "com.termux.app.activities.MaintenanceCenterActivity"
+        internal const val OPENHOUSE_ACTIVITY_CLASS =
+            "com.wuxianpi.openhouse.feature.OpenHouseActivity"
     }
 }
+
+private fun OperitWorkspaceContent.asOpenHouseWorkspaceContent(): WorkspaceContent =
+    object : WorkspaceContent {
+        override val view = this@asOpenHouseWorkspaceContent.view
+
+        override fun onResume() = this@asOpenHouseWorkspaceContent.onResume()
+
+        override fun onPause() = this@asOpenHouseWorkspaceContent.onPause()
+
+        override fun onBackPressed(): Boolean =
+            this@asOpenHouseWorkspaceContent.onBackPressed()
+
+        override fun destroy() = this@asOpenHouseWorkspaceContent.destroy()
+    }
 
 fun serviceControlRequestForDynamicComponent(
     component: OpenHouseComponent,

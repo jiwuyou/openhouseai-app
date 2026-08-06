@@ -13,9 +13,6 @@ class HostModeTest {
         val allowedItems =
             listOf(
                 NavItem.AiChat,
-                NavItem.MemoryBase,
-                NavItem.Packages,
-                NavItem.Workflow,
                 NavItem.Settings,
             )
 
@@ -31,6 +28,9 @@ class HostModeTest {
         val rejectedItems =
             listOf(
                 NavItem.Toolbox,
+                NavItem.MemoryBase,
+                NavItem.Packages,
+                NavItem.Workflow,
                 NavItem.About,
                 NavItem.Help,
                 NavItem.Agreement,

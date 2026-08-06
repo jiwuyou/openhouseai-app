@@ -100,7 +100,11 @@ enum class ChatHistoryDisplayMode {
     CURRENT_CHARACTER_ONLY
 }
 
-class ChatViewModel(private val context: Context) : ViewModel() {
+class ChatViewModel(
+    private val context: Context,
+    private val runtimeSlot: ChatRuntimeSlot =
+        if (RescueActivity.isRescueContext(context)) ChatRuntimeSlot.RESCUE else ChatRuntimeSlot.MAIN,
+) : ViewModel() {
 
     companion object {
         private const val TAG = "ChatViewModel"
@@ -446,13 +450,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     }
 
     private fun initializeDelegates() {
-        // RescueActivity keeps the full Operit UI but uses an Android-local Rust backend.  MAIN
-        // remains unchanged for the normal WuxianPi/Node process.
-        val runtimeSlot = if (RescueActivity.isRescueContext(context)) {
-            ChatRuntimeSlot.RESCUE
-        } else {
-            ChatRuntimeSlot.MAIN
-        }
         mainChatCore = chatRuntimeHolder.getCore(runtimeSlot)
         uiStateDelegate = mainChatCore.getUiStateDelegate()
         tokenStatsDelegate = mainChatCore.getTokenStatisticsDelegate()
@@ -493,7 +490,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         inputProcessingState = this.currentChatInputProcessingState
                 )
 
-        if (RescueActivity.isRescueContext(context)) {
+        if (runtimeSlot == ChatRuntimeSlot.RESCUE) {
             // Rescue sessions never follow the global MAIN current-chat selection.  Bootstrap one
             // namespaced local chat when the rescue UI has no previous session to restore.
             viewModelScope.launch {
@@ -667,7 +664,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     fun switchChat(chatId: String) {
         mainChatCore.switchChat(chatId)
-        if (!RescueActivity.isRescueContext(context)) {
+        if (runtimeSlot != ChatRuntimeSlot.RESCUE) {
             chatRuntimeHolder.syncMainChatSelectionToFloating(chatId)
         }
 

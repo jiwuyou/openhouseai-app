@@ -1,6 +1,8 @@
 package com.wuxianpi.openhouse.feature
 
-import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -23,17 +25,25 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
+import androidx.lifecycle.Lifecycle
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.StartupTarget
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
+import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
+import com.wuxianpi.openhouse.core.workspace.WorkspaceCatalog
+import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import com.wuxianpi.openhouse.feature.desktop.DesktopCatalog
 import com.wuxianpi.openhouse.feature.desktop.DesktopComponent
 import com.wuxianpi.openhouse.feature.desktop.DesktopIconOverride
-import com.wuxianpi.openhouse.feature.desktop.DesktopLayoutEntry
 import com.wuxianpi.openhouse.feature.desktop.DesktopLayoutState
 import com.wuxianpi.openhouse.feature.desktop.DesktopLayoutStore
 import com.wuxianpi.openhouse.feature.desktop.ui.DesktopUiEntry
 import com.wuxianpi.openhouse.feature.desktop.ui.OpenHouseDesktopView
+import com.wuxianpi.openhouse.feature.workspace.EmbeddedWebPagePool
+import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
+import com.wuxianpi.openhouse.feature.workspace.WorkspaceNavigator
+import com.wuxianpi.openhouse.feature.workspace.WorkspaceSidebar
+import com.wuxianpi.openhouse.feature.workspace.WorkspaceWebMountGate
 
 class OpenHouseActivity : AppCompatActivity() {
     private lateinit var drawer: DrawerLayout
@@ -44,9 +54,16 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var layoutStore: DesktopLayoutStore
     private lateinit var startupStore: StartupRouteStore
     private lateinit var residency: DesktopResidencyController
+    private lateinit var workspaceSidebar: WorkspaceSidebar
+    private lateinit var webPagePool: EmbeddedWebPagePool
+    private val workspaceNavigator = WorkspaceNavigator()
+    private val retainedContents = LinkedHashMap<String, WorkspaceContent>()
+    private val webMountGate = WorkspaceWebMountGate()
+    private var activeWorkspaceContent: WorkspaceContent? = null
     private var desktopView: OpenHouseDesktopView? = null
     private var layoutState: DesktopLayoutState? = null
     private var components: List<DesktopComponent> = emptyList()
+    private var registryComponents: List<OpenHouseComponent> = emptyList()
     private var currentRoute = ProductRoute.DESKTOP
     private var bindingPage = false
     private var released = false
@@ -89,8 +106,16 @@ class OpenHouseActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (workspaceNavigator.current is WorkspaceDestination.Component && !webMountGate.isPending) webPagePool.onResume()
+        else activeWorkspaceContent?.onResume()
         // Installation flows and external app setup return here while this Activity stays alive.
         requestDesktopRefresh()
+    }
+
+    override fun onPause() {
+        activeWorkspaceContent?.onPause()
+        webPagePool.onPause()
+        super.onPause()
     }
 
     override fun onStop() {
@@ -100,8 +125,17 @@ class OpenHouseActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         residency.onDestroy()
-        if (isFinishing) releaseDesktopResources()
+        releaseDesktopResources()
         super.onDestroy()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        webPagePool.onTrimMemory(level)
+        retainedContents.values.toSet().forEach { it.onTrimMemory(level) }
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
+            trimRetainedContents(keep = 1)
+        }
+        super.onTrimMemory(level)
     }
 
     @Deprecated("Deprecated in Java")
@@ -114,7 +148,16 @@ class OpenHouseActivity : AppCompatActivity() {
             it.setEditMode(false)
             return
         }
-        if (currentRoute == ProductRoute.SETTINGS || currentRoute == ProductRoute.ABOUT) {
+        if (workspaceNavigator.current is WorkspaceDestination.Component && webMountGate.cancelPendingForBack()) {
+            showDesktop()
+            return
+        }
+        if (webPagePool.canGoBack() && workspaceNavigator.current is WorkspaceDestination.Component) {
+            webPagePool.goBack()
+            return
+        }
+        if (activeWorkspaceContent?.onBackPressed() == true) return
+        if (workspaceNavigator.current != WorkspaceDestination.Desktop) {
             showDesktop()
             return
         }
@@ -126,16 +169,16 @@ class OpenHouseActivity : AppCompatActivity() {
         content = findViewById(R.id.oh_content)
         title = findViewById(R.id.oh_title)
         doneEditing = findViewById(R.id.oh_done_editing)
+        workspaceSidebar = WorkspaceSidebar(this, findViewById(R.id.oh_workspace_apps), ::openWorkspaceDestination)
+        webPagePool = EmbeddedWebPagePool(this, workspaceWebCallbacks())
         findViewById<Button>(R.id.oh_open_drawer).setOnClickListener { drawer.openDrawer(GravityCompat.START) }
+        findViewById<Button>(R.id.oh_top_desktop).setOnClickListener { showDesktop() }
         findViewById<Button>(R.id.oh_close_drawer).setOnClickListener { drawer.closeDrawer(GravityCompat.START) }
         doneEditing.setOnClickListener { desktopView?.setEditMode(false) }
     }
 
     private fun bindNavigation() {
         findViewById<View>(R.id.oh_nav_desktop).setOnClickListener { openRoute(ProductRoute.DESKTOP) }
-        findViewById<View>(R.id.oh_nav_basic).setOnClickListener { openRoute(ProductRoute.BASIC) }
-        findViewById<View>(R.id.oh_nav_advanced).setOnClickListener { openRoute(ProductRoute.ADVANCED) }
-        findViewById<View>(R.id.oh_nav_repair).setOnClickListener { openRoute(ProductRoute.REPAIR) }
         findViewById<View>(R.id.oh_nav_terminal).setOnClickListener {
             drawer.closeDrawer(GravityCompat.START)
             host.launchTerminal(this)
@@ -145,19 +188,15 @@ class OpenHouseActivity : AppCompatActivity() {
             host.launchFiles(this)
         }
         findViewById<View>(R.id.oh_nav_service).setOnClickListener { openRoute(ProductRoute.SERVICE_CONTROL) }
-        findViewById<View>(R.id.oh_nav_permissions).setOnClickListener { openRoute(ProductRoute.PERMISSIONS) }
         findViewById<View>(R.id.oh_nav_settings).setOnClickListener { openRoute(ProductRoute.SETTINGS) }
-        findViewById<View>(R.id.oh_nav_about).setOnClickListener { openRoute(ProductRoute.ABOUT) }
-        val capabilities = host.capabilities()
-        findViewById<View>(R.id.oh_nav_basic).isEnabled = capabilities.supports(ProductRoute.BASIC)
-        findViewById<View>(R.id.oh_nav_advanced).isEnabled = capabilities.supports(ProductRoute.ADVANCED)
-        findViewById<View>(R.id.oh_nav_repair).isEnabled = capabilities.supports(ProductRoute.REPAIR)
-        findViewById<View>(R.id.oh_nav_service).isEnabled = capabilities.supports(ProductRoute.SERVICE_CONTROL)
+        findViewById<View>(R.id.oh_nav_service).isEnabled = host.capabilities().supports(ProductRoute.SERVICE_CONTROL)
     }
 
     private fun refreshComponents() {
-        components = DesktopCatalog.merge(host.desktopComponents(), host.capabilities())
+        registryComponents = host.desktopComponents()
+        components = DesktopCatalog.merge(registryComponents, host.capabilities())
         layoutState = layoutStore.merge(components)
+        workspaceSidebar.bind(WorkspaceCatalog.applications(registryComponents, host.capabilities()))
     }
 
     private fun requestDesktopRefresh(
@@ -168,21 +207,44 @@ class OpenHouseActivity : AppCompatActivity() {
         if (!force && now - lastRegistryRefreshAt < REGISTRY_REFRESH_DEBOUNCE_MS) return
         lastRegistryRefreshAt = now
         host.refreshDesktopComponents {
-            if (isFinishing || isDestroyed) return@refreshDesktopComponents
-            refreshComponents()
-            if (currentRoute == ProductRoute.DESKTOP) bindDesktopState()
-            onComplete?.invoke()
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                refreshComponents()
+                when (val destination = workspaceNavigator.current) {
+                    WorkspaceDestination.Desktop -> bindDesktopState()
+                    is WorkspaceDestination.Component -> {
+                        findWorkspaceComponent(destination.normalizedComponentId)
+                            ?.let(::openWorkspaceComponent) ?: showDesktop()
+                    }
+                    is WorkspaceDestination.Route -> Unit
+                }
+                onComplete?.invoke()
+            }
         }
     }
+
+    private fun openWorkspaceDestination(destination: WorkspaceDestination) {
+        when (destination) {
+            WorkspaceDestination.Desktop -> showDesktop()
+            is WorkspaceDestination.Route -> openRoute(destination.route)
+            is WorkspaceDestination.Component -> {
+                findWorkspaceComponent(destination.normalizedComponentId)
+                    ?.let(::openWorkspaceComponent) ?: showDesktop()
+            }
+        }
+    }
+
+    private fun findWorkspaceComponent(normalizedId: String): OpenHouseComponent? =
+        registryComponents.firstOrNull { component ->
+            component.visible && component.hasEntry() &&
+                WorkspaceDestination.normalizeId(component.id) == normalizedId
+        }
 
     private fun openRoute(route: ProductRoute) {
         drawer.closeDrawer(GravityCompat.START)
         when (route) {
             ProductRoute.DESKTOP -> showDesktop()
-            ProductRoute.BASIC, ProductRoute.ADVANCED, ProductRoute.REPAIR -> {
-                startupStore.recordLast(route)
-                host.launchAiMode(this, route)
-            }
+            ProductRoute.BASIC, ProductRoute.ADVANCED, ProductRoute.REPAIR -> showEmbeddedRoute(route)
             ProductRoute.SERVICE_CONTROL -> host.launchServiceControl(this)
             ProductRoute.PERMISSIONS -> host.launchHostRoute(this, route)
             ProductRoute.SETTINGS -> showSettings()
@@ -192,10 +254,14 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun showDesktop() {
+        webMountGate.cancel()
+        workspaceNavigator.navigate(WorkspaceDestination.Desktop)
         currentRoute = ProductRoute.DESKTOP
         startupStore.recordLast(ProductRoute.DESKTOP)
         title.setText(R.string.oh_desktop)
         doneEditing.visibility = View.GONE
+        pauseWorkspaceContent()
+        webPagePool.onPause()
         content.removeAllViews()
         refreshComponents()
 
@@ -227,6 +293,31 @@ class OpenHouseActivity : AppCompatActivity() {
         requestDesktopRefresh()
     }
 
+    private fun showEmbeddedRoute(route: ProductRoute) {
+        webMountGate.cancel()
+        val destination = WorkspaceDestination.forRoute(route)
+        startupStore.recordLast(route)
+        val existing = retainedContents.remove(destination.stableKey)?.also {
+            retainedContents[destination.stableKey] = it
+        }
+        val workspaceContent = existing ?: host.createEmbeddedContent(this, destination)?.also {
+            retainedContents[destination.stableKey] = it
+        }
+        if (workspaceContent == null) {
+            host.launchAiMode(this, route)
+            return
+        }
+
+        workspaceNavigator.navigate(destination)
+        currentRoute = route
+        title.text = routeTitle(route)
+        doneEditing.visibility = View.GONE
+        desktopView = null
+        webPagePool.onPause()
+        attachWorkspaceContent(workspaceContent)
+        trimRetainedContents(keep = MAX_RETAINED_NATIVE_CONTENTS)
+    }
+
     private fun bindDesktopState(state: DesktopLayoutState? = layoutState) {
         val desktop = desktopView ?: return
         val value = state ?: return
@@ -255,9 +346,59 @@ class OpenHouseActivity : AppCompatActivity() {
             openRoute(route)
         } else if (entry.component.source.entryType == OpenHouseComponent.EntryType.FILES) {
             host.launchFiles(this)
+        } else if (entry.component.source.entryType == OpenHouseComponent.EntryType.WEBVIEW) {
+            openWorkspaceComponent(entry.component.source)
         } else {
             host.launchDynamicComponent(this, entry.component.source)
         }
+    }
+
+    private fun openWorkspaceComponent(component: OpenHouseComponent) {
+        drawer.closeDrawer(GravityCompat.START)
+        if (component.entryType != OpenHouseComponent.EntryType.WEBVIEW) {
+            host.launchDynamicComponent(this, component)
+            return
+        }
+
+        val destination = WorkspaceDestination.Component(component.id)
+        val transition = workspaceNavigator.navigate(destination)
+        currentRoute = ProductRoute.DESKTOP
+        title.text = component.title.ifBlank { component.id }
+        doneEditing.visibility = View.GONE
+        desktopView = null
+        pauseWorkspaceContent()
+        webPagePool.onPause()
+        webMountGate.begin(transition.generation)
+        content.removeAllViews()
+        content.addView(workspaceLoadingView(component.title), matchFrame())
+
+        host.resolveComponentWeb(component) { resolution ->
+            runOnUiThread {
+                if (isFinishing || isDestroyed ||
+                    !workspaceNavigator.isCurrent(transition.generation, destination)
+                ) return@runOnUiThread
+                when (resolution) {
+                    is ComponentWebResolution.Resolved -> showResolvedWebComponent(component, resolution.url, transition.generation)
+                    is ComponentWebResolution.Unavailable -> showResolvedWebComponent(component, "", transition.generation)
+                    ComponentWebResolution.DelegateToHost -> {
+                        webMountGate.complete(transition.generation)
+                        host.launchDynamicComponent(this, component)
+                        showDesktop()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showResolvedWebComponent(component: OpenHouseComponent, resolvedUrl: String, generation: Long) {
+        val destination = WorkspaceDestination.Component(component.id)
+        if (!workspaceNavigator.isCurrent(generation, destination) || !webMountGate.complete(generation)) return
+        title.text = component.title.ifBlank { component.id }
+        content.removeAllViews()
+        val webHost = FrameLayout(this)
+        content.addView(webHost, matchFrame())
+        webPagePool.show(ComponentWebLaunchArgs.from(component, resolvedUrl), webHost)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) webPagePool.onResume()
     }
 
     private fun showEditDialog(appId: String) {
@@ -316,10 +457,14 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun showSettings() {
+        webMountGate.cancel()
+        workspaceNavigator.navigate(WorkspaceDestination.Route(ProductRoute.SETTINGS))
         currentRoute = ProductRoute.SETTINGS
         title.setText(R.string.oh_settings)
         doneEditing.visibility = View.GONE
         desktopView = null
+        pauseWorkspaceContent()
+        webPagePool.onPause()
         content.removeAllViews()
 
         val scroll = ScrollView(this)
@@ -377,10 +522,14 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun showAbout() {
+        webMountGate.cancel()
+        workspaceNavigator.navigate(WorkspaceDestination.Route(ProductRoute.ABOUT))
         currentRoute = ProductRoute.ABOUT
         title.setText(R.string.oh_about)
         doneEditing.visibility = View.GONE
         desktopView = null
+        pauseWorkspaceContent()
+        webPagePool.onPause()
         content.removeAllViews()
 
         val scroll = ScrollView(this)
@@ -442,11 +591,84 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun openExternalUrl(url: String) {
+        openExternalUri(Uri.parse(url))
+    }
+
+    private fun openExternalUri(uri: Uri) {
         try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
         } catch (_: RuntimeException) {
             Toast.makeText(this, R.string.oh_about_open_link_failed, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun workspaceWebCallbacks() = object : EmbeddedWebPagePool.Callbacks {
+        override fun onStateChanged(args: ComponentWebLaunchArgs, state: ComponentWebPageState) {
+            if (workspaceNavigator.current == WorkspaceDestination.Component(args.componentId)) {
+                title.text = args.title
+            }
+        }
+
+        override fun onOpenControl(args: ComponentWebLaunchArgs) {
+            host.launchComponentControl(this@OpenHouseActivity, args)
+        }
+
+        override fun onOpenMaintenance() {
+            host.launchMaintenance(this@OpenHouseActivity)
+        }
+
+        override fun onOpenExternal(uri: Uri) {
+            openExternalUri(uri)
+        }
+
+        override fun onCopyAddress(args: ComponentWebLaunchArgs, address: String) {
+            if (address.isBlank()) {
+                Toast.makeText(this@OpenHouseActivity, R.string.oh_component_web_no_address, Toast.LENGTH_SHORT).show()
+                return
+            }
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+            clipboard.setPrimaryClip(ClipData.newPlainText(args.title, address))
+            Toast.makeText(this@OpenHouseActivity, R.string.oh_address_copied, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun attachWorkspaceContent(workspaceContent: WorkspaceContent) {
+        if (activeWorkspaceContent !== workspaceContent) activeWorkspaceContent?.onPause()
+        activeWorkspaceContent = workspaceContent
+        (workspaceContent.view.parent as? ViewGroup)?.removeView(workspaceContent.view)
+        content.removeAllViews()
+        content.addView(workspaceContent.view, matchFrame())
+        if (hasWindowFocus()) workspaceContent.onResume()
+    }
+
+    private fun pauseWorkspaceContent() {
+        activeWorkspaceContent?.onPause()
+        activeWorkspaceContent = null
+    }
+
+    private fun trimRetainedContents(keep: Int) {
+        while (retainedContents.size > keep.coerceAtLeast(1)) {
+            val oldest = retainedContents.entries.firstOrNull { it.value !== activeWorkspaceContent } ?: return
+            retainedContents.remove(oldest.key)
+            (oldest.value.view.parent as? ViewGroup)?.removeView(oldest.value.view)
+            oldest.value.destroy()
+        }
+    }
+
+    private fun workspaceLoadingView(componentTitle: String): View = TextView(this).apply {
+        text = getString(R.string.oh_workspace_connecting, componentTitle.ifBlank { getString(R.string.oh_app_name) })
+        gravity = Gravity.CENTER
+        setTextColor(ContextCompat.getColor(this@OpenHouseActivity, R.color.oh_text_secondary))
+        textSize = 15f
+    }
+
+    private fun routeTitle(route: ProductRoute): String = when (route) {
+        ProductRoute.BASIC -> getString(R.string.oh_basic)
+        ProductRoute.ADVANCED -> getString(R.string.oh_advanced)
+        ProductRoute.REPAIR -> getString(R.string.oh_repair)
+        ProductRoute.SETTINGS -> getString(R.string.oh_settings)
+        ProductRoute.ABOUT -> getString(R.string.oh_about)
+        else -> getString(R.string.oh_app_name)
     }
 
     private fun releaseDesktopAndFinish() {
@@ -462,6 +684,15 @@ class OpenHouseActivity : AppCompatActivity() {
         desktopView = null
         layoutState = null
         components = emptyList()
+        registryComponents = emptyList()
+        activeWorkspaceContent?.onPause()
+        activeWorkspaceContent = null
+        retainedContents.values.forEach { workspaceContent ->
+            (workspaceContent.view.parent as? ViewGroup)?.removeView(workspaceContent.view)
+            workspaceContent.destroy()
+        }
+        retainedContents.clear()
+        if (::webPagePool.isInitialized) webPagePool.destroy()
         if (::content.isInitialized) content.removeAllViews()
     }
 
@@ -502,9 +733,11 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun matchWrap() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+    private fun matchFrame() = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
         const val REGISTRY_REFRESH_DEBOUNCE_MS = 750L
+        const val MAX_RETAINED_NATIVE_CONTENTS = 2
     }
 }

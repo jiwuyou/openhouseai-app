@@ -45,9 +45,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
-import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
 import com.ai.assistance.operit.rescue.ui.RescueFirstUsePrompt
 import com.ai.assistance.operit.rescue.ui.RescueRemoteAssistDialog
@@ -121,6 +121,7 @@ import com.ai.assistance.operit.plugins.chatview.ChatViewEvent
 import com.ai.assistance.operit.plugins.chatview.ChatViewHookParams
 import com.ai.assistance.operit.plugins.chatview.ChatViewHookPluginRegistry
 import java.util.UUID
+import com.ai.assistance.operit.workspace.LocalOperitWorkspaceIdentity
 
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -143,10 +144,15 @@ fun AIChatScreen(
         onGestureConsumed: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val workspaceIdentity = LocalOperitWorkspaceIdentity.current
     val density = LocalDensity.current
     val colorScheme = MaterialTheme.colorScheme
 // Correctly initialize ViewModel using the viewModel() composable function
-val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(context.applicationContext) }
+val actualViewModel: ChatViewModel =
+    viewModel
+        ?: viewModel(key = workspaceIdentity.chatViewModelKey) {
+            ChatViewModel(context.applicationContext, workspaceIdentity.runtimeSlot)
+        }
 
     // 设置权限系统的颜色方案
     LaunchedEffect(colorScheme) { actualViewModel.setPermissionSystemColorScheme(colorScheme) }
@@ -340,7 +346,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val popupMessage by actualViewModel.popupMessage.collectAsState()
     val chatViewRuntime =
         when {
-            RescueActivity.isRescueContext(context) -> "rescue"
+            workspaceIdentity.runtimeSlot == ChatRuntimeSlot.RESCUE -> "rescue"
             isFloatingMode -> "floating"
             else -> "main"
         }

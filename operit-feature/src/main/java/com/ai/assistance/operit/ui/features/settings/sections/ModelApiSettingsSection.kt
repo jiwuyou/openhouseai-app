@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.VisualTransformation
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.llmprovider.EndpointCompleter
+import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.llmprovider.AIServiceFactory
 import com.ai.assistance.operit.api.chat.llmprovider.ModelDiscoveryCoordinator
@@ -58,7 +59,6 @@ import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.plugins.toolpkg.ToolPkgAiProviderRegistry
 import com.ai.assistance.operit.pi.RescuePiChatEngine
-import com.ai.assistance.operit.rescue.ui.RescueActivity
 import com.ai.assistance.operit.ui.common.input.bringIntoViewOnImeFocus
 import com.ai.assistance.operit.ui.features.settings.DebouncedModelConfigAutoSaveEffect
 import com.ai.assistance.operit.ui.features.settings.ModelConfigSaveCoordinator
@@ -72,6 +72,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.ai.assistance.operit.workspace.LocalOperitWorkspaceIdentity
 
 val TAG = "ModelApiSettings"
 
@@ -94,8 +95,9 @@ fun ModelApiSettingsSection(
         onDraftChanged: (ModelConfigData) -> Unit = {},
         navigateToMnnModelDownload: (() -> Unit)? = null
 ) {
-    val context = LocalContext.current
-    if (!RescueActivity.isRescueContext(context) && !config.usesAndroidLocalModelEngine()) {
+    val isRescueWorkspace =
+        LocalOperitWorkspaceIdentity.current.runtimeSlot == ChatRuntimeSlot.RESCUE
+    if (!isRescueWorkspace && !config.usesAndroidLocalModelEngine()) {
         PiModelSetupSection(
             config = config,
             configManager = configManager,
@@ -128,6 +130,8 @@ private fun LocalModelApiSettingsSection(
         navigateToMnnModelDownload: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val isRescueWorkspace =
+        LocalOperitWorkspaceIdentity.current.runtimeSlot == ChatRuntimeSlot.RESCUE
     val scope = rememberCoroutineScope()
 
     // 区域告警可见性
@@ -208,7 +212,7 @@ private fun LocalModelApiSettingsSection(
     suspend fun persist(state: ApiAutoSaveState) {
         modelApiSettingsSaveMutex.withLock {
             withContext(Dispatchers.IO) {
-                if (!RescueActivity.isRescueContext(context) &&
+                if (!isRescueWorkspace &&
                     state.provider != ApiProviderType.MNN &&
                     state.provider != ApiProviderType.LLAMA_CPP
                 ) {
@@ -297,7 +301,7 @@ private fun LocalModelApiSettingsSection(
             )
             persist(state)
             // Rescue stores this configuration without changing the explicitly selected active ID.
-            if (RescueActivity.isRescueContext(context)) {
+            if (isRescueWorkspace) {
                 configManager.getModelConfig(config.id)?.let { savedConfig ->
                     RescuePiChatEngine.getInstance(context).configureModel(savedConfig)
                 }

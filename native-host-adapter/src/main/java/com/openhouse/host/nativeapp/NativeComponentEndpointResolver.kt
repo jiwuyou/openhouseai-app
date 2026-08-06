@@ -7,6 +7,9 @@ import com.wuxianpi.openhouse.core.service.HttpTransport
 import com.wuxianpi.openhouse.core.service.ServiceAction
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
 import com.wuxianpi.openhouse.core.service.UrlConnectionHttpTransport
+import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
+import com.wuxianpi.openhouse.core.workspace.ServiceBackedComponentEndpointResolver
+import com.wuxianpi.openhouse.core.workspace.ServiceEndpointStatus
 import org.json.JSONObject
 import java.net.URI
 
@@ -35,46 +38,23 @@ internal class NativeComponentEndpointResolver(
     ) : this(lookupEndpoint, { false })
 
     fun resolve(component: OpenHouseComponent): NativeComponentEndpointResult {
-        val serviceIds = serviceIdsFor(component)
-        if (serviceIds.isEmpty()) {
-            return if (component.url.isHttpUrl()) {
-                NativeComponentEndpointResult.Resolved(component.url, null)
-            } else {
-                NativeComponentEndpointResult.Unavailable(
-                    "Component ${component.id} does not define a valid Web URL",
-                )
-            }
+        val resolution =
+            ServiceBackedComponentEndpointResolver(
+                lookupEndpoint = { serviceId ->
+                    lookupEndpoint(serviceId).let { status ->
+                        ServiceEndpointStatus(status.success, status.url, status.message)
+                    }
+                },
+                startService = startService,
+            ).resolve(component)
+        return when (resolution) {
+            is ComponentWebResolution.Resolved ->
+                NativeComponentEndpointResult.Resolved(resolution.url, resolution.serviceId)
+            is ComponentWebResolution.Unavailable ->
+                NativeComponentEndpointResult.Unavailable(resolution.message)
+            ComponentWebResolution.DelegateToHost ->
+                NativeComponentEndpointResult.Unavailable("Component must be opened by the host")
         }
-
-        val failures = mutableListOf<String>()
-        for (serviceId in serviceIds) {
-            var status = runCatching { lookupEndpoint(serviceId) }.getOrElse { error ->
-                failures += "$serviceId: ${error.message ?: error.javaClass.simpleName}"
-                null
-            }
-            if (isUsable(status)) {
-                return NativeComponentEndpointResult.Resolved(status!!.url, serviceId)
-            }
-            val initialMessage = status?.message?.ifBlank { "no published endpoint" } ?: "endpoint lookup failed"
-            if (startService(serviceId)) {
-                for (attempt in 0 until 5) {
-                    if (attempt > 0) Thread.sleep(200)
-                    status = runCatching { lookupEndpoint(serviceId) }.getOrNull()
-                    if (isUsable(status)) break
-                }
-                if (isUsable(status)) {
-                    return NativeComponentEndpointResult.Resolved(status!!.url, serviceId)
-                }
-                failures += "$serviceId: started but ${status?.message?.ifBlank { "endpoint is still unavailable" } ?: "endpoint is still unavailable"}"
-            } else {
-                failures += "$serviceId: $initialMessage"
-            }
-        }
-
-        val detail = failures.joinToString("; ").ifBlank { "no published endpoint" }
-        return NativeComponentEndpointResult.Unavailable(
-            "Component ${component.id} services are unavailable: $detail",
-        )
     }
 
     companion object {
@@ -95,8 +75,6 @@ internal class NativeComponentEndpointResolver(
         }
     }
 
-    private fun isUsable(status: NativeServiceEndpointStatus?): Boolean =
-        status != null && status.success && status.url.isHttpUrl()
 }
 
 internal fun queryServiceEndpoints(

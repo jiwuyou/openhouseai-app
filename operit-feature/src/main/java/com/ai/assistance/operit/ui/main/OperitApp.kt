@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.compose.rememberNavController
@@ -50,6 +51,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
 
 // 为TopAppBar的actions提供CompositionLocal
 // 它允许子组件（如AIChatScreen）向上提供它们的action Composable
@@ -91,6 +95,7 @@ fun OperitApp(
     onReturnToHostMainMenu: () -> Unit = {},
     onCloseHostedOperit: () -> Unit = {},
     hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
+    showHostedLifecycleActions: Boolean = true,
     onShortcutNavHandled: (Long) -> Unit = {},
     onCurrentNavItemChanged: (NavItem) -> Unit = {},
     onRouteNavHandled: (Long) -> Unit = {}
@@ -108,6 +113,7 @@ fun OperitApp(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val appContext = remember(context) { context.applicationContext }
     val packageManager = remember {
         PackageManager.getInstance(context, AIToolHandler.getInstance(context))
@@ -343,18 +349,20 @@ fun OperitApp(
     var networkType by remember { mutableStateOf(context.getString(R.string.not_connected)) }
 
     // Periodically check network status
-    LaunchedEffect(Unit) {
-        while (true) {
-            val snapshot =
-                withContext(Dispatchers.IO) {
-                    NetworkStateSnapshot(
-                        isAvailable = NetworkUtils.isNetworkAvailable(appContext),
-                        type = NetworkUtils.getNetworkType(appContext)
-                    )
-                }
-            isNetworkAvailable = snapshot.isAvailable
-            networkType = snapshot.type
-            delay(10000) // Check every 10 seconds
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                val snapshot =
+                    withContext(Dispatchers.IO) {
+                        NetworkStateSnapshot(
+                            isAvailable = NetworkUtils.isNetworkAvailable(appContext),
+                            type = NetworkUtils.getNetworkType(appContext)
+                        )
+                    }
+                isNetworkAvailable = snapshot.isAvailable
+                networkType = snapshot.type
+                delay(10000) // Check every 10 seconds
+            }
         }
     }
 
@@ -391,37 +399,65 @@ fun OperitApp(
                 packageManager.removeToolPkgRuntimeChangeListener(listener)
             }
         }
-        DisposableEffect(routerState, navigationModel) {
-            AppRouterGateway.install(
-                handler = { routeId, args, source ->
-                    val routeSpec = navigationModel.routesById[routeId] ?: return@install
-                    isNavigatingBack = false
-                    navigationTransitionSource =
-                        if (source == RouteEntrySource.DRAWER) NavigationTransitionSource.DRAWER
-                        else NavigationTransitionSource.DEFAULT
-                    routerState.navigate(routeId = routeId, args = args, source = source, routeSpec = routeSpec)
-                },
-                reset = { routeId, args, source ->
-                    navigationModel.routesById[routeId] ?: return@install
-                    isNavigatingBack = false
-                    navigationTransitionSource =
-                        if (source == RouteEntrySource.DRAWER) NavigationTransitionSource.DRAWER
-                        else NavigationTransitionSource.DEFAULT
-                    routerState.resetTo(
-                        com.ai.assistance.operit.ui.main.navigation.RouteEntry(
+        DisposableEffect(routerState, navigationModel, lifecycleOwner) {
+            var installed = false
+            fun installGateways() {
+                if (installed) return
+                AppRouterGateway.install(
+                    handler = { routeId, args, source ->
+                        val routeSpec = navigationModel.routesById[routeId] ?: return@install
+                        isNavigatingBack = false
+                        navigationTransitionSource =
+                            if (source == RouteEntrySource.DRAWER) NavigationTransitionSource.DRAWER
+                            else NavigationTransitionSource.DEFAULT
+                        routerState.navigate(
                             routeId = routeId,
                             args = args,
-                            source = source
+                            source = source,
+                            routeSpec = routeSpec,
                         )
-                    )
-                }
-            )
-            AppRouteDiscoveryGateway.install {
-                navigationModel.routes
+                    },
+                    reset = { routeId, args, source ->
+                        navigationModel.routesById[routeId] ?: return@install
+                        isNavigatingBack = false
+                        navigationTransitionSource =
+                            if (source == RouteEntrySource.DRAWER) NavigationTransitionSource.DRAWER
+                            else NavigationTransitionSource.DEFAULT
+                        routerState.resetTo(
+                            com.ai.assistance.operit.ui.main.navigation.RouteEntry(
+                                routeId = routeId,
+                                args = args,
+                                source = source,
+                            )
+                        )
+                    },
+                )
+                AppRouteDiscoveryGateway.install { navigationModel.routes }
+                installed = true
             }
-            onDispose {
+
+            fun clearGateways() {
+                if (!installed) return
                 AppRouterGateway.clear()
                 AppRouteDiscoveryGateway.clear()
+                installed = false
+            }
+
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> installGateways()
+                    Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY ->
+                        clearGateways()
+                    else -> Unit
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                installGateways()
+            }
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+                clearGateways()
             }
         }
         CompositionLocalProvider(
@@ -467,6 +503,7 @@ fun OperitApp(
                     onReturnToHostMainMenu = onReturnToHostMainMenu,
                     onCloseHostedOperit = onCloseHostedOperit,
                     hostedCloseLabel = hostedCloseLabel,
+                    showHostedLifecycleActions = showHostedLifecycleActions,
                     sidebarActions = { hostedSidebarActions() },
                     onOpenHostDesktop = onReturnToHostMainMenu,
                     onToggleSidebar = {
@@ -508,6 +545,7 @@ fun OperitApp(
                     onReturnToHostMainMenu = onReturnToHostMainMenu,
                     onCloseHostedOperit = onCloseHostedOperit,
                     hostedCloseLabel = hostedCloseLabel,
+                    showHostedLifecycleActions = showHostedLifecycleActions,
                     sidebarActions = { hostedSidebarActions() },
                     onOpenHostDesktop = onReturnToHostMainMenu,
                     navigateToTokenConfig = ::navigateToTokenConfig,

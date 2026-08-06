@@ -6,6 +6,9 @@ import android.content.Intent
 import com.wuxianpi.openhouse.core.HostCapabilities
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
+import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
+import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
+import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
 
 /** Host integration boundary for the shared OpenHouse display layer. */
 interface OpenHouseFeatureHost {
@@ -42,6 +45,25 @@ interface OpenHouseFeatureHost {
         launchHostRoute(activity, ProductRoute.SETUP)
     }
 
+    /** Resolves a Web component without blocking the main thread. */
+    fun resolveComponentWeb(
+        component: OpenHouseComponent,
+        onResolved: (ComponentWebResolution) -> Unit,
+    ) {
+        if (component.entryType == OpenHouseComponent.EntryType.WEBVIEW && !component.isServiceBacked) {
+            onResolved(ComponentWebResolution.resolved(component.url))
+        } else {
+            onResolved(ComponentWebResolution.DelegateToHost)
+        }
+    }
+
+    /** Returns host content that can be mounted in OpenHouseActivity, or null for legacy launch. */
+    fun createEmbeddedContent(
+        activity: Activity,
+        destination: WorkspaceDestination,
+    ): WorkspaceContent? = null
+
+    /** Compatibility path for old adapters and non-embeddable component types. */
     fun launchDynamicComponent(activity: Activity, component: OpenHouseComponent) = Unit
 
     fun advancedUiEndpoints(): AdvancedUiEndpoints = AdvancedUiEndpoints.defaults()

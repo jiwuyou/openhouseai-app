@@ -138,6 +138,7 @@ fun DrawerContent(
         onScreenSelected: (Screen) -> Unit,
         onNavigationEntrySelected: (NavigationEntrySpec) -> Unit,
         isHostedMode: Boolean = false,
+        showHostedLifecycleActions: Boolean = true,
         hostMode: OperitHostMode = OperitHostMode.STANDALONE,
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
@@ -294,7 +295,7 @@ fun DrawerContent(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                if (isHostedMode) {
+                if (isHostedMode && showHostedLifecycleActions) {
                         CompactNavigationDrawerItem(
                                 icon = Icons.Default.Home,
                                 label = "返回主菜单",
@@ -339,6 +340,7 @@ fun CollapsedDrawerContent(
         onScreenSelected: (Screen) -> Unit,
         onNavigationEntrySelected: (NavigationEntrySpec) -> Unit,
         isHostedMode: Boolean = false,
+        showHostedLifecycleActions: Boolean = true,
         hostMode: OperitHostMode = OperitHostMode.STANDALONE,
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
@@ -391,7 +393,7 @@ fun CollapsedDrawerContent(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (isHostedMode) {
+                if (isHostedMode && showHostedLifecycleActions) {
                         Surface(
                                 modifier =
                                         Modifier.padding(vertical = 8.dp)

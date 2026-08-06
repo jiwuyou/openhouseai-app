@@ -3,6 +3,8 @@ package com.wuxianpi.openhouse.feature
 import android.content.Context
 import android.content.Intent
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
+import com.wuxianpi.openhouse.core.workspace.HttpUrlNormalizer
+import com.wuxianpi.openhouse.core.workspace.WorkspaceCatalog
 
 data class ComponentWebLaunchArgs(
     val componentId: String,
@@ -12,14 +14,15 @@ data class ComponentWebLaunchArgs(
     val controlTitle: String,
     val serviceNames: List<String>,
     val serviceRefs: List<String>,
+    val catalogFingerprint: String = "",
 ) {
     val hasControlEntry: Boolean
         get() = serviceNames.isNotEmpty() || serviceRefs.isNotEmpty()
 
     /** Service-backed components must not silently fall back to a stale manifest port. */
     val loadUrl: String
-        get() = resolvedUrl.trim().ifEmpty {
-            if (hasControlEntry) "" else fallbackUrl.trim()
+        get() = HttpUrlNormalizer.normalize(resolvedUrl).orEmpty().ifEmpty {
+            if (hasControlEntry) "" else HttpUrlNormalizer.normalize(fallbackUrl).orEmpty()
         }
 
     fun createIntent(context: Context): Intent =
@@ -31,6 +34,7 @@ data class ComponentWebLaunchArgs(
             putExtra(EXTRA_CONTROL_TITLE, controlTitle)
             putStringArrayListExtra(EXTRA_SERVICE_NAMES, ArrayList(serviceNames))
             putStringArrayListExtra(EXTRA_SERVICE_REFS, ArrayList(serviceRefs))
+            putExtra(EXTRA_CATALOG_FINGERPRINT, catalogFingerprint)
             addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
 
@@ -42,6 +46,7 @@ data class ComponentWebLaunchArgs(
         internal const val EXTRA_CONTROL_TITLE = "com.wuxianpi.openhouse.feature.COMPONENT_WEB_CONTROL_TITLE"
         internal const val EXTRA_SERVICE_NAMES = "com.wuxianpi.openhouse.feature.COMPONENT_WEB_SERVICE_NAMES"
         internal const val EXTRA_SERVICE_REFS = "com.wuxianpi.openhouse.feature.COMPONENT_WEB_SERVICE_REFS"
+        internal const val EXTRA_CATALOG_FINGERPRINT = "com.wuxianpi.openhouse.feature.COMPONENT_WEB_CATALOG_FINGERPRINT"
 
         @JvmStatic
         fun from(component: OpenHouseComponent, resolvedUrl: String): ComponentWebLaunchArgs =
@@ -53,6 +58,7 @@ data class ComponentWebLaunchArgs(
                 controlTitle = component.controlTitle,
                 serviceNames = component.serviceNames,
                 serviceRefs = component.serviceRefs,
+                catalogFingerprint = WorkspaceCatalog.componentFingerprint(component),
             )
 
         @JvmStatic
@@ -68,6 +74,7 @@ data class ComponentWebLaunchArgs(
                 controlTitle = intent.getStringExtra(EXTRA_CONTROL_TITLE).orEmpty().trim(),
                 serviceNames = intent.getStringArrayListExtra(EXTRA_SERVICE_NAMES).orEmpty(),
                 serviceRefs = intent.getStringArrayListExtra(EXTRA_SERVICE_REFS).orEmpty(),
+                catalogFingerprint = intent.getStringExtra(EXTRA_CATALOG_FINGERPRINT).orEmpty().trim(),
             )
         }
     }

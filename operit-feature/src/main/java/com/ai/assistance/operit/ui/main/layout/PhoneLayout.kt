@@ -80,6 +80,7 @@ fun PhoneLayout(
         onReturnToHostMainMenu: () -> Unit = {},
         onCloseHostedOperit: () -> Unit = {},
         hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
+        showHostedLifecycleActions: Boolean = true,
         sidebarActions: @Composable RowScope.() -> Unit = {},
         onOpenHostDesktop: () -> Unit = {},
         navigateToTokenConfig: () -> Unit,
@@ -247,6 +248,7 @@ fun PhoneLayout(
                         onScreenChange = onScreenChange,
                         onToggleSidebar = { /* Not used in phone layout */},
                         isHostedMode = isHostedMode,
+                        showHostedLifecycleActions = showHostedLifecycleActions,
                         onOpenHostDesktop = onOpenHostDesktop,
                         navigateToTokenConfig = navigateToTokenConfig,
                         canGoBack = canGoBack,
@@ -315,6 +317,7 @@ fun PhoneLayout(
                                 onReturnToHostMainMenu = onReturnToHostMainMenu,
                                 onCloseHostedOperit = onCloseHostedOperit,
                                 hostedCloseLabel = hostedCloseLabel,
+                                showHostedLifecycleActions = showHostedLifecycleActions,
                                 sidebarActions = sidebarActions
                         )
                 }

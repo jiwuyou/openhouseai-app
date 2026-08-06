@@ -34,6 +34,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.llmprovider.ModelConfigConnectionTester
 import com.ai.assistance.operit.data.model.FunctionType
@@ -42,10 +43,9 @@ import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.usesAndroidLocalModelEngine
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
-import com.ai.assistance.operit.data.preferences.ModelConfigStorageScope
 import com.ai.assistance.operit.pi.PiModelSettingsAdapter
 import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
-import com.ai.assistance.operit.rescue.ui.RescueActivity
+import com.ai.assistance.operit.workspace.LocalOperitWorkspaceIdentity
 import com.ai.assistance.operit.ui.features.settings.DebouncedModelConfigAutoSaveEffect
 import com.ai.assistance.operit.ui.features.settings.RegisterModelConfigSaveAction
 import com.ai.assistance.operit.ui.features.settings.rememberModelConfigSaveCoordinator
@@ -149,13 +149,13 @@ fun ModelConfigScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val rescueContext = remember(context) { RescueActivity.isRescueContext(context) }
+    val workspaceIdentity = LocalOperitWorkspaceIdentity.current
+    val rescueContext = workspaceIdentity.runtimeSlot == ChatRuntimeSlot.RESCUE
     val configManager =
-        remember(context, rescueContext) {
+        remember(context, workspaceIdentity.modelConfigStorageScope) {
             ModelConfigManager(
                 context,
-                if (rescueContext) ModelConfigStorageScope.RESCUE
-                else ModelConfigStorageScope.MAIN,
+                workspaceIdentity.modelConfigStorageScope,
             )
         }
     val rescueConfigStore = remember(context) { RescueModelConfigStore(context) }
