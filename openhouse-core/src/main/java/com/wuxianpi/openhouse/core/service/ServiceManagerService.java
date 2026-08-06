@@ -31,9 +31,12 @@ public final class ServiceManagerService {
     static ServiceManagerService fromJson(JSONObject json) {
         JSONObject spec = json.optJSONObject("spec");
         JSONObject service = json.optJSONObject("service");
-        JSONObject source = spec != null ? spec : (service != null ? service : json);
+        JSONObject nestedSpec = service == null ? null : service.optJSONObject("spec");
+        JSONObject source = spec != null ? spec : (nestedSpec != null ? nestedSpec : (service != null ? service : json));
         JSONObject status = json.optJSONObject("status");
-        String id = first(source.optString("id", ""), json.optString("id", ""), source.optString("serviceId", ""));
+        String id = first(service == null ? "" : service.optString("id", ""), source.optString("id", ""),
+            json.optString("id", ""), source.optString("serviceId", ""),
+            status == null ? "" : status.optString("service_id", ""));
         String name = first(source.optString("name", ""), json.optString("name", ""));
         String title = first(source.optString("title", ""), source.optString("label", ""), name, id);
         String provider = first(source.optString("provider", ""), json.optString("provider", ""),

@@ -45,12 +45,23 @@ data class ServiceEndpointStatus(
 )
 
 data class ComponentEndpointRetryPolicy(
-    val attemptsAfterStart: Int = 5,
-    val delayMillis: Long = 200,
+    val attemptsAfterStart: Int = 6,
+    val delayMillis: Long = 250,
+    val maxDelayMillis: Long = 4_000,
 ) {
     init {
         require(attemptsAfterStart >= 0)
         require(delayMillis >= 0)
+        require(maxDelayMillis >= 0)
+    }
+
+    fun delayBeforeAttempt(attempt: Int): Long {
+        if (attempt <= 0 || delayMillis == 0L || maxDelayMillis == 0L) return 0L
+        var value = delayMillis
+        repeat((attempt - 1).coerceAtMost(30)) {
+            value = (value * 2).coerceAtMost(maxDelayMillis)
+        }
+        return value.coerceAtMost(maxDelayMillis)
     }
 }
 
@@ -84,7 +95,7 @@ class ServiceBackedComponentEndpointResolver(
             }
 
             repeat(retryPolicy.attemptsAfterStart) { attempt ->
-                if (attempt > 0) waitBeforeRetry(retryPolicy.delayMillis)
+                retryPolicy.delayBeforeAttempt(attempt).takeIf { it > 0 }?.let(waitBeforeRetry)
                 status = lookup(serviceId, failures = null)
                 normalizedUrl(status)?.let { url ->
                     return ComponentWebResolution.Resolved(url, serviceId)

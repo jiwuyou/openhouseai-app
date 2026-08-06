@@ -7,6 +7,8 @@ import com.wuxianpi.openhouse.core.HostCapabilities
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
+import com.wuxianpi.openhouse.core.workspace.ComponentServiceActionResult
+import com.wuxianpi.openhouse.core.workspace.ComponentServiceSummary
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
 
@@ -19,6 +21,30 @@ interface OpenHouseFeatureHost {
     /** Reloads host-provided desktop components without blocking the caller. */
     fun refreshDesktopComponents(onComplete: () -> Unit = {}) {
         onComplete()
+    }
+
+    /** Loads service-manager state for the supplied registry components off the caller thread. */
+    fun loadComponentServiceStates(
+        components: List<OpenHouseComponent>,
+        onComplete: (Map<String, ComponentServiceSummary>) -> Unit,
+    ) {
+        onComplete(emptyMap())
+    }
+
+    /** Starts or stops every service associated with one component. */
+    fun setComponentServicesRunning(
+        component: OpenHouseComponent,
+        running: Boolean,
+        onComplete: (ComponentServiceActionResult) -> Unit,
+    ) {
+        onComplete(
+            ComponentServiceActionResult(
+                success = false,
+                componentId = component.id,
+                running = running,
+                message = "service control is unavailable",
+            ),
+        )
     }
 
     fun launchHostRoute(activity: Activity, route: ProductRoute) = Unit

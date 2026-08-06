@@ -24,6 +24,9 @@ import com.wuxianpi.openhouse.core.registry.RegistryRepository
 import com.wuxianpi.openhouse.core.registry.SharedPreferencesRegistryCache
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
 import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
+import com.wuxianpi.openhouse.core.workspace.ComponentServiceActionResult
+import com.wuxianpi.openhouse.core.workspace.ComponentServiceController
+import com.wuxianpi.openhouse.core.workspace.ComponentServiceSummary
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import com.wuxianpi.openhouse.feature.AdvancedUiEndpoints
 import com.wuxianpi.openhouse.feature.ComponentWebLaunchArgs
@@ -56,6 +59,8 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     private val operations = NativeOperitHostOperations(appContext)
     private val componentEndpointResolver =
         NativeComponentEndpointResolver.fromRuntimeConnection(host::runtimeConnection)
+    private val componentServiceController =
+        ComponentServiceController { ServiceManagerClient(host.runtimeConnection()) }
     private val componentLaunchScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     fun install() {
@@ -76,6 +81,29 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     override fun refreshDesktopComponents(onComplete: () -> Unit) {
         registryCatalog.refresh {
             mainHandler.post { onComplete() }
+        }
+    }
+
+    override fun loadComponentServiceStates(
+        components: List<OpenHouseComponent>,
+        onComplete: (Map<String, ComponentServiceSummary>) -> Unit,
+    ) {
+        componentLaunchScope.launch {
+            onComplete(withContext(Dispatchers.IO) { componentServiceController.load(components) })
+        }
+    }
+
+    override fun setComponentServicesRunning(
+        component: OpenHouseComponent,
+        running: Boolean,
+        onComplete: (ComponentServiceActionResult) -> Unit,
+    ) {
+        componentLaunchScope.launch {
+            onComplete(
+                withContext(Dispatchers.IO) {
+                    componentServiceController.setRunning(component, running)
+                },
+            )
         }
     }
 

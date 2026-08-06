@@ -12,6 +12,7 @@
         android:orientation="vertical">
 
         <LinearLayout
+            android:id="@+id/oh_top_bar"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:background="@color/oh_panel"
@@ -22,11 +23,11 @@
 
             <Button
                 android:id="@+id/oh_open_drawer"
-                android:layout_width="58dp"
+                android:layout_width="50dp"
                 android:layout_height="42dp"
                 android:background="@drawable/oh_button_background"
                 android:minWidth="0dp"
-                android:text="@string/oh_menu"
+                android:text="@string/oh_sidebar"
                 android:textAllCaps="false"
                 android:textColor="@color/oh_text" />
 
@@ -45,13 +46,69 @@
 
             <Button
                 android:id="@+id/oh_top_desktop"
-                android:layout_width="64dp"
+                android:layout_width="50dp"
                 android:layout_height="42dp"
                 android:background="@drawable/oh_button_background"
                 android:minWidth="0dp"
                 android:text="@string/oh_desktop"
                 android:textAllCaps="false"
                 android:textColor="@color/oh_text" />
+
+            <Button
+                android:id="@+id/oh_top_open_browser"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/oh_button_background"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:minWidth="0dp"
+                android:paddingHorizontal="4dp"
+                android:text="@string/oh_open_in_browser"
+                android:textAllCaps="false"
+                android:textColor="@color/oh_text"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/oh_top_refresh"
+                android:layout_width="46dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_refresh"
+                android:textAllCaps="false"
+                android:textColor="@color/oh_text"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/oh_top_collapse"
+                android:layout_width="46dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_collapse"
+                android:textAllCaps="false"
+                android:textColor="@color/oh_text"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/oh_top_control"
+                android:layout_width="46dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_control"
+                android:textAllCaps="false"
+                android:textColor="@color/oh_text"
+                android:textSize="12sp"
+                android:visibility="gone" />
 
             <Button
                 android:id="@+id/oh_done_editing"
@@ -66,10 +123,29 @@
         </LinearLayout>
 
         <FrameLayout
-            android:id="@+id/oh_content"
+            android:id="@+id/oh_page_host"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="1">
+
+            <FrameLayout
+                android:id="@+id/oh_content"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <ImageButton
+                android:id="@+id/oh_top_bar_bubble"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_gravity="top|end"
+                android:layout_margin="14dp"
+                android:background="@drawable/oh_floating_chrome_background"
+                android:contentDescription="@string/oh_expand_toolbar"
+                android:elevation="8dp"
+                android:padding="13dp"
+                android:src="@drawable/oh_ic_menu"
+                android:visibility="gone" />
+        </FrameLayout>
     </LinearLayout>
 
     <LinearLayout
@@ -125,13 +201,10 @@
                     style="@style/OhDrawerButton"
                     android:text="@string/oh_desktop" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:text="@string/oh_daily_apps"
-                    android:textColor="@color/oh_text_secondary"
-                    android:textSize="12sp" />
+                <Button
+                    android:id="@+id/oh_set_current_home"
+                    style="@style/OhDrawerButton"
+                    android:text="@string/oh_set_current_home" />
 
                 <LinearLayout
                     android:id="@+id/oh_workspace_apps"

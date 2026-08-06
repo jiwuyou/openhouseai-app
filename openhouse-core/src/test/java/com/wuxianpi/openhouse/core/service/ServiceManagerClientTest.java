@@ -30,6 +30,24 @@ public class ServiceManagerClientTest {
         assertEquals("/api/v1/services", transport.requests.get(0).path);
     }
 
+    @Test public void parsesBulkServiceStatuses() {
+        FakeTransport transport = new FakeTransport();
+        transport.responses.add(new HttpResponseSpec(200,
+            "[{\"service\":{\"id\":\"pi-web\",\"spec\":{\"name\":\"web\",\"provider\":\"process\","
+                + "\"tags\":[\"group:ai\"]}},\"status\":{\"service_id\":\"pi-web\","
+                + "\"state\":\"starting\",\"provider\":\"process\",\"pid\":52}}]"));
+
+        ServiceManagerResult result = client(transport).listServiceStatuses();
+
+        assertTrue(result.success);
+        assertEquals(1, result.services.size());
+        assertEquals("pi-web", result.services.get(0).id);
+        assertEquals("web", result.services.get(0).name);
+        assertEquals("starting", result.services.get(0).state);
+        assertEquals("group:ai", result.services.get(0).tags.get(0));
+        assertEquals("/api/v1/services/statuses", transport.requests.get(0).path);
+    }
+
     @Test public void nodeLifecycleActionsUseAuthenticatedHttpPostOnly() {
         FakeTransport transport = new FakeTransport();
         transport.responses.add(new HttpResponseSpec(204, ""));

@@ -2,6 +2,7 @@
 <resources>
     <string name="oh_app_name">OpenHouse</string>
     <string name="oh_menu">菜单</string>
+    <string name="oh_sidebar">侧栏</string>
     <string name="oh_close">关闭</string>
     <string name="oh_desktop">桌面</string>
     <string name="oh_basic">基础模式</string>
@@ -17,6 +18,12 @@
     <string name="oh_daily_apps">日常应用</string>
     <string name="oh_system">系统</string>
     <string name="oh_refresh">刷新</string>
+    <string name="oh_control">控制</string>
+    <string name="oh_collapse">收起</string>
+    <string name="oh_open_in_browser">用浏览器打开</string>
+    <string name="oh_browser_open_failed_copied">无法打开浏览器，地址已复制。</string>
+    <string name="oh_expand_toolbar">展开顶部栏并打开侧栏</string>
+    <string name="oh_set_current_home">设当前页为主页</string>
     <string name="oh_back">返回</string>
     <string name="oh_retry">重试</string>
     <string name="oh_open_host_settings">打开宿主设置</string>

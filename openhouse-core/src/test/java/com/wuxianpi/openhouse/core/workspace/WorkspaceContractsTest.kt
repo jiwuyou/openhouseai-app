@@ -52,6 +52,17 @@ class WorkspaceContractsTest {
     }
 
     @Test
+    fun defaultRetryPolicyUsesBoundedExponentialBackoff() {
+        val policy = ComponentEndpointRetryPolicy()
+
+        assertEquals(
+            listOf(0L, 250L, 500L, 1_000L, 2_000L, 4_000L),
+            (0 until policy.attemptsAfterStart).map(policy::delayBeforeAttempt),
+        )
+        assertEquals(7_750L, (0 until policy.attemptsAfterStart).sumOf(policy::delayBeforeAttempt))
+    }
+
+    @Test
     fun serviceBackedResolverDoesNotUseManifestFallbackWhenServiceIsUnavailable() {
         val component = webComponent("agent", true, serviceName = "agent")
         val resolver = ServiceBackedComponentEndpointResolver(

@@ -9,6 +9,8 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
@@ -32,6 +34,7 @@ import androidx.lifecycle.Lifecycle
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.StartupTarget
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
+import com.wuxianpi.openhouse.core.workspace.ComponentServiceSummary
 import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
 import com.wuxianpi.openhouse.core.workspace.WorkspaceCatalog
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
@@ -45,7 +48,9 @@ import com.wuxianpi.openhouse.feature.desktop.DesktopLayoutState
 import com.wuxianpi.openhouse.feature.desktop.DesktopLayoutStore
 import com.wuxianpi.openhouse.feature.desktop.ui.DesktopUiEntry
 import com.wuxianpi.openhouse.feature.desktop.ui.OpenHouseDesktopView
+import com.wuxianpi.openhouse.feature.workspace.CollapsibleWebToolbarController
 import com.wuxianpi.openhouse.feature.workspace.EmbeddedWebPagePool
+import com.wuxianpi.openhouse.feature.workspace.WorkspacePreferenceStore
 import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
 import com.wuxianpi.openhouse.feature.workspace.WorkspaceNavigator
 import com.wuxianpi.openhouse.feature.workspace.WorkspaceSidebar
@@ -56,15 +61,23 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var content: FrameLayout
     private lateinit var title: TextView
     private lateinit var doneEditing: Button
+    private lateinit var setCurrentHome: Button
+    private lateinit var openBrowser: Button
+    private lateinit var refreshWeb: Button
+    private lateinit var collapseWebToolbar: Button
+    private lateinit var controlWeb: Button
     private lateinit var host: OpenHouseFeatureHost
     private lateinit var layoutStore: DesktopLayoutStore
     private lateinit var startupStore: StartupRouteStore
+    private lateinit var workspacePreferences: WorkspacePreferenceStore
     private lateinit var residency: DesktopResidencyController
     private lateinit var workspaceSidebar: WorkspaceSidebar
     private lateinit var webPagePool: EmbeddedWebPagePool
+    private lateinit var webToolbarController: CollapsibleWebToolbarController
     private val workspaceNavigator = WorkspaceNavigator()
     private val retainedContents = LinkedHashMap<String, WorkspaceContent>()
     private val webMountGate = WorkspaceWebMountGate()
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var activeWorkspaceContent: WorkspaceContent? = null
     private var desktopView: OpenHouseDesktopView? = null
     private var layoutState: DesktopLayoutState? = null
@@ -76,6 +89,14 @@ class OpenHouseActivity : AppCompatActivity() {
     private var lastRegistryRefreshAt = 0L
     private var rescueState = RescueProcessState.NOT_RUNNING
     private var rescueStateReceiverRegistered = false
+    private var componentServiceStates: Map<String, ComponentServiceSummary> = emptyMap()
+    private var pendingServiceActionIds: Set<String> = emptySet()
+    private var drawerVisible = false
+    private var serviceRefreshGeneration = 0L
+
+    private val servicePoll = Runnable {
+        if (drawerVisible) refreshSidebarServiceStates()
+    }
 
     private val rescueStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -91,6 +112,7 @@ class OpenHouseActivity : AppCompatActivity() {
         registerRescueStateReceiver()
         layoutStore = DesktopLayoutStore(this)
         startupStore = StartupRouteStore(this)
+        workspacePreferences = WorkspacePreferenceStore(this)
         residency = DesktopResidencyController(DesktopResidencyController.MainThreadScheduler()) {
             releaseDesktopAndFinish()
         }
@@ -100,28 +122,19 @@ class OpenHouseActivity : AppCompatActivity() {
         showDesktop()
 
         if (savedInstanceState == null) {
-            val explicit = parseRoute(intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_ROUTE))
-            val startup = startupStore.resolve(explicit, host.capabilities())
-            if (startup != ProductRoute.DESKTOP) {
-                content.post { openRoute(startup) }
-            }
-            intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_COMPONENT_ID)
-                ?.takeIf(String::isNotBlank)
-                ?.let { componentId ->
-                    content.post { openWorkspaceDestination(WorkspaceDestination.Component(componentId)) }
-                }
+            content.post(::applyInitialNavigation)
         }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        parseRoute(intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_ROUTE))?.let(::openRoute)
-        intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_COMPONENT_ID)
+        val componentId = intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_COMPONENT_ID)
             ?.takeIf(String::isNotBlank)
-            ?.let { componentId ->
-                openWorkspaceDestination(WorkspaceDestination.Component(componentId))
-            }
+        when {
+            componentId != null -> openComponentAfterRefresh(componentId)
+            else -> parseRoute(intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_ROUTE))?.let(::openRoute)
+        }
         requestDesktopRefresh(force = true)
     }
 
@@ -151,6 +164,7 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(servicePoll)
         if (rescueStateReceiverRegistered) {
             runCatching { unregisterReceiver(rescueStateReceiver) }
             rescueStateReceiverRegistered = false
@@ -200,17 +214,60 @@ class OpenHouseActivity : AppCompatActivity() {
         content = findViewById(R.id.oh_content)
         title = findViewById(R.id.oh_title)
         doneEditing = findViewById(R.id.oh_done_editing)
+        setCurrentHome = findViewById(R.id.oh_set_current_home)
+        openBrowser = findViewById(R.id.oh_top_open_browser)
+        refreshWeb = findViewById(R.id.oh_top_refresh)
+        collapseWebToolbar = findViewById(R.id.oh_top_collapse)
+        controlWeb = findViewById(R.id.oh_top_control)
         workspaceSidebar = WorkspaceSidebar(
             context = this,
             container = findViewById(R.id.oh_workspace_apps),
             onSelected = ::openWorkspaceDestination,
             onCloseRescue = ::requestRescueShutdown,
+            onPinnedChanged = { entry, pinned ->
+                workspacePreferences.setPinned(entry.component, pinned)
+                bindWorkspaceSidebar()
+            },
+            onServiceRunningChanged = { entry, running ->
+                setComponentServicesRunning(entry.component, running)
+            },
         )
         webPagePool = EmbeddedWebPagePool(this, workspaceWebCallbacks())
+        webToolbarController = CollapsibleWebToolbarController(
+            context = this,
+            pageHost = findViewById(R.id.oh_page_host),
+            toolbar = findViewById(R.id.oh_top_bar),
+            bubble = findViewById(R.id.oh_top_bar_bubble),
+        ) {
+            drawer.openDrawer(GravityCompat.START)
+        }
         findViewById<Button>(R.id.oh_open_drawer).setOnClickListener { drawer.openDrawer(GravityCompat.START) }
         findViewById<Button>(R.id.oh_top_desktop).setOnClickListener { showDesktop() }
         findViewById<Button>(R.id.oh_close_drawer).setOnClickListener { drawer.closeDrawer(GravityCompat.START) }
+        setCurrentHome.setOnClickListener { setCurrentDestinationAsHome() }
+        openBrowser.setOnClickListener { openActiveWebInBrowser() }
+        refreshWeb.setOnClickListener { webPagePool.reloadActive() }
+        collapseWebToolbar.setOnClickListener {
+            webToolbarController.collapse()
+            Toast.makeText(this, "顶部栏已收起，点击悬浮按钮可恢复。", Toast.LENGTH_SHORT).show()
+        }
+        controlWeb.setOnClickListener {
+            webPagePool.activeArgs?.let { args -> host.launchComponentControl(this, args) }
+        }
         doneEditing.setOnClickListener { desktopView?.setEditMode(false) }
+        drawer.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerOpened(drawerView: View) {
+                drawerVisible = true
+                updateSetCurrentHomeButton()
+                refreshSidebarServiceStates()
+            }
+
+            override fun onDrawerClosed(drawerView: View) {
+                drawerVisible = false
+                serviceRefreshGeneration++
+                mainHandler.removeCallbacks(servicePoll)
+            }
+        })
     }
 
     private fun bindNavigation() {
@@ -228,14 +285,150 @@ class OpenHouseActivity : AppCompatActivity() {
         findViewById<View>(R.id.oh_nav_service).isEnabled = host.capabilities().supports(ProductRoute.SERVICE_CONTROL)
     }
 
+    private fun applyInitialNavigation() {
+        val explicitComponent = intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_COMPONENT_ID)
+            ?.takeIf(String::isNotBlank)
+        if (explicitComponent != null) {
+            openComponentAfterRefresh(explicitComponent)
+            return
+        }
+        parseRoute(intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_ROUTE))?.let { route ->
+            openRoute(route)
+            return
+        }
+        when (startupStore.selection()) {
+            StartupSelection.Desktop -> Unit
+            is StartupSelection.Route -> openWorkspaceDestination(
+                startupStore.resolveDestination(registryComponents, host.capabilities()),
+            )
+            StartupSelection.Automatic, StartupSelection.LastPage, is StartupSelection.Component ->
+                requestDesktopRefresh(force = true) {
+                    openWorkspaceDestination(
+                        startupStore.resolveDestination(registryComponents, host.capabilities()),
+                    )
+                }
+        }
+    }
+
+    private fun openComponentAfterRefresh(componentId: String) {
+        val destination = runCatching { WorkspaceDestination.Component(componentId) }.getOrNull() ?: return
+        if (findWorkspaceComponent(destination.normalizedComponentId) != null) {
+            openWorkspaceDestination(destination)
+            return
+        }
+        requestDesktopRefresh(force = true) {
+            if (findWorkspaceComponent(destination.normalizedComponentId) != null) {
+                openWorkspaceDestination(destination)
+            } else {
+                showDesktop()
+            }
+        }
+    }
+
     private fun refreshComponents() {
         registryComponents = host.desktopComponents()
         components = DesktopCatalog.merge(registryComponents, host.capabilities())
         layoutState = layoutStore.merge(components)
+        bindWorkspaceSidebar()
+        updateSetCurrentHomeButton()
+    }
+
+    private fun bindWorkspaceSidebar() {
+        val entries = WorkspaceCatalog.applications(registryComponents, host.capabilities())
+        val pinned = entries.asSequence()
+            .filter { workspacePreferences.isPinned(it.component) }
+            .mapTo(linkedSetOf()) { WorkspaceDestination.normalizeId(it.component.id) }
         workspaceSidebar.bind(
-            WorkspaceCatalog.applications(registryComponents, host.capabilities()),
+            entries,
             rescueState,
+            pinned,
+            componentServiceStates,
+            pendingServiceActionIds,
         )
+    }
+
+    private fun refreshSidebarServiceStates() {
+        if (!drawerVisible) return
+        mainHandler.removeCallbacks(servicePoll)
+        val entries = WorkspaceCatalog.applications(registryComponents, host.capabilities())
+        val generation = ++serviceRefreshGeneration
+        host.loadComponentServiceStates(entries.map { it.component }) { loaded ->
+            runOnUiThread {
+                if (!drawerVisible || generation != serviceRefreshGeneration || isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+                componentServiceStates = loaded.entries.associate { (id, summary) ->
+                    WorkspaceDestination.normalizeId(id) to summary
+                }
+                bindWorkspaceSidebar()
+                if (componentServiceStates.values.any { it.state.isTransitioning() }) {
+                    mainHandler.postDelayed(servicePoll, SERVICE_STATE_POLL_MS)
+                }
+            }
+        }
+    }
+
+    private fun setComponentServicesRunning(component: OpenHouseComponent, running: Boolean) {
+        val id = WorkspaceDestination.normalizeId(component.id)
+        if (id in pendingServiceActionIds) return
+        pendingServiceActionIds = pendingServiceActionIds + id
+        bindWorkspaceSidebar()
+        host.setComponentServicesRunning(component, running) { result ->
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                pendingServiceActionIds = pendingServiceActionIds - id
+                Toast.makeText(
+                    this,
+                    if (result.success) {
+                        if (running) "${component.title} 服务已启动。" else "${component.title} 服务已关闭。"
+                    } else {
+                        result.message.ifBlank { "服务操作失败。" }
+                    },
+                    if (result.success) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+                ).show()
+                if (result.success && !running &&
+                    workspaceNavigator.current == WorkspaceDestination.Component(component.id)
+                ) {
+                    webPagePool.reloadActive()
+                }
+                if (drawerVisible) refreshSidebarServiceStates()
+                else if (result.success) componentServiceStates = componentServiceStates - id
+                bindWorkspaceSidebar()
+            }
+        }
+    }
+
+    private fun setCurrentDestinationAsHome() {
+        val destination = workspaceNavigator.current
+        if (!isHomeEligible(destination)) {
+            Toast.makeText(this, "当前页面不能设为主页。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        startupStore.setHomeDestination(destination)
+        updateSetCurrentHomeButton()
+        Toast.makeText(this, "已将当前页面设为主页。", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateSetCurrentHomeButton() {
+        if (!::setCurrentHome.isInitialized || !::startupStore.isInitialized) return
+        val destination = workspaceNavigator.current
+        val eligible = isHomeEligible(destination)
+        val fixedSelection = startupStore.selection() != StartupSelection.LastPage
+        val isCurrent = eligible && fixedSelection &&
+            startupStore.resolveDestination(registryComponents, host.capabilities()) == destination
+        setCurrentHome.isEnabled = eligible && !isCurrent
+        setCurrentHome.alpha = if (setCurrentHome.isEnabled) 1f else 0.55f
+        setCurrentHome.text = when {
+            !eligible -> "当前页面不能设为主页"
+            isCurrent -> "当前页已是主页"
+            else -> getString(R.string.oh_set_current_home)
+        }
+    }
+
+    private fun isHomeEligible(destination: WorkspaceDestination): Boolean = when (destination) {
+        WorkspaceDestination.Desktop -> true
+        is WorkspaceDestination.Component -> findWorkspaceComponent(destination.normalizedComponentId) != null
+        is WorkspaceDestination.Route -> destination.route == ProductRoute.BASIC || destination.route == ProductRoute.ADVANCED
     }
 
     private fun refreshRescueState() {
@@ -276,7 +469,10 @@ class OpenHouseActivity : AppCompatActivity() {
         onComplete: (() -> Unit)? = null,
     ) {
         val now = SystemClock.uptimeMillis()
-        if (!force && now - lastRegistryRefreshAt < REGISTRY_REFRESH_DEBOUNCE_MS) return
+        if (!force && now - lastRegistryRefreshAt < REGISTRY_REFRESH_DEBOUNCE_MS) {
+            onComplete?.invoke()
+            return
+        }
         lastRegistryRefreshAt = now
         host.refreshDesktopComponents {
             runOnUiThread {
@@ -304,6 +500,7 @@ class OpenHouseActivity : AppCompatActivity() {
                     ?.let(::openWorkspaceComponent) ?: showDesktop()
             }
         }
+        updateSetCurrentHomeButton()
     }
 
     private fun findWorkspaceComponent(normalizedId: String): OpenHouseComponent? =
@@ -330,9 +527,10 @@ class OpenHouseActivity : AppCompatActivity() {
         webMountGate.cancel()
         workspaceNavigator.navigate(WorkspaceDestination.Desktop)
         currentRoute = ProductRoute.DESKTOP
-        startupStore.recordLast(ProductRoute.DESKTOP)
+        startupStore.recordLast(WorkspaceDestination.Desktop)
         title.setText(R.string.oh_desktop)
         doneEditing.visibility = View.GONE
+        setWebToolbarMode(false)
         pauseWorkspaceContent()
         webPagePool.onPause()
         content.removeAllViews()
@@ -363,13 +561,14 @@ class OpenHouseActivity : AppCompatActivity() {
             FrameLayout.LayoutParams.WRAP_CONTENT,
         ).apply { gravity = Gravity.TOP })
         bindDesktopState(state)
+        updateSetCurrentHomeButton()
         requestDesktopRefresh()
     }
 
     private fun showEmbeddedRoute(route: ProductRoute) {
         webMountGate.cancel()
         val destination = WorkspaceDestination.forRoute(route)
-        startupStore.recordLast(route)
+        startupStore.recordLast(destination)
         val existing = retainedContents.remove(destination.stableKey)?.also {
             retainedContents[destination.stableKey] = it
         }
@@ -385,10 +584,12 @@ class OpenHouseActivity : AppCompatActivity() {
         currentRoute = route
         title.text = routeTitle(route)
         doneEditing.visibility = View.GONE
+        setWebToolbarMode(false)
         desktopView = null
         webPagePool.onPause()
         attachWorkspaceContent(workspaceContent)
         trimRetainedContents(keep = MAX_RETAINED_NATIVE_CONTENTS)
+        updateSetCurrentHomeButton()
     }
 
     private fun bindDesktopState(state: DesktopLayoutState? = layoutState) {
@@ -435,15 +636,18 @@ class OpenHouseActivity : AppCompatActivity() {
 
         val destination = WorkspaceDestination.Component(component.id)
         val transition = workspaceNavigator.navigate(destination)
+        startupStore.recordLast(destination)
         currentRoute = ProductRoute.DESKTOP
         title.text = component.title.ifBlank { component.id }
         doneEditing.visibility = View.GONE
+        setWebToolbarMode(true)
         desktopView = null
         pauseWorkspaceContent()
         webPagePool.onPause()
         webMountGate.begin(transition.generation)
         content.removeAllViews()
         content.addView(workspaceLoadingView(component.title), matchFrame())
+        updateSetCurrentHomeButton()
 
         host.resolveComponentWeb(component) { resolution ->
             runOnUiThread {
@@ -471,6 +675,7 @@ class OpenHouseActivity : AppCompatActivity() {
         val webHost = FrameLayout(this)
         content.addView(webHost, matchFrame())
         webPagePool.show(ComponentWebLaunchArgs.from(component, resolvedUrl), webHost)
+        updateWebToolbarActions()
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) webPagePool.onResume()
     }
 
@@ -535,6 +740,7 @@ class OpenHouseActivity : AppCompatActivity() {
         currentRoute = ProductRoute.SETTINGS
         title.setText(R.string.oh_settings)
         doneEditing.visibility = View.GONE
+        setWebToolbarMode(false)
         desktopView = null
         pauseWorkspaceContent()
         webPagePool.onPause()
@@ -548,7 +754,17 @@ class OpenHouseActivity : AppCompatActivity() {
         scroll.addView(panel, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         panel.addView(heading("默认打开"))
         val group = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-        val selected = startupStore.target()
+        val selection = startupStore.selection()
+        val selected = when (selection) {
+            StartupSelection.LastPage -> StartupTarget.LAST_PAGE
+            StartupSelection.Desktop -> StartupTarget.DESKTOP
+            is StartupSelection.Route -> when (selection.route) {
+                ProductRoute.BASIC -> StartupTarget.BASIC
+                ProductRoute.ADVANCED -> StartupTarget.ADVANCED
+                else -> null
+            }
+            StartupSelection.Automatic, is StartupSelection.Component -> null
+        }
         StartupTarget.values().forEach { target ->
             group.addView(RadioButton(this).apply {
                 text = when (target) {
@@ -566,6 +782,14 @@ class OpenHouseActivity : AppCompatActivity() {
             (checked?.tag as? StartupTarget)?.let(startupStore::setTarget)
         }
         panel.addView(group, matchWrap())
+        when (selection) {
+            StartupSelection.Automatic -> panel.addView(body("当前由组件清单选择主页；没有可用主页时打开桌面。"))
+            is StartupSelection.Component -> {
+                val component = findWorkspaceComponent(WorkspaceDestination.normalizeId(selection.componentId))
+                panel.addView(body("当前主页：${component?.title?.ifBlank { component.id } ?: selection.componentId}"))
+            }
+            else -> Unit
+        }
 
         panel.addView(heading("桌面驻留").apply { setPadding(0, dp(24), 0, 0) })
         val keepResident = Switch(this).apply {
@@ -592,6 +816,7 @@ class OpenHouseActivity : AppCompatActivity() {
             host.launchHostRoute(this, ProductRoute.SETTINGS)
         })
         content.addView(scroll, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        updateSetCurrentHomeButton()
     }
 
     private fun showAbout() {
@@ -600,6 +825,7 @@ class OpenHouseActivity : AppCompatActivity() {
         currentRoute = ProductRoute.ABOUT
         title.setText(R.string.oh_about)
         doneEditing.visibility = View.GONE
+        setWebToolbarMode(false)
         desktopView = null
         pauseWorkspaceContent()
         webPagePool.onPause()
@@ -626,6 +852,7 @@ class OpenHouseActivity : AppCompatActivity() {
         acknowledgementRepositories().forEach { (name, url) -> panel.addView(linkButton(name, url)) }
 
         content.addView(scroll, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        updateSetCurrentHomeButton()
     }
 
     @Suppress("DEPRECATION")
@@ -675,11 +902,49 @@ class OpenHouseActivity : AppCompatActivity() {
         }
     }
 
+    private fun setWebToolbarMode(enabled: Boolean) {
+        if (!::webToolbarController.isInitialized) return
+        title.visibility = if (enabled) View.GONE else View.VISIBLE
+        openBrowser.visibility = if (enabled) View.VISIBLE else View.GONE
+        refreshWeb.visibility = if (enabled) View.VISIBLE else View.GONE
+        collapseWebToolbar.visibility = if (enabled) View.VISIBLE else View.GONE
+        controlWeb.visibility = if (enabled) View.VISIBLE else View.GONE
+        webToolbarController.setWebMode(enabled)
+        updateWebToolbarActions()
+    }
+
+    private fun updateWebToolbarActions() {
+        if (!::webPagePool.isInitialized || !::openBrowser.isInitialized) return
+        val args = webPagePool.activeArgs
+        val address = webPagePool.activeAddress
+        openBrowser.isEnabled = address.isNotBlank()
+        openBrowser.alpha = if (openBrowser.isEnabled) 1f else 0.45f
+        refreshWeb.isEnabled = args != null
+        controlWeb.isEnabled = args?.hasControlEntry == true
+        controlWeb.alpha = if (controlWeb.isEnabled) 1f else 0.45f
+    }
+
+    private fun openActiveWebInBrowser() {
+        val address = webPagePool.activeAddress
+        if (address.isBlank()) {
+            Toast.makeText(this, R.string.oh_component_web_no_address, Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(address))) }
+            .onFailure {
+                copyAddress(webPagePool.activeArgs?.title.orEmpty().ifBlank { "URL" }, address)
+                Toast.makeText(this, R.string.oh_browser_open_failed_copied, Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun copyAddress(label: String, address: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, address))
+    }
+
     private fun workspaceWebCallbacks() = object : EmbeddedWebPagePool.Callbacks {
         override fun onStateChanged(args: ComponentWebLaunchArgs, state: ComponentWebPageState) {
-            if (workspaceNavigator.current == WorkspaceDestination.Component(args.componentId)) {
-                title.text = args.title
-            }
+            if (workspaceNavigator.current == WorkspaceDestination.Component(args.componentId)) updateWebToolbarActions()
         }
 
         override fun onOpenControl(args: ComponentWebLaunchArgs) {
@@ -811,6 +1076,7 @@ class OpenHouseActivity : AppCompatActivity() {
 
     private companion object {
         const val REGISTRY_REFRESH_DEBOUNCE_MS = 750L
+        const val SERVICE_STATE_POLL_MS = 900L
         const val RESCUE_SHUTDOWN_RECHECK_MS = 1_500L
         const val MAX_RETAINED_NATIVE_CONTENTS = 2
     }

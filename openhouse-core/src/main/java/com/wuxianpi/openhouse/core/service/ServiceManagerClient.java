@@ -55,6 +55,19 @@ public final class ServiceManagerClient implements RegistryRemoteSource {
         } catch (Exception error) { return failed(error, "service list failed"); }
     }
 
+    /** Returns service definitions with their current runtime status in one request. */
+    public ServiceManagerResult listServiceStatuses() {
+        try {
+            HttpResponseSpec response = execute("GET", "/api/v1/services/statuses", true);
+            if (!response.isSuccess()) {
+                return ServiceManagerResult.failure(response.code, response.body, "service statuses failed");
+            }
+            List<ServiceManagerService> services = parseServices(response.body);
+            return ServiceManagerResult.builder(true).code(response.code).body(response.body)
+                .message("loaded " + services.size() + " service statuses").services(services).build();
+        } catch (Exception error) { return failed(error, "service statuses failed"); }
+    }
+
     public ServiceManagerResult getStatus(String serviceId) {
         String id = sanitizeServiceId(serviceId);
         if (id.isEmpty()) return ServiceManagerResult.failure(0, "", "invalid service id");
