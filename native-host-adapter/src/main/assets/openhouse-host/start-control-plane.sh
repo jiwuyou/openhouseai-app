@@ -2,6 +2,7 @@
 set -euo pipefail
 
 for script in \
+  "$HOME/.local/share/openhouseai/control-plane/current/start-control-plane-termux-native.sh" \
   "$HOME/.smallphoneai-bootstrap/apk-assets/maintainer/start-control-plane-termux-native.sh" \
   "$HOME/.local/share/openhouseai/update-resources/current/maintainer/start-control-plane-termux-native.sh"; do
   if [ -r "$script" ]; then

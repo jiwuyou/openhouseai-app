@@ -20,6 +20,8 @@ import com.wuxianpi.openhouse.core.SetupResult;
 import com.wuxianpi.openhouse.core.SetupState;
 import com.wuxianpi.openhouse.core.registry.LegacyRegistrySnapshot;
 import com.wuxianpi.openhouse.core.registry.RegistryManifest;
+import com.wuxianpi.openhouse.core.service.ServiceManagerClient;
+import com.wuxianpi.openhouse.core.service.ServiceManagerResult;
 
 import org.json.JSONObject;
 
@@ -48,6 +50,8 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
     private static final String EXTRA_WORKDIR = "com.termux.RUN_COMMAND_WORKDIR";
     private static final String EXTRA_RUNNER = "com.termux.RUN_COMMAND_RUNNER";
     private static final String EXTRA_LABEL = "com.termux.RUN_COMMAND_COMMAND_LABEL";
+    private static final long CONTROL_PLANE_READY_TIMEOUT_MS = 35_000L;
+    private static final long CONTROL_PLANE_READY_RETRY_DELAY_MS = 750L;
 
     private final Context appContext;
     private final ControlPlaneStarter controlPlaneStarter = new NativeControlPlaneStarter();
@@ -165,14 +169,68 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
 
     private final class NativeControlPlaneStarter implements ControlPlaneStarter {
         @Override public ControlPlaneResult startControlPlane() {
-            return submitTermuxScript("openhouse-host/start-control-plane.sh",
+            ControlPlaneResult staged = stageControlPlaneBundle();
+            if (!staged.isSuccess()) return staged;
+            ControlPlaneResult submitted = submitTermuxScript("openhouse-host/start-control-plane.sh",
                 "Start OpenHouse control plane", ControlPlaneResult.Status.STARTED);
+            if (!submitted.isSuccess()) return submitted;
+            return waitForControlPlane(staged.message);
         }
 
         @Override public ControlPlaneResult stopControlPlane() {
             return submitTermuxScript("openhouse-host/stop-control-plane.sh",
                 "Stop OpenHouse control plane", ControlPlaneResult.Status.STOPPED);
         }
+    }
+
+    private ControlPlaneResult stageControlPlaneBundle() {
+        if (termuxHomeTree() == null) {
+            return new ControlPlaneResult(ControlPlaneResult.Status.USER_ACTION_REQUIRED,
+                "Termux Home access is required to stage the OpenHouse control-plane bundle");
+        }
+        try {
+            ControlPlaneBundleStageResult staged = new NativeTermuxHomeRepository(appContext)
+                .stageControlPlaneBundle();
+            return new ControlPlaneResult(ControlPlaneResult.Status.STARTED,
+                "OpenHouse control-plane bundle " + staged.getVersion()
+                    + " staged (" + staged.getTotalBytes() + " bytes)");
+        } catch (Exception error) {
+            return new ControlPlaneResult(ControlPlaneResult.Status.FAILED,
+                "Unable to stage OpenHouse control-plane bundle: " + safeMessage(error));
+        }
+    }
+
+    private ControlPlaneResult waitForControlPlane(String stagedMessage) {
+        long deadline = System.currentTimeMillis() + CONTROL_PLANE_READY_TIMEOUT_MS;
+        String latestError = "service-manager did not become ready";
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                ServiceManagerClient client = new ServiceManagerClient(runtimeConnection());
+                ServiceManagerResult health = client.healthCheck();
+                if (health.success) {
+                    ServiceManagerResult services = client.listServices();
+                    if (services.success) {
+                        return new ControlPlaneResult(ControlPlaneResult.Status.STARTED,
+                            stagedMessage + "; service-manager is ready");
+                    }
+                    latestError = services.message;
+                } else {
+                    latestError = health.message;
+                }
+            } catch (Exception error) {
+                latestError = safeMessage(error);
+            }
+            try {
+                Thread.sleep(CONTROL_PLANE_READY_RETRY_DELAY_MS);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                return new ControlPlaneResult(ControlPlaneResult.Status.FAILED,
+                    "Interrupted while waiting for service-manager readiness");
+            }
+        }
+        return new ControlPlaneResult(ControlPlaneResult.Status.FAILED,
+            stagedMessage + "; Termux accepted the start command but service-manager was not ready: "
+                + latestError + ". Run OpenHouse control-plane diagnostics in Repair mode.");
     }
 
     private ControlPlaneResult submitTermuxScript(String assetPath, String label,

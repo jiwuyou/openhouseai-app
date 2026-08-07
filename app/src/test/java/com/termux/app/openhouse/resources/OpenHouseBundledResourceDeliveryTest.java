@@ -371,6 +371,10 @@ public class OpenHouseBundledResourceDeliveryTest {
         files.put("smallphoneai/bootstrap/scripts/60-start-smallphone.sh", bytes("start"));
         files.put("maintainer/install-runtime-components.sh", bytes("maintainer"));
         files.put("maintainer/repair-smallphone.sh", bytes("repair"));
+        files.put("maintainer/start-control-plane-termux-native.sh", bytes("control-start"));
+        files.put("maintainer/repair-control-plane-termux-native.sh", bytes("control-repair"));
+        files.put("maintainer/inspect-control-plane-termux-native.sh", bytes("control-inspect"));
+        files.put("maintainer/control-plane-manifest.json", bytes("control-manifest"));
         files.put("openhouse/scripts-public/check-ai-tools.sh", bytes("public"));
         files.put("openhouse/product-payloads/manifest.json", bytes("manifest"));
         files.put("openhouse/product-payloads/payload-manifest.json", bytes("payload manifest"));

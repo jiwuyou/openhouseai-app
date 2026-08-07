@@ -66,6 +66,10 @@ public final class OpenHouseBundledResourceDelivery {
         "bootstrap/scripts/50-install-runtime-components.sh",
         "bootstrap/scripts/60-start-smallphone.sh",
         "maintainer/install-runtime-components.sh",
+        "maintainer/start-control-plane-termux-native.sh",
+        "maintainer/repair-control-plane-termux-native.sh",
+        "maintainer/inspect-control-plane-termux-native.sh",
+        "maintainer/control-plane-manifest.json",
         "product-payloads/manifest.json",
         "product-payloads/payload-manifest.json",
         "product-payloads/runtime-aarch64.tgz"

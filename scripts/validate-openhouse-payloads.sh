@@ -1114,3 +1114,4 @@ fi
 if [[ -f "$REPO_DIR/distribution/market-payloads/catalog.json" ]]; then
   "$REPO_DIR/scripts/validate-market-payloads.sh"
 fi
+"$REPO_DIR/scripts/validate-control-plane-bundle.sh"
