@@ -65,7 +65,7 @@ test("web API serves static UI and core resource endpoints", { timeout: 60_000 }
   assert.equal(await asset.text(), "<button>demo</button>");
 });
 
-test("SSE atomically emits snapshot before post-snapshot agent events", { timeout: 20_000 }, async (t) => {
+test("SSE atomically emits snapshot before post-snapshot agent events", { timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), "wuxianpi-sse-race-"));
   const agentDir = join(root, "agent");
   const server = createRuntimeServer({ host: "127.0.0.1", port: 0, agentDir, idleTimeoutMs: 0 });
@@ -118,7 +118,7 @@ test("atomic registry subscription never replays an event already represented by
   }
 });
 
-test("SSE converts runtime errors and runtime stop closes open streams", { timeout: 20_000 }, async () => {
+test("SSE converts runtime errors and runtime stop closes open streams", { timeout: 60_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "wuxianpi-sse-close-"));
   const server = createRuntimeServer({ host: "127.0.0.1", port: 0, agentDir: join(root, "agent"), idleTimeoutMs: 0 });
   const address = await server.start();

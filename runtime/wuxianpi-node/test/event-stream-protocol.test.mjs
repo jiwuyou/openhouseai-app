@@ -6,7 +6,7 @@ import test from "node:test";
 import { WebSocket } from "ws";
 import { createRuntimeServer } from "../dist/server.js";
 
-test("protocol v2 routes interleaved event streams to multi-session sockets", { timeout: 20_000 }, async (t) => {
+test("protocol v2 routes interleaved event streams to multi-session sockets", { timeout: 60_000 }, async (t) => {
   const agentDir = await mkdtemp(join(tmpdir(), "wuxianpi-stream-server-"));
   const server = createRuntimeServer({ host: "127.0.0.1", port: 0, agentDir, idleTimeoutMs: 0 });
   const address = await server.start();

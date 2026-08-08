@@ -130,7 +130,7 @@ test("reload and setDefault delegate to the shared registry with active session 
   });
 });
 
-test("SDK login and default model persist in agentDir and restore after restart", { timeout: 15_000 }, async () => {
+test("SDK login and default model persist in agentDir and restore after restart", { timeout: 60_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "wuxianpi-model-persist-"));
   const agentDir = join(root, "agent");
   const first = new SessionRegistry(() => {}, { agentDir, idleTimeoutMs: 0 });

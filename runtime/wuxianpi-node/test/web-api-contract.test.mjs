@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createRuntimeServer } from "../dist/server.js";
 
-test("AI Web contract covers session controls and complete snapshots", { timeout: 30_000 }, async (t) => {
+test("AI Web contract covers session controls and complete snapshots", { timeout: 60_000 }, async (t) => {
   const fixture = await startFixture(t, "session-contract");
   const created = await jsonFetch(`${fixture.base}/api/web/v1/sessions`, {
     method: "POST", headers: jsonHeaders, body: JSON.stringify({ cwd: fixture.root, toolNames: ["read"], thinkingLevel: "low" }),

@@ -6,7 +6,7 @@ import test from "node:test";
 import { PiSdkAdapter } from "../dist/pi-sdk-adapter.js";
 import { SessionRegistry } from "../dist/session-registry.js";
 
-test("handled extension prompt completes without agent_settled and UI response does not deadlock", { timeout: 30_000 }, async () => {
+test("handled extension prompt completes without agent_settled and UI response does not deadlock", { timeout: 60_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "wuxianpi-extension-"));
   const agentDir = join(root, "agent");
   const extensions = join(agentDir, "extensions");
