@@ -17,7 +17,9 @@ android {
 
     compileSdkVersion project.properties.compileSdkVersion.toInteger()
     ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
-    def appVersionName = System.getenv("TERMUX_APP_VERSION_NAME") ?: ""
+    def appVersionName = System.getenv("OPENHOUSE_APK_VERSION_NAME") ?: ""
+    def appVersionCode = (System.getenv("OPENHOUSE_APK_VERSION_CODE") ?: project.properties.openhouseVersionCode).toInteger()
+    def canonicalVersionName = project.properties.openhouseVersionName.toString()
     def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
     def splitAPKsForDebugBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1"
     def splitAPKsForReleaseBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS") ?: "1"
@@ -47,8 +49,8 @@ android {
         applicationId "com.termux"
         minSdkVersion project.properties.minSdkVersion.toInteger()
         targetSdkVersion project.properties.targetSdkVersion.toInteger()
-        versionCode 126
-        versionName "0.118.108"
+        versionCode appVersionCode
+        versionName canonicalVersionName
 
         if (appVersionName) versionName = appVersionName
         validateVersionName(versionName)

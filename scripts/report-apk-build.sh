@@ -23,6 +23,7 @@ aapt="$(find_build_tool aapt)"
   || { printf 'Android build tools aapt/apksigner/zipalign are required\n' >&2; exit 2; }
 
 cd "$repo_dir"
+"$repo_dir/scripts/validate-apk-version-contract.sh"
 git_commit="$(git rev-parse HEAD)"
 [[ -z "$(git status --porcelain --untracked-files=normal)" ]] \
   || { printf 'Refusing to report APK from a dirty worktree\n' >&2; exit 1; }

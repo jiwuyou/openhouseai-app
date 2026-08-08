@@ -42,6 +42,7 @@ service_starter_path = os.path.abspath(sys.argv[9])
 app_build_gradle_path = os.path.abspath(sys.argv[10])
 termux_package_delegate_path = os.path.abspath(sys.argv[11])
 termux_package_bootstrap_path = os.path.abspath(sys.argv[12])
+repo_dir = os.path.dirname(os.path.dirname(app_build_gradle_path))
 manifest_path = os.path.join(payload_dir, "manifest.json")
 payload_manifest_path = os.path.join(payload_dir, "payload-manifest.json")
 native_runtime_asset_path = os.path.join(
@@ -94,19 +95,42 @@ def validate_service_control_contract():
 
 def validate_release_upgrade_contract():
     try:
+        with open(os.path.join(repo_dir, "gradle.properties"), "r", encoding="utf-8") as handle:
+            properties = handle.read()
+    except Exception as exc:
+        fail(f"cannot read canonical APK version source: {exc}")
+        properties = ""
+    canonical_code = re.search(r"^openhouseVersionCode=(\d+)\s*$", properties, re.MULTILINE)
+    canonical_name = re.search(r"^openhouseVersionName=([^\s]+)\s*$", properties, re.MULTILINE)
+    if not canonical_code or not canonical_name:
+        fail("gradle.properties must define openhouseVersionCode and openhouseVersionName")
+
+    try:
         with open(app_build_gradle_path, "r", encoding="utf-8") as handle:
             build_gradle = handle.read()
     except Exception as exc:
         fail(f"cannot read app release version contract: {exc}")
         return
-    code_match = re.search(r"^\s*versionCode\s+(\d+)\s*$", build_gradle, re.MULTILINE)
-    name_match = re.search(r'^\s*versionName\s+"([^"]+)"\s*$', build_gradle, re.MULTILINE)
-    if not code_match or int(code_match.group(1)) < 126:
-        fail("All-in-One versionCode must be at least 126 so the Node SDK APK stages fresh assets")
-    if not name_match or name_match.group(1) == "0.118.106":
-        fail("All-in-One versionName must not remain 0.118.106 after the first-install repair")
-    elif name_match.group(1) != "0.118.108":
-        fail(f"All-in-One Node SDK release versionName must be 0.118.108, got {name_match.group(1)!r}")
+    if canonical_code and int(canonical_code.group(1)) < 126:
+        fail("canonical APK versionCode must be at least 126")
+    if canonical_name and canonical_name.group(1) == "0.118.106":
+        fail("canonical APK versionName must not remain 0.118.106")
+    if canonical_code and canonical_name:
+        native_path = os.path.join(repo_dir, "native-app", "build.gradle")
+        try:
+            with open(native_path, "r", encoding="utf-8") as handle:
+                native_gradle = handle.read()
+        except Exception as exc:
+            fail(f"cannot read Native APK version contract: {exc}")
+            native_gradle = ""
+        if "project.properties.openhouseVersionCode" not in native_gradle:
+            fail("Native APK must read the canonical openhouseVersionCode")
+        if "project.properties.openhouseVersionName" not in native_gradle:
+            fail("Native APK must read the canonical openhouseVersionName")
+        if "project.properties.openhouseVersionCode" not in build_gradle:
+            fail("All-in-One APK must read the canonical openhouseVersionCode")
+        if "project.properties.openhouseVersionName" not in build_gradle:
+            fail("All-in-One APK must read the canonical openhouseVersionName")
 
 
 def validate_pi_dynamic_registration_contract():

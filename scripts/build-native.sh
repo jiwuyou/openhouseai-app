@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+"$repo_dir/scripts/validate-apk-version-contract.sh"
 "$repo_dir/scripts/validate-product-baseline.sh"
 [[ "${SKIP_RUNTIME_BUILD:-0}" == "1" ]] || "$repo_dir/scripts/build-pi-node-payload.sh"
 "$repo_dir/scripts/generate-native-install-resources.sh"
