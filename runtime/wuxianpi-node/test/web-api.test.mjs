@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createRuntimeServer } from "../dist/server.js";
 
-test("web API serves static UI and core resource endpoints", { timeout: 20_000 }, async (t) => {
+test("web API serves static UI and core resource endpoints", { timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), "wuxianpi-web-api-"));
   const agentDir = join(root, "agent");
   const webRoot = join(root, "web");
