@@ -12,14 +12,19 @@ ext {
     packageVariant = System.getenv("TERMUX_PACKAGE_VARIANT") ?: "apt-android-7" // Default: "apt-android-7"
 }
 
+def canonicalVersionCode = rootProject.findProperty("openhouseVersionCode")?.toString()
+def canonicalVersionName = rootProject.findProperty("openhouseVersionName")?.toString()
+if (!canonicalVersionCode || !canonicalVersionName) {
+    throw new GradleException("Missing canonical APK version in root gradle.properties")
+}
+
 android {
     namespace "com.termux"
 
     compileSdkVersion project.properties.compileSdkVersion.toInteger()
     ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
     def appVersionName = System.getenv("OPENHOUSE_APK_VERSION_NAME") ?: ""
-    def appVersionCode = (System.getenv("OPENHOUSE_APK_VERSION_CODE") ?: project.properties.openhouseVersionCode).toInteger()
-    def canonicalVersionName = project.properties.openhouseVersionName.toString()
+    def appVersionCode = (System.getenv("OPENHOUSE_APK_VERSION_CODE") ?: canonicalVersionCode).toInteger()
     def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
     def splitAPKsForDebugBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1"
     def splitAPKsForReleaseBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS") ?: "1"

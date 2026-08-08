@@ -22,19 +22,19 @@ version_name="$(sed -n 's/^openhouseVersionName=\([^[:space:]]*\)$/\1/p' "$prope
   exit 1
 }
 
-grep -Fq 'project.properties.openhouseVersionCode' "$app_gradle" || {
+grep -Fq 'rootProject.findProperty("openhouseVersionCode")' "$app_gradle" || {
   printf 'All-in-One build.gradle does not read the canonical versionCode\n' >&2
   exit 1
 }
-grep -Fq 'project.properties.openhouseVersionName' "$app_gradle" || {
+grep -Fq 'rootProject.findProperty("openhouseVersionName")' "$app_gradle" || {
   printf 'All-in-One build.gradle does not read the canonical versionName\n' >&2
   exit 1
 }
-grep -Fq 'project.properties.openhouseVersionCode' "$native_gradle" || {
+grep -Fq 'rootProject.findProperty("openhouseVersionCode")' "$native_gradle" || {
   printf 'Native build.gradle does not read the canonical versionCode\n' >&2
   exit 1
 }
-grep -Fq 'project.properties.openhouseVersionName' "$native_gradle" || {
+grep -Fq 'rootProject.findProperty("openhouseVersionName")' "$native_gradle" || {
   printf 'Native build.gradle does not read the canonical versionName\n' >&2
   exit 1
 }

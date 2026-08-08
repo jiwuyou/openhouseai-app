@@ -66,6 +66,9 @@
     {
       "id": "pi-agent",
       "archive": "runtime-aarch64.tgz",
+      "targetDir": "pi-runtime",
+      "compression": "gzip",
+      "abi": "arm64-v8a",
       "sha256": "11ca8076f74552f96f48b96a16d1bb77b8e831a0ef1ba9008e3e7eb52478d7d8",
       "size": 31639175,
       "platform": "termux-android-arm64",
@@ -85,10 +88,7 @@
         "nativeJsonlSessions": true,
         "staticWebUi": true,
         "uiMetadata": true
-      },
-      "targetDir": "pi-runtime",
-      "compression": "gzip",
-      "abi": "arm64-v8a"
+      }
     },
     {
       "id": "wuyou",

@@ -123,13 +123,13 @@ def validate_release_upgrade_contract():
         except Exception as exc:
             fail(f"cannot read Native APK version contract: {exc}")
             native_gradle = ""
-        if "project.properties.openhouseVersionCode" not in native_gradle:
+        if 'rootProject.findProperty("openhouseVersionCode")' not in native_gradle:
             fail("Native APK must read the canonical openhouseVersionCode")
-        if "project.properties.openhouseVersionName" not in native_gradle:
+        if 'rootProject.findProperty("openhouseVersionName")' not in native_gradle:
             fail("Native APK must read the canonical openhouseVersionName")
-        if "project.properties.openhouseVersionCode" not in build_gradle:
+        if 'rootProject.findProperty("openhouseVersionCode")' not in build_gradle:
             fail("All-in-One APK must read the canonical openhouseVersionCode")
-        if "project.properties.openhouseVersionName" not in build_gradle:
+        if 'rootProject.findProperty("openhouseVersionName")' not in build_gradle:
             fail("All-in-One APK must read the canonical openhouseVersionName")
 
 
@@ -421,6 +421,7 @@ def validate_archive(entry, source):
 def compare_entries(left, right, component_id):
     for field in (
         "archive",
+        "targetDir",
         "compression",
         "abi",
         "sha256",
@@ -981,6 +982,8 @@ def validate_native_runtime_asset(manifest, payload_manifest):
         return
     if left.get("abi") != "arm64-v8a" or left.get("applicationId") != "com.wuxianpi":
         fail("nativeRuntimeAsset must target arm64-v8a and com.wuxianpi")
+    if left.get("compression") != "gzip":
+        fail("nativeRuntimeAsset must declare gzip compression")
     if not os.path.isfile(native_runtime_asset_path):
         fail(f"Native runtime asset is missing: {native_runtime_asset_path}")
         return

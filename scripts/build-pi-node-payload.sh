@@ -206,7 +206,8 @@ for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloa
     doc = json.loads(path.read_text(encoding="utf-8"))
     entry = next(item for item in doc[key] if item.get("id") == "pi-agent")
     entry.clear(); entry.update({
-        "id": "pi-agent", "archive": archive.name, "compression": "gzip", "abi": "arm64-v8a",
+        "id": "pi-agent", "archive": archive.name, "targetDir": "pi-runtime",
+        "compression": "gzip", "abi": "arm64-v8a",
         "sha256": sha, "size": size,
         "platform": "termux-android-arm64", "version": "0.1.0+pi.0.80.10",
         "sourceRepo": "https://github.com/earendil-works/pi.git",
@@ -216,8 +217,7 @@ for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloa
         "provides": {"piSdkEmbedded": True, "webSocket": True, "nativeJsonlSessions": True,
                      "staticWebUi": True, "uiMetadata": True},
     })
-    if key == "components": entry["targetDir"] = "pi-runtime"
-    doc["nativeRuntimeAsset"] = {"archive": native_asset.name, "sha256": asset_sha,
+    doc["nativeRuntimeAsset"] = {"archive": native_asset.name, "compression": "gzip", "sha256": asset_sha,
         "size": asset_size, "abi": "arm64-v8a", "applicationId": "com.wuxianpi"}
     path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY

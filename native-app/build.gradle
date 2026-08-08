@@ -3,6 +3,14 @@ plugins {
     id "org.jetbrains.kotlin.android"
 }
 
+def canonicalVersionCode = rootProject.findProperty("openhouseVersionCode")?.toString()
+def canonicalVersionName = rootProject.findProperty("openhouseVersionName")?.toString()
+if (!canonicalVersionCode || !canonicalVersionName) {
+    throw new GradleException("Missing canonical APK version in root gradle.properties")
+}
+def nativeVersionCode = (System.getenv("OPENHOUSE_APK_VERSION_CODE") ?: canonicalVersionCode).toInteger()
+def nativeVersionName = (System.getenv("OPENHOUSE_APK_VERSION_NAME") ?: canonicalVersionName).toString()
+
 android {
     namespace "com.wuxianpi"
     compileSdkVersion 36
@@ -11,8 +19,8 @@ android {
         applicationId "com.wuxianpi"
         minSdkVersion 26
         targetSdkVersion 28
-        versionCode (System.getenv("OPENHOUSE_APK_VERSION_CODE") ?: project.properties.openhouseVersionCode).toInteger()
-        versionName (System.getenv("OPENHOUSE_APK_VERSION_NAME") ?: project.properties.openhouseVersionName).toString()
+        versionCode nativeVersionCode
+        versionName nativeVersionName
         ndk {
             abiFilters "arm64-v8a"
         }
