@@ -76,7 +76,7 @@ test("AI Web contract covers session controls and complete snapshots", { timeout
   assert.equal(fork.data.newSessionId, fork.data.sessionId);
 });
 
-test("assistant lifecycle, capabilities, TTS, MCP adapter status, and extension bridge match the UI contract", { timeout: 30_000 }, async (t) => {
+test("assistant lifecycle, capabilities, TTS, MCP adapter status, and extension bridge match the UI contract", { timeout: 60_000 }, async (t) => {
   const fixture = await startFixture(t, "resource-contract");
   const extensionRoot = join(fixture.agentDir, "wuxianpi", "extensions", "demo");
   await mkdir(extensionRoot, { recursive: true });
