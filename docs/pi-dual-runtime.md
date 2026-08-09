@@ -85,10 +85,12 @@ Installation stages into a temporary directory and then replaces runtime code
 without touching user Pi state. Re-running the installer repairs an interrupted
 or partially extracted runtime.
 
-Native embeds the same runtime archive under
-`native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz` and exposes a
-one-line Termux deployment flow. All-in-One installs the equivalent payload
-from APK assets and registers it through service-manager.
+Native and All-in-One embed the same five-resource `openhouse-core-stack` set.
+Native stores the canonical archives under
+`native-app/src/main/assets/openhouse-resources-v2/`; All-in-One stores the same
+bytes under `app/src/main/assets/openhouse/product-payloads/`. The resource
+updater compares receipts and SHA-256 values before reusing APK assets or
+downloading a changed resource, then registers services through service-manager.
 
 ## Verification
 

@@ -20,6 +20,7 @@ SETUP_NODE_DIST_MIRROR="auto"
 SETUP_NPM_REGISTRY="auto"
 SETUP_RUNTIME_ARCHIVE=""
 SETUP_RUNTIME_ARCHIVE_EXPLICIT=0
+SETUP_APK_VERSION_CODE="${OPENHOUSEAI_APK_VERSION_CODE:-}"
 
 log() {
   printf '[WuxianPi Setup] %s\n' "$*"
@@ -335,17 +336,15 @@ run_core_install() {
   run_bootstrap termux-packages
   run_bootstrap termux-node
 
-  write_state running service-manager '正在安装并启动 service-manager'
-  SMALLPHONEAI_COMPONENT_TARGETS=service-manager \
-    SMALLPHONEAI_COMPONENT_ACTION=install-register \
-    SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
-    run_bootstrap components
+  local resource_updater="$TERMUX_HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh"
+  [ -x "$resource_updater" ] || {
+    log "缺少资源集合更新器：$resource_updater"
+    return 1
+  }
+  write_state running resource-set '正在收敛 OpenHouse 五个核心资源'
+  OPENHOUSEAI_APK_VERSION_CODE="$(resolve_apk_version_code)" \
+    "$resource_updater" apply
 
-  write_state running yuanshengwuxianpi '正在安装并注册 WuxianPi 按需服务'
-  SMALLPHONEAI_COMPONENT_TARGETS=pi-agent \
-    SMALLPHONEAI_COMPONENT_ACTION=install-register \
-    SMALLPHONEAI_REQUIRE_SERVICE_MANAGER_READY=1 \
-    run_bootstrap components
   write_state running ubuntu '正在安装 Ubuntu'
   run_bootstrap ubuntu
 
@@ -376,9 +375,27 @@ run_install_job() {
   fi
 }
 
+resolve_apk_version_code() {
+  local root value
+  value="${SETUP_APK_VERSION_CODE:-${OPENHOUSEAI_APK_VERSION_CODE:-}}"
+  case "$value" in
+    ''|*[!0-9]*) ;;
+    *) printf '%s\n' "$value"; return 0 ;;
+  esac
+  root="$(resource_dir || true)"
+  if [ -n "$root" ] && [ -f "$root/.complete" ]; then
+    value="$(sed -n 's/.*"apkVersionCode"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$root/.complete" | head -n 1)"
+    case "$value" in
+      ''|*[!0-9]*) ;;
+      *) printf '%s\n' "$value"; return 0 ;;
+    esac
+  fi
+  printf '126\n'
+}
+
 write_request() {
   ensure_state_dir
-  printf '{"region":"%s","termuxRepo":"%s","ubuntuRootfsMirror":"%s","ubuntuAptMirror":"%s","nodeDistMirror":"%s","npmRegistry":"%s","runtimeArchive":"%s","updatedAt":%s}\n' \
+  printf '{"region":"%s","termuxRepo":"%s","ubuntuRootfsMirror":"%s","ubuntuAptMirror":"%s","nodeDistMirror":"%s","npmRegistry":"%s","runtimeArchive":"%s","apkVersionCode":%s,"updatedAt":%s}\n' \
     "$(json_escape "$SETUP_REGION")" \
     "$(json_escape "$SETUP_TERMUX_REPO")" \
     "$(json_escape "$SETUP_UBUNTU_ROOTFS_MIRROR")" \
@@ -386,6 +403,7 @@ write_request() {
     "$(json_escape "$SETUP_NODE_DIST_MIRROR")" \
     "$(json_escape "$SETUP_NPM_REGISTRY")" \
     "$(json_escape "$SETUP_RUNTIME_ARCHIVE")" \
+    "$(resolve_apk_version_code)" \
     "$(date +%s)" > "$REQUEST_FILE.tmp"
   mv "$REQUEST_FILE.tmp" "$REQUEST_FILE"
 }
@@ -393,6 +411,11 @@ write_request() {
 request_json_value() {
   local file="$1" key="$2"
   sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$file" | head -n 1
+}
+
+request_json_number() {
+  local file="$1" key="$2"
+  sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$file" | head -n 1
 }
 
 load_request() {
@@ -408,6 +431,8 @@ load_request() {
   if [ "$SETUP_RUNTIME_ARCHIVE_EXPLICIT" -eq 0 ] && [ -n "$value" ]; then
     SETUP_RUNTIME_ARCHIVE="$value"
   fi
+  value="$(request_json_number "$file" apkVersionCode)"
+  [ -z "$value" ] || SETUP_APK_VERSION_CODE="$value"
 }
 
 apply_options() {

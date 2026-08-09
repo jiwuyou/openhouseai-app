@@ -46,6 +46,7 @@ public final class OpenHouseBundledResourceDelivery {
             + "AI_UPDATE_GUIDE.md，检查当前环境后完成合适的更新。";
 
     private static final String COMPLETE_NAME = ".complete";
+    private static final String DIRECTORY_PENDING_NAME = ".pending";
     private static final String GUIDE_NAME = "AI_UPDATE_GUIDE.md";
     private static final String GUIDE_ASSET_PATH = "openhouse/product-payloads/" + GUIDE_NAME;
     private static final String[][] ASSET_ROOTS = {
@@ -72,7 +73,12 @@ public final class OpenHouseBundledResourceDelivery {
         "maintainer/control-plane-manifest.json",
         "product-payloads/manifest.json",
         "product-payloads/payload-manifest.json",
-        "product-payloads/runtime-aarch64.tgz"
+        "product-payloads/resource-set.json",
+        "product-payloads/service-manager.tgz",
+        "product-payloads/openhouse-control-plane.tgz",
+        "product-payloads/runtime-aarch64.tgz",
+        "product-payloads/wuyou.tgz",
+        "product-payloads/openhouse-web.tgz"
     };
     private static final String[] INTEGRITY_ROOTS = {
         "bootstrap", "maintainer", "scripts-public"
@@ -225,9 +231,12 @@ public final class OpenHouseBundledResourceDelivery {
                 if (!marker.exists()) {
                     return true;
                 }
-                if (!isRegularFile(marker) || !marker.delete()) {
+                if (!isRegularFile(marker)) {
                     return false;
                 }
+                JSONObject value = readJson(marker);
+                clearDirectoryPendingMarker(root, value);
+                if (!marker.delete()) return false;
                 syncDirectoryBestEffort(root);
                 return true;
             } catch (Exception ignored) {
@@ -251,6 +260,7 @@ public final class OpenHouseBundledResourceDelivery {
                     || !reason.value.equals(value.optString("reason", ""))) {
                     return false;
                 }
+                clearDirectoryPendingMarker(root, value);
                 if (!marker.delete()) {
                     return false;
                 }
@@ -280,7 +290,8 @@ public final class OpenHouseBundledResourceDelivery {
             }
             JSONObject complete = readJson(new File(target, COMPLETE_NAME));
             return complete.optLong("apkVersionCode", -1L) == expectedVersionCode
-                && verifyIntegrityEntries(target, complete.optJSONArray(VERIFIED_FILES_KEY));
+                && verifyIntegrityEntries(target, complete.optJSONArray(VERIFIED_FILES_KEY))
+                && verifyBundledResourceSet(target, expectedVersionCode);
         } catch (Exception ignored) {
             return false;
         }
@@ -407,6 +418,9 @@ public final class OpenHouseBundledResourceDelivery {
             writeSyncedFile(temporary, bytes);
             moveFileAtomically(temporary, marker);
             setPrivateFile(marker);
+            File resourceDirectory = new File(root, resourceDirectoryName);
+            requireDirectChild(root, resourceDirectory);
+            writeSyncedFile(new File(resourceDirectory, DIRECTORY_PENDING_NAME), bytes);
             syncDirectoryBestEffort(root);
         } finally {
             if (temporary.exists()) {
@@ -421,8 +435,61 @@ public final class OpenHouseBundledResourceDelivery {
         return marker;
     }
 
+    private static void clearDirectoryPendingMarker(File root, JSONObject marker) {
+        try {
+            File resourceDirectory = new File(marker.optString("resourceDir", ""));
+            requireDirectChild(root, resourceDirectory);
+            File pending = new File(resourceDirectory, DIRECTORY_PENDING_NAME);
+            if (isRegularFile(pending)) pending.delete();
+        } catch (Exception ignored) {
+            // The global marker remains authoritative when an old or malformed directory path is present.
+        }
+    }
+
     private static JSONObject readJson(File file) throws Exception {
         return new JSONObject(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+    }
+
+    private static boolean verifyBundledResourceSet(File target, long expectedVersionCode) {
+        try {
+            JSONObject resourceSet = readJson(new File(target, "product-payloads/resource-set.json"));
+            if (resourceSet.optInt("schema", 0) != 2
+                || !"openhouse-core-stack".equals(resourceSet.optString("id", ""))
+                || !"arm64-v8a".equals(resourceSet.optString("abi", ""))
+                || resourceSet.optLong("minApkVersionCode", Long.MAX_VALUE) > expectedVersionCode) {
+                return false;
+            }
+            Map<String, String> archives = new LinkedHashMap<>();
+            archives.put("service-manager", "service-manager.tgz");
+            archives.put("openhouse-control-plane", "openhouse-control-plane.tgz");
+            archives.put("openhouse-runtime", "runtime-aarch64.tgz");
+            archives.put("wuyou", "wuyou.tgz");
+            archives.put("openhouse-web", "openhouse-web.tgz");
+            JSONArray resources = resourceSet.optJSONArray("resources");
+            if (resources == null || resources.length() != archives.size()) {
+                return false;
+            }
+            Map<String, String> actual = new LinkedHashMap<>();
+            for (int index = 0; index < resources.length(); index++) {
+                JSONObject resource = resources.optJSONObject(index);
+                if (resource == null) return false;
+                String id = resource.optString("id", "");
+                String expectedSha256 = resource.optString("sha256", "");
+                String archive = archives.get(id);
+                if (archive == null || expectedSha256.length() != 64 || actual.containsKey(id)) {
+                    return false;
+                }
+                IntegrityEntry entry = digestIntegrityEntry(
+                    new File(target, "product-payloads/" + archive), archive);
+                if (!expectedSha256.equals(entry.sha256)) {
+                    return false;
+                }
+                actual.put(id, expectedSha256);
+            }
+            return actual.keySet().equals(archives.keySet());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private static List<IntegrityEntry> collectIntegrityEntries(File resourceDirectory) throws Exception {

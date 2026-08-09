@@ -8,7 +8,7 @@ max_universal_bytes=$((300 * 1024 * 1024))
 max_debug_arm64_bytes=$((512 * 1024 * 1024))
 max_debug_universal_bytes=$((1536 * 1024 * 1024))
 runtime_source="$repo_dir/app/src/main/assets/openhouse/product-payloads/runtime-aarch64.tgz"
-native_source="$repo_dir/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz"
+native_source="$repo_dir/native-app/src/main/assets/openhouse-resources-v2/runtime-aarch64.tgz"
 min_mtime="${OPENHOUSE_APK_MIN_MTIME:-0}"
 
 command -v unzip >/dev/null 2>&1 || { printf 'unzip is required\n' >&2; exit 2; }

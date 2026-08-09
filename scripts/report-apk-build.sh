@@ -48,8 +48,8 @@ for apk_arg in "$@"; do
     || { printf 'APK is not signed with app/testkey_untrusted.jks: %s\n' "$apk" >&2; exit 1; }
 
   entries="$(unzip -Z1 "$apk")"
-  if grep -Fxq 'assets/openhouse-runtime/runtime-aarch64.tgz' <<<"$entries"; then
-    runtime_path='assets/openhouse-runtime/runtime-aarch64.tgz'
+  if grep -Fxq 'assets/openhouse-resources-v2/runtime-aarch64.tgz' <<<"$entries"; then
+    runtime_path='assets/openhouse-resources-v2/runtime-aarch64.tgz'
     artifact_type='native'
     expected_package='com.wuxianpi'
   elif grep -Fxq 'assets/openhouse/product-payloads/runtime-aarch64.tgz' <<<"$entries"; then

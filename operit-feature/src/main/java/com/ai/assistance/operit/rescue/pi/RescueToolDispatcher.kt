@@ -238,7 +238,8 @@ class RescueToolDispatcher private constructor(
     }
 
     private suspend fun startRedeployRuntime(): OperitHostOperationResult {
-        val payload = appContext.assets.open(PAYLOAD_ASSET_PATH).use { it.readBytes() }
+        val assetPath = runtimePayloadAssetPath()
+        val payload = appContext.assets.open(assetPath).use { it.readBytes() }
         return OperitHostProvider.operationsOrUnsupported().redeployRuntime(
             payload = payload,
             fileName = PAYLOAD_FILE_NAME,
@@ -247,9 +248,10 @@ class RescueToolDispatcher private constructor(
     }
 
     private fun verifyPayload(): JSONObject {
+        val assetPath = runtimePayloadAssetPath()
         val digest = MessageDigest.getInstance("SHA-256")
         var size = 0L
-        appContext.assets.open(PAYLOAD_ASSET_PATH).use { input ->
+        appContext.assets.open(assetPath).use { input ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
             while (true) {
                 val read = input.read(buffer)
@@ -260,11 +262,16 @@ class RescueToolDispatcher private constructor(
             }
         }
         return JSONObject()
-            .put("asset", PAYLOAD_ASSET_PATH)
+            .put("asset", assetPath)
             .put("size", size)
             .put("sha256", digest.digest().joinToString("") { "%02x".format(it) })
             .put("valid", size > 0)
     }
+
+    private fun runtimePayloadAssetPath(): String =
+        PAYLOAD_ASSET_PATHS.firstOrNull { assetPath ->
+            runCatching { appContext.assets.open(assetPath).use { } }.isSuccess
+        } ?: throw IllegalStateException("Bundled WuxianPi Runtime asset is missing")
 
     private suspend fun exportLogs(): Completion {
         val diagnostics =
@@ -356,7 +363,11 @@ class RescueToolDispatcher private constructor(
                 WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION,
             )
         private const val DEFAULT_RUNTIME_HEALTH_URL = "http://127.0.0.1:8765/health"
-        private const val PAYLOAD_ASSET_PATH = "openhouse-runtime/runtime-aarch64.tgz"
+        private val PAYLOAD_ASSET_PATHS =
+            listOf(
+                "openhouse-resources-v2/runtime-aarch64.tgz",
+                "openhouse/product-payloads/runtime-aarch64.tgz",
+            )
         private const val PAYLOAD_FILE_NAME = "runtime-aarch64.tgz"
         private const val PAYLOAD_MIME_TYPE = "application/gzip"
         private const val DEFAULT_DIAGNOSTIC_BYTES = 32 * 1024

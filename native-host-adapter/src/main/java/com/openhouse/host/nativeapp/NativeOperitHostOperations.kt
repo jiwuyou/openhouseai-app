@@ -202,21 +202,29 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     }.getOrElse { failure("prepare_persistent_termux", it.message ?: "Unable to stage pre-tmux setup") }
 
     override suspend fun startWuxianPiSetup(): OperitHostOperationResult = runCatching {
-        val runtimeBytes = termuxHomeRepository.stageAsset(RUNTIME_ASSET, RUNTIME_HOME_PATH)
+        val resourceSet = termuxHomeRepository.stageBundledResourceSet()
         val bytes = termuxHomeRepository.stageAsset(SETUP_RESOURCES_ASSET, SETUP_RESOURCES_HOME_PATH)
         val request = JSONObject()
             .put("version", 1)
             .put("region", "auto")
-            .put("runtimeArchive", "$TERMUX_HOME/$RUNTIME_HOME_PATH")
+            .put("apkVersionCode", resourceSet.apkVersionCode)
+            .put("runtimeArchive", resourceSet.runtimeArchive)
             .put("resourcesArchive", "$TERMUX_HOME/$SETUP_RESOURCES_HOME_PATH")
         termuxHomeRepository.writeText(SETUP_REQUEST_HOME_PATH, request.toString(2))
-        val command = buildWuxianPiSetupLaunchCommand(TERMUX_PREFIX, TERMUX_HOME)
+        val command = buildWuxianPiSetupLaunchCommand(
+            TERMUX_PREFIX,
+            TERMUX_HOME,
+            resourceSet.runtimeArchive,
+            resourceSet.apkVersionCode,
+        )
         success(
             "start_wuxianpi_setup",
             setupLaunchDetails(command)
                 .put("asset", SETUP_RESOURCES_ASSET)
-                .put("runtimeAsset", RUNTIME_ASSET)
-                .put("runtimeStagedBytes", runtimeBytes)
+                .put("resourceSetVersion", resourceSet.version)
+                .put("resourceSetSequence", resourceSet.sequence)
+                .put("resourceDirectory", resourceSet.resourceDirectory)
+                .put("resourceStagedBytes", resourceSet.copiedBytes)
                 .put("stagedBytes", bytes)
                 .put("request", "$TERMUX_HOME/$SETUP_REQUEST_HOME_PATH"),
         )
@@ -377,13 +385,18 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         else failure(operation, message)
 }
 
-internal fun buildWuxianPiSetupLaunchCommand(prefix: String, home: String): String =
+internal fun buildWuxianPiSetupLaunchCommand(
+    prefix: String,
+    home: String,
+    runtimeArchive: String,
+    apkVersionCode: Long,
+): String =
     "set -e; root='$home/.local/share/wuxianpi/install-resources/current'; " +
-        "runtime='$home/$RUNTIME_HOME_PATH'; " +
+        "runtime='$runtimeArchive'; " +
         "[ -s \"\$runtime\" ] || { printf '%s\\n' 'Native WuxianPi Runtime asset is missing: \$runtime' >&2; exit 1; }; " +
         "rm -rf \"\$root\"; mkdir -p \"\$root\"; " +
         "'$prefix/bin/tar' -xf '$home/$SETUP_RESOURCES_HOME_PATH' -C \"\$root\"; " +
-        "'$prefix/bin/bash' \"\$root/bootstrap/wuxianpi-setup\" install " +
+        "OPENHOUSEAI_APK_VERSION_CODE='$apkVersionCode' '$prefix/bin/bash' \"\$root/bootstrap/wuxianpi-setup\" install " +
         "--request '$home/$SETUP_REQUEST_HOME_PATH' " +
         "--runtime-archive \"\$runtime\""
 

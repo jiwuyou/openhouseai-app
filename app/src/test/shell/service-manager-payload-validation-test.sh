@@ -40,10 +40,10 @@ work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 fixture="$work_dir/app/src/main/assets/openhouse/product-payloads"
 stage="$work_dir/service-manager"
-native_fixture="$work_dir/native-app/src/main/assets/openhouse-runtime"
+native_fixture="$work_dir/native-app/src/main/assets/openhouse-resources-v2"
 mkdir -p "$fixture" "$stage" "$native_fixture"
 cp -al "$PAYLOAD_DIR/." "$fixture/"
-cp -al "$REPO_ROOT/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz" "$native_fixture/"
+cp -al "$REPO_ROOT/native-app/src/main/assets/openhouse-resources-v2/runtime-aarch64.tgz" "$native_fixture/"
 
 write_archive() {
   local layout="$1"

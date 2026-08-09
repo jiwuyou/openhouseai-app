@@ -38,14 +38,25 @@
 
 ## Android-Termux 控制面
 
-- [ ] Native APK 内置 `openhouse-host/start-control-plane.sh` 与完整控制面包。
-- [ ] 点击“启动运行中枢”前，Native 通过 Termux Home SAF 投放并校验 `control-plane-manifest.json`。
-- [ ] 完整包包含 start、repair、inspect 三个脚本，SHA-256 与 All-in-One `maintainer/` 源文件一致。
+- [ ] Native APK 内置固定 `openhouse-host/start-control-plane.sh` 入口，但不再直接投放另一份控制面脚本。
+- [ ] 控制面只作为 `openhouse-control-plane.tgz` 资源安装到版本目录，并由 `control-plane/current` 原子切换。
+- [ ] All-in-One、Native 和市场使用同一字节的控制面 TGZ；完整包包含 start、repair、inspect 三个脚本和校验清单。
 - [ ] 固定入口优先调用 `$HOME/.local/share/openhouseai/control-plane/current/start-control-plane-termux-native.sh`。
 - [ ] 启动脚本只使用 `service-daemon`、runit 和 canonical service-manager config；不得回退到 nohup 或第二实例。
 - [ ] Android 页面在命令提交后等待 `/api/v1/health` 和认证的 `/api/v1/services`，不得把 submitted 误报为 started。
 - [ ] 控制面包缺失、runsvdir 不可用、token/config 缺失时显示可操作错误且不崩溃。
-- [ ] All-in-One、Native 与 `wuxianpi.first-install` 市场插件使用同一版本、同一 SHA-256 的控制脚本。
+- [ ] `wuxianpi.resource-update 2.0.0` 是控制面安装、修复和回滚的唯一实现。
+
+## V2 核心资源集合
+
+- [ ] `openhouse-core-stack` 固定包含 service-manager、openhouse-control-plane、openhouse-runtime、wuyou、openhouse-web。
+- [ ] All-in-One 与 Native 的五个 TGZ、resource-set version、sequence 和 SHA-256 完全一致。
+- [ ] Native 通过 SAF 投递到 `update-resources/apk-*/product-payloads`，所有文件完成后才写 `.complete`。
+- [ ] APK 更新只写 pending；资源更新插件负责差异比较、事务切换、健康检查和回滚。
+- [ ] 本机完整资源不下载；缓存命中优先于 APK，APK 命中优先于市场。
+- [ ] 同版本内容损坏时按 SHA 和文件树凭据恢复，不能仅比较版本号。
+- [ ] 本机 sequence 高于 APK 时禁止自动降级；显式 rollback 只回到 previous-set。
+- [ ] APK 不再包含 Native 专用的第二份 `openhouse-runtime/runtime-aarch64.tgz`。
 
 ## 需要收敛的源码位置
 
@@ -54,7 +65,7 @@
 - `app/src/main/assets/smallphoneai/bootstrap/scripts/48-sync-openhouse-registry.sh`
 - `app/src/main/assets/smallphoneai/bootstrap/components.d/yuanshengwuxianpi.json`
 - `app/src/main/assets/maintainer/{start,repair,inspect}-control-plane-termux-native.sh`
-- `native-host-adapter/src/main/assets/openhouse-host/control-plane/`
+- `native-app/src/main/assets/openhouse-resources-v2/`
 - `native-host-adapter/src/main/java/com/openhouse/host/nativeapp/NativeTermuxHomeRepository.kt`
 - `native-host-adapter/src/main/java/com/openhouse/host/nativeapp/NativeOpenHouseHost.java`
 
@@ -62,12 +73,13 @@
 
 ## 自动化门禁
 
-- [ ] `scripts/validate-openhouse-payloads.sh` 检查 bootstrap 或 payload 中存在 `pi-agent` 清单。
+- [ ] `scripts/generate-resource-set-v2.sh --check` 校验五资源集合、发布 metadata 和两种 APK assets 同字节。
+- [ ] `scripts/validate-openhouse-payloads.sh` 检查 bootstrap、五资源集合和 `yuanshengwuxianpi` 稳定服务契约。
 - [ ] `app/src/test/shell/wuxianpi-runtime-contract-test.sh` 检查注册和 sync 逻辑、稳定服务 ID、幂等行为。
 - [ ] 检查不会覆盖用户已有 `components.d` 文件。
-- [ ] 检查首次安装后 registry API 可读取 `pi-agent`。
+- [ ] 检查首次安装后 registry API 可读取 `yuanshengwuxianpi`。
 - [ ] 检查旧 `yuanshengwuxianpi` 服务仍能被升级和重跑安装复用。
-- [ ] `scripts/validate-control-plane-bundle.sh` 校验维护源、Native 资产和 manifest SHA-256 一致。
+- [ ] `scripts/validate-control-plane-bundle.sh` 校验维护源、canonical TGZ、Native V2 TGZ 和 manifest SHA-256 一致。
 
 ## 验收场景
 
@@ -80,4 +92,4 @@
 - [ ] 原生 App 重启后桌面和侧边栏均显示 WuxianPi AI。
 - [ ] APK 版本、签名和既有载荷不因本收敛清单改变。
 - [ ] Native 的全新外部 Termux 安装没有预先存在 `.smallphoneai-bootstrap` 时，点击“启动运行中枢”仍可启动 20087。
-- [ ] 删除 `control-plane/current` 后再次点击可重新投放并启动。
+- [ ] 删除或损坏 `control-plane/current` 后，资源更新器可从缓存、APK 或市场恢复；Android 固定入口不自行覆盖资源。

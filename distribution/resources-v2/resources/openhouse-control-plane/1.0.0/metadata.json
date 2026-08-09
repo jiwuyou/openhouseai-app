@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-control-plane",
+  "version": "1.0.0",
+  "archive": "openhouse-control-plane.tgz",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "size": 10548,
+  "sha256": "41d3b9fb74aa3eee50636fb5295c651f410442fcd385a3cdea3a16559ba7607f",
+  "url": "/resources-v2/openhouse-control-plane/1.0.0/openhouse-control-plane.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

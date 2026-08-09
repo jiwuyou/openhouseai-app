@@ -4,18 +4,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE_DIR="$REPO_DIR/app/src/main/assets/maintainer"
-NATIVE_DIR="$REPO_DIR/native-host-adapter/src/main/assets/openhouse-host/control-plane"
+ARCHIVE="$REPO_DIR/app/src/main/assets/openhouse/product-payloads/openhouse-control-plane.tgz"
+NATIVE_ARCHIVE="$REPO_DIR/native-app/src/main/assets/openhouse-resources-v2/openhouse-control-plane.tgz"
 WRAPPER="$REPO_DIR/native-host-adapter/src/main/assets/openhouse-host/start-control-plane.sh"
 
-python3 - "$SOURCE_DIR" "$NATIVE_DIR" "$WRAPPER" <<'PY'
+python3 - "$SOURCE_DIR" "$ARCHIVE" "$NATIVE_ARCHIVE" "$WRAPPER" <<'PY'
 import hashlib
 import json
 import pathlib
 import sys
+import tarfile
 
 source = pathlib.Path(sys.argv[1])
-native = pathlib.Path(sys.argv[2])
-wrapper = pathlib.Path(sys.argv[3])
+archive = pathlib.Path(sys.argv[2])
+native_archive = pathlib.Path(sys.argv[3])
+wrapper = pathlib.Path(sys.argv[4])
 names = (
     "start-control-plane-termux-native.sh",
     "repair-control-plane-termux-native.sh",
@@ -32,24 +35,32 @@ if set(entries) != set(names):
 
 for name in names:
     source_file = source / name
-    native_file = native / name
-    if not source_file.is_file() or not native_file.is_file():
+    if not source_file.is_file():
         raise SystemExit(f"missing control-plane script: {name}")
     source_bytes = source_file.read_bytes()
-    if native_file.read_bytes() != source_bytes:
-        raise SystemExit(f"Native control-plane script diverged from maintainer source: {name}")
     digest = hashlib.sha256(source_bytes).hexdigest()
     if entries[name] != digest:
         raise SystemExit(f"control-plane manifest checksum mismatch: {name}")
 
-native_manifest = native / "control-plane-manifest.json"
-if native_manifest.read_bytes() != manifest_path.read_bytes():
-    raise SystemExit("Native control-plane manifest diverged from maintainer source")
+if archive.read_bytes() != native_archive.read_bytes():
+    raise SystemExit("All-in-One and Native control-plane archives differ")
+with tarfile.open(archive, "r:gz") as bundle:
+    members = {member.name.lstrip("./"): member for member in bundle.getmembers() if member.isfile()}
+    expected_names = set(names) | {"control-plane-manifest.json"}
+    if set(members) != expected_names:
+        raise SystemExit("control-plane archive must contain exactly its manifest and three scripts")
+    for name in names:
+        extracted = bundle.extractfile(members[name])
+        if extracted is None or extracted.read() != (source / name).read_bytes():
+            raise SystemExit(f"control-plane archive diverged from source: {name}")
+    extracted_manifest = bundle.extractfile(members["control-plane-manifest.json"])
+    if extracted_manifest is None or extracted_manifest.read() != manifest_path.read_bytes():
+        raise SystemExit("control-plane archive manifest diverged from source")
 
 wrapper_text = wrapper.read_text(encoding="utf-8")
 required = '$HOME/.local/share/openhouseai/control-plane/current/start-control-plane-termux-native.sh'
 if required not in wrapper_text:
-    raise SystemExit("Native entrypoint does not prefer the staged control-plane bundle")
+    raise SystemExit("Native entrypoint does not prefer the installed resource control plane")
 
 print(f"control-plane-bundle-ok version={manifest.get('version')} files={len(names)}")
 PY

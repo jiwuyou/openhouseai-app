@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PAYLOAD_DIR="${1:-$REPO_DIR/app/src/main/assets/openhouse/product-payloads}"
+"$REPO_DIR/scripts/generate-resource-set-v2.sh" --check
 
 if ! command -v python3 >/dev/null 2>&1; then
   printf 'validate-openhouse-payloads: python3 is required for JSON/tar validation.\n' >&2
@@ -47,7 +48,7 @@ manifest_path = os.path.join(payload_dir, "manifest.json")
 payload_manifest_path = os.path.join(payload_dir, "payload-manifest.json")
 native_runtime_asset_path = os.path.join(
     os.path.abspath(os.path.join(payload_dir, "../../../../../..")),
-    "native-app", "src", "main", "assets", "openhouse-runtime", "runtime-aarch64.tgz",
+    "native-app", "src", "main", "assets", "openhouse-resources-v2", "runtime-aarch64.tgz",
 )
 
 errors = []

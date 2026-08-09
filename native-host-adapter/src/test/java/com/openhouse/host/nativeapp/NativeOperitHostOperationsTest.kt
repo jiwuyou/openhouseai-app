@@ -316,13 +316,16 @@ class NativeOperitHostOperationsTest {
         val command = buildWuxianPiSetupLaunchCommand(
             "/data/data/com.termux/files/usr",
             "/data/data/com.termux/files/home",
+            "/data/data/com.termux/files/home/.local/share/openhouseai/update-resources/apk-126/product-payloads/runtime-aarch64.tgz",
+            126,
         )
         val details = setupLaunchDetails(command)
 
         assertTrue(command.contains("resources.tar"))
         assertTrue(command.contains("bootstrap/wuxianpi-setup"))
         assertTrue(command.contains("--runtime-archive"))
-        assertTrue(command.contains(".local/share/wuxianpi/install-resources/runtime-aarch64.tgz"))
+        assertTrue(command.contains("update-resources/apk-126/product-payloads/runtime-aarch64.tgz"))
+        assertTrue(command.contains("OPENHOUSEAI_APK_VERSION_CODE='126'"))
         assertTrue(command.contains("Native WuxianPi Runtime asset is missing"))
         assertTrue(command.contains("--request"))
         assertEquals("termux_exec_command", details.getString("executorTool"))

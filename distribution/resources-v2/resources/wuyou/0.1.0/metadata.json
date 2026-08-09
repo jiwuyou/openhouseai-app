@@ -1,0 +1,12 @@
+{
+  "id": "wuyou",
+  "version": "0.1.0",
+  "archive": "wuyou.tgz",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "size": 3289922,
+  "sha256": "f7bcaa402fa95273c8abbae3a1642aa3cbb17e44309c56146f260816f1ca2ca2",
+  "url": "/resources-v2/wuyou/0.1.0/wuyou.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

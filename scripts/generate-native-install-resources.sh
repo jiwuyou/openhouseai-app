@@ -6,10 +6,13 @@ assets_dir="$repo_dir/native-app/src/main/assets/wuxianpi-install"
 bootstrap_dir="$repo_dir/app/src/main/assets/smallphoneai/bootstrap"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 pre_tmux="$bootstrap_dir/scripts/wuxianpi-pre-tmux.sh"
-runtime_asset="$repo_dir/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz"
+resource_assets="$repo_dir/native-app/src/main/assets/openhouse-resources-v2"
+runtime_asset="$resource_assets/runtime-aarch64.tgz"
 output="$assets_dir/resources.tar"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-native-resources.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
+
+"$repo_dir/scripts/generate-resource-set-v2.sh"
 
 required=(
   "$pre_tmux"
@@ -17,7 +20,7 @@ required=(
   "$bootstrap_dir/scripts/wuxianpi-setup"
   "$payload_dir/manifest.json"
   "$payload_dir/payload-manifest.json"
-  "$payload_dir/service-manager.tgz"
+  "$resource_assets/resource-set.json"
   "$runtime_asset"
 )
 for file in "${required[@]}"; do
@@ -36,7 +39,6 @@ cp "$pre_tmux" "$stage/bootstrap/wuxianpi-pre-tmux.sh"
 cp "$payload_dir/manifest.json" "$stage/product-payloads/manifest.json"
 cp "$payload_dir/payload-manifest.json" "$stage/product-payloads/payload-manifest.json"
 cp "$payload_dir/AI_UPDATE_GUIDE.md" "$stage/product-payloads/AI_UPDATE_GUIDE.md"
-cp "$payload_dir/service-manager.tgz" "$stage/product-payloads/service-manager.tgz"
 
 cp "$pre_tmux" "$assets_dir/pre-tmux.sh"
 chmod 755 "$assets_dir/pre-tmux.sh"
@@ -53,16 +55,14 @@ EOF
 chmod 755 "$stage/install.sh"
 chmod 755 "$stage/bootstrap/wuxianpi-setup" "$stage/bootstrap/wuxianpi-pre-tmux.sh"
 
-service_manager_sha="$(sha256sum "$stage/product-payloads/service-manager.tgz" | awk '{print $1}')"
 bootstrap_sha="$(sha256sum "$stage/bootstrap/scripts/wuxianpi-setup" | awk '{print $1}')"
 pre_tmux_sha="$(sha256sum "$stage/bootstrap/scripts/wuxianpi-pre-tmux.sh" | awk '{print $1}')"
 printf '%s  %s\n' \
-  "$service_manager_sha" product-payloads/service-manager.tgz \
   "$bootstrap_sha" bootstrap/wuxianpi-setup \
   "$pre_tmux_sha" bootstrap/wuxianpi-pre-tmux.sh \
   > "$stage/SHA256SUMS"
 
-printf '{"schema":3,"contents":["bootstrap","product-payloads"],"bundledPayloads":["service-manager.tgz"],"runtimeAsset":"openhouse-runtime/runtime-aarch64.tgz","runtimeSha256":"%s","runtimeSize":%s,"excluded":["aionui","pi-web","market-payloads"]}\n' \
+printf '{"schema":4,"contents":["bootstrap","product-payloads"],"bundledPayloads":[],"resourceSetAsset":"openhouse-resources-v2/resource-set.json","runtimeAsset":"openhouse-resources-v2/runtime-aarch64.tgz","runtimeSha256":"%s","runtimeSize":%s,"excluded":["aionui","pi-web","market-payloads"]}\n' \
   "$runtime_sha" "$runtime_size" \
   > "$stage/install-manifest.json"
 printf '{"nativeInstallResources":true}\n' > "$stage/.complete"

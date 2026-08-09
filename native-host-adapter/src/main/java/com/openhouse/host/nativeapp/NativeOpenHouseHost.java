@@ -169,34 +169,19 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
 
     private final class NativeControlPlaneStarter implements ControlPlaneStarter {
         @Override public ControlPlaneResult startControlPlane() {
-            ControlPlaneResult staged = stageControlPlaneBundle();
-            if (!staged.isSuccess()) return staged;
+            if (termuxHomeTree() == null) {
+                return new ControlPlaneResult(ControlPlaneResult.Status.USER_ACTION_REQUIRED,
+                    "Termux Home access is required to use the installed OpenHouse control plane");
+            }
             ControlPlaneResult submitted = submitTermuxScript("openhouse-host/start-control-plane.sh",
                 "Start OpenHouse control plane", ControlPlaneResult.Status.STARTED);
             if (!submitted.isSuccess()) return submitted;
-            return waitForControlPlane(staged.message);
+            return waitForControlPlane("Installed OpenHouse resource control plane requested");
         }
 
         @Override public ControlPlaneResult stopControlPlane() {
             return submitTermuxScript("openhouse-host/stop-control-plane.sh",
                 "Stop OpenHouse control plane", ControlPlaneResult.Status.STOPPED);
-        }
-    }
-
-    private ControlPlaneResult stageControlPlaneBundle() {
-        if (termuxHomeTree() == null) {
-            return new ControlPlaneResult(ControlPlaneResult.Status.USER_ACTION_REQUIRED,
-                "Termux Home access is required to stage the OpenHouse control-plane bundle");
-        }
-        try {
-            ControlPlaneBundleStageResult staged = new NativeTermuxHomeRepository(appContext)
-                .stageControlPlaneBundle();
-            return new ControlPlaneResult(ControlPlaneResult.Status.STARTED,
-                "OpenHouse control-plane bundle " + staged.getVersion()
-                    + " staged (" + staged.getTotalBytes() + " bytes)");
-        } catch (Exception error) {
-            return new ControlPlaneResult(ControlPlaneResult.Status.FAILED,
-                "Unable to stage OpenHouse control-plane bundle: " + safeMessage(error));
         }
     }
 

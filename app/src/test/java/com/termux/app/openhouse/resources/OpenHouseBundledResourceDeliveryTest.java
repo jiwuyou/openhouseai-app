@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.attribute.PosixFilePermission;
+import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -361,8 +362,13 @@ public class OpenHouseBundledResourceDeliveryTest {
         return home;
     }
 
-    private static FakeAssets completeAssets() {
+    private static FakeAssets completeAssets() throws Exception {
         Map<String, byte[]> files = new LinkedHashMap<>();
+        byte[] serviceManager = bytes("service-manager");
+        byte[] controlPlane = bytes("control-plane");
+        byte[] runtime = bytes("runtime");
+        byte[] wuyou = bytes("wuyou");
+        byte[] openHouseWeb = bytes("openhouse-web");
         files.put("smallphoneai/bootstrap/bootstrap.sh", bytes("bootstrap"));
         files.put("smallphoneai/bootstrap/.gitignore", bytes("ignore"));
         files.put("smallphoneai/bootstrap/scripts/00-check-termux.sh", bytes("check"));
@@ -380,7 +386,25 @@ public class OpenHouseBundledResourceDeliveryTest {
         files.put("openhouse/product-payloads/payload-manifest.json", bytes("payload manifest"));
         files.put("openhouse/product-payloads/AI_UPDATE_GUIDE.md",
             bytes(OpenHouseBundledResourceDelivery.AI_REQUEST_SENTENCE));
-        files.put("openhouse/product-payloads/runtime-aarch64.tgz", bytes("runtime"));
+        JSONObject resourceSet = new JSONObject()
+            .put("schema", 2)
+            .put("id", "openhouse-core-stack")
+            .put("version", "test")
+            .put("sequence", 1)
+            .put("abi", "arm64-v8a")
+            .put("minApkVersionCode", 1)
+            .put("resources", new JSONArray()
+                .put(resource("service-manager", serviceManager))
+                .put(resource("openhouse-control-plane", controlPlane))
+                .put(resource("openhouse-runtime", runtime))
+                .put(resource("wuyou", wuyou))
+                .put(resource("openhouse-web", openHouseWeb)));
+        files.put("openhouse/product-payloads/resource-set.json", bytes(resourceSet.toString()));
+        files.put("openhouse/product-payloads/service-manager.tgz", serviceManager);
+        files.put("openhouse/product-payloads/openhouse-control-plane.tgz", controlPlane);
+        files.put("openhouse/product-payloads/runtime-aarch64.tgz", runtime);
+        files.put("openhouse/product-payloads/wuyou.tgz", wuyou);
+        files.put("openhouse/product-payloads/openhouse-web.tgz", openHouseWeb);
         files.put("openhouse/product-payloads/core.tar", bytes("tar"));
         files.put("openhouse/product-payloads/nested/data.bin", bytes("nested"));
         return new FakeAssets(files);
@@ -388,6 +412,24 @@ public class OpenHouseBundledResourceDeliveryTest {
 
     private static byte[] bytes(String value) {
         return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static JSONObject resource(String id, byte[] contents) throws Exception {
+        return new JSONObject()
+            .put("id", id)
+            .put("version", "test")
+            .put("sha256", sha256(contents));
+    }
+
+    private static String sha256(byte[] contents) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(contents);
+            StringBuilder output = new StringBuilder(64);
+            for (byte value : digest) output.append(String.format(Locale.US, "%02x", value & 0xff));
+            return output.toString();
+        } catch (Exception error) {
+            throw new AssertionError(error);
+        }
     }
 
     private static boolean hasVerifiedFile(JSONArray values, String path, long size) {

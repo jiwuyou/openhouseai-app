@@ -5,7 +5,7 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$repo_dir/scripts/validate-product-baseline.sh"
 [[ "${SKIP_RUNTIME_BUILD:-0}" == "1" ]] || "$repo_dir/scripts/build-pi-node-payload.sh"
 "$repo_dir/scripts/generate-native-install-resources.sh"
-asset="$repo_dir/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz"
+asset="$repo_dir/native-app/src/main/assets/openhouse-resources-v2/runtime-aarch64.tgz"
 [[ -s "$asset" ]] || { printf 'Missing Native ARM64 runtime asset: %s\n' "$asset" >&2; exit 1; }
 for required in ./install.sh ./bin/wuxianpi ./bin/wuxianpi-node ./bin/wuxianpi-node-start ./node/dist/index.js ./metadata/build.json; do
   tar -tzf "$asset" | awk -v required="$required" '$0 == required { found = 1 } END { exit found ? 0 : 1 }' \
@@ -34,8 +34,11 @@ mapfile -t distribution_apks < <(find "$repo_dir/native-app/build/outputs/apk/$b
   || { printf 'Expected exactly one Native %s APK, found %s\n' "$build_type" "${#distribution_apks[@]}" >&2; exit 1; }
 apk="${distribution_apks[0]}"
 apk_entries="$(unzip -Z1 "$apk")"
-awk '$0 == "assets/openhouse-runtime/runtime-aarch64.tgz" { found = 1 } END { exit found ? 0 : 1 }' <<<"$apk_entries" \
-  || { printf 'Native APK is missing assets/openhouse-runtime/runtime-aarch64.tgz\n' >&2; exit 1; }
+for resource_name in resource-set.json service-manager.tgz openhouse-control-plane.tgz runtime-aarch64.tgz wuyou.tgz openhouse-web.tgz; do
+  resource_path="assets/openhouse-resources-v2/$resource_name"
+  awk -v required="$resource_path" '$0 == required { found = 1 } END { exit found ? 0 : 1 }' <<<"$apk_entries" \
+    || { printf 'Native APK is missing %s\n' "$resource_path" >&2; exit 1; }
+done
 if grep -Eq '^lib/(armeabi-v7a|x86|x86_64)/' <<<"$apk_entries"; then
   printf 'Native APK must contain only arm64-v8a native libraries\n' >&2
   exit 1
@@ -47,7 +50,7 @@ for required_asset in assets/wuxianpi-install/pre-tmux.sh assets/wuxianpi-instal
     || { printf 'Native APK is missing %s\n' "$required_asset" >&2; exit 1; }
 done
 expected="$(sha256sum "$asset" | awk '{print $1}')"
-actual="$(unzip -p "$apk" assets/openhouse-runtime/runtime-aarch64.tgz | sha256sum | awk '{print $1}')"
+actual="$(unzip -p "$apk" assets/openhouse-resources-v2/runtime-aarch64.tgz | sha256sum | awk '{print $1}')"
 [[ "$expected" == "$actual" ]] || { printf 'Native APK runtime asset checksum mismatch\n' >&2; exit 1; }
 for asset_name in pre-tmux.sh resources.tar; do
   expected="$(sha256sum "$repo_dir/native-app/src/main/assets/wuxianpi-install/$asset_name" | awk '{print $1}')"

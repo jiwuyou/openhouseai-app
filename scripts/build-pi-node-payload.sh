@@ -6,7 +6,7 @@ source_dir="$repo_dir/runtime/wuxianpi-node"
 web_source_dir="$repo_dir/ai-web-ui"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 output="$payload_dir/runtime-aarch64.tgz"
-native_asset_dir="$repo_dir/native-app/src/main/assets/openhouse-runtime"
+native_asset_dir="$repo_dir/native-app/src/main/assets/openhouse-resources-v2"
 native_asset="$native_asset_dir/runtime-aarch64.tgz"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-payload.XXXXXX")"
 build="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-build.XXXXXX")"
@@ -224,3 +224,4 @@ PY
 
 log "runtime payload: $(sha256sum "$output")"
 log "native asset: $(sha256sum "$native_asset")"
+"$repo_dir/scripts/generate-resource-set-v2.sh"

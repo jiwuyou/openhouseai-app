@@ -1,0 +1,35 @@
+{
+  "schema": 2,
+  "id": "openhouse-core-stack",
+  "version": "2026.08.09.1",
+  "sequence": 2026080901,
+  "abi": "arm64-v8a",
+  "minApkVersionCode": 126,
+  "resources": [
+    {
+      "id": "service-manager",
+      "version": "0.3.4",
+      "sha256": "e4753a26e9ea36441d218f945c559433836fee1f8f0af571d51087ff258b0d64"
+    },
+    {
+      "id": "openhouse-control-plane",
+      "version": "1.0.0",
+      "sha256": "41d3b9fb74aa3eee50636fb5295c651f410442fcd385a3cdea3a16559ba7607f"
+    },
+    {
+      "id": "openhouse-runtime",
+      "version": "0.1.0+pi.0.80.10",
+      "sha256": "11ca8076f74552f96f48b96a16d1bb77b8e831a0ef1ba9008e3e7eb52478d7d8"
+    },
+    {
+      "id": "wuyou",
+      "version": "0.1.0",
+      "sha256": "f7bcaa402fa95273c8abbae3a1642aa3cbb17e44309c56146f260816f1ca2ca2"
+    },
+    {
+      "id": "openhouse-web",
+      "version": "1.1.2",
+      "sha256": "cd193bb28f40d6c0c7759a125a499aff6e2f1c45f6afa0c276e293eb5b925ad0"
+    }
+  ]
+}

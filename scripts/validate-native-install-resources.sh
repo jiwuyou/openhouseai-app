@@ -5,7 +5,8 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 assets_dir="$repo_dir/native-app/src/main/assets/wuxianpi-install"
 archive="$assets_dir/resources.tar"
 pre_tmux="$assets_dir/pre-tmux.sh"
-runtime_asset="$repo_dir/native-app/src/main/assets/openhouse-runtime/runtime-aarch64.tgz"
+resource_assets="$repo_dir/native-app/src/main/assets/openhouse-resources-v2"
+runtime_asset="$resource_assets/runtime-aarch64.tgz"
 
 [[ -s "$archive" ]] || { printf 'Missing Native install archive: %s\n' "$archive" >&2; exit 1; }
 [[ -s "$pre_tmux" ]] || { printf 'Missing Native pre-tmux asset: %s\n' "$pre_tmux" >&2; exit 1; }
@@ -26,8 +27,7 @@ for required in \
   ./bootstrap/scripts/wuxianpi-setup \
   ./bootstrap/scripts/wuxianpi-pre-tmux.sh \
   ./product-payloads/manifest.json \
-  ./product-payloads/payload-manifest.json \
-  ./product-payloads/service-manager.tgz; do
+  ./product-payloads/payload-manifest.json; do
   grep -Fxq "$required" <<<"$members" \
     || { printf 'Native install archive is missing %s\n' "$required" >&2; exit 1; }
 done
@@ -51,15 +51,18 @@ import sys
 with open(sys.argv[1], encoding="utf-8") as handle:
     manifest = json.load(handle)
 
-if manifest.get("bundledPayloads") != ["service-manager.tgz"]:
-    raise SystemExit("Native install manifest must list exactly the bundled service-manager payload")
-if manifest.get("runtimeAsset") != "openhouse-runtime/runtime-aarch64.tgz":
+if manifest.get("bundledPayloads") != []:
+    raise SystemExit("Native install archive must not duplicate V2 resource payloads")
+if manifest.get("resourceSetAsset") != "openhouse-resources-v2/resource-set.json":
+    raise SystemExit("Native install manifest must reference the V2 resource set")
+if manifest.get("runtimeAsset") != "openhouse-resources-v2/runtime-aarch64.tgz":
     raise SystemExit("Native install manifest must reference the separate ARM64 runtime asset")
 if manifest.get("runtimeSha256") != sys.argv[2]:
     raise SystemExit("Native install manifest runtimeSha256 does not match the staged runtime asset")
 if int(manifest.get("runtimeSize", -1)) != int(sys.argv[3]):
     raise SystemExit("Native install manifest runtimeSize does not match the staged runtime asset")
 PY
+"$repo_dir/scripts/generate-resource-set-v2.sh" --check
 bash -n "$pre_tmux"
 bash -n "$tmp/bootstrap/wuxianpi-setup"
 bash -n "$tmp/bootstrap/wuxianpi-pre-tmux.sh"
