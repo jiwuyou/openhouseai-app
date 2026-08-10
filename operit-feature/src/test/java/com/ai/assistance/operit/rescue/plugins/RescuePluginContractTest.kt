@@ -21,6 +21,30 @@ class RescuePluginContractTest {
         assertEquals(listOf("docs/README.md"), manifest.documents.map { it.path })
         assertEquals("Guide", manifest.documents.single().title)
         assertTrue(manifest.assistantContexts.isEmpty())
+        assertEquals("business", manifest.sessionRole)
+        assertTrue(manifest.actions.isEmpty())
+    }
+
+    @Test
+    fun parsesSessionRoleAndDynamicActions() {
+        val manifest =
+            RescuePluginManifest.parse(
+                JSONObject(
+                    """{"schemaVersion":1,"id":"wuxianpi.session-runtime","version":"1.0.0","name":"Runtime","description":"Runtime rules","category":"core","minHostVersion":13,"sessionRole":"runtime","actions":[{"id":"resource-update","title":"Check updates","icon":"refresh-cw","priority":90,"prompt":"Inspect resources","requiresPlugins":["wuxianpi.resource-update"]}],"documents":[],"requiredCapabilities":[],"tags":[]}"""
+                )
+            )
+
+        assertEquals("runtime", manifest.sessionRole)
+        assertEquals("resource-update", manifest.actions.single().id)
+        assertEquals("always", manifest.actions.single().visibleWhen)
+        assertEquals(listOf("wuxianpi.resource-update"), manifest.actions.single().requiresPlugins)
+        assertThrows(IllegalArgumentException::class.java) {
+            RescuePluginManifest.parse(
+                JSONObject(
+                    """{"schemaVersion":1,"id":"wuxianpi.bad","version":"1.0.0","name":"Bad","description":"Bad","category":"core","minHostVersion":13,"sessionRole":"loop","documents":[],"requiredCapabilities":[],"tags":[]}"""
+                )
+            )
+        }
     }
 
     @Test

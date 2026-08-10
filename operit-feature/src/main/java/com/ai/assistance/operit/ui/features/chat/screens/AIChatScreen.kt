@@ -16,13 +16,18 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.CodeOff
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Terminal
@@ -48,9 +53,11 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
+import com.ai.assistance.operit.rescue.plugins.ActiveRescuePluginAction
 import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
 import com.ai.assistance.operit.rescue.ui.RescueFirstUsePrompt
 import com.ai.assistance.operit.rescue.ui.RescueRemoteAssistDialog
+import com.ai.assistance.operit.rescue.ui.PendingRescueActionHandler
 import com.ai.assistance.operit.rescue.ui.plugins.RescuePluginMarketActivity
 import com.ai.assistance.operit.rescue.ui.shouldShowRescueFirstUsePrompt
 import com.ai.assistance.operit.core.tools.AIToolHandler
@@ -481,6 +488,15 @@ val actualViewModel: ChatViewModel =
         PendingChatDraftHandler.clearPendingDraft()
     }
 
+    val pendingRescueAction by PendingRescueActionHandler.pending.collectAsState()
+    LaunchedEffect(pendingRescueAction, chatViewRuntime) {
+        val action = pendingRescueAction ?: return@LaunchedEffect
+        if (chatViewRuntime != "rescue") return@LaunchedEffect
+        actualViewModel.showChatHistorySelector(false)
+        actualViewModel.startRescueActionConversation(action.id, action.prompt)
+        PendingRescueActionHandler.clear(action.id)
+    }
+
 
     // 添加WebView刷新相关状态
     val webViewRefreshCounter by actualViewModel.webViewRefreshCounter.collectAsState()
@@ -863,6 +879,15 @@ val actualViewModel: ChatViewModel =
     val setTopBarActions = LocalTopBarActions.current
     val setHostedSidebarActions = LocalSetHostedSidebarActions.current
     val hostMode = LocalOperitHostMode.current
+    val rescuePluginManager =
+        remember(chatViewRuntime) {
+            if (chatViewRuntime == "rescue") RescuePluginManager.get(context) else null
+        }
+    val rescueActions by
+        (rescuePluginManager?.activeActions ?: flowOf(emptyList()))
+            .collectAsState(initial = emptyList())
+    // RescuePluginManager is the single owner of dynamic action visibility.
+    val visibleRescueActions = rescueActions
     val appBarContentColor = LocalAppBarContentColor.current
     val isCurrentScreen = LocalIsCurrentScreen.current
     val setScreenSoftInputMode = LocalSetScreenSoftInputMode.current
@@ -1096,7 +1121,14 @@ val actualViewModel: ChatViewModel =
                                 .graphicsLayer { translationY = -chatViewportTranslationYPx }
                     ) {
                         ChatScreenContent(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .padding(
+                                            top =
+                                                if (visibleRescueActions.isNotEmpty()) 52.dp
+                                                else 0.dp
+                                        ),
                                 paddingValues =
                                         PaddingValues(), // Padding is already handled by the parent Box
                                 bottomInset = bottomBarHeightDp,
@@ -1156,6 +1188,20 @@ val actualViewModel: ChatViewModel =
                                 bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                                 showChatFloatingDotsAnimation = showChatFloatingDotsAnimation,
                         )
+
+                        if (visibleRescueActions.isNotEmpty()) {
+                            RescueDynamicActionBar(
+                                actions = visibleRescueActions,
+                                enabled = !isLoading,
+                                modifier = Modifier.align(Alignment.TopStart),
+                                onAction = { action ->
+                                    actualViewModel.startRescueActionConversation(
+                                        action.action.id,
+                                        action.action.prompt,
+                                    )
+                                },
+                            )
+                        }
 
                         if (inputStyle == UserPreferencesManager.INPUT_STYLE_CLASSIC) {
                             ClassicChatSettingsBar(
@@ -1636,6 +1682,51 @@ val actualViewModel: ChatViewModel =
             actualViewModel.captureMemoryFolders(selectedFolders)
         }
     )
+}
+
+@Composable
+private fun RescueDynamicActionBar(
+    actions: List<ActiveRescuePluginAction>,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onAction: (ActiveRescuePluginAction) -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth().height(52.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            actions.forEach { action ->
+                AssistChip(
+                    enabled = enabled,
+                    onClick = { onAction(action) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector =
+                                when (action.action.icon) {
+                                    "refresh-cw" -> Icons.Default.Refresh
+                                    "download" -> Icons.Default.Download
+                                    "wrench" -> Icons.Default.Build
+                                    else -> Icons.Default.PlayArrow
+                                },
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                    label = { Text(action.action.title, maxLines = 1) },
+                )
+            }
+        }
+    }
 }
 
 @Composable

@@ -3,6 +3,15 @@ package com.ai.assistance.operit.rescue.plugins
 import android.content.Context
 import com.ai.assistance.operit.core.tools.javascript.JsEngine
 import com.ai.assistance.operit.core.tools.javascript.extractJsExecutionFailure
+import com.ai.assistance.operit.host.OperitHostOperations
+import com.ai.assistance.operit.host.OperitHostProvider
+import com.ai.assistance.operit.rescue.memory.RescueMemoryPatch
+import com.ai.assistance.operit.rescue.memory.RescueMemorySnapshot
+import com.ai.assistance.operit.rescue.memory.RescueMemoryStore
+import com.ai.assistance.operit.rescue.session.PreparedRescueSession
+import com.ai.assistance.operit.rescue.session.RescueSessionCoordinator
+import com.ai.assistance.operit.rescue.resources.ApkResourceOffer
+import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -16,6 +25,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -101,9 +114,32 @@ class RescuePluginManager private constructor(context: Context) {
     private val catalogClient = RescuePluginCatalogClient(settings)
     private val store = RescuePluginStore(appContext, catalogClient)
     private val workflowRunner = RescuePluginWorkflowRunner(store)
+    private val memoryStore = RescueMemoryStore.get(appContext)
+    val memorySnapshot: StateFlow<RescueMemorySnapshot> = memoryStore.snapshot
+    private val resourceOfferStore = ApkResourceOfferStore.get(appContext)
+    val activeResourceOffer: StateFlow<ApkResourceOffer?> = resourceOfferStore.activeOffer
     private val contextJsEngine by lazy { JsEngine(appContext) }
     private val contextJsLock = Any()
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _activeActions = MutableStateFlow<List<ActiveRescuePluginAction>>(emptyList())
+    val activeActions: StateFlow<List<ActiveRescuePluginAction>> = _activeActions.asStateFlow()
+    private val sessionCoordinator =
+        RescueSessionCoordinator(
+            context = appContext,
+            memoryStore = memoryStore,
+            loadBootstrapContext = {
+                assistantContextForRoles("session", setOf("bootstrap"))
+            },
+            beforeMemorySnapshot = ::synchronizeMemoryBeforeSession,
+            updatePluginSet = store::updateInstalledOfficialPluginSet,
+            loadRuntimeContext = {
+                assistantContextForRoles("session", setOf("runtime"))
+            },
+            loadBusinessContext = {
+                assistantContextForRoles("session", setOf("business"))
+            },
+            onPluginSetActivated = ::reloadActiveActions,
+        )
     private val firstInstallPreparation =
         FirstInstallPreparationCoordinator(
             scope = applicationScope,
@@ -115,6 +151,17 @@ class RescuePluginManager private constructor(context: Context) {
         RescuePluginCommentDraftStore(
             java.io.File(appContext.filesDir, "rescue-plugins/comment-drafts")
         )
+
+    init {
+        applicationScope.launch {
+            resourceOfferStore.recordCurrentApk()
+            store.ensureBundledCorePlugins()
+            reloadActiveActions()
+        }
+        applicationScope.launch {
+            resourceOfferStore.activeOffer.collect { reloadActiveActions() }
+        }
+    }
 
     suspend fun search(query: String): JSONObject =
         JSONObject().put(
@@ -129,9 +176,10 @@ class RescuePluginManager private constructor(context: Context) {
         )
 
     suspend fun install(pluginId: String, version: String?): InstalledRescuePlugin =
-        store.install(pluginId, version)
+        store.install(pluginId, version).also { reloadActiveActions() }
 
-    suspend fun update(pluginId: String): InstalledRescuePlugin = store.update(pluginId)
+    suspend fun update(pluginId: String): InstalledRescuePlugin =
+        store.update(pluginId).also { reloadActiveActions() }
 
     suspend fun readDocument(pluginId: String, requestedPath: String?): JSONObject {
         val installed = store.getInstalled(pluginId) ?: error("Plugin $pluginId is not installed")
@@ -146,7 +194,22 @@ class RescuePluginManager private constructor(context: Context) {
             .put("content", store.readFile(pluginId, path))
     }
 
-    suspend fun assistantContext(scope: String, userMessage: String? = null): String =
+    suspend fun assistantContext(scope: String, userMessage: String? = null): String {
+        val roles =
+            if (scope.trim().lowercase() == "turn") {
+                // Bootstrap is one-shot setup context. A Runtime turn must never re-enter it.
+                setOf("runtime", "business")
+            } else {
+                setOf("bootstrap", "runtime", "business")
+            }
+        return assistantContextForRoles(scope, roles, userMessage)
+    }
+
+    private suspend fun assistantContextForRoles(
+        scope: String,
+        roles: Set<String>,
+        userMessage: String? = null,
+    ): String =
         withContext(Dispatchers.IO) {
             try {
                 val normalizedScope = scope.trim().lowercase()
@@ -155,8 +218,7 @@ class RescuePluginManager private constructor(context: Context) {
                 }
                 val resolved = mutableListOf<String>()
                 var executableContexts = 0
-                store.readActiveAssistantContexts()
-                    .filter { it.context.scope == normalizedScope }
+                store.readActiveAssistantContexts(normalizedScope, roles)
                     .forEach { candidate ->
                         if (
                             candidate.context.provider == "javascript" &&
@@ -180,6 +242,86 @@ class RescuePluginManager private constructor(context: Context) {
                 ""
             }
         }
+
+    suspend fun prepareSession(conversationId: String): PreparedRescueSession =
+        sessionCoordinator.prepare(conversationId)
+
+    suspend fun markSessionExecuting(conversationId: String) =
+        sessionCoordinator.markExecuting(conversationId)
+
+    suspend fun markSessionWritingMemory(conversationId: String) =
+        sessionCoordinator.markWritingMemory(conversationId)
+
+    suspend fun markSessionComplete(conversationId: String) =
+        sessionCoordinator.markComplete(conversationId)
+
+    suspend fun readMemory(): RescueMemorySnapshot = memoryStore.read()
+
+    suspend fun patchMemory(patch: RescueMemoryPatch): RescueMemorySnapshot =
+        memoryStore.patch(patch).also { pushMemoryMirrorBestEffort() }
+
+    suspend fun replaceMemory(expectedRevision: Long, markdown: String): RescueMemorySnapshot =
+        memoryStore.replace(expectedRevision, markdown).also { pushMemoryMirrorBestEffort() }
+
+    suspend fun undoMemory(): RescueMemorySnapshot =
+        memoryStore.undo().also { pushMemoryMirrorBestEffort() }
+
+    suspend fun completeApkResourceOffer(
+        status: com.ai.assistance.operit.rescue.resources.ApkResourceOfferStatus,
+        detail: String,
+    ): ApkResourceOffer? = resourceOfferStore.complete(status, detail).also { reloadActiveActions() }
+
+    private suspend fun synchronizeMemoryBeforeSession() {
+        try {
+            val operations = OperitHostProvider.operationsOrUnsupported()
+            val remote = operations.readRescueMemoryMirror()
+            if (remote.success) {
+                remote.details.optString("payload").takeIf(String::isNotBlank)?.let { payload ->
+                    memoryStore.mergeSyncPayload(payload.toByteArray(Charsets.UTF_8))
+                }
+            }
+            // A merge may produce a new revision. A missing remote mirror should also be seeded.
+            pushMemoryMirrorBestEffort(operations)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Memory synchronization is best effort; pending-sync.json preserves retry intent.
+        }
+    }
+
+    private suspend fun pushMemoryMirrorBestEffort(
+        operations: OperitHostOperations = OperitHostProvider.operationsOrUnsupported(),
+    ) {
+        try {
+            val payload = memoryStore.exportSyncPayload()
+            val metadata = JSONObject(payload.toString(Charsets.UTF_8))
+            val result = operations.writeRescueMemoryMirror(payload)
+            if (result.success) {
+                memoryStore.markSynced(
+                    revision = metadata.getLong("revision"),
+                    sha256 = metadata.getString("sha256"),
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // A later session or memory mutation retries the pending mirror write.
+        }
+    }
+
+    private suspend fun reloadActiveActions() {
+        _activeActions.value =
+            store.readActiveActions().filter { action ->
+                when (action.action.visibleWhen) {
+                    "always" -> true
+                    "apk-update-pending" -> resourceOfferStore.current()?.requiresReminder == true
+                    // Completion and maintenance state become visible only after their owning
+                    // business plugin contributes a concrete local status source.
+                    "first-install-incomplete", "maintenance-due" -> false
+                    else -> false
+                }
+            }
+    }
 
     private fun resolveAssistantContext(
         candidate: ActiveRescuePluginAssistantContext,

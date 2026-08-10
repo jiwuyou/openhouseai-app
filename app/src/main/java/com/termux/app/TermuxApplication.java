@@ -18,7 +18,7 @@ import com.termux.shared.termux.shell.command.environment.TermuxShellEnvironment
 import com.termux.shared.termux.shell.am.TermuxAmSocketServer;
 import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
-import com.termux.app.openhouse.release.OpenHousePostUpdateSync;
+import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore;
 import com.termux.app.openhouse.OpenHouseForegroundRuntimeKeeper;
 import com.termux.app.operit.init.OperitHostBootstrap;
 import com.openhouse.host.termux.TermuxProductHost;
@@ -88,7 +88,9 @@ public class TermuxApplication extends Application implements OpenHouseFeatureHo
 
         if (isTermuxFilesDirectoryAccessible) {
             TermuxShellEnvironment.writeEnvironmentToFile(this);
-            OpenHousePostUpdateSync.maybeRun(context);
+            // APK resources remain private assets until Rescue AI explicitly stages a verified
+            // difference. Recording an offer here must never copy or overwrite Termux files.
+            ApkResourceOfferStore.recordCurrentApk(context);
             OpenHouseForegroundRuntimeKeeper.register(this);
         }
     }

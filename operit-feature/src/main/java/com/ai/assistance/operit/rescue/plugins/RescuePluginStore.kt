@@ -33,6 +33,7 @@ data class InstalledRescuePlugin(
 internal data class ActiveRescuePluginAssistantContext(
     val pluginId: String,
     val pluginVersion: String,
+    val sessionRole: String,
     val pluginRoot: String,
     val context: RescuePluginAssistantContext,
     val path: String,
@@ -204,6 +205,7 @@ internal class RescuePluginInstalledReader(private val installedRoot: File) {
                         ActiveRescuePluginAssistantContext(
                             pluginId = installed.manifest.id,
                             pluginVersion = installed.activeVersion,
+                            sessionRole = installed.manifest.sessionRole,
                             pluginRoot = pluginRoot.absolutePath,
                             context = context,
                             path = context.path,
@@ -259,6 +261,20 @@ internal class RescuePluginInstalledReader(private val installedRoot: File) {
     }
 }
 
+data class ActiveRescuePluginAction(
+    val pluginId: String,
+    val pluginVersion: String,
+    val action: RescuePluginAction,
+)
+
+data class RescuePluginSetUpdateResult(
+    val revision: String,
+    val previousRevision: String?,
+    val updatedPluginIds: List<String>,
+    val usedOfflineSet: Boolean,
+    val detail: String? = null,
+)
+
 class RescuePluginStore(
     context: Context,
     private val catalogClient: RescuePluginCatalogClient,
@@ -268,13 +284,23 @@ class RescuePluginStore(
     private val installedRoot = File(root, "installed")
     private val stagingRoot = File(root, "staging")
     private val stateFile = File(root, "state.json")
+    private val previousStateFile = File(root, "state.previous.json")
     private val installer = RescuePluginArchiveInstaller(stagingRoot)
     private val installedReader = RescuePluginInstalledReader(installedRoot)
     private val stateLock = Any()
 
     suspend fun ensureBundledFirstInstall(): InstalledRescuePlugin = withContext(Dispatchers.IO) {
-        val (assetRoot, manifest) = readBundledFirstInstallManifest()
-        synchronized(stateLock) {
+        ensureBundledPlugin(RescuePluginContract.FIRST_INSTALL_PLUGIN_ID)
+    }
+
+    suspend fun ensureBundledCorePlugins(): List<InstalledRescuePlugin> =
+        withContext(Dispatchers.IO) {
+            BUNDLED_CORE_PLUGIN_IDS.map(::ensureBundledPlugin)
+        }
+
+    private fun ensureBundledPlugin(pluginId: String): InstalledRescuePlugin {
+        val (assetRoot, manifest) = readBundledManifest(pluginId)
+        return synchronized(stateLock) {
             val state = readState()
             installedReader.readActive(state, manifest.id)?.let {
                 return@synchronized it
@@ -326,7 +352,8 @@ class RescuePluginStore(
     /** Forcibly recopies and activates the APK asset, even when that version is already present. */
     suspend fun restoreBundledFirstInstall(): InstalledRescuePlugin =
         withContext(Dispatchers.IO) {
-            val (assetRoot, manifest) = readBundledFirstInstallManifest()
+            val (assetRoot, manifest) =
+                readBundledManifest(RescuePluginContract.FIRST_INSTALL_PLUGIN_ID)
             synchronized(stateLock) { installBundled(assetRoot, manifest) }
         }
 
@@ -344,7 +371,7 @@ class RescuePluginStore(
         }
 
     suspend fun listInstalled(): List<InstalledRescuePlugin> = withContext(Dispatchers.IO) {
-        ensureBundledFirstInstall()
+        ensureBundledCorePlugins()
         synchronized(stateLock) {
             val state = readState()
             state.keys().asSequence()
@@ -355,15 +382,161 @@ class RescuePluginStore(
     }
 
     suspend fun getInstalled(pluginId: String): InstalledRescuePlugin? = withContext(Dispatchers.IO) {
-        ensureBundledFirstInstall()
+        ensureBundledCorePlugins()
         synchronized(stateLock) { readInstalled(RescuePluginContract.requirePluginId(pluginId)) }
     }
 
     internal suspend fun readActiveAssistantContexts(): List<ActiveRescuePluginAssistantContext> =
         withContext(Dispatchers.IO) {
-            ensureBundledFirstInstall()
+            ensureBundledCorePlugins()
             synchronized(stateLock) {
                 installedReader.readActiveAssistantContexts(readState())
+            }
+        }
+
+    internal suspend fun readActiveAssistantContexts(
+        scope: String,
+        sessionRoles: Set<String>,
+    ): List<ActiveRescuePluginAssistantContext> =
+        readActiveAssistantContexts().filter {
+            it.context.scope == scope && it.sessionRole in sessionRoles
+        }
+
+    suspend fun readActiveActions(): List<ActiveRescuePluginAction> = withContext(Dispatchers.IO) {
+        ensureBundledCorePlugins()
+        synchronized(stateLock) {
+            val state = readState()
+            val installed =
+                state.keys().asSequence()
+                    .mapNotNull { installedReader.readActive(state, it) }
+                    .toList()
+            val activeIds = installed.mapTo(mutableSetOf()) { it.manifest.id }
+            installed
+                .flatMap { plugin ->
+                    plugin.manifest.actions.map { action ->
+                        ActiveRescuePluginAction(
+                            pluginId = plugin.manifest.id,
+                            pluginVersion = plugin.activeVersion,
+                            action = action,
+                        )
+                    }
+                }
+                .filter { it.action.requiresPlugins.all(activeIds::contains) }
+                .sortedWith(
+                    compareByDescending<ActiveRescuePluginAction> { it.action.priority }
+                        .thenBy { it.pluginId }
+                        .thenBy { it.action.id }
+                )
+                .distinctBy { it.action.id }
+        }
+    }
+
+    suspend fun activePluginSetRevision(): String = withContext(Dispatchers.IO) {
+        ensureBundledCorePlugins()
+        synchronized(stateLock) { revisionOf(readState()) }
+    }
+
+    /**
+     * Refreshes the official catalog and updates the already-installed official set plus the two
+     * mandatory session plugins. All archives are downloaded and validated before the active
+     * state file is replaced once, so a partial refresh can never become visible.
+     */
+    suspend fun updateInstalledOfficialPluginSet(): RescuePluginSetUpdateResult =
+        withContext(Dispatchers.IO) {
+            ensureBundledCorePlugins()
+            val initialState = synchronized(stateLock) { JSONObject(readState().toString()) }
+            val previousRevision = revisionOf(initialState)
+            try {
+                val catalog = catalogClient.search("").associateBy(RescuePluginListing::id)
+                val installedIds = initialState.keys().asSequence().toSet()
+                val targetIds =
+                    (installedIds.filter(::isOfficialPluginId) + REQUIRED_SESSION_PLUGIN_IDS)
+                        .toSortedSet()
+                val listings =
+                    targetIds.mapNotNull { pluginId ->
+                        val listing = catalog[pluginId] ?: return@mapNotNull null
+                        requireCompatibleListing(listing)
+                        val current = installedReader.readActive(initialState, pluginId)
+                        if (
+                            current != null &&
+                                RescuePluginContract.compareSemanticVersions(
+                                    listing.version,
+                                    current.activeVersion,
+                                ) <= 0
+                        ) {
+                            null
+                        } else {
+                            listing
+                        }
+                    }
+                if (listings.isEmpty()) {
+                    return@withContext RescuePluginSetUpdateResult(
+                        revision = previousRevision,
+                        previousRevision = null,
+                        updatedPluginIds = emptyList(),
+                        usedOfflineSet = false,
+                    )
+                }
+
+                val staged = mutableListOf<Pair<File, RescuePluginManifest>>()
+                try {
+                    listings.forEach { listing ->
+                        val expectedSha =
+                            listing.sha256 ?: error("Hub did not provide SHA-256 for ${listing.id}")
+                        val archive = catalogClient.download(listing)
+                        staged +=
+                            installer.extractAndValidate(
+                                archive = archive,
+                                expectedSha256 = expectedSha,
+                                expectedPluginId = listing.id,
+                                expectedVersion = listing.version,
+                                expectedManifest = listing.manifest,
+                            )
+                    }
+                    val updatedState =
+                        synchronized(stateLock) {
+                            val currentState = readState()
+                            check(revisionOf(currentState) == previousRevision) {
+                                "Rescue plugin set changed while an update was being staged"
+                            }
+                            val nextState = JSONObject(currentState.toString())
+                            staged.forEach { (directory, manifest) ->
+                                placeVersion(directory, manifest, bundled = false)
+                                val old = nextState.optJSONObject(manifest.id)
+                                val oldActive = old?.optionalString("active")
+                                val previous =
+                                    oldActive?.takeIf { it != manifest.version }
+                                        ?: old?.optionalString("previous")
+                                nextState.put(
+                                    manifest.id,
+                                    JSONObject()
+                                        .put("active", manifest.version)
+                                        .put("previous", previous ?: JSONObject.NULL)
+                                        .put("bundled", false),
+                                )
+                            }
+                            writeState(nextState)
+                            nextState
+                        }
+                    RescuePluginSetUpdateResult(
+                        revision = revisionOf(updatedState),
+                        previousRevision = previousRevision,
+                        updatedPluginIds = listings.map(RescuePluginListing::id),
+                        usedOfflineSet = false,
+                    )
+                } finally {
+                    staged.forEach { (directory, _) -> directory.deleteRecursively() }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                RescuePluginSetUpdateResult(
+                    revision = synchronized(stateLock) { revisionOf(readState()) },
+                    previousRevision = null,
+                    updatedPluginIds = emptyList(),
+                    usedOfflineSet = true,
+                    detail = failure.message ?: failure::class.java.simpleName,
+                )
             }
         }
 
@@ -422,6 +595,28 @@ class RescuePluginStore(
         manifest: RescuePluginManifest,
         bundled: Boolean,
     ): InstalledRescuePlugin {
+        placeVersion(staging, manifest, bundled)
+
+        val state = readState()
+        val old = state.optJSONObject(manifest.id)
+        val oldActive = old?.optionalString("active")
+        val previous = oldActive?.takeIf { it != manifest.version } ?: old?.optionalString("previous")
+        state.put(
+            manifest.id,
+            JSONObject()
+                .put("active", manifest.version)
+                .put("previous", previous ?: JSONObject.NULL)
+                .put("bundled", bundled),
+        )
+        writeState(state)
+        return InstalledRescuePlugin(manifest, manifest.version, previous, bundled)
+    }
+
+    private fun placeVersion(
+        staging: File,
+        manifest: RescuePluginManifest,
+        bundled: Boolean,
+    ) {
         if (bundled) {
             File(staging, BUNDLED_MARKER).writeText("")
         } else {
@@ -439,20 +634,6 @@ class RescuePluginStore(
             throw IOException("Unable to activate plugin ${manifest.id} ${manifest.version}")
         }
         replacement.deleteRecursively()
-
-        val state = readState()
-        val old = state.optJSONObject(manifest.id)
-        val oldActive = old?.optionalString("active")
-        val previous = oldActive?.takeIf { it != manifest.version } ?: old?.optionalString("previous")
-        state.put(
-            manifest.id,
-            JSONObject()
-                .put("active", manifest.version)
-                .put("previous", previous ?: JSONObject.NULL)
-                .put("bundled", bundled),
-        )
-        writeState(state)
-        return InstalledRescuePlugin(manifest, manifest.version, previous, bundled)
     }
 
     private fun readInstalled(pluginId: String): InstalledRescuePlugin? =
@@ -492,14 +673,16 @@ class RescuePluginStore(
         }
     }
 
-    private fun readBundledFirstInstallManifest(): Pair<String, RescuePluginManifest> {
-        val assetRoot = "rescue-plugins/${RescuePluginContract.FIRST_INSTALL_PLUGIN_ID}"
+    private fun readBundledManifest(pluginId: String): Pair<String, RescuePluginManifest> {
+        val id = RescuePluginContract.requirePluginId(pluginId)
+        require(id in BUNDLED_CORE_PLUGIN_IDS) { "Plugin $id is not an APK bundled core plugin" }
+        val assetRoot = "rescue-plugins/$id"
         val manifest =
             appContext.assets.open("$assetRoot/$MANIFEST_FILE").bufferedReader().use { reader ->
                 RescuePluginManifest.parse(JSONObject(reader.readText()))
             }
-        require(manifest.id == RescuePluginContract.FIRST_INSTALL_PLUGIN_ID) {
-            "Bundled first-install plugin has an unexpected id: ${manifest.id}"
+        require(manifest.id == id) {
+            "Bundled plugin $id has an unexpected id: ${manifest.id}"
         }
         RescuePluginContract.requireCompatible(manifest)
         return assetRoot to manifest
@@ -534,20 +717,27 @@ class RescuePluginStore(
 
     private fun writeState(state: JSONObject) {
         root.mkdirs()
+        if (stateFile.isFile) {
+            writeAtomically(previousStateFile, stateFile.readText())
+        }
+        writeAtomically(stateFile, state.toString(2))
+    }
+
+    private fun writeAtomically(target: File, content: String) {
         val temporary = File(root, "state-${UUID.randomUUID()}.tmp")
-        temporary.writeText(state.toString(2))
+        temporary.writeText(content)
         try {
             try {
                 Files.move(
                     temporary.toPath(),
-                    stateFile.toPath(),
+                    target.toPath(),
                     StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING,
                 )
             } catch (_: AtomicMoveNotSupportedException) {
                 Files.move(
                     temporary.toPath(),
-                    stateFile.toPath(),
+                    target.toPath(),
                     StandardCopyOption.REPLACE_EXISTING,
                 )
             }
@@ -556,6 +746,20 @@ class RescuePluginStore(
             throw IOException("Unable to save rescue plugin state", failure)
         }
     }
+
+    private fun revisionOf(state: JSONObject): String {
+        val canonical =
+            state.keys().asSequence().toList().sorted().joinToString("\n") { pluginId ->
+                val record = state.optJSONObject(pluginId)
+                "$pluginId=${record?.optionalString("active").orEmpty()}"
+            }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(canonical.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
+            .take(16)
+    }
+
+    private fun isOfficialPluginId(pluginId: String): Boolean = pluginId.startsWith("wuxianpi.")
 
     private fun copyAssetTree(assetPath: String, destination: File) {
         val children = appContext.assets.list(assetPath).orEmpty()
@@ -575,5 +779,16 @@ class RescuePluginStore(
     private companion object {
         const val MANIFEST_FILE = "manifest.json"
         const val BUNDLED_MARKER = ".bundled"
+        val REQUIRED_SESSION_PLUGIN_IDS =
+            setOf(
+                RescuePluginContract.SESSION_BOOTSTRAP_PLUGIN_ID,
+                RescuePluginContract.SESSION_RUNTIME_PLUGIN_ID,
+            )
+        val BUNDLED_CORE_PLUGIN_IDS =
+            listOf(
+                RescuePluginContract.FIRST_INSTALL_PLUGIN_ID,
+                RescuePluginContract.SESSION_BOOTSTRAP_PLUGIN_ID,
+                RescuePluginContract.SESSION_RUNTIME_PLUGIN_ID,
+            )
     }
 }

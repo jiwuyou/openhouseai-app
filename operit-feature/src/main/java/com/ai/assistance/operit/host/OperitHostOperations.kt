@@ -37,6 +37,37 @@ interface OperitHostOperations {
         mimeType: String,
     ): OperitHostOperationResult
 
+    /** Stages one user-approved, checksum-verified APK resource into Termux Home. */
+    suspend fun stageApkResourceOffer(
+        offerId: String,
+        resourceId: String,
+        archiveName: String,
+        payload: ByteArray,
+        sha256: String,
+    ): OperitHostOperationResult =
+        OperitHostOperationResult(
+            success = false,
+            details = JSONObject().put("operation", "stage_apk_resource_offer"),
+            message = "APK resource staging is unavailable",
+            error = "The active host does not support APK resource staging",
+        )
+
+    suspend fun readRescueMemoryMirror(): OperitHostOperationResult =
+        OperitHostOperationResult(
+            success = false,
+            details = JSONObject().put("operation", "read_rescue_memory_mirror"),
+            message = "Rescue memory mirror is unavailable",
+            error = "The active host does not support Rescue memory synchronization",
+        )
+
+    suspend fun writeRescueMemoryMirror(payload: ByteArray): OperitHostOperationResult =
+        OperitHostOperationResult(
+            success = false,
+            details = JSONObject().put("operation", "write_rescue_memory_mirror"),
+            message = "Rescue memory mirror is unavailable",
+            error = "The active host does not support Rescue memory synchronization",
+        )
+
     suspend fun repairJobStatus(jobId: String): OperitHostOperationResult
 
     suspend fun exportDiagnostics(report: String): OperitHostOperationResult
@@ -112,6 +143,20 @@ object UnsupportedOperitHostOperations : OperitHostOperations {
 
     override suspend fun repairJobStatus(jobId: String): OperitHostOperationResult =
         unsupported("repair_job_status")
+
+    override suspend fun stageApkResourceOffer(
+        offerId: String,
+        resourceId: String,
+        archiveName: String,
+        payload: ByteArray,
+        sha256: String,
+    ): OperitHostOperationResult = unsupported("stage_apk_resource_offer")
+
+    override suspend fun readRescueMemoryMirror(): OperitHostOperationResult =
+        unsupported("read_rescue_memory_mirror")
+
+    override suspend fun writeRescueMemoryMirror(payload: ByteArray): OperitHostOperationResult =
+        unsupported("write_rescue_memory_mirror")
 
     override suspend fun exportDiagnostics(report: String): OperitHostOperationResult =
         unsupported("export_logs")

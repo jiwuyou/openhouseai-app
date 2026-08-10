@@ -2,6 +2,7 @@ package com.ai.assistance.operit.rescue.plugins
 
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,8 +39,9 @@ class RescueFirstInstallCoordinatorTest {
 
         coordinator.prewarm()
         started.await()
-        val first = async { coordinator.awaitPreparation() }
-        val second = async { coordinator.awaitPreparation() }
+        // Both callers must acquire the in-flight preparation before it completes.
+        val first = async(start = CoroutineStart.UNDISPATCHED) { coordinator.awaitPreparation() }
+        val second = async(start = CoroutineStart.UNDISPATCHED) { coordinator.awaitPreparation() }
         release.complete(Unit)
 
         assertEquals("prepared", first.await())

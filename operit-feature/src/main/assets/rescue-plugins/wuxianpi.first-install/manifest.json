@@ -17,6 +17,17 @@
     "Termux"
   ],
   "entryWorkflow": "workflows/install.json",
+  "actions": [
+    {
+      "id": "first-install",
+      "title": "完成首次安装",
+      "icon": "download",
+      "priority": 100,
+      "prompt": "请根据当前设备的真实状态完成 WuxianPi 首次安装；先读取首次安装插件说明和工作流，已经完成的步骤应验证后跳过。",
+      "visibleWhen": "always",
+      "requiresPlugins": ["wuxianpi.first-install"]
+    }
+  ],
   "documents": [
     {
       "path": "docs/guide.md",

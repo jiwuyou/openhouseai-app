@@ -20,6 +20,9 @@ import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import com.ai.assistance.operit.host.setup.WuxianPiSetupToolExecutor
 import com.ai.assistance.operit.rescue.plugins.RescuePluginContract
 import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
+import com.ai.assistance.operit.rescue.memory.RescueMemoryPatch
+import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStatus
+import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore
 import com.ai.assistance.operit.rescue.ui.plugins.RescuePluginMarketActivity
 
 /** Executes existing Operit tools plus the fixed WuxianPi repair tools exposed to Rescue Pi. */
@@ -60,6 +63,7 @@ class RescueToolDispatcher private constructor(
 
     private val setupToolExecutor = WuxianPiSetupToolExecutor(operationsProvider)
     private val pluginManager by lazy { RescuePluginManager.get(appContext) }
+    private val resourceOfferStore by lazy { ApkResourceOfferStore.get(appContext) }
     private val httpClient =
         OkHttpClient.Builder()
             .connectTimeout(4, TimeUnit.SECONDS)
@@ -190,6 +194,46 @@ class RescueToolDispatcher private constructor(
                 RescuePluginContract.TOOL_PUBLISH_COMMENT ->
                     deferredPluginCommentPublish(args.getString("draftId"))
                 RescuePluginContract.TOOL_OPEN_MARKET -> openPluginMarket(args)
+                RescuePluginContract.TOOL_READ_MEMORY ->
+                    success(pluginManager.readMemory().toJson())
+                RescuePluginContract.TOOL_PATCH_MEMORY ->
+                    success(
+                        pluginManager.patchMemory(
+                            RescueMemoryPatch(
+                                expectedRevision = args.getLong("expectedRevision"),
+                                section = args.getString("section"),
+                                content = args.getString("content"),
+                                source = args.getString("source"),
+                                confidence = args.getString("confidence"),
+                                userConfirmed = args.getBoolean("userConfirmed"),
+                            )
+                        ).toJson()
+                    )
+                RescuePluginContract.TOOL_UNDO_MEMORY ->
+                    success(pluginManager.undoMemory().toJson())
+                RescuePluginContract.TOOL_INSPECT_APK_RESOURCE_OFFER ->
+                    success(
+                        (resourceOfferStore.current()?.toJson()
+                            ?: JSONObject().put("available", false))
+                    )
+                RescuePluginContract.TOOL_STAGE_APK_RESOURCE ->
+                    stageApkResource(args.getString("resourceId"))
+                RescuePluginContract.TOOL_COMPLETE_APK_RESOURCE_OFFER -> {
+                    val status =
+                        when (args.getString("status").trim().lowercase()) {
+                            "satisfied" -> ApkResourceOfferStatus.SATISFIED
+                            "superseded" -> ApkResourceOfferStatus.SUPERSEDED
+                            "failed" -> ApkResourceOfferStatus.FAILED
+                            else -> throw IllegalArgumentException(
+                                "Unsupported APK resource offer status"
+                            )
+                        }
+                    success(
+                        requireNotNull(
+                            pluginManager.completeApkResourceOffer(status, args.getString("detail"))
+                        ) { "APK resource offer is unavailable" }.toJson()
+                    )
+                }
                 "runtime_status" -> hostCompletion(OperitHostProvider.operationsOrUnsupported().runtimeStatus())
                 "connection_test" -> {
                     val url =
@@ -221,6 +265,32 @@ class RescueToolDispatcher private constructor(
         } catch (failure: Exception) {
             error(failure.message ?: "$toolName failed", failure)
         }
+
+    private suspend fun stageApkResource(resourceId: String): Completion {
+        val offer = resourceOfferStore.current()
+            ?: throw IllegalStateException("APK resource offer is unavailable")
+        val resources = offer.resourceSet.getJSONArray("resources")
+        var expectedSha: String? = null
+        for (index in 0 until resources.length()) {
+            val resource = resources.getJSONObject(index)
+            if (resource.optString("id") == resourceId) {
+                expectedSha = resource.getString("sha256").lowercase()
+                break
+            }
+        }
+        val sha256 = expectedSha
+            ?: throw IllegalStateException("APK resource set does not contain $resourceId")
+        val (archiveName, payload) = resourceOfferStore.readResource(resourceId)
+        return hostCompletion(
+            OperitHostProvider.operationsOrUnsupported().stageApkResourceOffer(
+                offerId = offer.offerId,
+                resourceId = resourceId,
+                archiveName = archiveName,
+                payload = payload,
+                sha256 = sha256,
+            )
+        )
+    }
 
     private fun connectionTest(url: String): JSONObject {
         val startedAt = System.nanoTime()

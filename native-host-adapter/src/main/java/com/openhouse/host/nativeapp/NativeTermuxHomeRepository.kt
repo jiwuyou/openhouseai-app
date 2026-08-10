@@ -7,6 +7,8 @@ import androidx.documentfile.provider.DocumentFile
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import java.security.MessageDigest
 import java.util.UUID
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -95,6 +97,61 @@ internal class NativeTermuxHomeRepository(context: Context) {
         }
         requireNotNull(resolver.openOutputStream(target.uri, "w")).bufferedWriter().use {
             it.write(content)
+        }
+    }
+
+    suspend fun stageBytes(homePath: String, bytes: ByteArray, expectedSha256: String): Long =
+        withContext(Dispatchers.IO) {
+            val root = requireRoot()
+            val parent = ensureDirectory(root, homePath.substringBeforeLast('/', ""))
+            val fileName = homePath.substringAfterLast('/')
+            val temporaryName = ".$fileName.${UUID.randomUUID()}.tmp"
+            val temporary = requireNotNull(parent.createFile("application/octet-stream", temporaryName)) {
+                "Unable to create temporary $homePath in Termux Home"
+            }
+            try {
+                val digest = MessageDigest.getInstance("SHA-256")
+                ByteArrayInputStream(bytes).use { input ->
+                    requireNotNull(resolver.openOutputStream(temporary.uri, "w")).use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            if (read > 0) {
+                                output.write(buffer, 0, read)
+                                digest.update(buffer, 0, read)
+                            }
+                        }
+                    }
+                }
+                val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
+                require(actualSha256 == expectedSha256.lowercase()) {
+                    "APK resource checksum changed before SAF staging"
+                }
+                replaceTemporaryFile(parent, temporary, fileName)
+                bytes.size.toLong()
+            } catch (failure: Throwable) {
+                temporary.delete()
+                throw failure
+            }
+        }
+
+    suspend fun readBytes(homePath: String, maxBytes: Int): ByteArray = withContext(Dispatchers.IO) {
+        val root = requireRoot()
+        val file = findDocument(root, homePath)?.takeIf(DocumentFile::isFile)
+            ?: error("Termux Home file does not exist: $homePath")
+        requireNotNull(resolver.openInputStream(file.uri)).use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                if (read > 0) {
+                    require(output.size() + read <= maxBytes) { "Termux Home file is too large" }
+                    output.write(buffer, 0, read)
+                }
+            }
+            output.toByteArray()
         }
     }
 

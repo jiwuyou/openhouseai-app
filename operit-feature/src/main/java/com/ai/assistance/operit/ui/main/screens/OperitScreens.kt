@@ -13,6 +13,7 @@ import com.ai.assistance.operit.ui.features.settings.screens.ModelConfigScreen
 import com.ai.assistance.operit.ui.features.settings.screens.SettingsScreen
 import com.ai.assistance.operit.ui.features.settings.screens.ThemeSettingsScreen
 import com.ai.assistance.operit.ui.features.token.TokenConfigWebViewScreen
+import com.ai.assistance.operit.rescue.memory.RescueMemoryScreen
 
 typealias ScreenNavigationHandler = (Screen) -> Unit
 
@@ -82,6 +83,24 @@ sealed class Screen(
                 navigateToModelConfig = { navigateTo(ModelConfig) },
                 navigateToThemeSettings = { navigateTo(ThemeSettings) },
             )
+        }
+    }
+
+    data object RescueMemory : Screen(
+        navItem = NavItem.MemoryBase,
+        titleRes = R.string.nav_memory_base,
+    ) {
+        @Composable
+        override fun Content(
+            navController: NavController,
+            navigateTo: ScreenNavigationHandler,
+            onGoBack: () -> Unit,
+            hasBackgroundImage: Boolean,
+            onLoading: (Boolean) -> Unit,
+            onError: (String) -> Unit,
+            onGestureConsumed: (Boolean) -> Unit,
+        ) {
+            RescueMemoryScreen()
         }
     }
 

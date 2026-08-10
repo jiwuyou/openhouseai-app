@@ -16,6 +16,7 @@ import com.wuxianpi.openhouse.core.service.ServiceManagerClient
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -255,6 +256,85 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         JSONObject().put("payloadBytes", payload.size).put("fileName", fileName).put("mimeType", mimeType)
             .put("flow", "native-pairing-runtime"),
     )
+
+    override suspend fun stageApkResourceOffer(
+        offerId: String,
+        resourceId: String,
+        archiveName: String,
+        payload: ByteArray,
+        sha256: String,
+    ): OperitHostOperationResult = runCatching {
+        require(offerId.matches(Regex("[a-f0-9]{24}"))) { "Invalid APK resource offer id" }
+        require(archiveName.matches(Regex("[A-Za-z0-9._-]+\\.tgz"))) { "Invalid archive name" }
+        val actualSha = MessageDigest.getInstance("SHA-256").digest(payload)
+            .joinToString("") { "%02x".format(it) }
+        require(actualSha == sha256.lowercase()) { "APK resource checksum changed before staging" }
+        val homePath = ".local/share/openhouseai/resource-manager/apk-offers/$offerId/$archiveName"
+        val copied = termuxHomeRepository.stageBytes(homePath, payload, actualSha)
+        success(
+            "stage_apk_resource_offer",
+            JSONObject()
+                .put("offerId", offerId)
+                .put("resourceId", resourceId)
+                .put("path", "$TERMUX_HOME/$homePath")
+                .put("size", copied)
+                .put("sha256", actualSha),
+        )
+    }.getOrElse {
+        failure(
+            "stage_apk_resource_offer",
+            it.message ?: "Unable to stage APK resource through Termux Home SAF",
+        )
+    }
+
+    override suspend fun readRescueMemoryMirror(): OperitHostOperationResult = runCatching {
+        val payload = termuxHomeRepository.readBytes(
+            ".local/share/openhouseai/memory/memory-sync.json",
+            128 * 1024,
+        )
+        success(
+            "read_rescue_memory_mirror",
+            JSONObject().put("payload", payload.toString(Charsets.UTF_8)),
+        )
+    }.getOrElse {
+        failure("read_rescue_memory_mirror", it.message ?: "Unable to read Rescue memory mirror")
+    }
+
+    override suspend fun writeRescueMemoryMirror(payload: ByteArray): OperitHostOperationResult =
+        runCatching {
+            require(payload.size <= 128 * 1024) { "Rescue memory sync payload is too large" }
+            val sync = JSONObject(payload.toString(Charsets.UTF_8))
+            require(sync.optInt("schemaVersion") == 1) {
+                "Unsupported Rescue memory sync schema"
+            }
+            val markdown = sync.getString("markdown").toByteArray(Charsets.UTF_8)
+            val deviceState =
+                (sync.optJSONObject("deviceState") ?: JSONObject().put("facts", org.json.JSONArray()))
+                    .toString(2)
+                    .toByteArray(Charsets.UTF_8)
+            termuxHomeRepository.stageBytes(
+                ".local/share/openhouseai/memory/memory-sync.json",
+                payload,
+                sha256(payload),
+            )
+            termuxHomeRepository.stageBytes(
+                ".local/share/openhouseai/memory/assistant-memory.md",
+                markdown,
+                sha256(markdown),
+            )
+            termuxHomeRepository.stageBytes(
+                ".local/share/openhouseai/memory/device-state.json",
+                deviceState,
+                sha256(deviceState),
+            )
+            success("write_rescue_memory_mirror", JSONObject())
+        }.getOrElse {
+            failure("write_rescue_memory_mirror", it.message ?: "Unable to save Rescue memory mirror")
+        }
+
+    private fun sha256(payload: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(payload)
+            .joinToString("") { "%02x".format(it) }
 
     override suspend fun repairJobStatus(jobId: String): OperitHostOperationResult {
         val id = jobId.trim().takeIf { it.matches(Regex("[A-Za-z0-9._-]{1,128}")) }

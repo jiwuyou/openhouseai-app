@@ -94,6 +94,7 @@ import com.ai.assistance.operit.services.EmptyChatServiceUiBridge
 import com.ai.assistance.operit.ui.features.chat.util.MessageImageGenerator
 import com.ai.assistance.operit.ui.features.chat.components.CharacterSelectorTarget
 import com.ai.assistance.operit.rescue.ui.RescueActivity
+import com.ai.assistance.operit.rescue.ui.RescueActionConversationStore
 enum class ChatHistoryDisplayMode {
     BY_CHARACTER_CARD,
     BY_FOLDER,
@@ -1449,6 +1450,33 @@ class ChatViewModel(
             promptFunctionType = promptFunctionType,
             messageTextOverride = text
         )
+    }
+
+    /** Starts a normal Rescue conversation for a plugin-contributed action prompt. */
+    fun startRescueActionConversation(actionId: String, prompt: String) {
+        if (runtimeSlot != ChatRuntimeSlot.RESCUE || prompt.isBlank() || isLoading.value) return
+        viewModelScope.launch {
+            val resumableChatId =
+                RescueActionConversationStore.activeChatId(context, actionId)
+                    ?.takeIf { chatId -> chatHistories.value.any { it.id == chatId } }
+            val currentIsBlank =
+                !currentChatId.value.isNullOrBlank() && chatHistory.value.none {
+                    it.sender == "user" || it.sender == "ai"
+                }
+            val targetChatId =
+                when {
+                    resumableChatId != null -> resolveTargetChatIdForSharedContent(resumableChatId)
+                    currentIsBlank -> currentChatId.value
+                    else -> resolveTargetChatIdForSharedContent(null)
+                }
+            if (targetChatId.isNullOrBlank()) {
+                uiStateDelegate.showErrorMessage("无法为维修入口创建新对话")
+                return@launch
+            }
+            if (resumableChatId == targetChatId) return@launch
+            RescueActionConversationStore.markActive(context, actionId, targetChatId)
+            sendTextMessage(prompt.trim())
+        }
     }
 
     suspend fun removeLastVisibleUserMessageFromCurrentChat(text: String): Boolean {

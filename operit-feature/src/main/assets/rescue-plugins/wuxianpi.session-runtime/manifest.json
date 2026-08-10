@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "wuxianpi.session-runtime",
+  "version": "1.0.1",
+  "name": "会话运行规则",
+  "description": "在插件统一更新后即时接管当前维修对话，选择业务插件、验证设备状态并维护长期记忆。",
+  "category": "core",
+  "minHostVersion": 13,
+  "requiredCapabilities": [],
+  "tags": ["核心", "Runtime", "记忆"],
+  "sessionRole": "runtime",
+  "assistantContexts": [
+    { "path": "prompts/runtime.md", "scope": "session", "provider": "static" }
+  ],
+  "actions": [
+    {
+      "id": "first-install",
+      "title": "完成首次安装",
+      "icon": "download",
+      "priority": 100,
+      "prompt": "请根据当前设备的真实状态完成 WuxianPi 首次安装；先读取首次安装插件说明和工作流，已经完成的步骤应验证后跳过。",
+      "visibleWhen": "always",
+      "requiresPlugins": ["wuxianpi.first-install"]
+    },
+    {
+      "id": "resource-update",
+      "title": "检查更新",
+      "icon": "refresh-cw",
+      "priority": 90,
+      "prompt": "请检查 APK、Termux 和维修助手市场中的资源更新；读取资源更新插件说明，先比较本地状态，只处理缺失、损坏或 SHA 不一致的资源。",
+      "visibleWhen": "always",
+      "requiresPlugins": ["wuxianpi.resource-update"]
+    },
+    {
+      "id": "daily-maintenance",
+      "title": "日常维护与检查",
+      "icon": "wrench",
+      "priority": 80,
+      "prompt": "请对当前设备进行日常维护与检查；先读取已安装的常见问题和相关业务插件说明，仅对发现的真实问题采取修复操作，并在结束前复查状态。",
+      "visibleWhen": "always",
+      "requiresPlugins": ["wuxianpi.common-errors"]
+    }
+  ],
+  "documents": [
+    { "path": "docs/guide.md", "title": "会话运行规则说明" }
+  ]
+}

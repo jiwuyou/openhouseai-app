@@ -28,7 +28,6 @@ class HostModeTest {
         val rejectedItems =
             listOf(
                 NavItem.Toolbox,
-                NavItem.MemoryBase,
                 NavItem.Packages,
                 NavItem.Workflow,
                 NavItem.About,
@@ -44,6 +43,8 @@ class HostModeTest {
                 assertFalse("$mode should reject ${item.route}", mode.allowsDrawerItem(item))
             }
         }
+        assertFalse(OperitHostMode.BASIC.allowsDrawerItem(NavItem.MemoryBase))
+        assertTrue(OperitHostMode.RESCUE.allowsDrawerItem(NavItem.MemoryBase))
     }
 
     @Test

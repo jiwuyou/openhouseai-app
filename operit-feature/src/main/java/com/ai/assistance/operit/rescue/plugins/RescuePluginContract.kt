@@ -8,6 +8,8 @@ object RescuePluginContract {
     const val HOST_API_VERSION = 13
     const val DEFAULT_HUB_URL = "https://wuxianpirescue.webefficacy.com"
     const val FIRST_INSTALL_PLUGIN_ID = "wuxianpi.first-install"
+    const val SESSION_BOOTSTRAP_PLUGIN_ID = "wuxianpi.session-bootstrap"
+    const val SESSION_RUNTIME_PLUGIN_ID = "wuxianpi.session-runtime"
 
     val supportedCapabilities =
         setOf(
@@ -29,6 +31,12 @@ object RescuePluginContract {
     const val TOOL_DRAFT_COMMENT = "draft_rescue_plugin_comment"
     const val TOOL_PUBLISH_COMMENT = "publish_rescue_plugin_comment"
     const val TOOL_OPEN_MARKET = "open_rescue_plugin_market"
+    const val TOOL_READ_MEMORY = "read_rescue_memory"
+    const val TOOL_PATCH_MEMORY = "patch_rescue_memory"
+    const val TOOL_UNDO_MEMORY = "undo_rescue_memory"
+    const val TOOL_INSPECT_APK_RESOURCE_OFFER = "inspect_apk_resource_offer"
+    const val TOOL_STAGE_APK_RESOURCE = "stage_apk_resource"
+    const val TOOL_COMPLETE_APK_RESOURCE_OFFER = "complete_apk_resource_offer"
 
     val toolNames =
         setOf(
@@ -42,6 +50,12 @@ object RescuePluginContract {
             TOOL_DRAFT_COMMENT,
             TOOL_PUBLISH_COMMENT,
             TOOL_OPEN_MARKET,
+            TOOL_READ_MEMORY,
+            TOOL_PATCH_MEMORY,
+            TOOL_UNDO_MEMORY,
+            TOOL_INSPECT_APK_RESOURCE_OFFER,
+            TOOL_STAGE_APK_RESOURCE,
+            TOOL_COMPLETE_APK_RESOURCE_OFFER,
         )
 
     private val SAFE_PLUGIN_ID = Regex("[a-z0-9]+(?:[.-][a-z0-9]+)*")
@@ -147,7 +161,9 @@ data class RescuePluginManifest(
     val requiredCapabilities: List<String>,
     val tags: List<String>,
     val minHostVersion: Int,
+    val sessionRole: String = "business",
     val assistantContexts: List<RescuePluginAssistantContext> = emptyList(),
+    val actions: List<RescuePluginAction> = emptyList(),
 ) {
     fun toJson(): JSONObject =
         JSONObject()
@@ -158,10 +174,12 @@ data class RescuePluginManifest(
             .put("description", description)
             .put("category", category)
             .put("entryWorkflow", entryWorkflow ?: JSONObject.NULL)
+            .put("sessionRole", sessionRole)
             .put(
                 "assistantContexts",
                 JSONArray(assistantContexts.map(RescuePluginAssistantContext::toJson)),
             )
+            .put("actions", JSONArray(actions.map(RescuePluginAction::toJson)))
             .put("documents", JSONArray(documents.map(RescuePluginDocument::toJson)))
             .put("requiredCapabilities", JSONArray(requiredCapabilities))
             .put("tags", JSONArray(tags))
@@ -181,6 +199,10 @@ data class RescuePluginManifest(
             val category = json.getString("category").trim()
             require(category.isNotEmpty()) { "Plugin category must not be blank" }
             val entryWorkflow = json.optionalString("entryWorkflow")?.let(::requireRelativePath)
+            val sessionRole = json.optionalString("sessionRole") ?: "business"
+            require(sessionRole in SESSION_ROLES) {
+                "sessionRole must be bootstrap, runtime, or business"
+            }
             val assistantContexts =
                 json.optJSONArray("assistantContexts")?.objectList().orEmpty().mapIndexed {
                         index,
@@ -228,6 +250,42 @@ data class RescuePluginManifest(
                     require(title.isNotEmpty()) { "documents[$index].title must not be blank" }
                     RescuePluginDocument(path, title)
                 }
+            val actionIds = mutableSetOf<String>()
+            val actions =
+                json.optJSONArray("actions")?.objectList().orEmpty().mapIndexed { index, action ->
+                    require(action.keys().asSequence().all { it in ACTION_FIELDS }) {
+                        "actions[$index] contains unsupported fields"
+                    }
+                    val actionId = RescuePluginContract.requirePluginId(action.getString("id"))
+                    require(actionIds.add(actionId)) { "actions contains duplicate id: $actionId" }
+                    val title = action.getString("title").trim()
+                    val icon = action.getString("icon").trim()
+                    val prompt = action.getString("prompt").trim()
+                    require(title.isNotEmpty() && icon.isNotEmpty() && prompt.isNotEmpty()) {
+                        "actions[$index] title, icon, and prompt must not be blank"
+                    }
+                    val priority = action.getInt("priority")
+                    require(priority in 0..1000) {
+                        "actions[$index].priority must be from 0 to 1000"
+                    }
+                    val visibleWhen = action.optionalString("visibleWhen") ?: "always"
+                    require(visibleWhen in ACTION_VISIBILITIES) {
+                        "actions[$index].visibleWhen is unsupported"
+                    }
+                    val requiresPlugins =
+                        action.stringList("requiresPlugins").map(
+                            RescuePluginContract::requirePluginId
+                        )
+                    RescuePluginAction(
+                        id = actionId,
+                        title = title,
+                        icon = icon,
+                        priority = priority,
+                        prompt = prompt,
+                        visibleWhen = visibleWhen,
+                        requiresPlugins = requiresPlugins,
+                    )
+                }
             return RescuePluginManifest(
                 id = id,
                 version = version,
@@ -241,7 +299,9 @@ data class RescuePluginManifest(
                 minHostVersion = json.getInt("minHostVersion").also {
                     require(it >= 1) { "minHostVersion must be positive" }
                 },
+                sessionRole = sessionRole,
                 assistantContexts = assistantContexts,
+                actions = actions,
             )
         }
 
@@ -258,7 +318,32 @@ data class RescuePluginManifest(
 
         private val SAFE_FUNCTION_NAME = Regex("^[A-Za-z_$][0-9A-Za-z_$]*$")
         private val ASSISTANT_CONTEXT_FIELDS = setOf("path", "scope", "provider", "function")
+        private val ACTION_FIELDS =
+            setOf("id", "title", "icon", "priority", "prompt", "visibleWhen", "requiresPlugins")
+        private val SESSION_ROLES = setOf("bootstrap", "runtime", "business")
+        private val ACTION_VISIBILITIES =
+            setOf("always", "apk-update-pending", "first-install-incomplete", "maintenance-due")
     }
+}
+
+data class RescuePluginAction(
+    val id: String,
+    val title: String,
+    val icon: String,
+    val priority: Int,
+    val prompt: String,
+    val visibleWhen: String = "always",
+    val requiresPlugins: List<String> = emptyList(),
+) {
+    fun toJson(): JSONObject =
+        JSONObject()
+            .put("id", id)
+            .put("title", title)
+            .put("icon", icon)
+            .put("priority", priority)
+            .put("prompt", prompt)
+            .put("visibleWhen", visibleWhen)
+            .put("requiresPlugins", JSONArray(requiresPlugins))
 }
 
 data class RescuePluginAssistantContext(

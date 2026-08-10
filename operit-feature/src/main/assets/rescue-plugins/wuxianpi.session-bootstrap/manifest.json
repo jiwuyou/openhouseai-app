@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "wuxianpi.session-bootstrap",
+  "version": "1.0.1",
+  "name": "会话启动规则",
+  "description": "定义维修助手新对话的本地启动、统一插件更新、原子切换和 Runtime 移交流程。",
+  "category": "core",
+  "minHostVersion": 13,
+  "requiredCapabilities": [],
+  "tags": ["核心", "Bootstrap", "插件更新"],
+  "sessionRole": "bootstrap",
+  "assistantContexts": [
+    { "path": "prompts/bootstrap.md", "scope": "session", "provider": "static" }
+  ],
+  "actions": [
+    {
+      "id": "check-rescue-market",
+      "title": "检查维修助手市场",
+      "icon": "refresh-cw",
+      "priority": 10,
+      "prompt": "请检查维修助手市场和已安装官方插件的状态，并根据我的后续目的选择需要的业务插件。",
+      "visibleWhen": "always",
+      "requiresPlugins": ["wuxianpi.session-bootstrap"]
+    }
+  ],
+  "documents": [
+    { "path": "docs/guide.md", "title": "会话启动规则说明" }
+  ]
+}

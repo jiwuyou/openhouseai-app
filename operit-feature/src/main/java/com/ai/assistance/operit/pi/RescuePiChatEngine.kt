@@ -13,6 +13,7 @@ import com.ai.assistance.operit.rescue.pi.RescueToolDispatcher
 import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
 import com.ai.assistance.operit.rescue.plugins.RescuePluginContract
 import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
+import com.ai.assistance.operit.rescue.ui.RescueActionConversationStore
 import com.ai.assistance.operit.rescue.remote.RescuePiRemoteEvent
 import com.ai.assistance.operit.rescue.remote.RescuePiRemoteEventHub
 import com.ai.assistance.operit.util.AppLogger
@@ -298,6 +299,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
             try {
                 request.onState(InputProcessingState.Connecting("Connecting to Pi Agent"))
                 openSession(request, toolCatalog)
+                rescuePluginManager.markSessionExecuting(request.chatId)
                 val turnContext =
                     try {
                         rescuePluginManager.assistantContext("turn", request.message)
@@ -386,6 +388,9 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
                         }
                         "agent_end", "prompt_completed" -> {
                             closeThinkingMarkup()
+                            rescuePluginManager.markSessionWritingMemory(request.chatId)
+                            rescuePluginManager.markSessionComplete(request.chatId)
+                            RescueActionConversationStore.markCompletedForChat(appContext, request.chatId)
                             completed = true
                         }
                         "error", "prompt_failed" -> {
@@ -400,6 +405,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
             } catch (error: Exception) {
                 RescueNativeBridge.nativeCancel(request.sessionKey)
                 cancelAndroidToolWork(request.chatId)
+                RescueActionConversationStore.markFailedForChat(appContext, request.chatId)
                 AppLogger.e(TAG, "Pi Agent turn failed", error)
 
                 // `send()` is shared through a hot stream whose upstream job is not allowed to
@@ -484,7 +490,7 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
         val pluginContext =
             sessionPluginContexts[request.sessionKey]
                 ?: try {
-                    rescuePluginManager.assistantContext("session")
+                    rescuePluginManager.prepareSession(request.chatId).systemContext
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {

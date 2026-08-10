@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
 import com.ai.assistance.operit.rescue.ui.RescueActivity
+import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore
 import com.ai.assistance.operit.ui.main.OperitHostMode
 import com.ai.assistance.operit.workspace.OperitWorkspaceContent
 import com.ai.assistance.operit.workspace.OperitWorkspaceContentFactory
@@ -130,6 +131,28 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
                 )
             }
             else -> return
+        }
+        activity.startActivity(intent)
+    }
+
+    override fun hasPendingApkResourceOffer(): Boolean =
+        ApkResourceOfferStore.get(appContext).current()?.requiresReminder == true
+
+    override fun dismissCurrentApkResourceOffer() {
+        ApkResourceOfferStore.get(appContext).dismissCurrent()
+    }
+
+    override fun launchApkResourceUpdate(activity: Activity) {
+        val intent = OperitAiLauncher.repairIntent(activity).apply {
+            putExtra(RescueActivity.EXTRA_HOST_RETURN_ACTIVITY, OPENHOUSE_ACTIVITY_CLASS)
+            putExtra(
+                RescueActivity.EXTRA_PENDING_ACTION_ID,
+                "resource-update",
+            )
+            putExtra(
+                RescueActivity.EXTRA_PENDING_ACTION_PROMPT,
+                RescueActivity.RESOURCE_UPDATE_PROMPT,
+            )
         }
         activity.startActivity(intent)
     }

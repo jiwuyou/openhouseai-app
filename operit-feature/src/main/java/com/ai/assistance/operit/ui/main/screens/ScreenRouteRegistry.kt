@@ -107,6 +107,14 @@ object ScreenRouteRegistry {
                 launchNavItem = NavItem.Settings,
                 icon = NavItem.Settings.icon,
                 order = 10
+            ),
+            hostEntryDefinition(
+                entryId = "main.rescue_memory",
+                screen = Screen.RescueMemory,
+                surface = NavigationSurface.MAIN_SIDEBAR_SYSTEM,
+                launchNavItem = NavItem.MemoryBase,
+                icon = NavItem.MemoryBase.icon,
+                order = 5
             )
         )
 
@@ -147,7 +155,11 @@ object ScreenRouteRegistry {
 
     fun defaultScreenForNavItem(navItem: NavItem): Screen {
         return defaultScreenByNavItem[navItem]
-            ?: if (navItem == NavItem.Settings) Screen.Settings else Screen.AiChat
+            ?: when (navItem) {
+                NavItem.Settings -> Screen.Settings
+                NavItem.MemoryBase -> Screen.RescueMemory
+                else -> Screen.AiChat
+            }
     }
 
     fun initialEntry(navItem: NavItem): RouteEntry {

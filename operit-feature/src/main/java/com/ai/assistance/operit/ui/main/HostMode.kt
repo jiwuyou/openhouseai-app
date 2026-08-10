@@ -14,14 +14,16 @@ enum class OperitHostMode {
     /** The lean host exposes chat and settings; history remains inside the chat surface. */
     fun allowsDrawerItem(item: NavItem): Boolean = when (this) {
         STANDALONE -> true
-        BASIC, RESCUE -> item in hostedDrawerItems
+        BASIC -> item in basicHostedDrawerItems
+        RESCUE -> item in rescueHostedDrawerItems
     }
 
     companion object {
-        private val hostedDrawerItems = setOf(
+        private val basicHostedDrawerItems = setOf(
             NavItem.AiChat,
             NavItem.Settings,
         )
+        private val rescueHostedDrawerItems = basicHostedDrawerItems + NavItem.MemoryBase
 
         fun fromExtra(value: String?): OperitHostMode = when (value?.trim()?.lowercase()) {
             "basic" -> BASIC

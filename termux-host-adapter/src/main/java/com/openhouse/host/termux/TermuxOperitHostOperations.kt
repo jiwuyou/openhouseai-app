@@ -18,6 +18,7 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
+import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -87,6 +88,118 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         "redeploy_runtime",
         JSONObject().put("payloadBytes", payload.size).put("fileName", fileName).put("mimeType", mimeType),
     )
+
+    override suspend fun stageApkResourceOffer(
+        offerId: String,
+        resourceId: String,
+        archiveName: String,
+        payload: ByteArray,
+        sha256: String,
+    ): OperitHostOperationResult = withContext(Dispatchers.IO) {
+        runCatching {
+            require(offerId.matches(Regex("[a-f0-9]{24}"))) { "Invalid APK resource offer id" }
+            require(archiveName.matches(Regex("[A-Za-z0-9._-]+\\.tgz"))) { "Invalid archive name" }
+            val actualSha = MessageDigest.getInstance("SHA-256").digest(payload)
+                .joinToString("") { "%02x".format(it) }
+            require(actualSha == sha256.lowercase()) { "APK resource checksum changed before staging" }
+            val directory =
+                File(appContext.filesDir, "home/.local/share/openhouseai/resource-manager/apk-offers/$offerId")
+            check(directory.mkdirs() || directory.isDirectory) { "Unable to create APK offer directory" }
+            val temporary = File(directory, ".$archiveName-${System.nanoTime()}.part")
+            temporary.writeBytes(payload)
+            val target = File(directory, archiveName)
+            check(temporary.renameTo(target)) { "Unable to activate staged APK resource" }
+            OperitHostOperationResult(
+                success = true,
+                details =
+                    JSONObject()
+                        .put("operation", "stage_apk_resource_offer")
+                        .put("offerId", offerId)
+                        .put("resourceId", resourceId)
+                        .put("path", target.absolutePath)
+                        .put("size", payload.size)
+                        .put("sha256", actualSha),
+                message = "APK resource staged",
+            )
+        }.getOrElse {
+            OperitHostOperationResult(
+                success = false,
+                details = JSONObject().put("operation", "stage_apk_resource_offer"),
+                message = "Unable to stage APK resource",
+                error = it.message,
+            )
+        }
+    }
+
+    override suspend fun readRescueMemoryMirror(): OperitHostOperationResult =
+        withContext(Dispatchers.IO) {
+            val file = File(appContext.filesDir, "home/.local/share/openhouseai/memory/memory-sync.json")
+            if (!file.isFile) {
+                OperitHostOperationResult(
+                    success = false,
+                    details = JSONObject().put("operation", "read_rescue_memory_mirror"),
+                    message = "Rescue memory mirror does not exist yet",
+                )
+            } else {
+                OperitHostOperationResult(
+                    success = true,
+                    details =
+                        JSONObject()
+                            .put("operation", "read_rescue_memory_mirror")
+                            .put("payload", file.readText()),
+                    message = "Rescue memory mirror loaded",
+                )
+            }
+        }
+
+    override suspend fun writeRescueMemoryMirror(payload: ByteArray): OperitHostOperationResult =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(payload.size <= 128 * 1024) { "Rescue memory sync payload is too large" }
+                val sync = JSONObject(payload.toString(Charsets.UTF_8))
+                require(sync.optInt("schemaVersion") == 1) {
+                    "Unsupported Rescue memory sync schema"
+                }
+                val markdown = sync.getString("markdown")
+                val deviceState = sync.optJSONObject("deviceState") ?: JSONObject().put("facts", org.json.JSONArray())
+                val directory = File(appContext.filesDir, "home/.local/share/openhouseai/memory")
+                check(directory.mkdirs() || directory.isDirectory) { "Unable to create memory directory" }
+                writeMemoryMirrorFile(directory, "memory-sync.json", payload)
+                writeMemoryMirrorFile(
+                    directory,
+                    "assistant-memory.md",
+                    markdown.toByteArray(Charsets.UTF_8),
+                )
+                writeMemoryMirrorFile(
+                    directory,
+                    "device-state.json",
+                    deviceState.toString(2).toByteArray(Charsets.UTF_8),
+                )
+                OperitHostOperationResult(
+                    success = true,
+                    details = JSONObject().put("operation", "write_rescue_memory_mirror"),
+                    message = "Rescue memory mirror saved",
+                )
+            }.getOrElse {
+                OperitHostOperationResult(
+                    success = false,
+                    details = JSONObject().put("operation", "write_rescue_memory_mirror"),
+                    message = "Unable to save Rescue memory mirror",
+                    error = it.message,
+                )
+            }
+        }
+
+    private fun writeMemoryMirrorFile(directory: File, name: String, payload: ByteArray) {
+        val target = File(directory, name)
+        val temporary = File(directory, ".$name-${System.nanoTime()}.tmp")
+        try {
+            temporary.writeBytes(payload)
+            check(temporary.renameTo(target)) { "Unable to activate Rescue memory file: $name" }
+        } finally {
+            temporary.delete()
+        }
+    }
 
     override suspend fun repairJobStatus(jobId: String): OperitHostOperationResult {
         val id = jobId.trim().takeIf { it.matches(Regex("[A-Za-z0-9._-]{1,128}")) }

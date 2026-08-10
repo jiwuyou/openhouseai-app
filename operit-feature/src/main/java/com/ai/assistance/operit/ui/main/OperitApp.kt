@@ -339,10 +339,12 @@ fun OperitApp(
     // - 600dp and above: tablet
     val useTabletLayout = screenWidthDp >= 600
 
-    val navItems = listOf(
-        NavItem.AiChat,
-        NavItem.Settings,
-    ).filter(effectiveHostMode::allowsDrawerItem)
+    val navItems =
+        buildList {
+            add(NavItem.AiChat)
+            if (effectiveHostMode == OperitHostMode.RESCUE) add(NavItem.MemoryBase)
+            add(NavItem.Settings)
+        }.filter(effectiveHostMode::allowsDrawerItem)
 
     // Network state monitoring
     var isNetworkAvailable by remember { mutableStateOf(false) }

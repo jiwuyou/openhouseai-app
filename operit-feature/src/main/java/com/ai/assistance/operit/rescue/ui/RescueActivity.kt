@@ -58,6 +58,10 @@ class RescueActivity : ComponentActivity() {
         const val EXTRA_RESCUE_ENTRY = "com.wuxianpi.extra.RESCUE_ENTRY"
         const val EXTRA_HOST_RETURN_ACTIVITY = MainActivity.EXTRA_HOST_RETURN_ACTIVITY
         const val EXTRA_HOST_RETURN_INTENT = "com.wuxianpi.extra.RESCUE_HOST_RETURN_INTENT"
+        const val EXTRA_PENDING_ACTION_ID = "com.wuxianpi.extra.RESCUE_ACTION_ID"
+        const val EXTRA_PENDING_ACTION_PROMPT = "com.wuxianpi.extra.RESCUE_ACTION_PROMPT"
+        const val RESOURCE_UPDATE_PROMPT =
+            "请检查 APK、Termux 和维修助手市场中的资源更新；先完成官方插件统一更新，再读取最新版资源更新插件说明，比较本地状态，只处理缺失、损坏或 SHA 不一致的资源。"
         const val RESCUE_PROCESS_SUFFIX = ":rescue_ui"
         private const val TAG = "RescueActivity"
 
@@ -95,6 +99,7 @@ class RescueActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        acceptPendingAction(intent)
         registerRescueShutdownReceiver()
         OperitApplication.initializeUiProcess(applicationContext)
 
@@ -131,6 +136,7 @@ class RescueActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        acceptPendingAction(intent)
     }
 
     override fun onResume() {
@@ -204,5 +210,11 @@ class RescueActivity : ComponentActivity() {
             remoteAssistStopRequested = true
             remoteAssistController.stopSharing()
         }
+    }
+
+    private fun acceptPendingAction(intent: Intent?) {
+        val id = intent?.getStringExtra(EXTRA_PENDING_ACTION_ID).orEmpty()
+        val prompt = intent?.getStringExtra(EXTRA_PENDING_ACTION_PROMPT).orEmpty()
+        PendingRescueActionHandler.set(id, prompt)
     }
 }

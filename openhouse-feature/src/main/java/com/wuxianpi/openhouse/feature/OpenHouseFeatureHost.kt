@@ -71,6 +71,17 @@ interface OpenHouseFeatureHost {
         launchHostRoute(activity, ProductRoute.SETUP)
     }
 
+    /** True only while the current APK resource offer still needs user attention. */
+    fun hasPendingApkResourceOffer(): Boolean = false
+
+    /** Suppresses the current offer reminder without changing installed Termux resource state. */
+    fun dismissCurrentApkResourceOffer() = Unit
+
+    /** Opens Rescue AI and submits the resource-check intent as a normal conversation. */
+    fun launchApkResourceUpdate(activity: Activity) {
+        launchAiMode(activity, ProductRoute.REPAIR)
+    }
+
     /** Resolves a Web component without blocking the main thread. */
     fun resolveComponentWeb(
         component: OpenHouseComponent,

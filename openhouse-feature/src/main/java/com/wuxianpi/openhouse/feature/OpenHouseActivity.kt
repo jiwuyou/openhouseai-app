@@ -123,6 +123,7 @@ class OpenHouseActivity : AppCompatActivity() {
 
         if (savedInstanceState == null) {
             content.post(::applyInitialNavigation)
+            content.post(::showApkResourceOfferIfNeeded)
         }
     }
 
@@ -462,6 +463,26 @@ class OpenHouseActivity : AppCompatActivity() {
         }
         rescueStateReceiverRegistered = true
         refreshRescueState()
+    }
+
+    private fun showApkResourceOfferIfNeeded() {
+        if (isFinishing || isDestroyed || !host.hasPendingApkResourceOffer()) return
+        AlertDialog.Builder(this)
+            .setTitle("APK 更新待检查")
+            .setMessage(
+                "检测到 APK 已安装或更新。为了保留你在 Termux 中自行维护资源的自由，" +
+                    "本次不会自动覆盖现有内容。请前往维修助手完成本次更新的后一半事情。\n\n" +
+                    "稍后仍可从维修模式顶部的“检查更新”再次触发。"
+            )
+            .setPositiveButton("前往维修助手检查更新") { _, _ ->
+                host.launchApkResourceUpdate(this)
+            }
+            .setNegativeButton("稍后处理", null)
+            .setNeutralButton("结束本次提醒") { _, _ ->
+                host.dismissCurrentApkResourceOffer()
+                Toast.makeText(this, "已结束本 APK 资源提醒，未修改 Termux 资源状态。", Toast.LENGTH_LONG).show()
+            }
+            .show()
     }
 
     private fun requestDesktopRefresh(

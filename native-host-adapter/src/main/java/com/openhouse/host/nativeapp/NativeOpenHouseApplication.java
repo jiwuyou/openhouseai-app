@@ -7,6 +7,7 @@ import android.webkit.WebView;
 
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost;
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHostProvider;
+import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore;
 
 /** Native APK application entry; Android creates one instance for every declared UI process. */
 public final class NativeOpenHouseApplication extends Application implements OpenHouseFeatureHostProvider {
@@ -21,6 +22,7 @@ public final class NativeOpenHouseApplication extends Application implements Ope
         super.onCreate();
         productHost = new NativeProductHost(this);
         productHost.install();
+        ApkResourceOfferStore.recordCurrentApk(this);
     }
 
     private static void configureWebViewDataDirectory(Context context) {

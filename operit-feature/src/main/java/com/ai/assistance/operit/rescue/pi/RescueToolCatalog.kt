@@ -156,6 +156,62 @@ class RescueToolCatalog private constructor(
                         ),
                 ),
                 definition(
+                    name = RescuePluginContract.TOOL_READ_MEMORY,
+                    description =
+                        "Read the revisioned Rescue AI memory document. Use the returned revision for a later patch.",
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_PATCH_MEMORY,
+                    description =
+                        "Append one verified, durable fact or user-approved note to Rescue memory. Never store secrets, full logs, or entire conversations.",
+                    properties =
+                        JSONObject()
+                            .put("expectedRevision", JSONObject().put("type", "integer").put("description", "Revision returned by read_rescue_memory"))
+                            .put("section", JSONObject().put("type", "string").put("description", "preferences, user_notes, device_facts, completed, or follow_up"))
+                            .put("content", JSONObject().put("type", "string").put("description", "Short durable memory entry"))
+                            .put("source", JSONObject().put("type", "string").put("description", "user, android, termux, service-manager, or plugin"))
+                            .put("confidence", JSONObject().put("type", "string").put("description", "high, medium, or low"))
+                            .put("userConfirmed", JSONObject().put("type", "boolean").put("description", "True only when the user explicitly confirmed a preference or note")),
+                    required =
+                        JSONArray()
+                            .put("expectedRevision")
+                            .put("section")
+                            .put("content")
+                            .put("source")
+                            .put("confidence")
+                            .put("userConfirmed"),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_UNDO_MEMORY,
+                    description = "Restore the most recent Rescue memory history version.",
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_INSPECT_APK_RESOURCE_OFFER,
+                    description =
+                        "Inspect the Android-private APK resource offer and its five bundled resource digests without copying archives into Termux.",
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_STAGE_APK_RESOURCE,
+                    description =
+                        "After comparison shows that one bundled resource is needed, verify and stage only that resource into the Termux APK-offer cache.",
+                    properties =
+                        JSONObject().put(
+                            "resourceId",
+                            JSONObject().put("type", "string").put("description", "service-manager, openhouse-control-plane, openhouse-runtime, wuyou, or openhouse-web"),
+                        ),
+                    required = JSONArray().put("resourceId"),
+                ),
+                definition(
+                    name = RescuePluginContract.TOOL_COMPLETE_APK_RESOURCE_OFFER,
+                    description =
+                        "Record the verified APK resource result. satisfied and superseded require concrete verification evidence; failed keeps the reminder active.",
+                    properties =
+                        JSONObject()
+                            .put("status", JSONObject().put("type", "string").put("description", "satisfied, superseded, or failed"))
+                            .put("detail", JSONObject().put("type", "string").put("description", "Short verification evidence or failure reason")),
+                    required = JSONArray().put("status").put("detail"),
+                ),
+                definition(
                     name = "runtime_status",
                     description =
                         "Inspect host availability and whether the WuxianPi Node runtime health endpoint is responding.",
