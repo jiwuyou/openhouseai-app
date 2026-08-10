@@ -13,6 +13,29 @@ if ! declare -F warn >/dev/null 2>&1; then
   }
 fi
 
+load_termux_services_environment() {
+  local candidate script_dir
+  script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)"
+  for candidate in \
+    "$script_dir/_termux-services-env.sh" \
+    "${OPENHOUSEAI_MAINTAINER_DIR:-}/_termux-services-env.sh" \
+    "${SMALLPHONEAI_MAINTAINER_DIR:-}/_termux-services-env.sh" \
+    "$HOME/.smallphoneai-bootstrap/apk-assets/maintainer/_termux-services-env.sh" \
+    "$HOME/.smallphoneai-bootstrap/maintainer/_termux-services-env.sh"; do
+    [ -n "$candidate" ] && [ -r "$candidate" ] || continue
+    . "$candidate"
+    return 0
+  done
+  warn "缺少共享 Termux 服务环境脚本 _termux-services-env.sh。"
+  return 1
+}
+
+load_termux_services_environment
+oh_termux_services_environment || {
+  warn "无法准备 Termux 服务环境：SVDIR=${SVDIR:-} LOGDIR=${LOGDIR:-}"
+  exit 2
+}
+
 is_termux_native() {
   [ -n "${PREFIX:-}" ] \
     && [ -d "$PREFIX/bin" ] \
@@ -165,33 +188,15 @@ service_manager_instance_matches_expected() {
 }
 
 termux_runsvdir_active() {
-  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
-  local proc comm args
-  for proc in /proc/[0-9]*; do
-    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
-    comm="$(cat "$proc/comm" 2>/dev/null || true)"
-    [ "$comm" = runsvdir ] || continue
-    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
-    printf '%s\n' "$args" | grep -Fqx -- "$service_root" && return 0
-  done
-  return 1
+  oh_termux_runsvdir_active
 }
 
 ensure_termux_services_daemon() {
-  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
-  command -v service-daemon >/dev/null 2>&1 || return 1
-  command -v sv >/dev/null 2>&1 || return 1
-  [ -d "$service_root" ] || return 1
-  service-daemon start >/dev/null 2>&1 || true
-  for _ in $(seq 1 10); do
-    termux_runsvdir_active && return 0
-    sleep 1
-  done
-  return 1
+  oh_start_termux_services_daemon
 }
 
 service_manager_runit_ready() {
-  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local service_root="$SVDIR"
   local status
   termux_runsvdir_active || return 1
   [ -x "$service_root/service-manager/run" ] || return 1
@@ -223,7 +228,7 @@ wait_for_canonical_service_manager() {
 }
 
 start_control_plane() {
-  local config bind url binary existing_pids log_dir log_file service_root
+  local config bind url binary existing_pids log_dir log_file service_root runsvdir_pid sv_status
 
   is_termux_native || {
     warn "运行中枢只允许从 Termux native 环境启动。"
@@ -254,11 +259,14 @@ start_control_plane() {
     warn "未找到当前已安装的 Termux native service-manager；不会从 APK 安装或覆盖。"
     return 2
   fi
-  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  service_root="$SVDIR"
+  log "Termux service environment: SVDIR=$SVDIR LOGDIR=$LOGDIR serviceRoot=$service_root"
   if ! ensure_termux_services_daemon; then
     warn "termux-services/runsvdir 不可用；正式启动不会回退到 nohup。"
     return 2
   fi
+  runsvdir_pid="$(oh_termux_runsvdir_pid || true)"
+  log "runit readiness: runsvdirPid=${runsvdir_pid:-unavailable} serviceManagerRunFile=$service_root/service-manager/run"
 
   if service_manager_health_ready "$url"; then
     if service_manager_auth_ready "$config" "$url" \
@@ -296,10 +304,13 @@ start_control_plane() {
     warn "service-manager runit run 文件未生成：$service_root/service-manager/run"
     return 1
   }
-  env SVDIR="$service_root" sv up service-manager || {
-    warn "sv up service-manager 失败。"
+  if ! oh_service_manager_sv_up_with_retry service-manager \
+    "${SMALLPHONEAI_SERVICE_MANAGER_SV_UP_ATTEMPTS:-10}"; then
+    warn "sv up service-manager 在有限重试后仍失败：SVDIR=$SVDIR run=$service_root/service-manager/run"
     return 1
-  }
+  fi
+  sv_status="$(env SVDIR="$service_root" sv status service-manager 2>/dev/null || true)"
+  log "runit service status: svStatus=${sv_status:-unavailable} healthUrl=$url/api/v1/health"
 
   if wait_for_canonical_service_manager "$binary" "$config" "$bind" "$url" \
     "${SMALLPHONEAI_SERVICE_MANAGER_READY_ATTEMPTS:-30}"; then
@@ -308,7 +319,8 @@ start_control_plane() {
   fi
 
   env SVDIR="$service_root" sv down service-manager >/dev/null 2>&1 || true
-  warn "service-manager 未能通过有限等待、canonical 认证、唯一实例与 runit 常驻验证；正式日志：$log_file"
+  sv_status="$(env SVDIR="$service_root" sv status service-manager 2>/dev/null || true)"
+  warn "service-manager 未能通过有限等待、canonical 认证、唯一实例与 runit 常驻验证；runsvdirPid=${runsvdir_pid:-unavailable} serviceManagerRunFile=$service_root/service-manager/run svStatus=${sv_status:-unavailable} healthUrl=$url/api/v1/health 正式日志：$log_file"
   return 1
 }
 

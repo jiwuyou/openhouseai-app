@@ -91,7 +91,7 @@ inspect() {
   printf 'control_plane_mode=inspect\n'
   printf 'control_plane_script_dir=%s\n' "$SCRIPT_DIR"
 
-  for file in start-control-plane-termux-native.sh repair-control-plane-termux-native.sh inspect-control-plane-termux-native.sh control-plane-manifest.json; do
+  for file in _termux-services-env.sh start-control-plane-termux-native.sh repair-control-plane-termux-native.sh inspect-control-plane-termux-native.sh control-plane-manifest.json; do
     if bundle_file_ok "$file"; then
       printf 'control_plane_bundle_%s=present\n' "${file%.sh}"
     else
@@ -100,7 +100,7 @@ inspect() {
     fi
   done
 
-  for file in start-control-plane-termux-native.sh repair-control-plane-termux-native.sh inspect-control-plane-termux-native.sh; do
+  for file in _termux-services-env.sh start-control-plane-termux-native.sh repair-control-plane-termux-native.sh inspect-control-plane-termux-native.sh; do
     if bundle_integrity_ok "$file"; then
       printf 'control_plane_integrity_%s=ok\n' "${file%.sh}"
     else

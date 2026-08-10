@@ -12,6 +12,29 @@ if ! declare -F warn >/dev/null 2>&1; then
   }
 fi
 
+load_termux_services_environment() {
+  local candidate script_dir
+  script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)"
+  for candidate in \
+    "$script_dir/_termux-services-env.sh" \
+    "${OPENHOUSEAI_MAINTAINER_DIR:-}/_termux-services-env.sh" \
+    "${SMALLPHONEAI_MAINTAINER_DIR:-}/_termux-services-env.sh" \
+    "$HOME/.smallphoneai-bootstrap/apk-assets/maintainer/_termux-services-env.sh" \
+    "$HOME/.smallphoneai-bootstrap/maintainer/_termux-services-env.sh"; do
+    [ -n "$candidate" ] && [ -r "$candidate" ] || continue
+    . "$candidate"
+    return 0
+  done
+  warn "缺少共享 Termux 服务环境脚本 _termux-services-env.sh。"
+  return 1
+}
+
+load_termux_services_environment
+oh_termux_services_environment || {
+  warn "无法准备 Termux 服务环境：SVDIR=${SVDIR:-} LOGDIR=${LOGDIR:-}"
+  exit 2
+}
+
 log "正在轻量修复控制中枢：优先恢复 Termux native service-manager 与 OpenHouse 专用 token。"
 
 if ! command -v is_termux >/dev/null 2>&1; then
@@ -265,7 +288,7 @@ service_manager_instance_matches_openhouse() {
 
 stop_termux_service_manager_instances() {
   local pid pids service_root
-  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  service_root="$SVDIR"
   if command -v sv >/dev/null 2>&1; then
     env SVDIR="$service_root" sv down service-manager >/dev/null 2>&1 || true
   fi
@@ -285,33 +308,18 @@ stop_termux_service_manager_instances() {
 }
 
 termux_runsvdir_active() {
-  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
-  local proc comm args
-  for proc in /proc/[0-9]*; do
-    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
-    comm="$(cat "$proc/comm" 2>/dev/null || true)"
-    [ "$comm" = runsvdir ] || continue
-    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
-    printf '%s\n' "$args" | grep -Fqx -- "$service_root" && return 0
-  done
-  return 1
+  oh_termux_runsvdir_active
 }
 
 ensure_termux_services_daemon() {
-  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
-  command -v service-daemon >/dev/null 2>&1 || return 1
-  command -v sv >/dev/null 2>&1 || return 1
-  [ -d "$service_root" ] || return 1
-  service-daemon start >/dev/null 2>&1 || true
-  for _ in $(seq 1 10); do
-    termux_runsvdir_active && return 0
-    sleep 1
-  done
-  return 1
+  oh_start_termux_services_daemon || {
+    warn "termux-services 未能启动 runsvdir：SVDIR=$SVDIR LOGDIR=$LOGDIR"
+    return 1
+  }
 }
 
 service_manager_runit_ready() {
-  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local service_root="$SVDIR"
   local status
   termux_runsvdir_active || return 1
   [ -x "$service_root/service-manager/run" ] || return 1
@@ -682,7 +690,8 @@ repair_termux_native_control_plane() {
   config="$(termux_service_manager_config)"
   log_file="$(termux_service_manager_log)"
   bootstrap_log="$(dirname "$log_file")/service-manager-bootstrap.log"
-  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  service_root="$SVDIR"
+  log "Termux service environment: SVDIR=$SVDIR LOGDIR=$LOGDIR serviceRoot=$service_root"
   state_dir="$HOME/.smallphoneai/state"
 
   quarantine_empty_service_specs
@@ -709,8 +718,8 @@ repair_termux_native_control_plane() {
   if ensure_termux_services_daemon; then
     log "正在通过 termux-services 修复并启动 service-manager：$bind"
     if "$sm_bin" install-service --config "$config" --bind "$bind" --log-file "$log_file" \
-      && [ -x "$service_root/service-manager/run" ] \
-      && env SVDIR="$service_root" sv up service-manager; then
+      && oh_service_manager_sv_up_with_retry service-manager \
+        "${SMALLPHONEAI_SERVICE_MANAGER_SV_UP_ATTEMPTS:-10}"; then
       for _ in $(seq 1 30); do
         if service_manager_ready \
           && service_manager_instance_matches_openhouse \

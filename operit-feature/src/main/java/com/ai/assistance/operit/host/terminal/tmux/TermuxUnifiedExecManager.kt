@@ -229,7 +229,11 @@ internal class TermuxUnifiedExecManager(
             append("; : > ")
             append(quote("$directory/output.log"))
         }
-        runProgramChecked("prepare managed Termux command", "bash", listOf("-lc", setupScript))
+        runProgramChecked(
+            "prepare managed Termux command",
+            "bash",
+            listOf("--noprofile", "--norc", "-lc", setupScript),
+        )
         writeExecutable("write managed Termux runner", runnerPath, runnerScript(directory, command))
         writeExecutable("write managed Termux pipe writer", pipeWriterPath, pipeWriterScript(directory))
 

@@ -62,6 +62,8 @@ public class OpenHouseBundledResourceDeliveryTest {
             new File(result.resourceDirectory, "bootstrap/.gitignore").toPath()));
         assertArrayEquals(bytes("maintainer"), Files.readAllBytes(
             new File(result.resourceDirectory, "maintainer/install-runtime-components.sh").toPath()));
+        assertArrayEquals(bytes("service-env"), Files.readAllBytes(
+            new File(result.resourceDirectory, "maintainer/_termux-services-env.sh").toPath()));
         assertArrayEquals(bytes("public"), Files.readAllBytes(
             new File(result.resourceDirectory, "scripts-public/check-ai-tools.sh").toPath()));
         assertTrue(new File(result.resourceDirectory, ".complete").isFile());
@@ -376,6 +378,7 @@ public class OpenHouseBundledResourceDeliveryTest {
         files.put("smallphoneai/bootstrap/scripts/50-install-runtime-components.sh", bytes("components"));
         files.put("smallphoneai/bootstrap/scripts/60-start-smallphone.sh", bytes("start"));
         files.put("maintainer/install-runtime-components.sh", bytes("maintainer"));
+        files.put("maintainer/_termux-services-env.sh", bytes("service-env"));
         files.put("maintainer/repair-smallphone.sh", bytes("repair"));
         files.put("maintainer/start-control-plane-termux-native.sh", bytes("control-start"));
         files.put("maintainer/repair-control-plane-termux-native.sh", bytes("control-repair"));

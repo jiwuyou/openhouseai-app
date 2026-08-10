@@ -39,6 +39,18 @@ public class OpenHouseControlPlaneStartActionTest {
         Assert.assertFalse(source.contains("runControlPlaneRepair"));
     }
 
+    @Test
+    public void maintainerRunnerInjectsTermuxServiceEnvironmentAndResourceDirectory() throws Exception {
+        String source = source(
+            "app/src/main/java/com/termux/app/openhouse/OpenHouseMaintainerRunner.java");
+
+        Assert.assertTrue(source.contains("environment.put(\"SVDIR\""));
+        Assert.assertTrue(source.contains("environment.put(\"LOGDIR\""));
+        Assert.assertTrue(source.contains("OPENHOUSEAI_MAINTAINER_DIR"));
+        Assert.assertTrue(source.contains("export SVDIR=\\\"${SVDIR:-$PREFIX/var/service}\\\""));
+        Assert.assertTrue(source.contains("export LOGDIR=\\\"${LOGDIR:-$PREFIX/var/log}\\\""));
+    }
+
     private static String source(String path) throws Exception {
         File file = new File(path);
         if (!file.isFile()) {

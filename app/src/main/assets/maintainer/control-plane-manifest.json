@@ -1,19 +1,23 @@
 {
   "schemaVersion": 1,
   "bundleId": "openhouse-control-plane",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "files": [
     {
+      "name": "_termux-services-env.sh",
+      "sha256": "d4b00c69077849717510519115ad29ef6db4ec2669ffbfce4179428c05a77673"
+    },
+    {
       "name": "start-control-plane-termux-native.sh",
-      "sha256": "08e7084a6a6304eded2d7a303c53f7fd7725c82182b3e0a73419cdf459986619"
+      "sha256": "55e14cc14044d9d85ef0a165da87da6b438c2e3ff27999b5b1593231d735bd10"
     },
     {
       "name": "repair-control-plane-termux-native.sh",
-      "sha256": "cfa025e2b2e877e6cbcfef5802684dd9549ab2e453625ebff3e50459309563af"
+      "sha256": "f8e10d06dd0fba706668cd98641ffce7a76d3fcda1860f14d341772d510e5a01"
     },
     {
       "name": "inspect-control-plane-termux-native.sh",
-      "sha256": "b10f9744ec92a62b4f54ea6dcf7c327e1d6d94eed96d3eb6b103cb148ca6f74c"
+      "sha256": "0963ca028bd92130d6cc626443b49f32de1559db519d230cc591c83fd7dcc71b"
     }
   ]
 }

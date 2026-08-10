@@ -13,12 +13,16 @@ grep -Fq '.config/openhouseai/service-manager/config.json' "$START_SCRIPT" \
   || fail 'canonical OpenHouse service-manager config is missing'
 grep -Eq 'command -v service-manager|/bin/service-manager|/\.local/bin/service-manager' "$START_SCRIPT" \
   || fail 'installed Termux native service-manager binary lookup is missing'
-grep -Fq 'service-daemon start' "$START_SCRIPT" \
-  || fail 'termux-services daemon must be started explicitly'
+grep -Fq 'oh_start_termux_services_daemon' "$START_SCRIPT" \
+  || fail 'shared termux-services daemon helper must be called explicitly'
+grep -Fq 'service-daemon start' "$REPO_ROOT/app/src/main/assets/maintainer/_termux-services-env.sh" \
+  || fail 'shared helper must start termux-services daemon explicitly'
 grep -Fq 'install-service --config "$config" --bind "$bind"' "$START_SCRIPT" \
   || fail 'service-manager runit service must be installed with canonical config and bind'
-grep -Fq 'SVDIR="$service_root" sv up service-manager' "$START_SCRIPT" \
-  || fail 'service-manager must be started through the Termux runit directory'
+grep -Fq 'oh_service_manager_sv_up_with_retry service-manager' "$START_SCRIPT" \
+  || fail 'service-manager must be started through the shared Termux runit retry helper'
+grep -Fq 'env SVDIR="$SVDIR" sv up' "$REPO_ROOT/app/src/main/assets/maintainer/_termux-services-env.sh" \
+  || fail 'shared helper must invoke sv through the Termux runit directory'
 grep -Fq 'service_manager_runit_ready' "$START_SCRIPT" \
   || fail 'runit status verification is missing'
 grep -Fq 'service_manager_instance_matches_expected' "$START_SCRIPT" \

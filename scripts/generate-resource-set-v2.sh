@@ -9,8 +9,8 @@ distribution_dir="$repo_dir/distribution/resources-v2"
 mode="${1:-generate}"
 
 resource_set_id="${OPENHOUSE_RESOURCE_SET_ID:-openhouse-core-stack}"
-resource_set_version="${OPENHOUSE_RESOURCE_SET_VERSION:-2026.08.09.1}"
-resource_set_sequence="${OPENHOUSE_RESOURCE_SET_SEQUENCE:-2026080901}"
+resource_set_version="${OPENHOUSE_RESOURCE_SET_VERSION:-2026.08.10.1}"
+resource_set_sequence="${OPENHOUSE_RESOURCE_SET_SEQUENCE:-2026081001}"
 min_apk_version_code="${OPENHOUSE_RESOURCE_MIN_APK_VERSION_CODE:-126}"
 
 case "$mode" in
@@ -36,6 +36,7 @@ control_stage="$work_dir/control-plane"
 mkdir -p "$control_stage"
 for name in \
   control-plane-manifest.json \
+  _termux-services-env.sh \
   start-control-plane-termux-native.sh \
   repair-control-plane-termux-native.sh \
   inspect-control-plane-termux-native.sh; do
@@ -52,15 +53,16 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 manifest = json.loads((root / "control-plane-manifest.json").read_text(encoding="utf-8"))
-if manifest.get("bundleId") != "openhouse-control-plane" or manifest.get("version") != "1.0.0":
+if manifest.get("bundleId") != "openhouse-control-plane" or manifest.get("version") != "1.0.1":
     raise SystemExit("invalid canonical control-plane manifest")
 expected = {item["name"]: item["sha256"] for item in manifest.get("files", [])}
 if set(expected) != {
+    "_termux-services-env.sh",
     "start-control-plane-termux-native.sh",
     "repair-control-plane-termux-native.sh",
     "inspect-control-plane-termux-native.sh",
 }:
-    raise SystemExit("control-plane manifest must list exactly the three canonical scripts")
+    raise SystemExit("control-plane manifest must list exactly the four canonical scripts")
 for name, digest in expected.items():
     actual = hashlib.sha256((root / name).read_bytes()).hexdigest()
     if actual != digest:

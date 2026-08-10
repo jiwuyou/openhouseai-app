@@ -20,6 +20,7 @@ archive = pathlib.Path(sys.argv[2])
 native_archive = pathlib.Path(sys.argv[3])
 wrapper = pathlib.Path(sys.argv[4])
 names = (
+    "_termux-services-env.sh",
     "start-control-plane-termux-native.sh",
     "repair-control-plane-termux-native.sh",
     "inspect-control-plane-termux-native.sh",
@@ -31,7 +32,7 @@ if manifest.get("schemaVersion") != 1 or manifest.get("bundleId") != "openhouse-
     raise SystemExit("invalid OpenHouse control-plane manifest")
 entries = {entry.get("name"): entry.get("sha256") for entry in manifest.get("files", []) if isinstance(entry, dict)}
 if set(entries) != set(names):
-    raise SystemExit("control-plane manifest must enumerate exactly the three managed scripts")
+    raise SystemExit("control-plane manifest must enumerate exactly the four managed scripts")
 
 for name in names:
     source_file = source / name
@@ -48,7 +49,7 @@ with tarfile.open(archive, "r:gz") as bundle:
     members = {member.name.lstrip("./"): member for member in bundle.getmembers() if member.isfile()}
     expected_names = set(names) | {"control-plane-manifest.json"}
     if set(members) != expected_names:
-        raise SystemExit("control-plane archive must contain exactly its manifest and three scripts")
+        raise SystemExit("control-plane archive must contain exactly its manifest and four scripts")
     for name in names:
         extracted = bundle.extractfile(members[name])
         if extracted is None or extracted.read() != (source / name).read_bytes():

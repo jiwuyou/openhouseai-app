@@ -73,11 +73,15 @@ public final class OpenHouseMaintainerRunner {
             environment.put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":/system/bin");
             environment.put("LD_LIBRARY_PATH", TermuxConstants.TERMUX_LIB_PREFIX_DIR_PATH);
             environment.put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
+            environment.put("SVDIR", TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/var/service");
+            environment.put("LOGDIR", TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/var/log");
             environment.put("LANG", "C.UTF-8");
             environment.put("OPENHOUSEAI_NO_AUTO_UBUNTU", "1");
             environment.put("TERMUX_NO_AUTO_UBUNTU", "1");
             environment.put("SMALLPHONEAI_BOOTSTRAP", runtimeSync.bootstrapFile.getAbsolutePath());
             environment.put("SMALLPHONEAI_OFFLINE_PAYLOAD_DIR", runtimeSync.payloadDir.getAbsolutePath());
+            environment.put("OPENHOUSEAI_MAINTAINER_DIR", runtimeSync.maintainerDir.getAbsolutePath());
+            environment.put("SMALLPHONEAI_MAINTAINER_DIR", runtimeSync.maintainerDir.getAbsolutePath());
             if (extraEnvironment != null) {
                 for (Map.Entry<String, String> entry : extraEnvironment.entrySet()) {
                     if (entry.getKey() != null && entry.getValue() != null) {
@@ -119,8 +123,12 @@ public final class OpenHouseMaintainerRunner {
             .append("export PATH=\"$PREFIX/bin:/system/bin:${PATH:-}\"\n")
             .append("export LD_LIBRARY_PATH=\"$PREFIX/lib:${LD_LIBRARY_PATH:-}\"\n")
             .append("export TMPDIR=\"${TMPDIR:-$PREFIX/tmp}\"\n")
+            .append("export SVDIR=\"${SVDIR:-$PREFIX/var/service}\"\n")
+            .append("export LOGDIR=\"${LOGDIR:-$PREFIX/var/log}\"\n")
             .append("export SMALLPHONEAI_BOOTSTRAP=\"${SMALLPHONEAI_BOOTSTRAP:-$HOME/.smallphoneai-bootstrap/bootstrap.sh}\"\n")
             .append("export SMALLPHONEAI_OFFLINE_PAYLOAD_DIR=\"${SMALLPHONEAI_OFFLINE_PAYLOAD_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/openhouse/product-payloads}\"\n")
+            .append("export OPENHOUSEAI_MAINTAINER_DIR=\"${OPENHOUSEAI_MAINTAINER_DIR:-$HOME/.smallphoneai-bootstrap/apk-assets/maintainer}\"\n")
+            .append("export SMALLPHONEAI_MAINTAINER_DIR=\"${SMALLPHONEAI_MAINTAINER_DIR:-$OPENHOUSEAI_MAINTAINER_DIR}\"\n")
             .append("LOG_DIR=\"$HOME/.maintainer-logs\"; LOG_FILE=\"$LOG_DIR/")
             .append(action.slug).append(".log\"; mkdir -p \"$LOG_DIR\"; : > \"$LOG_FILE\"\n")
             .append("log(){ printf '%s\\n' \"$1\" | tee -a \"$LOG_FILE\"; }\n")

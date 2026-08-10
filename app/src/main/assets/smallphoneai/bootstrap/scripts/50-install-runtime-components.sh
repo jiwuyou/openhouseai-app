@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_termux_native_services=0
+if [ -n "${PREFIX:-}" ] && [ -d "${PREFIX:-}/bin" ] && [ -d /data/data/com.termux/files ] \
+  && { [ ! -r /etc/os-release ] || ! grep -qi '^ID=ubuntu' /etc/os-release; }; then
+  _termux_native_services=1
+  for _termux_services_env in \
+    "${SMALLPHONEAI_MAINTAINER_DIR:-}/_termux-services-env.sh" \
+    "${OPENHOUSEAI_MAINTAINER_DIR:-}/_termux-services-env.sh" \
+    "$HOME/.smallphoneai-bootstrap/apk-assets/maintainer/_termux-services-env.sh" \
+    "$HOME/.smallphoneai-bootstrap/maintainer/_termux-services-env.sh" \
+    "$SCRIPT_DIR/../../../maintainer/_termux-services-env.sh"; do
+    [ -n "$_termux_services_env" ] && [ -r "$_termux_services_env" ] || continue
+    . "$_termux_services_env"
+    break
+  done
+  unset _termux_services_env
+fi
+
 log() {
   printf '[SmallPhoneAI] %s\n' "$*"
 }
@@ -8,6 +26,15 @@ log() {
 warn() {
   printf '[SmallPhoneAI] WARN: %s\n' "$*" >&2
 }
+
+if [ "$_termux_native_services" = "1" ]; then
+  declare -F oh_termux_services_environment >/dev/null 2>&1 || {
+    warn "缺少共享 Termux 服务环境脚本 _termux-services-env.sh。"
+    exit 2
+  }
+  oh_termux_services_environment
+fi
+unset _termux_native_services
 
 ensure_tmpdir() {
   local candidate="${TMPDIR:-}"
@@ -453,7 +480,7 @@ termux_service_manager_instance_matches_expected() {
 stop_stale_termux_service_manager() {
   local pid pids service_root
 
-  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  service_root="$SVDIR"
   if command -v sv >/dev/null 2>&1; then
     env SVDIR="$service_root" sv down service-manager >/dev/null 2>&1 || true
   fi
@@ -473,45 +500,18 @@ stop_stale_termux_service_manager() {
 }
 
 termux_runsvdir_active() {
-  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
-  local proc comm args
-
-  for proc in /proc/[0-9]*; do
-    [ -r "$proc/comm" ] && [ -r "$proc/cmdline" ] || continue
-    comm="$(cat "$proc/comm" 2>/dev/null || true)"
-    [ "$comm" = "runsvdir" ] || continue
-    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null || true)"
-    printf '%s\n' "$args" | grep -Fqx -- "$service_root" && return 0
-  done
-  return 1
+  oh_termux_runsvdir_active
 }
 
 ensure_termux_services_daemon() {
-  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
-
-  command -v service-daemon >/dev/null 2>&1 || {
-    warn "缺少 service-daemon；请先安装 termux-services。"
+  oh_start_termux_services_daemon || {
+    warn "termux-services 未能启动 runsvdir：SVDIR=$SVDIR LOGDIR=$LOGDIR"
     return 1
   }
-  command -v sv >/dev/null 2>&1 || {
-    warn "缺少 sv；请先安装 termux-services。"
-    return 1
-  }
-  [ -d "$service_root" ] || {
-    warn "termux-services 服务目录不存在：$service_root"
-    return 1
-  }
-  service-daemon start >/dev/null 2>&1 || true
-  for _ in $(seq 1 10); do
-    termux_runsvdir_active && return 0
-    sleep 1
-  done
-  warn "termux-services 未能启动 runsvdir：$service_root"
-  return 1
 }
 
 termux_service_manager_runit_ready() {
-  local service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  local service_root="$SVDIR"
   local status
 
   termux_runsvdir_active || return 1
@@ -540,7 +540,8 @@ start_termux_service_manager_for_registration() {
   sm_bin="$(find_termux_service_manager_binary || true)"
   [ -n "$sm_bin" ] || return 1
   log_file="$HOME/.smallphoneai/logs/service-manager.log"
-  service_root="${PREFIX:-/data/data/com.termux/files/usr}/var/service"
+  service_root="$SVDIR"
+  log "Termux service environment: SVDIR=$SVDIR LOGDIR=$LOGDIR serviceRoot=$service_root"
 
   ensure_termux_services_daemon || return 1
   mkdir -p "$HOME/.smallphoneai/logs" "$(dirname "$cfg")"
@@ -553,10 +554,11 @@ start_termux_service_manager_for_registration() {
     warn "service-manager runit run 文件未生成：$service_root/service-manager/run"
     return 1
   }
-  env SVDIR="$service_root" sv up service-manager || {
-    warn "sv up service-manager 失败。"
+  if ! oh_service_manager_sv_up_with_retry service-manager \
+    "${SMALLPHONEAI_SERVICE_MANAGER_SV_UP_ATTEMPTS:-10}"; then
+    warn "sv up service-manager 在有限重试后仍失败：SVDIR=$SVDIR run=$service_root/service-manager/run"
     return 1
-  }
+  fi
   for _ in $(seq 1 20); do
     termux_service_manager_ready_for_registration && return 0
     sleep 1
