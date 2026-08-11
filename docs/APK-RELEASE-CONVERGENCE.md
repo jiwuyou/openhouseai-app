@@ -79,6 +79,8 @@
 ## 自动化门禁
 
 - [ ] `scripts/generate-resource-set-v2.sh --check` 校验五资源集合、发布 metadata 和两种 APK assets 同字节。
+- [ ] `scripts/check-production-resource-alignment.sh` 校验生产活动集合、五个 latestVersion 及远端归档实物与 APK canonical 字节完全一致。
+- [ ] 对齐期间资源目录 revision 或资源集合快照变化时构建失败并重试，不接受混合版本快照。
 - [ ] `scripts/validate-openhouse-payloads.sh` 检查 bootstrap、五资源集合和 `yuanshengwuxianpi` 稳定服务契约。
 - [ ] `app/src/test/shell/wuxianpi-runtime-contract-test.sh` 检查注册和 sync 逻辑、稳定服务 ID、幂等行为。
 - [ ] 检查不会覆盖用户已有 `components.d` 文件。

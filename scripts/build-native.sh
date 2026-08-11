@@ -13,6 +13,7 @@ for required in ./install.sh ./bin/wuxianpi ./bin/wuxianpi-node ./bin/wuxianpi-n
 done
 "$repo_dir/scripts/validate-openhouse-payloads.sh"
 "$repo_dir/scripts/validate-native-install-resources.sh"
+"$repo_dir/scripts/check-production-resource-alignment.sh"
 cd "$repo_dir"
 native_gradle_task="${NATIVE_GRADLE_TASK:-:native-app:assembleDebug}"
 case "$native_gradle_task" in

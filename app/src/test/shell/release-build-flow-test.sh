@@ -6,6 +6,7 @@ repo_dir="$(cd "$script_dir/../../../.." && pwd)"
 native_script="$repo_dir/scripts/build-native.sh"
 all_in_one_script="$repo_dir/scripts/build-all-in-one.sh"
 apk_validator="$repo_dir/scripts/validate-openhouse-apk.sh"
+alignment_gate='"$repo_dir/scripts/check-production-resource-alignment.sh"'
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
@@ -27,6 +28,8 @@ grep -Fq '"$repo_dir/scripts/validate-openhouse-apk.sh" "${distribution_apks[@]}
   || fail 'All-in-One distribution outputs are not passed explicitly to APK validation'
 grep -Fq 'ALL_IN_ONE_GRADLE_TASK=:app:assembleRelease' "$repo_dir/README.md" \
   || fail 'README does not document the explicit All-in-One Release override'
+grep -Fq "$alignment_gate" "$all_in_one_script" \
+  || fail 'All-in-One distribution build does not enforce production resource alignment'
 if grep -Fq -- '-newermt' "$all_in_one_script"; then
   fail 'All-in-One distribution output discovery still depends on APK modification time'
 fi
@@ -34,5 +37,7 @@ grep -Fq 'if [[ "$#" -gt 0 ]]; then' "$apk_validator" \
   || fail 'APK validator does not support explicit output paths'
 grep -Fq 'max_debug_arm64_bytes' "$apk_validator" \
   || fail 'APK validator does not define a separate Debug size gate'
+grep -Fq "$alignment_gate" "$native_script" \
+  || fail 'Native distribution build does not enforce production resource alignment'
 
 printf 'Debug distribution build flow contracts passed\n'

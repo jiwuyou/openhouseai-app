@@ -13,6 +13,7 @@ done
 [[ ! -e "$repo_dir/app/src/main/assets/openhouse/product-payloads/pi-runtime.tar" ]] \
   || { printf 'Legacy pi-runtime.tar must not be bundled\n' >&2; exit 1; }
 "$repo_dir/scripts/validate-openhouse-payloads.sh"
+"$repo_dir/scripts/check-production-resource-alignment.sh"
 cd "$repo_dir"
 gradle_task="${ALL_IN_ONE_GRADLE_TASK:-:app:assembleDebug}"
 case "${gradle_task##*:}" in

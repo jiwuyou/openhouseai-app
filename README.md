@@ -71,6 +71,18 @@ APK 构建会校验内置的 `wuxianpi.first-install`、`wuxianpi.session-bootst
 ./scripts/build-native.sh
 ```
 
+两个分发脚本在 Gradle 构建前都会执行生产资源对齐门禁：读取维修助手市场当前提升的
+`openhouse-core-stack`，下载五个活动资源并重新计算大小和 SHA-256。集合 sequence、版本、
+资源 latestVersion、归档字节或校验期间的市场 revision 任一不一致都会中止构建。成功报告写入：
+
+```text
+build/reports/apk-build/resource-alignment.json
+```
+
+普通本地开发可继续直接运行 Gradle task，不依赖生产网络。门禁默认访问
+`https://wuxianpirescue.webefficacy.com`，仅测试或预发布市场可通过
+`WUXIANPI_RESCUE_MARKET_URL` 显式改为其它受信任来源；分发脚本没有静默跳过门禁的开关。
+
 The default outputs are the All-in-One `arm64-v8a` and `universal` APKs, plus the Native `arm64-v8a` APK. Each build validates the shared Runtime, APK signature, ZIP alignment, package identity, and Debug flag, then writes text and JSON reports under `build/reports/apk-build/`.
 
 To build the legacy Release variant explicitly:
