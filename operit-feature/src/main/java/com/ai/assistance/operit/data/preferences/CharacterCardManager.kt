@@ -66,7 +66,8 @@ class CharacterCardManager private constructor(private val context: Context) {
         // 默认角色卡ID
         const val DEFAULT_CHARACTER_CARD_ID = "default_character"
 
-        const val DEFAULT_CHARACTER_NAME = "Operit"
+        const val DEFAULT_CHARACTER_NAME = "wuxianpi维修助手"
+        const val DEFAULT_CHARACTER_AVATAR_URI = "file:///android_asset/wuxianpi-rescue.png"
 
         @Volatile
         private var INSTANCE: CharacterCardManager? = null
@@ -472,11 +473,12 @@ class CharacterCardManager private constructor(private val context: Context) {
         }
 
         if (isInitialized) {
-            // This is a new installation or an old user updating.
-            // We should migrate their existing theme settings to the default character card.
-            AppLogger.d("CharacterCardManager", "First initialization detected. Migrating current theme to default character card.")
+            AppLogger.d("CharacterCardManager", "First initialization detected. Creating the default character card theme.")
             userPreferencesManager.copyCurrentThemeToCharacterCard(DEFAULT_CHARACTER_CARD_ID)
-            userPreferencesManager.saveAiAvatarForCharacterCard(DEFAULT_CHARACTER_CARD_ID, "file:///android_asset/operit.png")
+            userPreferencesManager.saveAiAvatarForCharacterCard(
+                DEFAULT_CHARACTER_CARD_ID,
+                DEFAULT_CHARACTER_AVATAR_URI
+            )
         }
 
         // 清理历史内置功能标签（chat/voice/desktop pet）
@@ -491,7 +493,10 @@ class CharacterCardManager private constructor(private val context: Context) {
             setupDefaultCharacterCard(preferences, DEFAULT_CHARACTER_CARD_ID)
         }
         // 同时也重置头像和主题
-        userPreferencesManager.saveAiAvatarForCharacterCard(DEFAULT_CHARACTER_CARD_ID, "file:///android_asset/operit.png")
+        userPreferencesManager.saveAiAvatarForCharacterCard(
+            DEFAULT_CHARACTER_CARD_ID,
+            DEFAULT_CHARACTER_AVATAR_URI
+        )
     }
 
     private fun setupDefaultCharacterCard(preferences: MutablePreferences, id: String) {
