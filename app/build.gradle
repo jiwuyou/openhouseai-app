@@ -132,6 +132,10 @@ android {
 
     androidResources {
         noCompress += ["tgz", "gz", "tar"]
+        ignoreAssetsPattern =
+            "!.svn:!.git:!.gitignore:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~" +
+            ":!resource-set.json:!service-manager.tgz:!openhouse-control-plane.tgz" +
+            ":!runtime-aarch64.tgz:!wuyou.tgz:!openhouse-web.tgz"
     }
 
     testOptions {
@@ -171,12 +175,6 @@ android {
         main.java.exclude "com/termux/app/browser/ControlledBrowserContract.java"
         main.java.exclude "com/termux/app/browser/ControlledBrowserRuntime.java"
         main.java.exclude "com/termux/app/browser/ControlledBrowserView.java"
-        main.assets.exclude "openhouse/product-payloads/resource-set.json"
-        main.assets.exclude "openhouse/product-payloads/service-manager.tgz"
-        main.assets.exclude "openhouse/product-payloads/openhouse-control-plane.tgz"
-        main.assets.exclude "openhouse/product-payloads/runtime-aarch64.tgz"
-        main.assets.exclude "openhouse/product-payloads/wuyou.tgz"
-        main.assets.exclude "openhouse/product-payloads/openhouse-web.tgz"
     }
 
 }
