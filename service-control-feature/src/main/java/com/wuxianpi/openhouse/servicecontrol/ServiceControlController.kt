@@ -1,6 +1,6 @@
 package com.wuxianpi.openhouse.servicecontrol
 
-import com.wuxianpi.openhouse.core.ControlPlaneResult
+import com.wuxianpi.openhouse.core.ControlPlaneStartCoordinator
 import com.wuxianpi.openhouse.core.service.ServiceAction
 import com.wuxianpi.openhouse.core.service.ServiceManagerResult
 import kotlinx.coroutines.CoroutineDispatcher
@@ -44,20 +44,63 @@ class ServiceControlController(
             )
         }
         val result = runCatching {
-            onIo { dependencies.openHouseHost.controlPlaneStarter().startControlPlane() }
-        }.getOrElse { ControlPlaneResult(ControlPlaneResult.Status.FAILED, readableError(it)) }
-        if (!result.isSuccess) {
-            _state.update {
-                it.copy(
-                    controlPlaneState = ControlPlaneState.OFFLINE,
-                    statusMessage = "运行中枢启动失败。${result.message}".trim(),
+            onIo {
+                ControlPlaneStartCoordinator.start(
+                    dependencies.openHouseHost.controlPlaneBridge(),
+                    "manual",
+                ) { stream, line ->
+                    _state.update { current ->
+                        val prefix = if (stream == "stderr") "[stderr] " else ""
+                        current.copy(statusMessage = appendBoundedLog(current.statusMessage, prefix + line))
+                    }
+                }
+            }
+        }.getOrElse {
+            com.wuxianpi.openhouse.core.ControlPlaneCommandResult(1, "", readableError(it))
+        }
+        val transcript = ControlPlaneStartCoordinator.latestTranscript()
+        if (result.isSuccess) {
+            runCatching {
+                onIo { dependencies.httpClient.healthCheck() }.requireSuccess()
+            }.getOrElse {
+                _state.update { current ->
+                    current.copy(
+                        controlPlaneState = ControlPlaneState.OFFLINE,
+                        statusMessage = "启动命令已完成，但 health 验证失败：${readableError(it)}\n$transcript",
+                    )
+                }
+                return@runExclusive
+            }
+            refreshInternal()
+            if (state.value.controlPlaneState != ControlPlaneState.ONLINE) {
+                _state.update { current ->
+                    current.copy(
+                        statusMessage = "启动命令已完成，但带 token 的服务列表验证失败。\n${current.statusMessage}",
+                    )
+                }
+                return@runExclusive
+            }
+            _state.update { current ->
+                current.copy(
+                    statusMessage = "运行中枢启动成功；health 和带 token 的服务列表均已通过。\n$transcript",
                 )
             }
             return@runExclusive
         }
-        _state.update { it.copy(statusMessage = result.message.ifBlank { "运行中枢已启动，正在刷新服务..." }) }
-        refreshInternal()
+        _state.update {
+            it.copy(
+                controlPlaneState = ControlPlaneState.OFFLINE,
+                statusMessage = buildString {
+                    append("运行中枢启动命令失败")
+                    append("，exitCode=").append(result.exitCode)
+                    if (transcript.isNotBlank()) append('\n').append(transcript)
+                },
+            )
+        }
     }
+
+    private fun appendBoundedLog(current: String, line: String): String =
+        (current.lineSequence() + sequenceOf(line)).toList().takeLast(200).joinToString("\n")
 
     fun openMaintenance() = runExclusive {
         val result = runCatching { onIo { dependencies.openHouseHost.openHostMaintenance() } }
@@ -264,10 +307,13 @@ class ServiceControlController(
     }
 
     private fun markOffline(message: String) {
+        val startupLog = ControlPlaneStartCoordinator.latestTranscript().takeIf {
+            ControlPlaneStartCoordinator.latestResult().exitCode != -1 && it.isNotBlank()
+        }.orEmpty()
         _state.update {
             it.copy(
                 controlPlaneState = ControlPlaneState.OFFLINE,
-                statusMessage = message,
+                statusMessage = if (startupLog.isEmpty()) message else "$message\n最近一次启动日志：\n$startupLog",
             )
         }
     }

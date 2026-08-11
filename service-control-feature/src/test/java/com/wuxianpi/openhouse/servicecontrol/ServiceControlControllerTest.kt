@@ -48,9 +48,27 @@ class ServiceControlControllerTest {
 
         assertEquals(1, host.startCount)
         assertEquals(ControlPlaneState.ONLINE, controller.state.value.controlPlaneState)
+        assertTrue(transport.requests.any { it.path == "/api/v1/health" })
+        assertTrue(transport.requests.count { it.path == "/api/v1/services" } >= 2)
+        assertTrue(controller.state.value.statusMessage.contains("带 token 的服务列表均已通过"))
         controller.openMaintenance()
         scope.advanceUntilIdle()
         assertEquals(1, host.maintenanceCount)
+    }
+
+    @Test
+    fun startIsNotReportedSuccessfulWhenAuthenticatedServiceListFails() {
+        val transport = RecordingTransport().apply { listFailure = IOException("unauthorized") }
+        val host = FakeHost()
+        val controller = controller(transport, host)
+
+        controller.startControlPlane()
+        scope.advanceUntilIdle()
+
+        assertEquals(1, host.startCount)
+        assertEquals(ControlPlaneState.OFFLINE, controller.state.value.controlPlaneState)
+        assertTrue(controller.state.value.statusMessage.contains("带 token 的服务列表验证失败"))
+        assertTrue(controller.state.value.statusMessage.contains("unauthorized"))
     }
 
     @Test
@@ -133,6 +151,7 @@ private class RecordingTransport : HttpTransport {
 
     override fun execute(connection: RuntimeConnection, request: HttpRequestSpec): HttpResponseSpec {
         requests += request
+        if (request.path == "/api/v1/health") return HttpResponseSpec(200, "{\"ok\":true}")
         if (request.path == "/api/v1/services") {
             listFailure?.let { throw it }
             return HttpResponseSpec(

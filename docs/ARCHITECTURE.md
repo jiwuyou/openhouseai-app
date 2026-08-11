@@ -100,6 +100,20 @@ logs   -> service-manager
 repair -> service-manager where possible
 ```
 
+Android 与 Termux 之间的 service-manager 启动契约固定为：
+
+```text
+Android host adapter
+  -> $PREFIX/bin/openhouse-control-plane-start
+  -> $PREFIX/libexec/openhouse/start-service-manager.sh
+  -> service-daemon start
+  -> sv up service-manager
+```
+
+Android 只知道第一个固定命令。第二层脚本、`SVDIR`、`LOGDIR`、runit 和启动锁全部属于 Termux。启动脚本不读取 token、不访问服务 API、不安装资源、不修改配置，也不同步 registry。通用资源更新器可以继续更新 Runtime/Web 等资源，但不能拥有或阻塞这个启动契约。
+
+宿主在前台时使用无鉴权 `/api/v1/health` 做轻量存活探测，退到后台后停止探测。用户手动启动时，命令执行结果与 API 验证分离：先完整展示 stdout、stderr 和 exitCode，再以 health 和带 token 的服务列表共同确认页面上的最终成功状态。
+
 The Android App may still own emergency repair actions, especially when Termux, Ubuntu, or service-manager cannot start.
 
 ## Runtime Authority

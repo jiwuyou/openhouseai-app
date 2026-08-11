@@ -29,6 +29,7 @@ import com.wuxianpi.openhouse.core.workspace.ComponentServiceController
 import com.wuxianpi.openhouse.core.workspace.ComponentServiceSummary
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import com.wuxianpi.openhouse.feature.AdvancedUiEndpoints
+import com.wuxianpi.openhouse.feature.ControlPlaneForegroundSupervisor
 import com.wuxianpi.openhouse.feature.OpenHouseFeature
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost
 import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
@@ -64,6 +65,7 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
 
     fun install() {
         registryCatalog.start()
+        ControlPlaneForegroundSupervisor.register(appContext, host.controlPlaneBridge())
         OperitHostProvider.installOperations(TermuxOperitHostOperations(appContext))
         ServiceControlFeature.install { serviceControlDependencies() }
     }

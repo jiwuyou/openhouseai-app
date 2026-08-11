@@ -10,52 +10,46 @@ import java.nio.file.Files;
 public class OpenHouseControlPlaneStartActionTest {
 
     @Test
-    public void startControlPlaneActionDirectlyUsesTermuxNativeControlPlaneScript() {
-        OpenHouseMaintainerRunner.Action action =
-            OpenHouseMaintainerRunner.Action.valueOf("START_CONTROL_PLANE");
+    public void allInOneUsesOnlyTheFixedTermuxCommand() throws Exception {
+        String host = source(
+            "termux-host-adapter/src/main/java/com/openhouse/host/termux/TermuxOpenHouseHost.java");
+        String bridge = methodSource(host,
+            "private final class TermuxControlPlaneBridge",
+            "private static Thread streamReader");
 
-        Assert.assertEquals("start_control_plane", action.slug);
-        Assert.assertEquals("启动运行中枢", action.label);
-        Assert.assertEquals("start-control-plane-termux-native.sh", action.assetName);
-        Assert.assertEquals(150, action.timeoutSeconds);
-        Assert.assertNotEquals("repair-control-plane.sh", action.assetName);
-        Assert.assertNotEquals("start-smallphone.sh", action.assetName);
+        Assert.assertTrue(bridge.contains("/bin/openhouse-control-plane-start"));
+        Assert.assertTrue(bridge.contains("new ProcessBuilder(command.getAbsolutePath())"));
+        Assert.assertFalse(bridge.contains("OpenHouseMaintainerRunner"));
+        Assert.assertFalse(bridge.contains("OpenHouseBundledRuntimeSync"));
+        Assert.assertFalse(bridge.contains("token"));
+        Assert.assertFalse(bridge.contains("service-manager.sh"));
     }
 
     @Test
-    public void serviceControlStartEntryUsesStartActionInsteadOfRepairAction() throws Exception {
-        String source = source(
-            "app/src/main/java/com/termux/app/activities/OpenHouseServiceControlActivity.java");
-        String header = methodSource(
-            source,
-            "private void buildContentView()",
-            "private void addCcCodexTutorialPanel");
-
-        Assert.assertTrue(header.contains("actionButton(\"启动运行中枢\""));
-        Assert.assertTrue(source.contains(
-            ".run(OpenHouseMaintainerRunner.Action.START_CONTROL_PLANE, 0)"));
-        Assert.assertFalse(source.contains(
-            ".run(OpenHouseMaintainerRunner.Action.REPAIR_CONTROL_PLANE, 0)"));
-        Assert.assertFalse(source.contains("runControlPlaneRepair"));
-    }
-
-    @Test
-    public void maintainerRunnerInjectsTermuxServiceEnvironmentAndResourceDirectory() throws Exception {
+    public void maintainerRunnerNoLongerOwnsAStartAction() throws Exception {
         String source = source(
             "app/src/main/java/com/termux/app/openhouse/OpenHouseMaintainerRunner.java");
 
-        Assert.assertTrue(source.contains("environment.put(\"SVDIR\""));
-        Assert.assertTrue(source.contains("environment.put(\"LOGDIR\""));
-        Assert.assertTrue(source.contains("OPENHOUSEAI_MAINTAINER_DIR"));
-        Assert.assertTrue(source.contains("export SVDIR=\\\"${SVDIR:-$PREFIX/var/service}\\\""));
-        Assert.assertTrue(source.contains("export LOGDIR=\\\"${LOGDIR:-$PREFIX/var/log}\\\""));
+        Assert.assertFalse(source.contains("START_CONTROL_PLANE"));
+        Assert.assertFalse(source.contains("start_control_plane"));
+    }
+
+    @Test
+    public void bothManualScreensUseTheProcessWideCoordinator() throws Exception {
+        String legacy = source(
+            "app/src/main/java/com/termux/app/activities/OpenHouseServiceControlActivity.java");
+        String shared = source(
+            "service-control-feature/src/main/java/com/wuxianpi/openhouse/servicecontrol/ServiceControlController.kt");
+
+        Assert.assertTrue(legacy.contains("ControlPlaneStartCoordinator.start("));
+        Assert.assertTrue(shared.contains("ControlPlaneStartCoordinator.start("));
+        Assert.assertFalse(legacy.contains("OpenHouseMaintainerRunner.Action.START_CONTROL_PLANE"));
+        Assert.assertFalse(shared.contains("controlPlaneStarter().startControlPlane()"));
     }
 
     private static String source(String path) throws Exception {
         File file = new File(path);
-        if (!file.isFile()) {
-            file = new File("..", path);
-        }
+        if (!file.isFile()) file = new File("..", path);
         return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
     }
 

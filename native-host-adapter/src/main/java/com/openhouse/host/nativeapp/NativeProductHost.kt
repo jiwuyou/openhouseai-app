@@ -30,6 +30,7 @@ import com.wuxianpi.openhouse.core.workspace.ComponentServiceController
 import com.wuxianpi.openhouse.core.workspace.ComponentServiceSummary
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import com.wuxianpi.openhouse.feature.AdvancedUiEndpoints
+import com.wuxianpi.openhouse.feature.ControlPlaneForegroundSupervisor
 import com.wuxianpi.openhouse.feature.ComponentWebLaunchArgs
 import com.wuxianpi.openhouse.feature.OpenHouseFeature
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost
@@ -66,6 +67,7 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
 
     fun install() {
         registryCatalog.start()
+        ControlPlaneForegroundSupervisor.register(appContext, host.controlPlaneBridge())
         OperitHostProvider.install(NativeOperitHostContract(appContext, operations, host))
         OperitHostProvider.installOperations(operations)
         ServiceControlFeature.install { serviceControlDependencies() }

@@ -19,7 +19,6 @@ import com.termux.shared.termux.shell.am.TermuxAmSocketServer;
 import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore;
-import com.termux.app.openhouse.OpenHouseForegroundRuntimeKeeper;
 import com.termux.app.operit.init.OperitHostBootstrap;
 import com.openhouse.host.termux.TermuxProductHost;
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost;
@@ -91,7 +90,6 @@ public class TermuxApplication extends Application implements OpenHouseFeatureHo
             // APK resources remain private assets until Rescue AI explicitly stages a verified
             // difference. Recording an offer here must never copy or overwrite Termux files.
             ApkResourceOfferStore.recordCurrentApk(context);
-            OpenHouseForegroundRuntimeKeeper.register(this);
         }
     }
 

@@ -6,6 +6,10 @@ import android.content.Intent;
 
 import com.wuxianpi.openhouse.core.ControlPlaneResult;
 import com.wuxianpi.openhouse.core.ControlPlaneStarter;
+import com.wuxianpi.openhouse.core.ControlPlaneBridge;
+import com.wuxianpi.openhouse.core.ControlPlaneCommandResult;
+import com.wuxianpi.openhouse.core.ControlPlaneOutputListener;
+import com.wuxianpi.openhouse.core.ControlPlaneStartCoordinator;
 import com.wuxianpi.openhouse.core.HostActionResult;
 import com.wuxianpi.openhouse.core.HostCapabilities;
 import com.wuxianpi.openhouse.core.HostEdition;
@@ -23,9 +27,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -43,6 +45,7 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
     private static final File SERVICE_MANAGER_CONFIG = new File(
         TERMUX_HOME + "/.config/openhouseai/service-manager/config.json");
     private final Context appContext;
+    private final ControlPlaneBridge controlPlaneBridge = new TermuxControlPlaneBridge();
     private final ControlPlaneStarter controlPlaneStarter = new TermuxControlPlaneStarter();
     private final LegacyRegistrySource legacyRegistrySource;
 
@@ -103,6 +106,10 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
         return controlPlaneStarter;
     }
 
+    @Override public ControlPlaneBridge controlPlaneBridge() {
+        return controlPlaneBridge;
+    }
+
     @Override public LegacyRegistrySource legacyRegistrySource() {
         return legacyRegistrySource;
     }
@@ -117,27 +124,12 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
 
     private final class TermuxControlPlaneStarter implements ControlPlaneStarter {
         @Override public ControlPlaneResult startControlPlane() {
-            try {
-                Class<?> runnerClass = Class.forName("com.termux.app.openhouse.OpenHouseMaintainerRunner");
-                Class<?> actionClass = Class.forName("com.termux.app.openhouse.OpenHouseMaintainerRunner$Action");
-                @SuppressWarnings({"rawtypes", "unchecked"})
-                Object action = Enum.valueOf((Class<? extends Enum>) actionClass.asSubclass(Enum.class),
-                    "START_CONTROL_PLANE");
-                Constructor<?> constructor = runnerClass.getConstructor(Context.class);
-                Object runner = constructor.newInstance(appContext);
-                Method run = runnerClass.getMethod("run", actionClass, int.class);
-                Object result = run.invoke(runner, action, 0);
-                Field exitCode = result.getClass().getField("exitCode");
-                Field output = result.getClass().getField("output");
-                int code = exitCode.getInt(result);
-                String message = String.valueOf(output.get(result));
-                return new ControlPlaneResult(
-                    code == 0 ? ControlPlaneResult.Status.STARTED : ControlPlaneResult.Status.FAILED,
-                    message
-                );
-            } catch (Exception error) {
-                return new ControlPlaneResult(ControlPlaneResult.Status.FAILED, safeMessage(error));
-            }
+            ControlPlaneCommandResult result = ControlPlaneStartCoordinator.start(
+                controlPlaneBridge, "legacy-manual");
+            return new ControlPlaneResult(
+                result.isSuccess() ? ControlPlaneResult.Status.STARTED : ControlPlaneResult.Status.FAILED,
+                result.combinedOutput()
+            );
         }
 
         @Override public ControlPlaneResult stopControlPlane() {
@@ -163,6 +155,68 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
                 return new ControlPlaneResult(ControlPlaneResult.Status.FAILED, safeMessage(error));
             }
         }
+    }
+
+    private final class TermuxControlPlaneBridge implements ControlPlaneBridge {
+        @Override public ControlPlaneCommandResult start(ControlPlaneOutputListener listener) {
+            File command = new File(TERMUX_PREFIX + "/bin/openhouse-control-plane-start");
+            if (!command.isFile()) {
+                return new ControlPlaneCommandResult(
+                    127, "", "Missing fixed Termux command: " + command.getAbsolutePath());
+            }
+            try {
+                ProcessBuilder builder = new ProcessBuilder(command.getAbsolutePath())
+                    .directory(new File(TERMUX_HOME));
+                builder.environment().put("HOME", TERMUX_HOME);
+                builder.environment().put("PREFIX", TERMUX_PREFIX);
+                builder.environment().put("PATH",
+                    TERMUX_PREFIX + "/bin:/system/bin:/system/xbin");
+                Process process = builder.start();
+                StringBuilder stdout = new StringBuilder();
+                StringBuilder stderr = new StringBuilder();
+                Thread stdoutReader = streamReader(process.getInputStream(), "stdout", stdout, listener);
+                Thread stderrReader = streamReader(process.getErrorStream(), "stderr", stderr, listener);
+                stdoutReader.start();
+                stderrReader.start();
+                int exitCode = process.waitFor();
+                stdoutReader.join();
+                stderrReader.join();
+                return new ControlPlaneCommandResult(exitCode, stdout.toString(), stderr.toString());
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                return new ControlPlaneCommandResult(130, "", safeMessage(error));
+            } catch (Exception error) {
+                return new ControlPlaneCommandResult(1, "", safeMessage(error));
+            }
+        }
+    }
+
+    private static Thread streamReader(
+        InputStream input,
+        String stream,
+        StringBuilder output,
+        ControlPlaneOutputListener listener
+    ) {
+        return new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(input, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    synchronized (output) {
+                        if (output.length() > 0) output.append('\n');
+                        output.append(line);
+                    }
+                    if (listener != null) listener.onOutput(stream, line);
+                }
+            } catch (Exception error) {
+                String message = safeMessage(error);
+                synchronized (output) {
+                    if (output.length() > 0) output.append('\n');
+                    output.append(message);
+                }
+                if (listener != null) listener.onOutput(stream, message);
+            }
+        }, "openhouse-control-plane-" + stream);
     }
 
     private HostActionResult launchActivity(String className, String label) {

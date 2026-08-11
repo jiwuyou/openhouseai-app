@@ -4,8 +4,6 @@ import android.content.Intent;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -19,8 +17,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
 import com.termux.R;
+import com.openhouse.host.termux.TermuxOpenHouseHost;
 import com.termux.app.openhouse.OpenHouseExitAllController;
-import com.termux.app.openhouse.OpenHouseMaintainerRunner;
 import com.termux.app.openhouse.OpenHouseRuntimeSupervisor;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerActionResult;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerClient;
@@ -32,6 +30,8 @@ import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceStatus;
 import com.termux.app.openhouse.servicecontrol.ServiceManagerServiceResolver;
 import com.termux.app.openhouse.tutorial.GuidedTutorialOverlay;
 import com.termux.shared.logger.Logger;
+import com.wuxianpi.openhouse.core.ControlPlaneCommandResult;
+import com.wuxianpi.openhouse.core.ControlPlaneStartCoordinator;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -66,19 +66,11 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private static final String LOCKED_DISABLED_BUTTON_TAG = "openhouse_locked_disabled";
     private static final int LOG_LIMIT = 80;
     private static final int STATUS_TEXT_LIMIT = 10000;
-    private static final long FOREGROUND_MAINTENANCE_INTERVAL_MS = 30_000L;
     private static final int DESKTOP_TUTORIAL_STATUS_POLL_ATTEMPTS = 20;
     private static final long DESKTOP_TUTORIAL_STATUS_POLL_DELAY_MS = 500L;
 
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, ServiceCard> serviceCards = new LinkedHashMap<>();
-    private final Handler foregroundHandler = new Handler(Looper.getMainLooper());
-    private final Runnable foregroundMaintenanceRunnable = new Runnable() {
-        @Override
-        public void run() {
-            runScheduledForegroundMaintenance();
-        }
-    };
 
     private ServiceManagerControlClient controlClient;
     private OpenHouseRuntimeSupervisor runtimeSupervisor;
@@ -99,8 +91,6 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     private boolean desktopTutorialStopConfirmed;
     private boolean desktopTutorialFinalStartConfirmed;
     private boolean desktopTutorialCycleCompleted;
-    private boolean foregroundMaintenanceEnabled;
-    private boolean foregroundMaintenanceTaskRunning;
     private String componentId = "";
     private String componentTitle = "";
     private String componentUrl = "";
@@ -122,20 +112,6 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-        if (!isDesktopAppControlTutorial()) {
-            startForegroundMaintenance();
-        }
-    }
-
-    @Override
-    protected void onPause() {
-        stopForegroundMaintenance();
-        super.onPause();
-    }
-
-    @Override
     protected void onDestroy() {
         super.onDestroy();
         if (ccCodexTutorialOverlay != null) {
@@ -146,7 +122,6 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
             desktopAppTutorialOverlay.destroy();
             desktopAppTutorialOverlay = null;
         }
-        stopForegroundMaintenance();
         backgroundExecutor.shutdownNow();
     }
 
@@ -927,47 +902,8 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         }
     }
 
-    private void startForegroundMaintenance() {
-        foregroundMaintenanceEnabled = true;
-        foregroundHandler.removeCallbacks(foregroundMaintenanceRunnable);
-        foregroundHandler.postDelayed(foregroundMaintenanceRunnable, 1200L);
-    }
-
-    private void stopForegroundMaintenance() {
-        foregroundMaintenanceEnabled = false;
-        foregroundHandler.removeCallbacks(foregroundMaintenanceRunnable);
-    }
-
-    private void runScheduledForegroundMaintenance() {
-        if (!foregroundMaintenanceEnabled || isFinishing() || backgroundExecutor.isShutdown()) {
-            return;
-        }
-        if (foregroundMaintenanceTaskRunning) {
-            foregroundHandler.postDelayed(foregroundMaintenanceRunnable, FOREGROUND_MAINTENANCE_INTERVAL_MS);
-            return;
-        }
-        foregroundMaintenanceTaskRunning = true;
-        backgroundExecutor.execute(() -> {
-            OpenHouseRuntimeSupervisor.MaintenanceReport report;
-            try {
-                report = runtimeSupervisor.runForegroundMaintenanceTick();
-            } catch (Exception e) {
-                Logger.logStackTraceWithMessage(LOG_TAG, "Foreground runtime maintenance failed", e);
-                report = null;
-            }
-            final OpenHouseRuntimeSupervisor.MaintenanceReport finalReport = report;
-            runOnUiThread(() -> {
-                foregroundMaintenanceTaskRunning = false;
-                applyForegroundMaintenanceReport(finalReport, false);
-            });
-        });
-        foregroundHandler.postDelayed(foregroundMaintenanceRunnable, FOREGROUND_MAINTENANCE_INTERVAL_MS);
-    }
-
     private void runDefaultCoreServiceMaintenance() {
         OpenHouseRuntimeSupervisor.clearExitAllRequested(this);
-        foregroundMaintenanceTaskRunning = false;
-        startForegroundMaintenance();
         setBusy(true);
         setControlPlaneStatus("控制中枢：正在恢复默认核心服务...");
         setStatus("正在恢复默认核心服务。\n会轻量检查 service-manager，并确保 smallphone、pi-agent 和 cloudcli 默认长期服务可用。");
@@ -1027,8 +963,6 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     }
 
     private void runStopRuntimeStack() {
-        stopForegroundMaintenance();
-        foregroundMaintenanceTaskRunning = false;
         setBusy(true);
         setStatus("正在停止运行栈。\n会停止业务服务并保留 service-manager 控制中枢；App 会留在当前界面，用户数据会保留。");
         setControlPlaneStatus("控制中枢：正在停止运行栈...");
@@ -1054,8 +988,6 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
     }
 
     private void runExitAll() {
-        stopForegroundMaintenance();
-        foregroundMaintenanceTaskRunning = false;
         setBusy(true);
         setStatus("正在全部退出 OpenHouse。\n会先停止业务运行栈并保留 service-manager，再关闭 OpenHouse 界面。用户数据会保留。");
         setControlPlaneStatus("控制中枢：正在停止运行栈...");
@@ -1089,19 +1021,19 @@ public class OpenHouseServiceControlActivity extends AppCompatActivity {
         setControlPlaneStatus("控制中枢：启动中...");
         setStatus("正在启动运行中枢。\n会使用固定的 Termux native 启动入口拉起 service-manager，再重新读取服务状态。\n不会启动默认业务服务，也不会执行全量安装。");
         backgroundExecutor.execute(() -> {
-            OpenHouseMaintainerRunner.Result result = new OpenHouseMaintainerRunner(this)
-                .run(OpenHouseMaintainerRunner.Action.START_CONTROL_PLANE, 0);
+            ControlPlaneCommandResult result = ControlPlaneStartCoordinator.start(
+                new TermuxOpenHouseHost(this).controlPlaneBridge(), "legacy-manual");
             runOnUiThread(() -> {
                 setBusy(false);
                 if (result.isSuccess()) {
-                    setControlPlaneStatus("控制中枢：启动完成，正在刷新服务状态。");
-                    setStatus("运行中枢启动完成。\n下一步：正在重新读取服务状态；回到服务页面后请刷新确认。"
-                        + formatMaintainerOutput(result.output));
+                    setControlPlaneStatus("控制中枢：启动命令已完成，前台探测将确认健康状态。");
+                    setStatus("运行中枢启动命令完成，exitCode=" + result.exitCode
+                        + formatMaintainerOutput(ControlPlaneStartCoordinator.latestTranscript()));
                     hideMaintenanceFallback();
                     loadInitialServices();
                 } else {
-                    showServiceManagerError("运行中枢启动失败。\n影响：运行控制可能无法启动、关闭或检查服务。\n下一步：可以打开维护与修复查看详细日志。\n退出码 " + result.exitCode
-                        + formatMaintainerOutput(result.output));
+                    showServiceManagerError("运行中枢启动失败，exitCode=" + result.exitCode
+                        + formatMaintainerOutput(ControlPlaneStartCoordinator.latestTranscript()));
                 }
             });
         });
