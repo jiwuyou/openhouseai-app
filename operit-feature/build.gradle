@@ -192,6 +192,145 @@ dependencies {
 def sharedRescueRustLibrary =
     file("src/main/jniLibs/arm64-v8a/libwuxianpi_rescue.so")
 def repositoryDir = file("${projectDir}/..")
+def bundledRescuePluginIds = [
+    "wuxianpi.first-install",
+    "wuxianpi.session-bootstrap",
+    "wuxianpi.session-runtime",
+]
+def bundledRescuePluginsDir = file("src/main/assets/rescue-plugins")
+def defaultRescueMarketRepo = new File(rootProject.rootDir, "../../wuxianpi-rescue")
+def rescueMarketRepoPath = providers.environmentVariable("WUXIANPI_RESCUE_REPO")
+    .orElse(defaultRescueMarketRepo.absolutePath)
+
+def sha256File = { File input ->
+    def digest = java.security.MessageDigest.getInstance("SHA-256")
+    input.eachByte(8192) { byte[] buffer, int length ->
+        digest.update(buffer, 0, length)
+    }
+    digest.digest().encodeHex().toString()
+}
+
+def relativeFiles = { File root ->
+    fileTree(root).files
+        .findAll(File::isFile)
+        .collectEntries { File file ->
+            def relative = root.toPath().relativize(file.toPath()).toString().replace('\\', '/')
+            [(relative): file]
+        }
+}
+
+def promotedBundledRescuePlugins = {
+    def marketRepo = file(rescueMarketRepoPath.get()).canonicalFile
+    def catalogFile = new File(marketRepo, "public/catalog.json")
+    if (!catalogFile.isFile()) {
+        throw new GradleException(
+            "WuxianPi Rescue market catalog not found at ${catalogFile}. " +
+                "Clone https://github.com/jiwuyou/wuxianpi-rescue or set WUXIANPI_RESCUE_REPO."
+        )
+    }
+
+    def catalog = new groovy.json.JsonSlurper().parse(catalogFile)
+    def catalogPlugins = catalog.plugins.collectEntries { plugin -> [(plugin.id): plugin] }
+    bundledRescuePluginIds.collectEntries { pluginId ->
+        def plugin = catalogPlugins[pluginId]
+        if (plugin == null) {
+            throw new GradleException("Promoted rescue catalog is missing bundled plugin ${pluginId}")
+        }
+        def latestVersion = plugin.latestVersion?.toString()
+        if (!latestVersion) {
+            throw new GradleException("Promoted rescue catalog has no latestVersion for ${pluginId}")
+        }
+        def release = plugin.versions.find { it.manifest?.version?.toString() == latestVersion }
+        if (release == null) {
+            throw new GradleException(
+                "Promoted rescue catalog has no ${pluginId}@${latestVersion} release metadata"
+            )
+        }
+        def downloadPath = release.downloadUrl?.toString()?.replaceFirst('^/', '')
+        def archive = downloadPath ? new File(new File(marketRepo, "public"), downloadPath) : null
+        if (archive == null || !archive.isFile()) {
+            throw new GradleException(
+                "Promoted rescue archive is missing for ${pluginId}@${latestVersion}: ${archive}"
+            )
+        }
+        if (archive.length() != (release.size as long)) {
+            throw new GradleException(
+                "Promoted rescue archive size mismatch for ${pluginId}@${latestVersion}"
+            )
+        }
+        def archiveSha256 = sha256File(archive)
+        if (!archiveSha256.equalsIgnoreCase(release.sha256?.toString())) {
+            throw new GradleException(
+                "Promoted rescue archive SHA-256 mismatch for ${pluginId}@${latestVersion}"
+            )
+        }
+        [(pluginId): [version: latestVersion, archive: archive]]
+    }
+}
+
+tasks.register("syncBundledRescuePlugins") {
+    group = "build setup"
+    description = "Sync APK-bundled rescue plugins from promoted immutable market archives."
+    doLast {
+        promotedBundledRescuePlugins().each { pluginId, release ->
+            def destination = new File(bundledRescuePluginsDir, pluginId)
+            delete(destination)
+            copy {
+                from zipTree(release.archive)
+                into destination
+            }
+            logger.lifecycle("Synced ${pluginId}@${release.version} into APK assets")
+        }
+    }
+}
+
+tasks.register("checkBundledRescuePlugins") {
+    group = "verification"
+    description = "Require APK-bundled rescue plugins to match promoted market archives."
+    inputs.dir bundledRescuePluginsDir
+    doLast {
+        promotedBundledRescuePlugins().each { pluginId, release ->
+            def bundledDir = new File(bundledRescuePluginsDir, pluginId)
+            if (!bundledDir.isDirectory()) {
+                throw new GradleException("APK-bundled rescue plugin is missing: ${pluginId}")
+            }
+
+            def extractedDir = new File(temporaryDir, pluginId)
+            delete(extractedDir)
+            copy {
+                from zipTree(release.archive)
+                into extractedDir
+            }
+
+            def expectedFiles = relativeFiles(extractedDir)
+            def bundledFiles = relativeFiles(bundledDir)
+            def missingFiles = (expectedFiles.keySet() - bundledFiles.keySet()).sort()
+            def unexpectedFiles = (bundledFiles.keySet() - expectedFiles.keySet()).sort()
+            if (!missingFiles.isEmpty() || !unexpectedFiles.isEmpty()) {
+                throw new GradleException(
+                    "APK-bundled ${pluginId}@${release.version} file set differs from the promoted archive. " +
+                        "Missing: ${missingFiles}; unexpected: ${unexpectedFiles}. " +
+                        "Run :operit-feature:syncBundledRescuePlugins."
+                )
+            }
+
+            expectedFiles.each { relative, expected ->
+                def bundled = bundledFiles[relative]
+                if (sha256File(expected) != sha256File(bundled)) {
+                    throw new GradleException(
+                        "APK-bundled ${pluginId}@${release.version} differs at ${relative}. " +
+                            "Run :operit-feature:syncBundledRescuePlugins."
+                    )
+                }
+            }
+            logger.lifecycle("Verified APK-bundled ${pluginId}@${release.version}")
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("checkBundledRescuePlugins")
+}
 
 tasks.register("buildSharedPiRustAndroid", Exec) {
     group = "build"

@@ -1,22 +1,17 @@
 {
   "schemaVersion": 1,
   "id": "wuxianpi.first-install",
-  "version": "1.0.0",
+  "version": "1.0.9",
   "name": "首次安装",
-  "description": "检查真实环境并引导完成 Termux、持久终端、service-manager、WuxianPi 与 Ubuntu 初始化。",
+  "description": "准备 Termux 和 Ubuntu，独立安装运行中枢固定入口，并注册 WuxianPi 桌面组件。",
   "category": "setup",
   "minHostVersion": 12,
-  "requiredCapabilities": [
-    "setup-tools",
-    "termux",
-    "persistent-terminal"
-  ],
-  "tags": [
-    "首次安装",
-    "初始化",
-    "Termux"
-  ],
+  "requiredCapabilities": ["setup-tools", "termux", "persistent-terminal"],
+  "tags": ["首次安装", "初始化", "Termux"],
   "entryWorkflow": "workflows/install.json",
+  "assistantContexts": [
+    { "path": "prompts/control-plane-triage.md", "scope": "session", "provider": "static" }
+  ],
   "actions": [
     {
       "id": "first-install",
@@ -29,9 +24,9 @@
     }
   ],
   "documents": [
-    {
-      "path": "docs/guide.md",
-      "title": "首次安装说明"
-    }
+    { "path": "docs/guide.md", "title": "首次安装说明" },
+    { "path": "scripts/openhouse-control-plane-start", "title": "Android-Termux 固定入口" },
+    { "path": "scripts/start-service-manager.sh", "title": "Termux service-manager 启动脚本" },
+    { "path": "scripts/register-openhouse-component.sh", "title": "OpenHouse 桌面组件注册脚本" }
   ]
 }

@@ -49,6 +49,22 @@ OpenHouseAI 的文档和安装链路应区分“当前默认核心”和“可�
 
 ## Debug Distribution Build
 
+APK 构建会校验内置的 `wuxianpi.first-install`、`wuxianpi.session-bootstrap` 和
+`wuxianpi.session-runtime`，要求其版本和内容与维修助手市场已经 promote 的不可变归档完全一致。
+默认市场仓库位置是 `../../wuxianpi-rescue`；其它目录通过
+`WUXIANPI_RESCUE_REPO=/absolute/path/to/wuxianpi-rescue` 指定。市场仓库或发布归档缺失、
+版本落后、文件缺失或内容不同都会阻止 APK 构建。
+
+市场发布核心插件后，先显式同步 APK seed：
+
+```bash
+./gradlew :operit-feature:syncBundledRescuePlugins
+./gradlew :operit-feature:checkBundledRescuePlugins
+```
+
+同步只读取市场仓库的 `public/catalog.json` 和对应 promote 版本 ZIP；普通构建只校验，
+不会联网，也不会自动修改源码。
+
 ```bash
 # Both scripts default to the long-term Debug distribution channel.
 ./scripts/build-all-in-one.sh

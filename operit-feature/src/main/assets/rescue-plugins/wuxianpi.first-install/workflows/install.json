@@ -13,7 +13,7 @@
       "id": "inspect",
       "kind": "tool",
       "tool": "inspect_wuxianpi_setup",
-      "description": "检查宿主类型、Termux、权限、安装载荷和服务真实状态。"
+      "description": "检查宿主类型、Termux、权限、APK 离线资源和现有资源集合状态。"
     },
     {
       "id": "prepare-host",
@@ -32,33 +32,247 @@
       "id": "run-command",
       "kind": "tool",
       "tool": "request_termux_run_command_permission",
-      "when": "runtimeHost.externalTermux && !permissions.runCommand",
-      "description": "获取并验证外部 Termux RUN_COMMAND 权限。"
+      "when": "runtimeHost.externalTermux",
+      "description": "获取外部 Termux RUN_COMMAND 权限并验证 allow-external-apps = true；验证成功前不进入下一步。"
     },
     {
       "id": "persistent-terminal",
       "kind": "tool",
       "tool": "prepare_persistent_termux",
-      "description": "先测试软件源，再安装 tmux 的最小前置依赖并建立持久终端。"
+      "description": "安装 tmux、curl、jq、tar、gzip 和 flock 所需的最小 Termux 基础能力。"
+    },
+    {
+      "id": "read-control-plane-entry",
+      "kind": "tool",
+      "tool": "read_rescue_plugin_document",
+      "arguments": {
+        "pluginId": "wuxianpi.first-install",
+        "path": "scripts/openhouse-control-plane-start"
+      },
+      "description": "读取 Android 与 Termux 之间唯一稳定的运行中枢入口。"
+    },
+    {
+      "id": "read-service-manager-start",
+      "kind": "tool",
+      "tool": "read_rescue_plugin_document",
+      "arguments": {
+        "pluginId": "wuxianpi.first-install",
+        "path": "scripts/start-service-manager.sh"
+      },
+      "description": "读取独立的 Termux service-manager 启动实现。"
+    },
+    {
+      "id": "prepare-control-plane-script-stage",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "mkdir -p \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/control-plane\"",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-control-plane-entry",
+        "yield_time_ms": 1000
+      },
+      "description": "准备固定启动脚本的写入暂存目录。"
+    },
+    {
+      "id": "write-control-plane-entry",
+      "kind": "tool-from-result",
+      "tool": "write_file",
+      "sourceStep": "read-control-plane-entry",
+      "arguments": {
+        "environment": "repo:termux-home",
+        "path": ".local/share/wuxianpi/plugins/wuxianpi.first-install/control-plane/openhouse-control-plane-start",
+        "content": "{{steps.read-control-plane-entry.content}}"
+      },
+      "description": "暂存固定入口。"
+    },
+    {
+      "id": "write-service-manager-start",
+      "kind": "tool-from-result",
+      "tool": "write_file",
+      "sourceStep": "read-service-manager-start",
+      "arguments": {
+        "environment": "repo:termux-home",
+        "path": ".local/share/wuxianpi/plugins/wuxianpi.first-install/control-plane/start-service-manager.sh",
+        "content": "{{steps.read-service-manager-start.content}}"
+      },
+      "description": "暂存 Termux 启动实现。"
+    },
+    {
+      "id": "install-control-plane-entry",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "set -eu; stage=\"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/control-plane\"; install -d \"$PREFIX/bin\" \"$PREFIX/libexec/openhouse\"; install -m 700 \"$stage/openhouse-control-plane-start\" \"$PREFIX/bin/openhouse-control-plane-start\"; install -m 700 \"$stage/start-service-manager.sh\" \"$PREFIX/libexec/openhouse/start-service-manager.sh\"",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-control-plane-entry",
+        "yield_time_ms": 1000
+      },
+      "description": "原子替换两个固定脚本；此步骤不读取资源集合、token 或 service-manager 配置。"
+    },
+    {
+      "id": "read-resource-updater",
+      "kind": "tool",
+      "tool": "read_rescue_plugin_document",
+      "arguments": {
+        "pluginId": "wuxianpi.resource-update",
+        "path": "scripts/update-resources.sh"
+      },
+      "description": "读取市场最新的资源更新器 2.0.0；它是五个核心资源安装和回滚的唯一实现。"
+    },
+    {
+      "id": "prepare-resource-updater-directory",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "mkdir -p \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update\"",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-resource-update-stage",
+        "yield_time_ms": 1000
+      },
+      "description": "准备资源更新器持久目录。"
+    },
+    {
+      "id": "write-resource-updater",
+      "kind": "tool-from-result",
+      "tool": "write_file",
+      "sourceStep": "read-resource-updater",
+      "arguments": {
+        "environment": "repo:termux-home",
+        "path": ".local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh",
+        "content": "{{steps.read-resource-updater.content}}"
+      },
+      "description": "写入资源更新器；安装脚本不再自行维护 service-manager、Runtime、wuyou、Web 和控制面五套逻辑。"
     },
     {
       "id": "stage-setup",
       "kind": "tool",
       "tool": "start_wuxianpi_setup",
-      "description": "转移安装载荷并返回前台安装所需的 command、session_name 和 yield_time_ms。"
+      "description": "转移 APK 资源并返回当前宿主的安装命令；wuxianpi-setup 只准备系统依赖和 Ubuntu，核心资源委托给资源更新器。"
     },
     {
-      "id": "run-setup",
+      "id": "prepare-resource-updater",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "chmod 700 \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" && \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" check",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-resource-update-stage",
+        "yield_time_ms": 1000
+      },
+      "description": "APK 资源投递完成后验证 V2 市场或离线资源集合，并生成差异计划；断网 Native 不依赖市场。"
+    },
+    {
+      "id": "run-setup-native",
       "kind": "tool-from-result",
       "tool": "termux_exec_command",
       "sourceStep": "stage-setup",
-      "description": "使用 stage-setup 返回的 command、session_name 和 yield_time_ms 启动持久安装任务。"
+      "when": "runtimeHost.externalTermux",
+      "description": "Native 使用 stage-setup 返回的原始命令运行 install-resources/current/bootstrap/wuxianpi-setup。"
+    },
+    {
+      "id": "run-setup-embedded",
+      "kind": "tool-from-result",
+      "tool": "termux_exec_command",
+      "sourceStep": "stage-setup",
+      "when": "!runtimeHost.externalTermux",
+      "description": "All-in-One 使用 stage-setup 返回的命令运行已暂存的 /bin/wuxianpi-setup。"
+    },
+    {
+      "id": "start-openhouse-control-plane",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "\"$PREFIX/bin/openhouse-control-plane-start\"",
+        "working_directory": "$HOME",
+        "session_name": "openhouse-control-plane-start",
+        "yield_time_ms": 1000
+      },
+      "description": "通过固定 Termux 入口启动 service-manager；原样保留 stdout、stderr 和退出码。"
     },
     {
       "id": "verify",
       "kind": "poll-tool",
       "tool": "get_wuxianpi_setup_status",
-      "description": "轮询安装状态，直到完成或返回可操作失败，并验证 service-manager、WuxianPi、Ubuntu、端口、模型接口和终端能力。"
+      "retryPolicy": {
+        "maxAttempts": 10,
+        "delayMs": 3000,
+        "retryWhen": [
+          "runsvdir 尚未就绪",
+          "sv up service-manager 返回 unable to change to service directory",
+          "service-manager 20087 健康检查暂不可达"
+        ]
+      },
+      "description": "轮询系统依赖、Ubuntu、资源集合和 service-manager 状态。"
+    },
+    {
+      "id": "verify-resource-set",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "\"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" verify",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-resource-update-verify",
+        "yield_time_ms": 1000
+      },
+      "description": "重新计算五个资源文件清单，验证 installed-set.json 与当前资源链接。"
+    },
+    {
+      "id": "read-openhouse-registration-script",
+      "kind": "tool",
+      "tool": "read_rescue_plugin_document",
+      "arguments": {
+        "pluginId": "wuxianpi.first-install",
+        "path": "scripts/register-openhouse-component.sh"
+      },
+      "description": "读取 yuanshengwuxianpi 桌面组件注册脚本。"
+    },
+    {
+      "id": "prepare-openhouse-registration-directory",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "mkdir -p \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install\"",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-openhouse-registration-prepare",
+        "yield_time_ms": 1000
+      },
+      "description": "准备首次安装插件持久目录。"
+    },
+    {
+      "id": "write-openhouse-registration-script",
+      "kind": "tool-from-result",
+      "tool": "write_file",
+      "sourceStep": "read-openhouse-registration-script",
+      "arguments": {
+        "environment": "repo:termux-home",
+        "path": ".local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh",
+        "content": "{{steps.read-openhouse-registration-script.content}}"
+      },
+      "description": "写入当前版本的桌面组件注册脚本。"
+    },
+    {
+      "id": "register-openhouse-component",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "chmod 700 \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\" && \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\" register",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-openhouse-component-register",
+        "yield_time_ms": 1000
+      },
+      "description": "通过 canonical service-manager 注册 yuanshengwuxianpi 桌面组件。"
+    },
+    {
+      "id": "verify-openhouse-component",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "\"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\" verify",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-openhouse-component-verify",
+        "yield_time_ms": 1000
+      },
+      "description": "验证 components.d/yuanshengwuxianpi.json 和 registry API。"
     }
   ]
 }
