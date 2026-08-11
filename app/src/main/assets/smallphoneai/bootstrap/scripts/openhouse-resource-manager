@@ -1,0 +1,675 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+MARKET_URL="${WUXIANPI_RESCUE_MARKET_URL:-https://wuxianpirescue.webefficacy.com}"
+MARKET_URL="${MARKET_URL%/}"
+RESOURCE_SET_ID="${OPENHOUSEAI_RESOURCE_SET_ID:-openhouse-core-stack}"
+MANAGER_ROOT="${OPENHOUSEAI_RESOURCE_MANAGER_ROOT:-$HOME/.local/share/openhouseai/resource-manager}"
+INSTALL_ROOT="${OPENHOUSEAI_RESOURCE_INSTALL_ROOT:-$HOME/.local/share/openhouseai/resources}"
+APK_ROOT="${OPENHOUSEAI_APK_RESOURCES_ROOT:-$HOME/.local/share/openhouseai/update-resources}"
+ARCHIVES="$MANAGER_ROOT/archives"
+RECEIPTS="$MANAGER_ROOT/receipts"
+TRANSACTIONS="$MANAGER_ROOT/transactions"
+INSTALLED_SET="$MANAGER_ROOT/installed-set.json"
+PREVIOUS_SET="$MANAGER_ROOT/previous-set.json"
+COMMAND="${1:-apply}"
+APK_VERSION_CODE="${OPENHOUSEAI_APK_VERSION_CODE:-}"
+CORE_RESOURCE_IDS='["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"]'
+
+log() { printf '[resource-update] %s\n' "$*"; }
+die() { printf '[resource-update] ERROR: %s\n' "$*" >&2; exit 1; }
+
+temporary_directory() {
+  local name="$1" parent="${TMPDIR:-${PREFIX:-/tmp}/tmp}"
+  mkdir -p "$parent"
+  chmod 700 "$parent" 2>/dev/null || true
+  mktemp -d "$parent/$name.XXXXXX"
+}
+
+require_tools() {
+  local name
+  for name in jq sha256sum tar gzip find sort awk sed curl flock readlink tac; do
+    command -v "$name" >/dev/null 2>&1 || die "missing required command: $name"
+  done
+}
+
+detect_apk_version_code() {
+  local value marker candidate
+  value="${APK_VERSION_CODE:-}"
+  case "$value" in
+    ''|*[!0-9]*) ;;
+    *) printf '%s\n' "$value"; return ;;
+  esac
+  marker="$APK_ROOT/PENDING_APK_RESOURCES.json"
+  if [[ -f "$marker" ]]; then
+    value="$(jq -r '.apkVersionCode // empty' "$marker" 2>/dev/null || true)"
+    case "$value" in
+      ''|*[!0-9]*) ;;
+      *) printf '%s\n' "$value"; return ;;
+    esac
+  fi
+  while IFS= read -r candidate; do
+    value="$(jq -r '.apkVersionCode // empty' "$(dirname "$(dirname "$candidate")")/.complete" 2>/dev/null || true)"
+    case "$value" in
+      ''|*[!0-9]*) continue ;;
+      *) printf '%s\n' "$value"; return ;;
+    esac
+  done < <(latest_apk_set_candidates)
+  printf '126\n'
+}
+
+safe_value() {
+  [[ "$1" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]{0,79}$ ]] || die "unsafe version: $1"
+}
+
+archive_name() {
+  case "$1" in
+    service-manager) printf '%s\n' service-manager.tgz ;;
+    openhouse-control-plane) printf '%s\n' openhouse-control-plane.tgz ;;
+    openhouse-runtime) printf '%s\n' runtime-aarch64.tgz ;;
+    wuyou) printf '%s\n' wuyou.tgz ;;
+    openhouse-web) printf '%s\n' openhouse-web.tgz ;;
+    *) die "unsupported resource id: $1" ;;
+  esac
+}
+
+sha_file() { sha256sum "$1" | awk '{print $1}'; }
+
+tree_sha() {
+  local directory
+  directory="$(readlink -f "$1")"
+  [[ -d "$directory" ]] || return 1
+  (
+    cd "$directory"
+    find . -type f -exec sha256sum {} \; | LC_ALL=C sort | sha256sum | awk '{print $1}'
+  )
+}
+
+atomic_json_copy() {
+  local source="$1" target="$2" temporary
+  temporary="${target}.tmp.$$"
+  cp "$source" "$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$target"
+}
+
+atomic_symlink() {
+  local target="$1" link="$2" temporary
+  temporary="${link}.tmp.$$"
+  mkdir -p "$(dirname "$link")"
+  ln -s "$target" "$temporary"
+  mv -Tf "$temporary" "$link"
+}
+
+validate_archive_paths() {
+  local archive="$1"
+  gzip -t "$archive"
+  tar -tzf "$archive" | awk '
+    /^\// { exit 1 }
+    /(^|\/)\.\.($|\/)/ { exit 1 }
+    /\\/ { exit 1 }
+    { count++ }
+    END { if (count == 0) exit 1 }
+  ' || die "unsafe or empty archive: $archive"
+}
+
+receipt_valid() {
+  local id="$1" version="$2" expected_sha="$3"
+  local receipt="$RECEIPTS/$id.json" current="$INSTALL_ROOT/$id/current"
+  local version_dir="$INSTALL_ROOT/$id/versions/$version" expected_tree actual_tree
+  [[ -f "$receipt" && -L "$current" && -d "$version_dir" ]] || return 1
+  [[ "$(jq -r '.version // empty' "$receipt")" == "$version" ]] || return 1
+  [[ "$(jq -r '.archiveSha256 // empty' "$receipt")" == "$expected_sha" ]] || return 1
+  [[ "$(readlink -f "$current")" == "$(readlink -f "$version_dir")" ]] || return 1
+  expected_tree="$(jq -r '.installedManifestSha256 // empty' "$receipt")"
+  [[ ${#expected_tree} -eq 64 ]] || return 1
+  actual_tree="$(tree_sha "$version_dir")"
+  [[ "$actual_tree" == "$expected_tree" ]]
+}
+
+latest_apk_set_candidates() {
+  local directory candidate
+  while IFS= read -r directory; do
+    [[ -f "$directory/.complete" ]] || continue
+    candidate="$directory/product-payloads/resource-set.json"
+    [[ -f "$candidate" ]] && printf '%s\n' "$candidate"
+  done < <(find "$APK_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' 2>/dev/null | LC_ALL=C sort -r)
+}
+
+resource_set_structure_valid() {
+  local file="$1"
+  jq -e --arg id "$RESOURCE_SET_ID" --argjson expected "$CORE_RESOURCE_IDS" '
+    .schema == 2 and .id == $id and .abi == "arm64-v8a" and
+    (.version | type == "string" and length > 0) and
+    (.sequence | type == "number") and .sequence > 0 and
+    (.minApkVersionCode | type == "number") and .minApkVersionCode > 0 and
+    (.resources | type == "array") and (.resources | length) == 5 and
+    ([.resources[].id] | sort) == $expected and
+    ([.resources[].id] | unique | length) == 5 and
+    all(.resources[];
+      (.version | type == "string" and length > 0) and
+      (.sha256 | type == "string" and test("^[a-f0-9]{64}$")))
+  ' "$file" >/dev/null 2>&1
+}
+
+resource_set_apk_compatible() {
+  local file="$1"
+  resource_set_structure_valid "$file" \
+    && jq -e --argjson apk "$APK_VERSION_CODE" '.minApkVersionCode <= $apk' "$file" >/dev/null 2>&1
+}
+
+copy_market_set_candidate() {
+  local output="$1" detail latest
+  [[ -z "${OPENHOUSEAI_DISABLE_NETWORK:-}" ]] || return 1
+  detail="$(curl -q -fsS --connect-timeout 8 --max-time 20 \
+    "$MARKET_URL/api/v2/resource-sets/$RESOURCE_SET_ID" 2>/dev/null)" || return 1
+  latest="$(jq -r '.latestVersion // empty' <<<"$detail")"
+  [[ -n "$latest" ]] || return 1
+  jq -e --arg version "$latest" '.versions[] | select(.version == $version)' <<<"$detail" >"$output" \
+    && resource_set_apk_compatible "$output"
+}
+
+select_target_set() {
+  local output="$1" candidates="$2" candidate installed_sequence target_sequence
+  local explicit=0
+  local -a candidate_files=()
+  : >"$candidates"
+  if [[ -n "${OPENHOUSEAI_RESOURCE_SET_FILE:-}" ]]; then
+    explicit=1
+    cp "$OPENHOUSEAI_RESOURCE_SET_FILE" "$candidates.override"
+    resource_set_apk_compatible "$candidates.override" || die "explicit resource set is invalid or incompatible"
+    candidate_files+=("$candidates.override")
+  else
+    if copy_market_set_candidate "$candidates.market"; then
+      candidate_files+=("$candidates.market")
+    fi
+    while IFS= read -r candidate; do
+      [[ -f "$candidate" ]] || continue
+      resource_set_apk_compatible "$candidate" || continue
+      candidate_files+=("$candidate")
+    done < <(latest_apk_set_candidates)
+  fi
+  if (( explicit == 0 )) && [[ -f "$INSTALLED_SET" ]] && resource_set_structure_valid "$INSTALLED_SET"; then
+    candidate_files+=("$INSTALLED_SET")
+  fi
+  ((${#candidate_files[@]} > 0)) || die "no compatible resource set is available"
+  printf '%s\n' "${candidate_files[@]}" >"$candidates"
+  jq -s 'max_by(.sequence)' "${candidate_files[@]}" >"$output"
+  resource_set_structure_valid "$output" || die "selected resource set is invalid"
+  if [[ -f "$INSTALLED_SET" ]]; then
+    installed_sequence="$(jq -r '.sequence // 0' "$INSTALLED_SET")"
+    target_sequence="$(jq -r '.sequence' "$output")"
+    if [[ -z "${OPENHOUSEAI_ALLOW_DOWNGRADE:-}" ]]; then
+      (( target_sequence >= installed_sequence )) || die "automatic resource downgrade is forbidden"
+    fi
+  fi
+}
+
+find_apk_archive() {
+  local id="$1" expected_sha="$2" name candidate
+  name="$(archive_name "$id")"
+  while IFS= read -r candidate; do
+    candidate="$(dirname "$candidate")/$name"
+    [[ -f "$candidate" ]] || continue
+    [[ "$(sha_file "$candidate")" == "$expected_sha" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done < <(latest_apk_set_candidates)
+  return 1
+}
+
+market_release_json() {
+  local id="$1" version="$2"
+  curl -q -fsS --connect-timeout 8 --max-time 20 "$MARKET_URL/api/v2/resources/$id" \
+    | jq -e --arg version "$version" --arg id "$id" --arg archive "$(archive_name "$id")" '
+        .versions[] |
+        select(.version == $version and .id == $id and .archive == $archive and
+          .compression == "gzip" and .abi == "arm64-v8a")
+      '
+}
+
+source_for() {
+  local id="$1" version="$2" expected_sha="$3" cache candidate
+  cache="$ARCHIVES/$expected_sha.tgz"
+  if receipt_valid "$id" "$version" "$expected_sha"; then
+    printf 'skip\t-\n'
+    return
+  fi
+  if [[ -f "$cache" && "$(sha_file "$cache")" == "$expected_sha" ]]; then
+    printf 'cache\t%s\n' "$cache"
+    return
+  fi
+  if [[ -n "${OPENHOUSEAI_RESOURCE_SOURCE_DIR:-}" ]]; then
+    candidate="$OPENHOUSEAI_RESOURCE_SOURCE_DIR/$(archive_name "$id")"
+    if [[ -f "$candidate" && "$(sha_file "$candidate")" == "$expected_sha" ]]; then
+      printf 'local\t%s\n' "$candidate"
+      return
+    fi
+  fi
+  if candidate="$(find_apk_archive "$id" "$expected_sha")"; then
+    printf 'apk\t%s\n' "$candidate"
+    return
+  fi
+  printf 'market\t-\n'
+}
+
+build_plan() {
+  local set_file="$1" plan_file="$2" id version digest source source_path
+  : >"$plan_file"
+  while IFS=$'\t' read -r id version digest; do
+    safe_value "$id"
+    safe_value "$version"
+    [[ "$digest" =~ ^[a-f0-9]{64}$ ]] || die "invalid resource digest for $id"
+    IFS=$'\t' read -r source source_path < <(source_for "$id" "$version" "$digest")
+    printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$version" "$digest" "$source" "$source_path" >>"$plan_file"
+  done < <(jq -r '.resources[] | [.id,.version,.sha256] | @tsv' "$set_file")
+}
+
+print_plan() {
+  local plan_file="$1" total skip apk cache local market download_size=0 id version digest source source_path release
+  total="$(wc -l <"$plan_file" | tr -d ' ')"
+  skip="$(awk -F '\t' '$4 == "skip" { count++ } END { print count+0 }' "$plan_file")"
+  apk="$(awk -F '\t' '$4 == "apk" { count++ } END { print count+0 }' "$plan_file")"
+  cache="$(awk -F '\t' '$4 == "cache" { count++ } END { print count+0 }' "$plan_file")"
+  local="$(awk -F '\t' '$4 == "local" { count++ } END { print count+0 }' "$plan_file")"
+  market="$(awk -F '\t' '$4 == "market" { count++ } END { print count+0 }' "$plan_file")"
+  if (( market > 0 )) && [[ -z "${OPENHOUSEAI_DISABLE_NETWORK:-}" ]]; then
+    while IFS=$'\t' read -r id version digest source source_path; do
+      [[ "$source" == market ]] || continue
+      release="$(market_release_json "$id" "$version")" || continue
+      download_size=$(( download_size + $(jq -r '.size' <<<"$release") ))
+    done <"$plan_file"
+  fi
+  printf 'resource_set=%s\ntarget_resources=%s\nunchanged=%s\nfrom_apk=%s\nfrom_cache=%s\nfrom_local=%s\nfrom_market=%s\ndownload_bytes=%s\n' \
+    "$RESOURCE_SET_ID" "$total" "$skip" "$apk" "$cache" "$local" "$market" "$download_size"
+}
+
+obtain_archive() {
+  local id="$1" version="$2" digest="$3" source="$4" source_path="$5"
+  local cache part release url size actual_size
+  cache="$ARCHIVES/$digest.tgz"
+  part="$ARCHIVES/$digest.part"
+  if [[ "$source" != market ]]; then
+    [[ -f "$source_path" ]] || die "resource source is missing: $id"
+    cp "$source_path" "$part"
+  else
+    [[ -z "${OPENHOUSEAI_DISABLE_NETWORK:-}" ]] || die "network resource is required but network is disabled: $id"
+    release="$(market_release_json "$id" "$version")" || die "market release is unavailable: $id@$version"
+    [[ "$(jq -r '.sha256' <<<"$release")" == "$digest" ]] || die "market digest mismatch: $id"
+    size="$(jq -r '.size' <<<"$release")"
+    url="$(jq -r '.url' <<<"$release")"
+    [[ "$size" =~ ^[0-9]+$ ]] && (( size > 0 && size <= 60 * 1024 * 1024 )) \
+      || die "market size is invalid: $id"
+    actual_size=0
+    [[ ! -f "$part" ]] || actual_size="$(stat -c '%s' "$part")"
+    if (( actual_size > size )); then
+      : >"$part"
+      actual_size=0
+    fi
+    if (( actual_size < size )); then
+      if (( actual_size > 0 )); then
+        curl -q -fL --connect-timeout 10 --max-time 600 --retry 3 --retry-delay 2 \
+          -C - "$MARKET_URL$url" -o "$part" || {
+            : >"$part"
+            curl -q -fL --connect-timeout 10 --max-time 600 --retry 3 --retry-delay 2 \
+              "$MARKET_URL$url" -o "$part"
+          }
+      else
+        curl -q -fL --connect-timeout 10 --max-time 600 --retry 3 --retry-delay 2 \
+          "$MARKET_URL$url" -o "$part"
+      fi
+    fi
+    actual_size="$(stat -c '%s' "$part")"
+    [[ "$actual_size" == "$size" ]] || die "download size mismatch: $id"
+  fi
+  [[ "$(sha_file "$part")" == "$digest" ]] || die "resource SHA-256 mismatch: $id"
+  validate_archive_paths "$part"
+  mv -f "$part" "$cache"
+  chmod 600 "$cache"
+  printf '%s\n' "$cache"
+}
+
+stage_resources() {
+  local plan_file="$1" stage_root="$2" id version digest source source_path archive target
+  mkdir -p "$stage_root"
+  while IFS=$'\t' read -r id version digest source source_path; do
+    [[ "$source" == skip ]] && continue
+    archive="$(obtain_archive "$id" "$version" "$digest" "$source" "$source_path")"
+    target="$stage_root/$id"
+    mkdir -p "$target"
+    tar -xzf "$archive" -C "$target" --no-same-owner --no-same-permissions
+    [[ -n "$(find "$target" -mindepth 1 -print -quit)" ]] || die "resource extracted empty: $id"
+  done <"$plan_file"
+}
+
+legacy_link() {
+  local target="$1" link="$2"
+  if [[ -e "$link" && ! -L "$link" ]]; then
+    mv "$link" "${link}.legacy-$(date +%Y%m%d-%H%M%S)"
+  fi
+  atomic_symlink "$target" "$link"
+}
+
+install_handler() {
+  local id="$1" directory="$2"
+  case "$id" in
+    service-manager)
+      chmod 755 "$directory/service-manager" "$directory/scripts/"*.sh
+      "$directory/scripts/install.sh" "$directory/service-manager"
+      ;;
+    openhouse-control-plane)
+      chmod 700 "$directory/"*.sh
+      legacy_link "$directory" "$HOME/.local/share/openhouseai/control-plane/current"
+      ;;
+    openhouse-runtime)
+      chmod 755 "$directory/install.sh" "$directory/scripts/"*.sh "$directory/bin/"*
+      "$directory/install.sh"
+      ;;
+    wuyou)
+      chmod 755 "$directory/wuyou" "$directory/scripts/"*.sh
+      "$directory/scripts/install.sh"
+      ;;
+    openhouse-web)
+      chmod 755 "$directory/scripts/"*.sh
+      "$directory/scripts/install.sh"
+      ;;
+    *) die "no installer is registered for resource: $id" ;;
+  esac
+}
+
+register_resources() {
+  local id directory
+  for id in openhouse-runtime wuyou openhouse-web; do
+    directory="$INSTALL_ROOT/$id/current"
+    [[ -d "$directory" && -x "$directory/scripts/register-service.sh" ]] || continue
+    "$directory/scripts/register-service.sh"
+  done
+}
+
+service_manager_token() {
+  local config="$HOME/.config/openhouseai/service-manager/config.json"
+  command -v service-manager >/dev/null 2>&1 || return 1
+  service-manager token show --config "$config" 2>/dev/null | head -n 1 | tr -d '\r\n'
+}
+
+sm_request() {
+  local method="$1" path="$2" token auth_dir auth_config
+  token="$(service_manager_token)" || return 1
+  [[ -n "$token" ]] || return 1
+  auth_dir="$(temporary_directory openhouse-resource-auth)"
+  auth_config="$auth_dir/curl.conf"
+  chmod 700 "$auth_dir"
+  printf 'header = "Authorization: Bearer %s"\n' "$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')" >"$auth_config"
+  chmod 600 "$auth_config"
+  local status
+  if curl -q -fsS --connect-timeout 3 --max-time 15 --config "$auth_config" \
+    -X "$method" "http://127.0.0.1:20087$path"; then
+    status=0
+  else
+    status=$?
+  fi
+  rm -f "$auth_config"
+  rmdir "$auth_dir" 2>/dev/null || true
+  return "$status"
+}
+
+service_state() {
+  sm_request GET "/api/v1/services/$1/status" 2>/dev/null \
+    | jq -r '.state // .status.state // empty' 2>/dev/null
+}
+
+stop_affected_services() {
+  local plan_file="$1" state_file="$2" id version digest source source_path service state
+  : >"$state_file"
+  [[ -z "${OPENHOUSEAI_SKIP_LIVE_HEALTH:-}" ]] || return 0
+  while IFS=$'\t' read -r id version digest source source_path; do
+    [[ "$source" != skip ]] || continue
+    case "$id" in
+      openhouse-runtime) service=yuanshengwuxianpi ;;
+      openhouse-web) service=openhouse-web ;;
+      *) continue ;;
+    esac
+    state="$(service_state "$service" || true)"
+    [[ -n "$state" ]] || continue
+    printf '%s\t%s\n' "$service" "$state" >>"$state_file"
+    case "$state" in
+      running|starting) sm_request POST "/api/v1/services/$service/stop" >/dev/null 2>&1 || true ;;
+    esac
+  done <"$plan_file"
+}
+
+restore_service_states() {
+  local state_file="$1" service state
+  [[ -f "$state_file" ]] || return 0
+  while IFS=$'\t' read -r service state; do
+    case "$state" in
+      running|starting) sm_request POST "/api/v1/services/$service/start" >/dev/null 2>&1 || true ;;
+    esac
+  done <"$state_file"
+}
+
+start_control_plane() {
+  local script="$HOME/.local/share/openhouseai/control-plane/current/start-control-plane-termux-native.sh"
+  if [[ -x "$script" ]]; then
+    "$script" start
+  elif command -v service-daemon >/dev/null 2>&1 && command -v service-manager >/dev/null 2>&1; then
+    service-daemon start
+    service-manager install-service
+  else
+    die "control plane cannot be started"
+  fi
+}
+
+verify_live_stack() {
+  local state started=0 attempt
+  [[ -z "${OPENHOUSEAI_SKIP_LIVE_HEALTH:-}" ]] || return 0
+  curl -q -fsS --connect-timeout 3 --max-time 8 http://127.0.0.1:20087/api/v1/health >/dev/null \
+    || return 1
+  state="$(service_state yuanshengwuxianpi || true)"
+  [[ -n "$state" ]] || return 1
+  case "$state" in
+    running|starting) ;;
+    *)
+      sm_request POST /api/v1/services/yuanshengwuxianpi/start >/dev/null || return 1
+      started=1
+      ;;
+  esac
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    if curl -q -fsS --connect-timeout 2 --max-time 3 http://127.0.0.1:20765/health >/dev/null 2>&1; then
+      (( started == 0 )) || sm_request POST /api/v1/services/yuanshengwuxianpi/stop >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 1
+  done
+  (( started == 0 )) || sm_request POST /api/v1/services/yuanshengwuxianpi/stop >/dev/null 2>&1 || true
+  return 1
+}
+
+verify_handler() {
+  local id="$1" directory="$2"
+  case "$id" in
+    service-manager) command -v service-manager >/dev/null 2>&1 && service-manager --version >/dev/null ;;
+    openhouse-control-plane) [[ -x "$HOME/.local/share/openhouseai/control-plane/current/start-control-plane-termux-native.sh" ]] ;;
+    openhouse-runtime) "$directory/scripts/check.sh" ;;
+    wuyou) "$directory/scripts/check.sh" ;;
+    openhouse-web) "$directory/scripts/check.sh" ;;
+    *) return 1 ;;
+  esac
+}
+
+write_receipt() {
+  local id="$1" version="$2" digest="$3" directory="$4" tree temporary
+  temporary="$RECEIPTS/$id.json.tmp.$$"
+  tree="$(tree_sha "$directory")"
+  jq -n --arg id "$id" --arg version "$version" --arg archiveSha256 "$digest" \
+    --arg installedManifestSha256 "$tree" --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:2,id:$id,version:$version,archiveSha256:$archiveSha256,installedManifestSha256:$installedManifestSha256,health:"ok",updatedAt:$updatedAt}' \
+    >"$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$RECEIPTS/$id.json"
+}
+
+safe_remove_version_directory() {
+  local directory="$1"
+  case "$directory" in
+    "$INSTALL_ROOT"/*/versions/*) rm -rf -- "$directory" ;;
+    *) return 1 ;;
+  esac
+}
+
+rollback_links() {
+  local previous_links="$1" receipts_backup="$2" service_states="$3"
+  local id old_target target backup current receipt backup_receipt
+  [[ -f "$previous_links" ]] || return 0
+  while IFS=$'\t' read -r id old_target target backup; do
+    current="$INSTALL_ROOT/$id/current"
+    [[ ! -e "$target" ]] || safe_remove_version_directory "$target" || true
+    if [[ "$backup" != - && -d "$backup" ]]; then
+      mkdir -p "$(dirname "$target")"
+      mv "$backup" "$target"
+    fi
+    if [[ "$old_target" == - ]]; then
+      rm -f "$current"
+    elif [[ -d "$old_target" ]]; then
+      atomic_symlink "$old_target" "$current"
+      install_handler "$id" "$old_target" || true
+    fi
+    receipt="$RECEIPTS/$id.json"
+    backup_receipt="$receipts_backup/$id.json"
+    if [[ -f "$backup_receipt" ]]; then
+      cp "$backup_receipt" "$receipt"
+      chmod 600 "$receipt"
+    else
+      rm -f "$receipt"
+    fi
+  done < <(tac "$previous_links")
+  start_control_plane >/dev/null 2>&1 || true
+  register_resources >/dev/null 2>&1 || true
+  restore_service_states "$service_states"
+}
+
+activate_resources() {
+  local set_file="$1" plan_file="$2" stage_root="$3" transaction="$4"
+  local previous_links="$transaction/previous-links.tsv" receipts_backup="$transaction/receipts"
+  local service_states="$transaction/service-states.tsv" id version digest source source_path
+  local versions target current old_target staged backup
+  mkdir -p "$receipts_backup" "$transaction/backups"
+  : >"$previous_links"
+  stop_affected_services "$plan_file" "$service_states"
+  while IFS=$'\t' read -r id version digest source source_path; do
+    [[ "$source" == skip ]] && continue
+    versions="$INSTALL_ROOT/$id/versions"
+    target="$versions/$version"
+    current="$INSTALL_ROOT/$id/current"
+    mkdir -p "$versions"
+    old_target=-
+    [[ -L "$current" ]] && old_target="$(readlink -f "$current")"
+    [[ ! -f "$RECEIPTS/$id.json" ]] || cp "$RECEIPTS/$id.json" "$receipts_backup/$id.json"
+    staged="$stage_root/$id"
+    backup=-
+    if [[ -e "$target" ]]; then
+      [[ -d "$target" && ! -L "$target" ]] || die "unsafe existing resource target: $target"
+      backup="$transaction/backups/$id"
+      mv "$target" "$backup"
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$id" "$old_target" "$target" "$backup" >>"$previous_links"
+    mv "$staged" "$target"
+    atomic_symlink "$target" "$current"
+    if ! install_handler "$id" "$target"; then
+      rollback_links "$previous_links" "$receipts_backup" "$service_states"
+      die "resource activation failed: $id"
+    fi
+  done <"$plan_file"
+  if ! start_control_plane || ! register_resources; then
+    rollback_links "$previous_links" "$receipts_backup" "$service_states"
+    die "service-manager or registry activation failed"
+  fi
+  while IFS=$'\t' read -r id version digest source source_path; do
+    verify_handler "$id" "$INSTALL_ROOT/$id/current" || {
+      rollback_links "$previous_links" "$receipts_backup" "$service_states"
+      die "resource verification failed: $id"
+    }
+  done <"$plan_file"
+  if ! verify_live_stack; then
+    rollback_links "$previous_links" "$receipts_backup" "$service_states"
+    die "service-manager, WuxianPi health, or component state verification failed"
+  fi
+  while IFS=$'\t' read -r id version digest source source_path; do
+    [[ "$source" == skip ]] && continue
+    if ! write_receipt "$id" "$version" "$digest" "$INSTALL_ROOT/$id/current"; then
+      rollback_links "$previous_links" "$receipts_backup" "$service_states"
+      die "resource receipt commit failed: $id"
+    fi
+  done <"$plan_file"
+  restore_service_states "$service_states"
+  [[ -f "$INSTALLED_SET" ]] && atomic_json_copy "$INSTALLED_SET" "$PREVIOUS_SET"
+  atomic_json_copy "$set_file" "$INSTALLED_SET"
+  if [[ -f "$APK_ROOT/PENDING_APK_RESOURCES.json" ]]; then
+    rm -f "$APK_ROOT/PENDING_APK_RESOURCES.json"
+  fi
+  find "$APK_ROOT" -mindepth 2 -maxdepth 2 -type f -name .pending -delete 2>/dev/null || true
+}
+
+verify_installed_set() {
+  local set_file="${1:-$INSTALLED_SET}" id version digest failures=0
+  [[ -f "$set_file" ]] || die "installed resource set is missing"
+  while IFS=$'\t' read -r id version digest; do
+    if receipt_valid "$id" "$version" "$digest" && verify_handler "$id" "$INSTALL_ROOT/$id/current"; then
+      printf 'resource=%s status=ok version=%s\n' "$id" "$version"
+    else
+      printf 'resource=%s status=invalid version=%s\n' "$id" "$version" >&2
+      failures=$((failures + 1))
+    fi
+  done < <(jq -r '.resources[] | [.id,.version,.sha256] | @tsv' "$set_file")
+  (( failures == 0 ))
+}
+
+run_plan() {
+  local workspace set_file plan_file candidates cleanup
+  workspace="$(temporary_directory openhouse-resource-plan)"
+  printf -v cleanup 'rm -rf -- %q' "$workspace"
+  trap "$cleanup" EXIT
+  set_file="$workspace/resource-set.json"
+  plan_file="$workspace/plan.tsv"
+  candidates="$workspace/candidates.txt"
+  select_target_set "$set_file" "$candidates"
+  build_plan "$set_file" "$plan_file"
+  print_plan "$plan_file"
+  if [[ "$COMMAND" == plan || "$COMMAND" == check ]]; then
+    rm -rf -- "$workspace"
+    trap - EXIT
+    return 0
+  fi
+  local transaction="$TRANSACTIONS/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  mkdir -p "$transaction"
+  cp "$set_file" "$transaction/resource-set.json"
+  cp "$plan_file" "$transaction/plan.tsv"
+  stage_resources "$plan_file" "$transaction/staged"
+  activate_resources "$set_file" "$plan_file" "$transaction/staged" "$transaction"
+  printf 'resource_update=applied\nresource_set=%s\nversion=%s\nsequence=%s\n' \
+    "$RESOURCE_SET_ID" "$(jq -r '.version' "$set_file")" "$(jq -r '.sequence' "$set_file")"
+  rm -rf -- "$workspace"
+  trap - EXIT
+}
+
+main() {
+  require_tools
+  APK_VERSION_CODE="$(detect_apk_version_code)"
+  [[ "$APK_VERSION_CODE" =~ ^[0-9]+$ ]] && (( APK_VERSION_CODE > 0 )) \
+    || die "invalid APK version code"
+  mkdir -p "$ARCHIVES" "$RECEIPTS" "$TRANSACTIONS" "$INSTALL_ROOT"
+  chmod 700 "$MANAGER_ROOT" "$ARCHIVES" "$RECEIPTS" "$TRANSACTIONS" "$INSTALL_ROOT"
+  exec 9>"$MANAGER_ROOT/update.lock"
+  flock -n 9 || die "another resource update is already running"
+  case "$COMMAND" in
+    check|plan|apply) run_plan ;;
+    verify) verify_installed_set && verify_live_stack ;;
+    rollback)
+      [[ -f "$PREVIOUS_SET" ]] || die "previous resource set is unavailable"
+      OPENHOUSEAI_RESOURCE_SET_FILE="$PREVIOUS_SET" OPENHOUSEAI_ALLOW_DOWNGRADE=1 COMMAND=apply run_plan
+      ;;
+    *) die "usage: update-resources.sh [check|plan|apply|verify|rollback]" ;;
+  esac
+}
+
+main

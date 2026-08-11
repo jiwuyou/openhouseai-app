@@ -2,74 +2,129 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-assets_dir="$repo_dir/native-app/src/main/assets/wuxianpi-install"
 bootstrap_dir="$repo_dir/app/src/main/assets/smallphoneai/bootstrap"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
+app_assets="$repo_dir/app/src/main/assets/wuxianpi-install"
+native_assets="$repo_dir/native-app/src/main/assets/wuxianpi-install"
 pre_tmux="$bootstrap_dir/scripts/wuxianpi-pre-tmux.sh"
-resource_assets="$repo_dir/native-app/src/main/assets/openhouse-resources-v2"
-runtime_asset="$resource_assets/runtime-aarch64.tgz"
-output="$assets_dir/resources.tar"
-stage="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-native-resources.XXXXXX")"
-trap 'rm -rf "$stage"' EXIT
+bundle_name="openhouse-install-bundle.tar"
+metadata_name="openhouse-install-bundle.json"
+canonical_bundle="$app_assets/$bundle_name"
+canonical_metadata="$app_assets/$metadata_name"
+stage="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-install-bundle.XXXXXX")"
+trap 'rm -rf -- "$stage"' EXIT
 
 "$repo_dir/scripts/generate-resource-set-v2.sh"
 
+resource_archives=(
+  service-manager.tgz
+  openhouse-control-plane.tgz
+  runtime-aarch64.tgz
+  wuyou.tgz
+  openhouse-web.tgz
+)
 required=(
   "$pre_tmux"
   "$bootstrap_dir/bootstrap.sh"
   "$bootstrap_dir/scripts/wuxianpi-setup"
-  "$payload_dir/manifest.json"
-  "$payload_dir/payload-manifest.json"
-  "$resource_assets/resource-set.json"
-  "$runtime_asset"
+  "$bootstrap_dir/scripts/openhouse-resource-import"
+  "$bootstrap_dir/scripts/openhouse-resource-manager"
+  "$payload_dir/resource-set.json"
 )
+for archive in "${resource_archives[@]}"; do
+  required+=("$payload_dir/$archive")
+done
 for file in "${required[@]}"; do
-  [[ -s "$file" ]] || { printf 'Missing Native install input: %s\n' "$file" >&2; exit 1; }
+  [[ -s "$file" ]] || { printf 'Missing install bundle input: %s\n' "$file" >&2; exit 1; }
 done
 
-tar -tzf "$runtime_asset" >/dev/null \
-  || { printf 'Native Runtime asset is not a readable gzip tar: %s\n' "$runtime_asset" >&2; exit 1; }
-runtime_sha="$(sha256sum "$runtime_asset" | awk '{print $1}')"
-runtime_size="$(wc -c < "$runtime_asset" | tr -d '[:space:]')"
-
-mkdir -p "$assets_dir" "$stage/bootstrap" "$stage/product-payloads"
+mkdir -p "$stage/bootstrap" "$stage/resources" "$app_assets" "$native_assets"
 cp -a "$bootstrap_dir/." "$stage/bootstrap/"
-cp "$bootstrap_dir/scripts/wuxianpi-setup" "$stage/bootstrap/wuxianpi-setup"
-cp "$pre_tmux" "$stage/bootstrap/wuxianpi-pre-tmux.sh"
-cp "$payload_dir/manifest.json" "$stage/product-payloads/manifest.json"
-cp "$payload_dir/payload-manifest.json" "$stage/product-payloads/payload-manifest.json"
-cp "$payload_dir/AI_UPDATE_GUIDE.md" "$stage/product-payloads/AI_UPDATE_GUIDE.md"
+cp "$payload_dir/resource-set.json" "$stage/resources/resource-set.json"
+for archive in "${resource_archives[@]}"; do
+  gzip -t "$payload_dir/$archive"
+  cp "$payload_dir/$archive" "$stage/resources/$archive"
+done
+chmod 755 \
+  "$stage/bootstrap/scripts/wuxianpi-setup" \
+  "$stage/bootstrap/scripts/wuxianpi-pre-tmux.sh" \
+  "$stage/bootstrap/scripts/openhouse-resource-import" \
+  "$stage/bootstrap/scripts/openhouse-resource-manager"
 
-cp "$pre_tmux" "$assets_dir/pre-tmux.sh"
-chmod 755 "$assets_dir/pre-tmux.sh"
+python3 - "$payload_dir/resource-set.json" "$stage/bundle-manifest.json" <<'PY'
+import json
+import pathlib
+import sys
 
-cat > "$stage/install.sh" <<'EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-set -euo pipefail
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-RESOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-install -m 755 "$RESOURCE_DIR/bootstrap/scripts/wuxianpi-setup" "$PREFIX/bin/wuxianpi-setup"
-install -m 755 "$RESOURCE_DIR/bootstrap/scripts/wuxianpi-pre-tmux.sh" "$PREFIX/bin/wuxianpi-pre-tmux.sh"
-printf 'WuxianPi installer installed: %s/bin/wuxianpi-setup\n' "$PREFIX"
-EOF
-chmod 755 "$stage/install.sh"
-chmod 755 "$stage/bootstrap/wuxianpi-setup" "$stage/bootstrap/wuxianpi-pre-tmux.sh"
+resource_set = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+manifest = {
+    "schema": 1,
+    "id": "openhouse-install-bundle",
+    "format": "uncompressed-tar",
+    "resourceSet": resource_set,
+    "contents": ["bootstrap", "resources"],
+}
+pathlib.Path(sys.argv[2]).write_text(
+    json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
 
-bootstrap_sha="$(sha256sum "$stage/bootstrap/scripts/wuxianpi-setup" | awk '{print $1}')"
-pre_tmux_sha="$(sha256sum "$stage/bootstrap/scripts/wuxianpi-pre-tmux.sh" | awk '{print $1}')"
-printf '%s  %s\n' \
-  "$bootstrap_sha" bootstrap/wuxianpi-setup \
-  "$pre_tmux_sha" bootstrap/wuxianpi-pre-tmux.sh \
-  > "$stage/SHA256SUMS"
+(
+  cd "$stage"
+  find . -type f ! -name SHA256SUMS -print0 \
+    | LC_ALL=C sort -z \
+    | xargs -0 sha256sum > SHA256SUMS
+)
 
-printf '{"schema":4,"contents":["bootstrap","product-payloads"],"bundledPayloads":[],"resourceSetAsset":"openhouse-resources-v2/resource-set.json","runtimeAsset":"openhouse-resources-v2/runtime-aarch64.tgz","runtimeSha256":"%s","runtimeSize":%s,"excluded":["aionui","pi-web","market-payloads"]}\n' \
-  "$runtime_sha" "$runtime_size" \
-  > "$stage/install-manifest.json"
-printf '{"nativeInstallResources":true}\n' > "$stage/.complete"
-
-tmp_output="$output.tmp"
+temporary="$canonical_bundle.tmp"
 tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
-  -C "$stage" -czf "$tmp_output" .
-mv "$tmp_output" "$output"
+  -C "$stage" -cf "$temporary" .
+mv -f "$temporary" "$canonical_bundle"
+chmod 0644 "$canonical_bundle"
+reproducible="$canonical_bundle.reproducible.$$"
+tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+  -C "$stage" -cf "$reproducible" .
+if ! cmp -s "$canonical_bundle" "$reproducible"; then
+  rm -f "$reproducible"
+  printf 'Install bundle generation is not reproducible\n' >&2
+  exit 1
+fi
+rm -f "$reproducible"
+bundle_sha="$(sha256sum "$canonical_bundle" | awk '{print $1}')"
+bundle_size="$(wc -c < "$canonical_bundle" | tr -d '[:space:]')"
 
-printf 'Native install resources generated: %s (%s bytes)\n' "$output" "$(wc -c < "$output")"
+python3 - \
+  "$payload_dir/resource-set.json" \
+  "$canonical_metadata.tmp" \
+  "$bundle_name" \
+  "$bundle_sha" \
+  "$bundle_size" <<'PY'
+import json
+import pathlib
+import sys
+
+resource_set = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+metadata = {
+    "schema": 1,
+    "bundleAsset": f"wuxianpi-install/{sys.argv[3]}",
+    "bundleFile": sys.argv[3],
+    "bundleSha256": sys.argv[4],
+    "bundleSize": int(sys.argv[5]),
+    "resourceSet": resource_set,
+}
+pathlib.Path(sys.argv[2]).write_text(
+    json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
+mv -f "$canonical_metadata.tmp" "$canonical_metadata"
+chmod 0644 "$canonical_metadata"
+
+cp "$pre_tmux" "$native_assets/pre-tmux.sh"
+chmod 755 "$native_assets/pre-tmux.sh"
+install -m 0644 "$canonical_bundle" "$native_assets/$bundle_name"
+install -m 0644 "$canonical_metadata" "$native_assets/$metadata_name"
+
+printf 'OpenHouse install bundle generated: %s sha256=%s size=%s\n' \
+  "$canonical_bundle" "$bundle_sha" "$bundle_size"

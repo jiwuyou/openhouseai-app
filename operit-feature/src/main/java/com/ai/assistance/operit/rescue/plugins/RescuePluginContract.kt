@@ -35,7 +35,7 @@ object RescuePluginContract {
     const val TOOL_PATCH_MEMORY = "patch_rescue_memory"
     const val TOOL_UNDO_MEMORY = "undo_rescue_memory"
     const val TOOL_INSPECT_APK_RESOURCE_OFFER = "inspect_apk_resource_offer"
-    const val TOOL_STAGE_APK_RESOURCE = "stage_apk_resource"
+    const val TOOL_STAGE_APK_RESOURCE_BUNDLE = "stage_apk_resource_bundle"
     const val TOOL_COMPLETE_APK_RESOURCE_OFFER = "complete_apk_resource_offer"
 
     val toolNames =
@@ -54,7 +54,7 @@ object RescuePluginContract {
             TOOL_PATCH_MEMORY,
             TOOL_UNDO_MEMORY,
             TOOL_INSPECT_APK_RESOURCE_OFFER,
-            TOOL_STAGE_APK_RESOURCE,
+            TOOL_STAGE_APK_RESOURCE_BUNDLE,
             TOOL_COMPLETE_APK_RESOURCE_OFFER,
         )
 

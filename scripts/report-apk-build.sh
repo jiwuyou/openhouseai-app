@@ -48,17 +48,15 @@ for apk_arg in "$@"; do
     || { printf 'APK is not signed with app/testkey_untrusted.jks: %s\n' "$apk" >&2; exit 1; }
 
   entries="$(unzip -Z1 "$apk")"
-  if grep -Fxq 'assets/openhouse-resources-v2/runtime-aarch64.tgz' <<<"$entries"; then
-    runtime_path='assets/openhouse-resources-v2/runtime-aarch64.tgz'
+  runtime_path='assets/wuxianpi-install/openhouse-install-bundle.tar'
+  grep -Fxq "$runtime_path" <<<"$entries" \
+    || { printf 'APK is missing the canonical install bundle: %s\n' "$apk" >&2; exit 1; }
+  if grep -Fxq 'assets/wuxianpi-install/pre-tmux.sh' <<<"$entries"; then
     artifact_type='native'
     expected_package='com.wuxianpi'
-  elif grep -Fxq 'assets/openhouse/product-payloads/runtime-aarch64.tgz' <<<"$entries"; then
-    runtime_path='assets/openhouse/product-payloads/runtime-aarch64.tgz'
+  else
     artifact_type='all-in-one'
     expected_package='com.termux'
-  else
-    printf 'APK is missing the canonical runtime-aarch64.tgz asset: %s\n' "$apk" >&2
-    exit 1
   fi
   if grep -Eq '(^|/)(pi-runtime\.tar|runtime-aarch64\.tar|runtime-aarch64\.tar\.gz)$' <<<"$entries"; then
     printf 'APK contains a legacy Runtime archive: %s\n' "$apk" >&2

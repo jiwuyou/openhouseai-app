@@ -5,10 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE_DIR="$REPO_DIR/app/src/main/assets/maintainer"
 ARCHIVE="$REPO_DIR/app/src/main/assets/openhouse/product-payloads/openhouse-control-plane.tgz"
-NATIVE_ARCHIVE="$REPO_DIR/native-app/src/main/assets/openhouse-resources-v2/openhouse-control-plane.tgz"
 WRAPPER="$REPO_DIR/native-host-adapter/src/main/assets/openhouse-host/start-control-plane.sh"
 
-python3 - "$SOURCE_DIR" "$ARCHIVE" "$NATIVE_ARCHIVE" "$WRAPPER" <<'PY'
+python3 - "$SOURCE_DIR" "$ARCHIVE" "$WRAPPER" <<'PY'
 import hashlib
 import json
 import pathlib
@@ -17,8 +16,7 @@ import tarfile
 
 source = pathlib.Path(sys.argv[1])
 archive = pathlib.Path(sys.argv[2])
-native_archive = pathlib.Path(sys.argv[3])
-wrapper = pathlib.Path(sys.argv[4])
+wrapper = pathlib.Path(sys.argv[3])
 names = (
     "_termux-services-env.sh",
     "start-control-plane-termux-native.sh",
@@ -43,8 +41,6 @@ for name in names:
     if entries[name] != digest:
         raise SystemExit(f"control-plane manifest checksum mismatch: {name}")
 
-if archive.read_bytes() != native_archive.read_bytes():
-    raise SystemExit("All-in-One and Native control-plane archives differ")
 with tarfile.open(archive, "r:gz") as bundle:
     members = {member.name.lstrip("./"): member for member in bundle.getmembers() if member.isfile()}
     expected_names = set(names) | {"control-plane-manifest.json"}

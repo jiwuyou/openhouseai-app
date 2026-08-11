@@ -216,8 +216,10 @@ class RescueToolDispatcher private constructor(
                         (resourceOfferStore.current()?.toJson()
                             ?: JSONObject().put("available", false))
                     )
-                RescuePluginContract.TOOL_STAGE_APK_RESOURCE ->
-                    stageApkResource(args.getString("resourceId"))
+                RescuePluginContract.TOOL_STAGE_APK_RESOURCE_BUNDLE ->
+                    hostCompletion(
+                        OperitHostProvider.operationsOrUnsupported().stageApkInstallBundle()
+                    )
                 RescuePluginContract.TOOL_COMPLETE_APK_RESOURCE_OFFER -> {
                     val status =
                         when (args.getString("status").trim().lowercase()) {
@@ -265,32 +267,6 @@ class RescueToolDispatcher private constructor(
         } catch (failure: Exception) {
             error(failure.message ?: "$toolName failed", failure)
         }
-
-    private suspend fun stageApkResource(resourceId: String): Completion {
-        val offer = resourceOfferStore.current()
-            ?: throw IllegalStateException("APK resource offer is unavailable")
-        val resources = offer.resourceSet.getJSONArray("resources")
-        var expectedSha: String? = null
-        for (index in 0 until resources.length()) {
-            val resource = resources.getJSONObject(index)
-            if (resource.optString("id") == resourceId) {
-                expectedSha = resource.getString("sha256").lowercase()
-                break
-            }
-        }
-        val sha256 = expectedSha
-            ?: throw IllegalStateException("APK resource set does not contain $resourceId")
-        val (archiveName, payload) = resourceOfferStore.readResource(resourceId)
-        return hostCompletion(
-            OperitHostProvider.operationsOrUnsupported().stageApkResourceOffer(
-                offerId = offer.offerId,
-                resourceId = resourceId,
-                archiveName = archiveName,
-                payload = payload,
-                sha256 = sha256,
-            )
-        )
-    }
 
     private fun connectionTest(url: String): JSONObject {
         val startedAt = System.nanoTime()

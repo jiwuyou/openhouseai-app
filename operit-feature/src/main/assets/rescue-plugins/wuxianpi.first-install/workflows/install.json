@@ -110,56 +110,10 @@
       "description": "原子替换两个固定脚本；此步骤不读取资源集合、token 或 service-manager 配置。"
     },
     {
-      "id": "read-resource-updater",
-      "kind": "tool",
-      "tool": "read_rescue_plugin_document",
-      "arguments": {
-        "pluginId": "wuxianpi.resource-update",
-        "path": "scripts/update-resources.sh"
-      },
-      "description": "读取市场最新的资源更新器 2.0.0；它是五个核心资源安装和回滚的唯一实现。"
-    },
-    {
-      "id": "prepare-resource-updater-directory",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "mkdir -p \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update\"",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-resource-update-stage",
-        "yield_time_ms": 1000
-      },
-      "description": "准备资源更新器持久目录。"
-    },
-    {
-      "id": "write-resource-updater",
-      "kind": "tool-from-result",
-      "tool": "write_file",
-      "sourceStep": "read-resource-updater",
-      "arguments": {
-        "environment": "repo:termux-home",
-        "path": ".local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh",
-        "content": "{{steps.read-resource-updater.content}}"
-      },
-      "description": "写入资源更新器；安装脚本不再自行维护 service-manager、Runtime、wuyou、Web 和控制面五套逻辑。"
-    },
-    {
       "id": "stage-setup",
       "kind": "tool",
       "tool": "start_wuxianpi_setup",
-      "description": "转移 APK 资源并返回当前宿主的安装命令；wuxianpi-setup 只准备系统依赖和 Ubuntu，核心资源委托给资源更新器。"
-    },
-    {
-      "id": "prepare-resource-updater",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "chmod 700 \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" && \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" check",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-resource-update-stage",
-        "yield_time_ms": 1000
-      },
-      "description": "APK 资源投递完成后验证 V2 市场或离线资源集合，并生成差异计划；断网 Native 不依赖市场。"
+      "description": "将 APK 单一离线 TAR 发布到 Termux Inbox，并返回执行本地导入、五资源事务安装和 Ubuntu 安装的命令。"
     },
     {
       "id": "run-setup-native",
@@ -167,7 +121,7 @@
       "tool": "termux_exec_command",
       "sourceStep": "stage-setup",
       "when": "runtimeHost.externalTermux",
-      "description": "Native 使用 stage-setup 返回的原始命令运行 install-resources/current/bootstrap/wuxianpi-setup。"
+      "description": "Native 使用 stage-setup 返回的原始命令导入 APK 离线总包；全程不依赖 SAF rename 或在线资源插件。"
     },
     {
       "id": "run-setup-embedded",
@@ -175,7 +129,7 @@
       "tool": "termux_exec_command",
       "sourceStep": "stage-setup",
       "when": "!runtimeHost.externalTermux",
-      "description": "All-in-One 使用 stage-setup 返回的命令运行已暂存的 /bin/wuxianpi-setup。"
+      "description": "All-in-One 使用 stage-setup 返回的命令导入同一份 canonical TAR。"
     },
     {
       "id": "start-openhouse-control-plane",
@@ -203,18 +157,6 @@
         ]
       },
       "description": "轮询系统依赖、Ubuntu、资源集合和 service-manager 状态。"
-    },
-    {
-      "id": "verify-resource-set",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "\"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" verify",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-resource-update-verify",
-        "yield_time_ms": 1000
-      },
-      "description": "重新计算五个资源文件清单，验证 installed-set.json 与当前资源链接。"
     },
     {
       "id": "read-openhouse-registration-script",

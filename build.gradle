@@ -32,6 +32,23 @@ allprojects {
     }
 }
 
+tasks.register("generateOpenHouseInstallBundle", Exec) {
+    group = "build setup"
+    description = "Generate the canonical single-file offline install bundle for every APK host."
+    def generator = file("scripts/generate-native-install-resources.sh")
+    inputs.file(generator)
+    inputs.dir(file("app/src/main/assets/smallphoneai/bootstrap"))
+    inputs.dir(file("app/src/main/assets/openhouse/product-payloads"))
+    outputs.files(
+        file("app/src/main/assets/wuxianpi-install/openhouse-install-bundle.tar"),
+        file("app/src/main/assets/wuxianpi-install/openhouse-install-bundle.json"),
+        file("native-app/src/main/assets/wuxianpi-install/openhouse-install-bundle.tar"),
+        file("native-app/src/main/assets/wuxianpi-install/openhouse-install-bundle.json"),
+        file("native-app/src/main/assets/wuxianpi-install/pre-tmux.sh"),
+    )
+    commandLine "bash", generator.absolutePath
+}
+
 def nonBlockingLintVersionChecks = [
     "GradleDependency",
     "NewerVersionAvailable",

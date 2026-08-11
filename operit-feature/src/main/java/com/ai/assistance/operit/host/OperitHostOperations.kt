@@ -37,19 +37,13 @@ interface OperitHostOperations {
         mimeType: String,
     ): OperitHostOperationResult
 
-    /** Stages one user-approved, checksum-verified APK resource into Termux Home. */
-    suspend fun stageApkResourceOffer(
-        offerId: String,
-        resourceId: String,
-        archiveName: String,
-        payload: ByteArray,
-        sha256: String,
-    ): OperitHostOperationResult =
+    /** Streams the canonical APK install bundle into the Termux resource inbox. */
+    suspend fun stageApkInstallBundle(): OperitHostOperationResult =
         OperitHostOperationResult(
             success = false,
-            details = JSONObject().put("operation", "stage_apk_resource_offer"),
-            message = "APK resource staging is unavailable",
-            error = "The active host does not support APK resource staging",
+            details = JSONObject().put("operation", "stage_apk_install_bundle"),
+            message = "APK install bundle staging is unavailable",
+            error = "The active host does not support APK install bundle staging",
         )
 
     suspend fun readRescueMemoryMirror(): OperitHostOperationResult =
@@ -144,13 +138,8 @@ object UnsupportedOperitHostOperations : OperitHostOperations {
     override suspend fun repairJobStatus(jobId: String): OperitHostOperationResult =
         unsupported("repair_job_status")
 
-    override suspend fun stageApkResourceOffer(
-        offerId: String,
-        resourceId: String,
-        archiveName: String,
-        payload: ByteArray,
-        sha256: String,
-    ): OperitHostOperationResult = unsupported("stage_apk_resource_offer")
+    override suspend fun stageApkInstallBundle(): OperitHostOperationResult =
+        unsupported("stage_apk_install_bundle")
 
     override suspend fun readRescueMemoryMirror(): OperitHostOperationResult =
         unsupported("read_rescue_memory_mirror")

@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "bundleAsset": "wuxianpi-install/openhouse-install-bundle.tar",
+  "bundleFile": "openhouse-install-bundle.tar",
+  "bundleSha256": "86a92bb87d89e0bb59108a2b5270da69c219d7e8e352555baef1964327c558a9",
+  "bundleSize": 38154240,
+  "resourceSet": {
+    "schema": 2,
+    "id": "openhouse-core-stack",
+    "version": "2026.08.10.1",
+    "sequence": 2026081001,
+    "abi": "arm64-v8a",
+    "minApkVersionCode": 126,
+    "resources": [
+      {
+        "id": "service-manager",
+        "version": "0.3.4",
+        "sha256": "e4753a26e9ea36441d218f945c559433836fee1f8f0af571d51087ff258b0d64"
+      },
+      {
+        "id": "openhouse-control-plane",
+        "version": "1.0.1",
+        "sha256": "6f0dfc1d4480d4bfc97603e9ca0e75e543e3ab41637634a46ab123c2c5b9c89d"
+      },
+      {
+        "id": "openhouse-runtime",
+        "version": "0.1.0+pi.0.80.10",
+        "sha256": "11ca8076f74552f96f48b96a16d1bb77b8e831a0ef1ba9008e3e7eb52478d7d8"
+      },
+      {
+        "id": "wuyou",
+        "version": "0.1.0",
+        "sha256": "f7bcaa402fa95273c8abbae3a1642aa3cbb17e44309c56146f260816f1ca2ca2"
+      },
+      {
+        "id": "openhouse-web",
+        "version": "1.1.2",
+        "sha256": "cd193bb28f40d6c0c7759a125a499aff6e2f1c45f6afa0c276e293eb5b925ad0"
+      }
+    ]
+  }
+}

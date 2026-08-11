@@ -4,7 +4,6 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 control_dir="$repo_dir/app/src/main/assets/maintainer"
-native_dir="$repo_dir/native-app/src/main/assets/openhouse-resources-v2"
 distribution_dir="$repo_dir/distribution/resources-v2"
 mode="${1:-generate}"
 
@@ -203,21 +202,9 @@ payload_outputs=(
   openhouse-control-plane.tgz
   resource-set.json
 )
-native_outputs=(
-  service-manager.tgz
-  openhouse-control-plane.tgz
-  runtime-aarch64.tgz
-  wuyou.tgz
-  openhouse-web.tgz
-  resource-set.json
-)
-
 if [[ "$mode" == --check ]]; then
   for name in "${payload_outputs[@]}"; do
     check_file "$generated_payload/$name" "$payload_dir/$name"
-  done
-  for name in "${native_outputs[@]}"; do
-    check_file "$generated_payload/$name" "$native_dir/$name"
   done
   while IFS= read -r generated; do
     relative="${generated#$generated_distribution/}"
@@ -230,9 +217,6 @@ fi
 
 for name in "${payload_outputs[@]}"; do
   sync_file "$generated_payload/$name" "$payload_dir/$name"
-done
-for name in "${native_outputs[@]}"; do
-  sync_file "$generated_payload/$name" "$native_dir/$name"
 done
 while IFS= read -r generated; do
   relative="${generated#$generated_distribution/}"

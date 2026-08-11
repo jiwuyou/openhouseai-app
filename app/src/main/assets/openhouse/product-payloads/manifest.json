@@ -106,13 +106,5 @@
       "compression": "gzip",
       "abi": "arm64-v8a"
     }
-  ],
-  "nativeRuntimeAsset": {
-    "archive": "runtime-aarch64.tgz",
-    "compression": "gzip",
-    "sha256": "11ca8076f74552f96f48b96a16d1bb77b8e831a0ef1ba9008e3e7eb52478d7d8",
-    "size": 31639175,
-    "abi": "arm64-v8a",
-    "applicationId": "com.wuxianpi"
-  }
+  ]
 }

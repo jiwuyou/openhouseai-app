@@ -46,10 +46,6 @@ termux_package_bootstrap_path = os.path.abspath(sys.argv[12])
 repo_dir = os.path.dirname(os.path.dirname(app_build_gradle_path))
 manifest_path = os.path.join(payload_dir, "manifest.json")
 payload_manifest_path = os.path.join(payload_dir, "payload-manifest.json")
-native_runtime_asset_path = os.path.join(
-    os.path.abspath(os.path.join(payload_dir, "../../../../../..")),
-    "native-app", "src", "main", "assets", "openhouse-resources-v2", "runtime-aarch64.tgz",
-)
 
 errors = []
 warnings = []
@@ -975,47 +971,6 @@ def validate_pi_agent_payload(pi_agent_entry):
         fail("pi-agent manifest must advertise staticWebUi and uiMetadata")
 
 
-def validate_native_runtime_asset(manifest, payload_manifest):
-    left = manifest.get("nativeRuntimeAsset")
-    right = payload_manifest.get("nativeRuntimeAsset")
-    if not isinstance(left, dict) or not isinstance(right, dict) or left != right:
-        fail("nativeRuntimeAsset must exist and match in both manifests")
-        return
-    if left.get("abi") != "arm64-v8a" or left.get("applicationId") != "com.wuxianpi":
-        fail("nativeRuntimeAsset must target arm64-v8a and com.wuxianpi")
-    if left.get("compression") != "gzip":
-        fail("nativeRuntimeAsset must declare gzip compression")
-    if not os.path.isfile(native_runtime_asset_path):
-        fail(f"Native runtime asset is missing: {native_runtime_asset_path}")
-        return
-    actual_size, actual_sha = file_digest(native_runtime_asset_path)
-    if left.get("size") != actual_size or left.get("sha256") != actual_sha:
-        fail("nativeRuntimeAsset checksum or size mismatch")
-    with tarfile.open(native_runtime_asset_path, "r:gz") as tar:
-        members = {member.name.lstrip("./"): member for member in tar.getmembers()}
-        for name in ("install.sh", "bin/wuxianpi", "bin/wuxianpi-node", "bin/wuxianpi-node-start",
-                     "node/dist/index.js", "node/web/index.html", "scripts/install.sh", "scripts/register-service.sh", "metadata/build.json"):
-            member = members.get(name)
-            if member is None or not member.isfile() or member.size <= 0:
-                fail(f"Native runtime asset is missing non-empty {name}")
-
-
-def validate_shared_runtime_asset(pi_agent_entry):
-    archive_name = str(pi_agent_entry.get("archive") or "")
-    if archive_name != "runtime-aarch64.tgz":
-        return
-    all_in_one_path = os.path.join(payload_dir, archive_name)
-    if not os.path.isfile(all_in_one_path) or not os.path.isfile(native_runtime_asset_path):
-        return
-    all_in_one_size, all_in_one_sha = file_digest(all_in_one_path)
-    native_size, native_sha = file_digest(native_runtime_asset_path)
-    if (all_in_one_size, all_in_one_sha) != (native_size, native_sha):
-        fail(
-            "runtime-aarch64.tgz must be byte-identical in All-in-One and Native assets: "
-            f"all-in-one={all_in_one_sha}/{all_in_one_size}, native={native_sha}/{native_size}"
-        )
-
-
 manifest = load_json(manifest_path)
 payload_manifest = load_json(payload_manifest_path)
 validate_release_upgrade_contract()
@@ -1024,7 +979,6 @@ validate_bootstrap_pi_contract(manifest)
 
 components = by_id(component_array(manifest, "components"), "manifest.json")
 payloads = by_id(component_array(payload_manifest, "payloads"), "payload-manifest.json")
-validate_native_runtime_asset(manifest, payload_manifest)
 validate_service_control_contract()
 validate_termux_package_contract()
 
@@ -1109,7 +1063,6 @@ for component_id in sorted(set(components) & set(payloads)):
 
 if "pi-agent" in components and isinstance(components["pi-agent"].get("archive"), str):
     validate_pi_agent_payload(components["pi-agent"])
-    validate_shared_runtime_asset(components["pi-agent"])
 if "service-manager" in components and isinstance(components["service-manager"].get("archive"), str):
     validate_service_manager_payload(components["service-manager"])
 if "openhouse-web" in components and isinstance(components["openhouse-web"].get("archive"), str):
@@ -1135,10 +1088,8 @@ if errors:
 print(f"OpenHouse payload validation passed: {len(digest_cache)} archives checked in {payload_dir}")
 PY
 
-native_archive="$REPO_DIR/native-app/src/main/assets/wuxianpi-install/resources.tar"
-if [[ -f "$native_archive" ]]; then
-  "$REPO_DIR/scripts/validate-native-install-resources.sh"
-fi
+"$REPO_DIR/scripts/validate-openhouse-install-bundle.sh"
+"$REPO_DIR/app/src/test/shell/openhouse-install-bundle-import-test.sh"
 if [[ -f "$REPO_DIR/distribution/market-payloads/catalog.json" ]]; then
   "$REPO_DIR/scripts/validate-market-payloads.sh"
 fi

@@ -58,7 +58,7 @@ android {
 
     // The pairing server serves this exact filename and compressed byte stream from APK assets.
     androidResources {
-        noCompress += ["tgz", "gz"]
+        noCompress += ["tgz", "gz", "tar"]
     }
 
     testOptions {
@@ -68,30 +68,12 @@ android {
 
 def repoRoot = projectDir.parentFile
 def nativeInstallAssets = file("src/main/assets/wuxianpi-install")
-def nativeResourceAssets = file("src/main/assets/openhouse-resources-v2")
+def canonicalInstallAssets = new File(repoRoot, "app/src/main/assets/wuxianpi-install")
 
-tasks.register("generateNativeInstallResources", Exec) {
+tasks.register("generateNativeInstallResources") {
     group = "build setup"
-    description = "Generate the Native installer and synchronize the canonical V2 resource set."
-    inputs.file(new File(repoRoot, "scripts/generate-native-install-resources.sh"))
-    inputs.dir(new File(repoRoot, "app/src/main/assets/smallphoneai/bootstrap"))
-    inputs.files(
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/manifest.json"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/payload-manifest.json"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/service-manager.tgz"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/openhouse-control-plane.tgz"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/runtime-aarch64.tgz"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/wuyou.tgz"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/openhouse-web.tgz"),
-        new File(repoRoot, "app/src/main/assets/openhouse/product-payloads/resource-set.json")
-    )
-    outputs.files(
-        new File(nativeInstallAssets, "pre-tmux.sh"),
-        new File(nativeInstallAssets, "resources.tar"),
-        new File(nativeResourceAssets, "resource-set.json"),
-        new File(nativeResourceAssets, "runtime-aarch64.tgz")
-    )
-    commandLine "bash", new File(repoRoot, "scripts/generate-native-install-resources.sh").absolutePath
+    description = "Generate the reproducible APK install bundle used by both Android hosts."
+    dependsOn(rootProject.tasks.named("generateOpenHouseInstallBundle"))
 }
 
 tasks.named("preBuild").configure {
@@ -100,7 +82,7 @@ tasks.named("preBuild").configure {
 
 tasks.register("verifyDebugResourceAssets") {
     group = "verification"
-    description = "Verify the complete V2 resource set keeps exact APK asset paths and bytes."
+    description = "Verify the Native APK contains only the canonical single install bundle."
     dependsOn("assembleDebug")
     doLast {
         def apk = fileTree("${buildDir}/outputs/apk/debug").matching { include("*.apk") }.singleFile
@@ -116,22 +98,13 @@ tasks.register("verifyDebugResourceAssets") {
                 }
                 sha.digest().encodeHex().toString()
             }
-            ["resource-set.json", "service-manager.tgz", "openhouse-control-plane.tgz",
-             "runtime-aarch64.tgz", "wuyou.tgz", "openhouse-web.tgz"].each { name ->
-                def source = new File(nativeResourceAssets, name)
-                def expectedPath = "assets/openhouse-resources-v2/${name}"
-                def entry = archive.getEntry(expectedPath)
-                if (entry == null) throw new GradleException("Missing exact APK asset ${expectedPath}")
-                def sourceSha = digest(source.newInputStream())
-                def apkSha = digest(archive.getInputStream(entry))
-                if (sourceSha != apkSha) {
-                    throw new GradleException("V2 resource asset SHA-256 mismatch: ${name}")
-                }
-            }
             if (archive.getEntry("assets/openhouse-runtime/runtime-aarch64.tgz") != null) {
                 throw new GradleException("APK contains the retired duplicate Native runtime asset")
             }
-            ["pre-tmux.sh", "resources.tar"].each { name ->
+            if (archive.entries().find { it.name.startsWith("assets/openhouse-resources-v2/") } != null) {
+                throw new GradleException("Native APK contains retired duplicate per-resource assets")
+            }
+            ["pre-tmux.sh", "openhouse-install-bundle.tar", "openhouse-install-bundle.json"].each { name ->
                 def bundled = new File(nativeInstallAssets, name)
                 def path = "assets/wuxianpi-install/${name}"
                 def bundledEntry = archive.getEntry(path)

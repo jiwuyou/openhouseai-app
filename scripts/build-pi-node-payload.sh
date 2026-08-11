@@ -6,8 +6,6 @@ source_dir="$repo_dir/runtime/wuxianpi-node"
 web_source_dir="$repo_dir/ai-web-ui"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 output="$payload_dir/runtime-aarch64.tgz"
-native_asset_dir="$repo_dir/native-app/src/main/assets/openhouse-resources-v2"
-native_asset="$native_asset_dir/runtime-aarch64.tgz"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-payload.XXXXXX")"
 build="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-build.XXXXXX")"
 web_build="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-web-build.XXXXXX")"
@@ -190,18 +188,14 @@ gzip -n < <(tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numer
 mv "$output.tmp" "$output"
 chmod 0644 "$output"
 
-mkdir -p "$native_asset_dir"
-cp "$output" "$native_asset.tmp"
-mv "$native_asset.tmp" "$native_asset"
-chmod 0644 "$native_asset"
 rm -f "$payload_dir/pi-runtime.tar"
 
-python3 - "$payload_dir/manifest.json" "$payload_dir/payload-manifest.json" "$output" "$native_asset" <<'PY'
+python3 - "$payload_dir/manifest.json" "$payload_dir/payload-manifest.json" "$output" <<'PY'
 import hashlib, json, pathlib, sys
-manifest_path, payload_manifest_path, archive, native_asset = map(pathlib.Path, sys.argv[1:])
+manifest_path, payload_manifest_path, archive = map(pathlib.Path, sys.argv[1:])
 def digest(path):
     data = path.read_bytes(); return len(data), hashlib.sha256(data).hexdigest()
-size, sha = digest(archive); asset_size, asset_sha = digest(native_asset)
+size, sha = digest(archive)
 for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloads")):
     doc = json.loads(path.read_text(encoding="utf-8"))
     entry = next(item for item in doc[key] if item.get("id") == "pi-agent")
@@ -217,11 +211,9 @@ for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloa
         "provides": {"piSdkEmbedded": True, "webSocket": True, "nativeJsonlSessions": True,
                      "staticWebUi": True, "uiMetadata": True},
     })
-    doc["nativeRuntimeAsset"] = {"archive": native_asset.name, "compression": "gzip", "sha256": asset_sha,
-        "size": asset_size, "abi": "arm64-v8a", "applicationId": "com.wuxianpi"}
+    doc.pop("nativeRuntimeAsset", None)
     path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
 log "runtime payload: $(sha256sum "$output")"
-log "native asset: $(sha256sum "$native_asset")"
 "$repo_dir/scripts/generate-resource-set-v2.sh"

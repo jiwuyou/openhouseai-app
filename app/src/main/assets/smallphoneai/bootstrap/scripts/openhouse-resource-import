@@ -1,0 +1,187 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+MANAGER_ROOT="${OPENHOUSEAI_RESOURCE_MANAGER_ROOT:-$HOME/.local/share/openhouseai/resource-manager}"
+TRANSACTIONS="$MANAGER_ROOT/transactions"
+OFFER_RECEIPTS="$MANAGER_ROOT/receipts/apk-offers"
+INBOX_ROOT="$HOME/.local/share/openhouseai/apk-resource-inbox"
+BUNDLE_NAME="openhouse-install-bundle.tar"
+
+log() { printf '[resource-import] %s\n' "$*"; }
+die() { printf '[resource-import] ERROR: %s\n' "$*" >&2; exit 1; }
+
+sha_file() { sha256sum "$1" | awk '{print $1}'; }
+
+require_tools() {
+  local tool
+  for tool in jq sha256sum tar find awk readlink; do
+    command -v "$tool" >/dev/null 2>&1 || die "missing required command: $tool"
+  done
+  [[ -x "$PREFIX/bin/bash" ]] || die "missing Termux bash: $PREFIX/bin/bash"
+}
+
+canonical_inbox() {
+  local requested="$1" canonical_root canonical_requested
+  canonical_root="$(readlink -f "$INBOX_ROOT")"
+  canonical_requested="$(readlink -f "$requested")"
+  [[ -n "$canonical_root" && -n "$canonical_requested" ]] || die 'unable to resolve inbox path'
+  case "$canonical_requested" in
+    "$canonical_root"/*) printf '%s\n' "$canonical_requested" ;;
+    *) die "inbox is outside the APK resource root: $requested" ;;
+  esac
+}
+
+validate_tar_paths() {
+  local archive="$1"
+  tar -tf "$archive" | awk '
+    /^\// { exit 1 }
+    /(^|\/)\.\.($|\/)/ { exit 1 }
+    /\\/ { exit 1 }
+    { count++ }
+    END { if (count == 0) exit 1 }
+  ' || die 'bundle contains an unsafe or empty path list'
+  tar -tvf "$archive" | awk '
+    substr($1, 1, 1) != "-" && substr($1, 1, 1) != "d" { exit 1 }
+  ' || die 'bundle contains links, devices, or unsupported entry types'
+}
+
+verify_extracted_bundle() {
+  local root="$1" line relative listed actual
+  for required in \
+    bundle-manifest.json \
+    SHA256SUMS \
+    bootstrap/bootstrap.sh \
+    bootstrap/scripts/wuxianpi-setup \
+    bootstrap/scripts/openhouse-resource-import \
+    bootstrap/scripts/openhouse-resource-manager \
+    resources/resource-set.json \
+    resources/service-manager.tgz \
+    resources/openhouse-control-plane.tgz \
+    resources/runtime-aarch64.tgz \
+    resources/wuyou.tgz \
+    resources/openhouse-web.tgz; do
+    [[ -f "$root/$required" ]] || die "bundle is missing $required"
+  done
+  listed=''
+  while IFS= read -r line; do
+    [[ "$line" =~ ^[a-f0-9]{64}[[:space:]][[:space:]](\./.+)$ ]] \
+      || die 'bundle checksum manifest contains an invalid line'
+    relative="${BASH_REMATCH[1]}"
+    case "$relative" in
+      /*|*\\*|../*|*/../*|*/..) die 'bundle checksum manifest contains an unsafe path' ;;
+    esac
+    [[ -f "$root/$relative" && ! -L "$root/$relative" ]] \
+      || die 'bundle checksum manifest references a non-regular file'
+    listed+="$relative"$'\n'
+  done <"$root/SHA256SUMS"
+  [[ -n "$listed" ]] || die 'bundle checksum manifest is empty'
+  [[ "$(printf '%s' "$listed" | LC_ALL=C sort | uniq -d)" == '' ]] \
+    || die 'bundle checksum manifest contains duplicate paths'
+  actual="$(cd "$root" && find . -type f ! -path ./SHA256SUMS -print | LC_ALL=C sort)"
+  [[ "$(printf '%s' "$listed" | LC_ALL=C sort)" == "$actual" ]] \
+    || die 'bundle checksum manifest does not cover exactly every bundle file'
+  (cd "$root" && sha256sum -c SHA256SUMS >/dev/null) \
+    || die 'bundle member checksum verification failed'
+  jq -e '
+    .schema == 1 and .id == "openhouse-install-bundle" and
+    .resourceSet.id == "openhouse-core-stack" and
+    .resourceSet.abi == "arm64-v8a"
+  ' "$root/bundle-manifest.json" >/dev/null || die 'bundle manifest is invalid'
+  jq -e '
+    .schema == 2 and .id == "openhouse-core-stack" and .abi == "arm64-v8a" and
+    (.resources | length) == 5
+  ' "$root/resources/resource-set.json" >/dev/null || die 'resource set is invalid'
+  jq -e --slurpfile set "$root/resources/resource-set.json" \
+    '.resourceSet == $set[0]' "$root/bundle-manifest.json" >/dev/null \
+    || die 'bundle manifest resource set does not match the bundled resource set'
+}
+
+write_offer_receipt() {
+  local offer_id="$1" offer="$2" installed_set="$3" target temporary
+  target="$OFFER_RECEIPTS/$offer_id.json"
+  temporary="$target.tmp.$$"
+  jq -n \
+    --arg offerId "$offer_id" \
+    --arg bundleSha256 "$(jq -r '.bundleSha256' "$offer")" \
+    --arg resourceSetVersion "$(jq -r '.resourceSet.version' "$offer")" \
+    --argjson resourceSetSequence "$(jq -r '.resourceSet.sequence' "$offer")" \
+    --arg installedSetSha256 "$(sha_file "$installed_set")" \
+    --arg completedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:1,offerId:$offerId,bundleSha256:$bundleSha256,resourceSetVersion:$resourceSetVersion,resourceSetSequence:$resourceSetSequence,installedSetSha256:$installedSetSha256,status:"satisfied",completedAt:$completedAt}' \
+    >"$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$target"
+}
+
+main() {
+  require_tools
+  [[ $# -eq 1 ]] || die 'usage: openhouse-resource-import INBOX_DIRECTORY'
+  mkdir -p "$INBOX_ROOT" "$TRANSACTIONS" "$OFFER_RECEIPTS"
+  chmod 700 "$INBOX_ROOT" "$MANAGER_ROOT" "$TRANSACTIONS" "$OFFER_RECEIPTS"
+
+  local inbox offer ready bundle offer_id expected_sha expected_size actual_size transaction extracted
+  inbox="$(canonical_inbox "$1")"
+  offer="$inbox/offer.json"
+  ready="$inbox/.ready"
+  bundle="$inbox/$BUNDLE_NAME"
+  [[ -f "$ready" && ! -L "$ready" && ! -s "$ready" ]] || die 'APK resource offer is not ready'
+  [[ -f "$offer" && ! -L "$offer" && -f "$bundle" && ! -L "$bundle" ]] \
+    || die 'APK resource offer is incomplete'
+  jq -e '
+    .schema == 1 and
+    (.apkVersionCode | type == "number" and . > 0) and
+    .bundleFile == "openhouse-install-bundle.tar" and
+    .resourceSet.id == "openhouse-core-stack" and
+    (.resourceSet.version | type == "string" and length > 0) and
+    (.resourceSet.sequence | type == "number" and . > 0) and
+    .resourceSet.abi == "arm64-v8a"
+  ' "$offer" >/dev/null || die 'APK resource offer metadata is invalid'
+
+  offer_id="$(jq -r '.offerId // empty' "$offer")"
+  [[ "$offer_id" =~ ^[a-f0-9]{24}$ ]] || die 'offerId is invalid'
+  [[ "$(basename "$inbox")" == "$offer_id" ]] || die 'offerId does not match the inbox directory'
+  expected_sha="$(jq -r '.bundleSha256 // empty' "$offer")"
+  expected_size="$(jq -r '.bundleSize // empty' "$offer")"
+  [[ "$expected_sha" =~ ^[a-f0-9]{64}$ ]] || die 'bundle SHA-256 is invalid'
+  [[ "$expected_size" =~ ^[0-9]+$ ]] || die 'bundle size is invalid'
+  actual_size="$(stat -c '%s' "$bundle")"
+  [[ "$actual_size" == "$expected_size" ]] || die 'bundle size verification failed'
+  [[ "$(sha_file "$bundle")" == "$expected_sha" ]] || die 'bundle SHA-256 verification failed'
+
+  if [[ -f "$OFFER_RECEIPTS/$offer_id.json" ]] \
+    && [[ "$(jq -r '.bundleSha256 // empty' "$OFFER_RECEIPTS/$offer_id.json")" == "$expected_sha" ]] \
+    && "$PREFIX/bin/bash" "$PREFIX/bin/openhouse-resource-manager" verify >/dev/null 2>&1; then
+    log "offer already satisfied: $offer_id"
+    exit 0
+  fi
+
+  validate_tar_paths "$bundle"
+  transaction="$TRANSACTIONS/apk-offer-$offer_id-$$"
+  extracted="$transaction/bundle"
+  trap 'rm -rf -- "$transaction"' EXIT
+  mkdir -p "$extracted"
+  tar -xf "$bundle" -C "$extracted" --no-same-owner --no-same-permissions
+  verify_extracted_bundle "$extracted"
+  jq -e --slurpfile set "$extracted/resources/resource-set.json" '
+    .resourceSet.id == $set[0].id and
+    .resourceSet.version == $set[0].version and
+    .resourceSet.sequence == $set[0].sequence and
+    .resourceSet.abi == $set[0].abi
+  ' "$offer" >/dev/null || die 'offer resource set does not match the install bundle'
+  install -m 700 "$extracted/bootstrap/scripts/openhouse-resource-manager" "$PREFIX/bin/openhouse-resource-manager"
+  install -m 700 "$extracted/bootstrap/scripts/openhouse-resource-import" "$PREFIX/bin/openhouse-resource-import"
+
+  OPENHOUSEAI_RESOURCE_SET_FILE="$extracted/resources/resource-set.json" \
+  OPENHOUSEAI_RESOURCE_SOURCE_DIR="$extracted/resources" \
+  OPENHOUSEAI_APK_VERSION_CODE="$(jq -r '.apkVersionCode' "$offer")" \
+    "$PREFIX/bin/bash" "$PREFIX/bin/openhouse-resource-manager" apply
+  "$PREFIX/bin/bash" "$PREFIX/bin/openhouse-resource-manager" verify
+  write_offer_receipt "$offer_id" "$offer" "$MANAGER_ROOT/installed-set.json"
+  printf '{"offerId":"%s","status":"satisfied"}\n' "$offer_id" >"$inbox/.consumed"
+  rm -rf -- "$transaction"
+  trap - EXIT
+  log "offer imported: $offer_id"
+}
+
+main "$@"

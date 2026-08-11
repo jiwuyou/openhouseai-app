@@ -47,7 +47,9 @@ data class ApkResourceOffer(
     val apkVersionCode: Long,
     val packageLastUpdateTime: Long,
     val reason: String,
-    val assetRoot: String,
+    val bundleAsset: String,
+    val bundleSha256: String,
+    val bundleSize: Long,
     val resourceSet: JSONObject,
     val status: ApkResourceOfferStatus,
     val detail: String?,
@@ -63,14 +65,16 @@ data class ApkResourceOffer(
             .put("apkVersionCode", apkVersionCode)
             .put("packageLastUpdateTime", packageLastUpdateTime)
             .put("reason", reason)
+            .put("bundleSha256", bundleSha256)
+            .put("bundleSize", bundleSize)
             .put("resourceSet", JSONObject(resourceSet.toString()))
             .put("status", status.name.lowercase())
             .put("detail", detail ?: JSONObject.NULL)
             .put("updatedAt", updatedAt)
-            .apply { if (includeAssetRoot) put("assetRoot", assetRoot) }
+            .apply { if (includeAssetRoot) put("bundleAsset", bundleAsset) }
 }
 
-/** Records APK resources as a private offer; archives remain in APK assets until a tool requests one. */
+/** Records the APK's canonical install bundle as a private offer until a tool stages it. */
 class ApkResourceOfferStore private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val root = File(appContext.filesDir, "rescue-resource-offers")
@@ -83,9 +87,15 @@ class ApkResourceOfferStore private constructor(context: Context) {
         val packageInfo = runCatching {
             appContext.packageManager.getPackageInfo(appContext.packageName, 0)
         }.getOrNull() ?: return null
-        val assetRoot = resolveAssetRoot() ?: return null
-        val resourceSet = readResourceSet(assetRoot)
+        val metadata = readBundleMetadata() ?: return null
+        val resourceSet = metadata.getJSONObject("resourceSet")
         validateResourceSet(resourceSet, packageVersionCode(packageInfo))
+        val bundleAsset = metadata.getString("bundleAsset")
+        val bundleSha256 = metadata.getString("bundleSha256").lowercase()
+        val bundleSize = metadata.getLong("bundleSize")
+        require(bundleAsset == BUNDLE_ASSET && bundleSha256.matches(Regex("[a-f0-9]{64}")) && bundleSize > 0L) {
+            "APK install bundle metadata is invalid"
+        }
         val versionCode = packageVersionCode(packageInfo)
         val offerId = sha256("${appContext.packageName}:$versionCode:${packageInfo.lastUpdateTime}").take(24)
         val existing = readActive()
@@ -103,7 +113,9 @@ class ApkResourceOfferStore private constructor(context: Context) {
                 apkVersionCode = versionCode,
                 packageLastUpdateTime = packageInfo.lastUpdateTime,
                 reason = if (previousVersion <= 0L) "first-install" else "apk-update",
-                assetRoot = assetRoot,
+                bundleAsset = bundleAsset,
+                bundleSha256 = bundleSha256,
+                bundleSize = bundleSize,
                 resourceSet = resourceSet,
                 status = ApkResourceOfferStatus.PENDING,
                 detail = null,
@@ -131,19 +143,6 @@ class ApkResourceOfferStore private constructor(context: Context) {
                 updatedAt = Instant.now().toString(),
             ).also(::write)
         }
-
-    fun readResource(resourceId: String): Pair<String, ByteArray> = synchronized(lock) {
-        val offer = readActive() ?: recordCurrentApk() ?: error("APK has no bundled resource offer")
-        val archiveName = ARCHIVES[resourceId] ?: error("Unsupported APK resource id: $resourceId")
-        val resource = findResource(offer.resourceSet, resourceId)
-        val expectedSha = resource.getString("sha256").lowercase()
-        val bytes = appContext.assets.open("${offer.assetRoot}/$archiveName").use { it.readBytes() }
-        val actualSha = sha256(bytes)
-        require(actualSha == expectedSha) {
-            "APK resource checksum mismatch for $resourceId: expected $expectedSha, got $actualSha"
-        }
-        archiveName to bytes
-    }
 
     private fun write(offer: ApkResourceOffer) {
         root.mkdirs()
@@ -177,7 +176,9 @@ class ApkResourceOfferStore private constructor(context: Context) {
                     apkVersionCode = value.getLong("apkVersionCode"),
                     packageLastUpdateTime = value.getLong("packageLastUpdateTime"),
                     reason = value.getString("reason"),
-                    assetRoot = value.getString("assetRoot"),
+                    bundleAsset = value.getString("bundleAsset"),
+                    bundleSha256 = value.getString("bundleSha256"),
+                    bundleSize = value.getLong("bundleSize"),
                     resourceSet = value.getJSONObject("resourceSet"),
                     status = ApkResourceOfferStatus.valueOf(value.getString("status").uppercase()),
                     detail = value.optString("detail").takeIf(String::isNotBlank),
@@ -186,15 +187,11 @@ class ApkResourceOfferStore private constructor(context: Context) {
             }.getOrNull()
         }
 
-    private fun resolveAssetRoot(): String? =
-        ASSET_ROOTS.firstOrNull { assetRoot ->
-            runCatching { appContext.assets.open("$assetRoot/resource-set.json").close() }.isSuccess
-        }
-
-    private fun readResourceSet(assetRoot: String): JSONObject =
-        appContext.assets.open("$assetRoot/resource-set.json").bufferedReader().use {
+    private fun readBundleMetadata(): JSONObject? = runCatching {
+        appContext.assets.open(BUNDLE_METADATA_ASSET).bufferedReader().use {
             JSONObject(it.readText())
-        }
+        }.also { require(it.optInt("schema") == 1) { "Unsupported APK install bundle metadata" } }
+    }.getOrNull()
 
     private fun validateResourceSet(resourceSet: JSONObject, apkVersionCode: Long) {
         require(resourceSet.optInt("schema") == 2) { "Unsupported APK resource set schema" }
@@ -236,8 +233,8 @@ class ApkResourceOfferStore private constructor(context: Context) {
     companion object {
         private const val PREFERENCES_NAME = "rescue_resource_offers"
         private const val KEY_OBSERVED_VERSION = "observed_apk_version"
-        private val ASSET_ROOTS =
-            listOf("openhouse-resources-v2", "openhouse/product-payloads")
+        private const val BUNDLE_ASSET = "wuxianpi-install/openhouse-install-bundle.tar"
+        private const val BUNDLE_METADATA_ASSET = "wuxianpi-install/openhouse-install-bundle.json"
         private val ARCHIVES =
             linkedMapOf(
                 "service-manager" to "service-manager.tgz",

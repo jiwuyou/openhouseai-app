@@ -191,15 +191,9 @@ class RescueToolCatalog private constructor(
                         "Inspect the Android-private APK resource offer and its five bundled resource digests without copying archives into Termux.",
                 ),
                 definition(
-                    name = RescuePluginContract.TOOL_STAGE_APK_RESOURCE,
+                    name = RescuePluginContract.TOOL_STAGE_APK_RESOURCE_BUNDLE,
                     description =
-                        "After comparison shows that one bundled resource is needed, verify and stage only that resource into the Termux APK-offer cache.",
-                    properties =
-                        JSONObject().put(
-                            "resourceId",
-                            JSONObject().put("type", "string").put("description", "service-manager, openhouse-control-plane, openhouse-runtime, wuyou, or openhouse-web"),
-                        ),
-                    required = JSONArray().put("resourceId"),
+                        "Stream the APK's checksum-verified canonical install TAR into the Termux inbox and publish it with a final .ready marker.",
                 ),
                 definition(
                     name = RescuePluginContract.TOOL_COMPLETE_APK_RESOURCE_OFFER,

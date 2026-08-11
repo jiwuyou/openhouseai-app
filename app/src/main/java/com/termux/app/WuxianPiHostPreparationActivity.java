@@ -6,8 +6,6 @@ import android.system.Os;
 import android.view.Gravity;
 import android.widget.TextView;
 
-import com.termux.app.openhouse.OpenHouseBundledRuntimeSync;
-import com.termux.app.openhouse.resources.OpenHouseBundledResourceDelivery;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
@@ -27,7 +25,6 @@ public final class WuxianPiHostPreparationActivity extends Activity {
 
     public static final String ACTION_PREPARE_HOST = "com.termux.WUXIANPI_PREPARE_HOST";
     private static final String LOG_TAG = "WuxianPiHostPrepare";
-    private static final String SETUP_COMMAND_RELATIVE_PATH = "bootstrap/scripts/wuxianpi-setup";
     private static final String HOST_STATE_RELATIVE_PATH = ".local/state/wuxianpi-setup/host-preparation.json";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -45,16 +42,12 @@ public final class WuxianPiHostPreparationActivity extends Activity {
     }
 
     private void stageRuntimeHost() {
-        statusView.setText("正在投放 WuxianPi 安装资源...");
+        statusView.setText("正在准备 WuxianPi Termux 命令通道...");
         executor.execute(() -> {
             try {
-                OpenHouseBundledRuntimeSync.Result runtime = OpenHouseBundledRuntimeSync.sync(
-                    getApplicationContext(), OpenHouseBundledResourceDelivery.Reason.FIRST_INSTALL);
-                File source = new File(runtime.resourceDir, SETUP_COMMAND_RELATIVE_PATH);
-                File target = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "wuxianpi-setup");
-                installSetupCommand(source, target);
-                writeHostState(true, runtime.resourceDir, target, "ready");
-                Logger.logInfo(LOG_TAG, "Prepared embedded host: " + runtime.toLogString());
+                writeHostState(true, null, null, "termux-bootstrap-ready");
+                Logger.logInfo(LOG_TAG,
+                    "Prepared embedded Termux bootstrap; install bundle staging is delegated to the host adapter");
                 runOnUiThread(() -> {
                     statusView.setText("WuxianPi Termux 运行环境已准备完成");
                     setResult(RESULT_OK);

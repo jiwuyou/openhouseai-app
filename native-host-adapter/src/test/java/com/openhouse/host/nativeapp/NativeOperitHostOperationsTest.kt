@@ -316,17 +316,20 @@ class NativeOperitHostOperationsTest {
         val command = buildWuxianPiSetupLaunchCommand(
             "/data/data/com.termux/files/usr",
             "/data/data/com.termux/files/home",
-            "/data/data/com.termux/files/home/.local/share/openhouseai/update-resources/apk-126/product-payloads/runtime-aarch64.tgz",
-            126,
+            "/data/data/com.termux/files/home/.local/share/openhouseai/apk-resource-inbox/0123456789abcdef01234567",
+            "/data/data/com.termux/files/home/.local/share/openhouseai/apk-resource-inbox/0123456789abcdef01234567/openhouse-install-bundle.tar",
+            126L,
         )
         val details = setupLaunchDetails(command)
 
-        assertTrue(command.contains("resources.tar"))
-        assertTrue(command.contains("bootstrap/wuxianpi-setup"))
-        assertTrue(command.contains("--runtime-archive"))
-        assertTrue(command.contains("update-resources/apk-126/product-payloads/runtime-aarch64.tgz"))
+        assertTrue(command.contains("openhouse-install-bundle.tar"))
+        assertTrue(command.contains("bootstrap/scripts/wuxianpi-setup"))
+        assertTrue(command.contains("openhouse-resource-import"))
+        assertTrue(command.contains("openhouse-resource-manager"))
+        assertTrue(command.contains("--resource-inbox"))
+        assertTrue(command.contains("apk-resource-inbox/0123456789abcdef01234567"))
         assertTrue(command.contains("OPENHOUSEAI_APK_VERSION_CODE='126'"))
-        assertTrue(command.contains("Native WuxianPi Runtime asset is missing"))
+        assertTrue(command.contains("APK resource offer is not ready"))
         assertTrue(command.contains("--request"))
         assertEquals("termux_exec_command", details.getString("executorTool"))
         assertEquals("wuxianpi-setup", details.getString("session_name"))

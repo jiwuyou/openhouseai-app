@@ -2,73 +2,8 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-assets_dir="$repo_dir/native-app/src/main/assets/wuxianpi-install"
-archive="$assets_dir/resources.tar"
-pre_tmux="$assets_dir/pre-tmux.sh"
-resource_assets="$repo_dir/native-app/src/main/assets/openhouse-resources-v2"
-runtime_asset="$resource_assets/runtime-aarch64.tgz"
-
-[[ -s "$archive" ]] || { printf 'Missing Native install archive: %s\n' "$archive" >&2; exit 1; }
-[[ -s "$pre_tmux" ]] || { printf 'Missing Native pre-tmux asset: %s\n' "$pre_tmux" >&2; exit 1; }
-[[ -s "$runtime_asset" ]] || { printf 'Missing Native runtime asset: %s\n' "$runtime_asset" >&2; exit 1; }
-tar -tzf "$runtime_asset" >/dev/null \
-  || { printf 'Native runtime asset is not a readable gzip tar: %s\n' "$runtime_asset" >&2; exit 1; }
-runtime_sha="$(sha256sum "$runtime_asset" | awk '{print $1}')"
-runtime_size="$(wc -c < "$runtime_asset" | tr -d '[:space:]')"
-
-members="$(tar -tf "$archive")"
-for required in \
-  ./install.sh \
-  ./install-manifest.json \
-  ./SHA256SUMS \
-  ./bootstrap/bootstrap.sh \
-  ./bootstrap/wuxianpi-setup \
-  ./bootstrap/wuxianpi-pre-tmux.sh \
-  ./bootstrap/scripts/wuxianpi-setup \
-  ./bootstrap/scripts/wuxianpi-pre-tmux.sh \
-  ./product-payloads/manifest.json \
-  ./product-payloads/payload-manifest.json; do
-  grep -Fxq "$required" <<<"$members" \
-    || { printf 'Native install archive is missing %s\n' "$required" >&2; exit 1; }
-done
-if grep -Eiq 'aionui|pi-web\.tar|wuxianpi-native-install\.tar' <<<"$members"; then
-  printf 'Native install archive contains an excluded optional payload\n' >&2
-  exit 1
-fi
-if grep -Eq '(^|/)pi-runtime\.tar$' <<<"$members"; then
-  printf 'Native install archive must not duplicate the separately staged WuxianPi runtime\n' >&2
-  exit 1
-fi
-
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-native-validate.XXXXXX")"
-trap 'rm -rf "$tmp"' EXIT
-tar -xf "$archive" -C "$tmp"
-(cd "$tmp" && sha256sum -c SHA256SUMS)
-python3 - "$tmp/install-manifest.json" "$runtime_sha" "$runtime_size" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], encoding="utf-8") as handle:
-    manifest = json.load(handle)
-
-if manifest.get("bundledPayloads") != []:
-    raise SystemExit("Native install archive must not duplicate V2 resource payloads")
-if manifest.get("resourceSetAsset") != "openhouse-resources-v2/resource-set.json":
-    raise SystemExit("Native install manifest must reference the V2 resource set")
-if manifest.get("runtimeAsset") != "openhouse-resources-v2/runtime-aarch64.tgz":
-    raise SystemExit("Native install manifest must reference the separate ARM64 runtime asset")
-if manifest.get("runtimeSha256") != sys.argv[2]:
-    raise SystemExit("Native install manifest runtimeSha256 does not match the staged runtime asset")
-if int(manifest.get("runtimeSize", -1)) != int(sys.argv[3]):
-    raise SystemExit("Native install manifest runtimeSize does not match the staged runtime asset")
-PY
-"$repo_dir/scripts/generate-resource-set-v2.sh" --check
-bash -n "$pre_tmux"
-bash -n "$tmp/bootstrap/wuxianpi-setup"
-bash -n "$tmp/bootstrap/wuxianpi-pre-tmux.sh"
-if grep -Fq 'tmux new-session' "$tmp/bootstrap/wuxianpi-setup"; then
-  printf 'wuxianpi-setup must run in the termux_exec_command session, not create nested tmux\n' >&2
-  exit 1
-fi
-
-printf 'Native install resources validated: %s (%s bytes)\n' "$archive" "$(wc -c < "$archive")"
+"$repo_dir/scripts/validate-openhouse-install-bundle.sh"
+[[ -s "$repo_dir/native-app/src/main/assets/wuxianpi-install/pre-tmux.sh" ]] \
+  || { printf 'Native pre-tmux asset is missing\n' >&2; exit 1; }
+bash -n "$repo_dir/native-app/src/main/assets/wuxianpi-install/pre-tmux.sh"
+printf 'Native install resources validated\n'

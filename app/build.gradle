@@ -131,7 +131,7 @@ android {
     }
 
     androidResources {
-        noCompress += ["tgz", "gz"]
+        noCompress += ["tgz", "gz", "tar"]
     }
 
     testOptions {
@@ -171,8 +171,18 @@ android {
         main.java.exclude "com/termux/app/browser/ControlledBrowserContract.java"
         main.java.exclude "com/termux/app/browser/ControlledBrowserRuntime.java"
         main.java.exclude "com/termux/app/browser/ControlledBrowserView.java"
+        main.assets.exclude "openhouse/product-payloads/resource-set.json"
+        main.assets.exclude "openhouse/product-payloads/service-manager.tgz"
+        main.assets.exclude "openhouse/product-payloads/openhouse-control-plane.tgz"
+        main.assets.exclude "openhouse/product-payloads/runtime-aarch64.tgz"
+        main.assets.exclude "openhouse/product-payloads/wuyou.tgz"
+        main.assets.exclude "openhouse/product-payloads/openhouse-web.tgz"
     }
 
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(rootProject.tasks.named("generateOpenHouseInstallBundle"))
 }
 
 dependencies {

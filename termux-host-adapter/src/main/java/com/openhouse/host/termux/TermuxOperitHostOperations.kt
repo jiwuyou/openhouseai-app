@@ -3,6 +3,7 @@ package com.openhouse.host.termux
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import com.ai.assistance.operit.host.OperitHostOperationResult
 import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostOperations
@@ -28,6 +29,9 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
     private companion object {
         const val PREPARE_HOST_ACTION = "com.termux.WUXIANPI_PREPARE_HOST"
         const val SETUP_COMMAND = "/data/data/com.termux/files/usr/bin/wuxianpi-setup"
+        const val INSTALL_BUNDLE_ASSET = "wuxianpi-install/openhouse-install-bundle.tar"
+        const val INSTALL_BUNDLE_METADATA_ASSET = "wuxianpi-install/openhouse-install-bundle.json"
+        const val INSTALL_BUNDLE_NAME = "openhouse-install-bundle.tar"
     }
 
     private val appContext = context.applicationContext
@@ -89,43 +93,19 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         JSONObject().put("payloadBytes", payload.size).put("fileName", fileName).put("mimeType", mimeType),
     )
 
-    override suspend fun stageApkResourceOffer(
-        offerId: String,
-        resourceId: String,
-        archiveName: String,
-        payload: ByteArray,
-        sha256: String,
-    ): OperitHostOperationResult = withContext(Dispatchers.IO) {
+    override suspend fun stageApkInstallBundle(): OperitHostOperationResult = withContext(Dispatchers.IO) {
         runCatching {
-            require(offerId.matches(Regex("[a-f0-9]{24}"))) { "Invalid APK resource offer id" }
-            require(archiveName.matches(Regex("[A-Za-z0-9._-]+\\.tgz"))) { "Invalid archive name" }
-            val actualSha = MessageDigest.getInstance("SHA-256").digest(payload)
-                .joinToString("") { "%02x".format(it) }
-            require(actualSha == sha256.lowercase()) { "APK resource checksum changed before staging" }
-            val directory =
-                File(appContext.filesDir, "home/.local/share/openhouseai/resource-manager/apk-offers/$offerId")
-            check(directory.mkdirs() || directory.isDirectory) { "Unable to create APK offer directory" }
-            val temporary = File(directory, ".$archiveName-${System.nanoTime()}.part")
-            temporary.writeBytes(payload)
-            val target = File(directory, archiveName)
-            check(temporary.renameTo(target)) { "Unable to activate staged APK resource" }
+            val staged = stageInstallBundle()
             OperitHostOperationResult(
                 success = true,
-                details =
-                    JSONObject()
-                        .put("operation", "stage_apk_resource_offer")
-                        .put("offerId", offerId)
-                        .put("resourceId", resourceId)
-                        .put("path", target.absolutePath)
-                        .put("size", payload.size)
-                        .put("sha256", actualSha),
-                message = "APK resource staged",
+                details = JSONObject(staged.toString()).put("operation", "stage_apk_install_bundle"),
+                message = "APK install bundle staged",
             )
         }.getOrElse {
             OperitHostOperationResult(
                 success = false,
-                details = JSONObject().put("operation", "stage_apk_resource_offer"),
-                message = "Unable to stage APK resource",
+                details = JSONObject().put("operation", "stage_apk_install_bundle"),
+                message = "Unable to stage APK install bundle",
                 error = it.message,
             )
         }
@@ -243,21 +223,41 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
             "RUN_COMMAND permission is not required inside the embedded Termux host",
         )
 
-    override suspend fun preparePersistentTermux(): OperitHostOperationResult =
-        setupCommand("prepare_persistent_termux", "prepare-tmux", 30 * 60_000L)
+    override suspend fun preparePersistentTermux(): OperitHostOperationResult = withContext(Dispatchers.IO) {
+        runCatching {
+            val staged = stageInstallBundle()
+            val root = File(runtimeLayout.home, ".local/share/wuxianpi/install-resources/current")
+            val bootstrapCommand =
+                "set -e; rm -rf '${root.absolutePath}'; mkdir -p '${root.absolutePath}'; " +
+                    "'${runtimeLayout.prefix}/bin/tar' -xf '${staged.getString("bundlePath")}' -C '${root.absolutePath}'; " +
+                    "install -m 700 '${root.absolutePath}/bootstrap/scripts/wuxianpi-setup' '$SETUP_COMMAND'; " +
+                    "install -m 700 '${root.absolutePath}/bootstrap/scripts/wuxianpi-pre-tmux.sh' '${runtimeLayout.prefix}/bin/wuxianpi-pre-tmux.sh'"
+            val bootstrap = commandExecutor.execute(bootstrapCommand, HostTerminalTarget.TERMUX, 120_000L)
+            check(bootstrap.isSuccess) { bootstrap.stderr.ifBlank { bootstrap.stdout.ifBlank { "Unable to install setup bootstrap" } } }
+            setupCommand("prepare_persistent_termux", "prepare-tmux", 30 * 60_000L)
+        }.getOrElse { failure("prepare_persistent_termux", it.message ?: "Unable to prepare persistent Termux") }
+    }
 
-    override suspend fun startWuxianPiSetup(): OperitHostOperationResult =
-        success(
-            "start_wuxianpi_setup",
-            JSONObject()
-                .put("command", "$SETUP_COMMAND install")
-                .put("working_directory", runtimeLayout.home.absolutePath)
-                .put("session_name", "wuxianpi-setup")
-                .put("yield_time_ms", 1000)
-                .put("executorTool", "termux_exec_command")
-                .put("persistent", true)
-                .put("launchRequired", true),
-        )
+    override suspend fun startWuxianPiSetup(): OperitHostOperationResult = withContext(Dispatchers.IO) {
+        runCatching {
+            val staged = stageInstallBundle()
+            val inbox = staged.getString("inboxDirectory")
+            val command =
+                "OPENHOUSEAI_APK_VERSION_CODE='${staged.getLong("apkVersionCode")}' " +
+                    "'$SETUP_COMMAND' install --resource-inbox '$inbox'"
+            success(
+                "start_wuxianpi_setup",
+                JSONObject(staged.toString())
+                    .put("command", command)
+                    .put("working_directory", runtimeLayout.home.absolutePath)
+                    .put("session_name", "wuxianpi-setup")
+                    .put("yield_time_ms", 1000)
+                    .put("executorTool", "termux_exec_command")
+                    .put("persistent", true)
+                    .put("launchRequired", true),
+            )
+        }.getOrElse { failure("start_wuxianpi_setup", it.message ?: "Unable to stage APK install bundle") }
+    }
 
     override suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
         setupCommand("wuxianpi_setup_status", "status", 15_000L)
@@ -274,6 +274,96 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         )
         setupOperationResult(operation, action, result)
     }
+
+    private fun stageInstallBundle(): JSONObject {
+        val metadata = appContext.assets.open(INSTALL_BUNDLE_METADATA_ASSET).bufferedReader().use {
+            JSONObject(it.readText())
+        }
+        require(metadata.optInt("schema") == 1 && metadata.optString("bundleAsset") == INSTALL_BUNDLE_ASSET) {
+            "Invalid APK install bundle metadata"
+        }
+        val expectedSha = metadata.getString("bundleSha256").lowercase()
+        val expectedSize = metadata.getLong("bundleSize")
+        require(expectedSha.matches(Regex("[a-f0-9]{64}")) && expectedSize > 0L) {
+            "Invalid APK install bundle integrity metadata"
+        }
+        val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+        @Suppress("DEPRECATION")
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            packageInfo.versionCode.toLong()
+        }
+        val offerId = sha256("${appContext.packageName}:$versionCode:${packageInfo.lastUpdateTime}".toByteArray()).take(24)
+        val inbox = File(runtimeLayout.home, ".local/share/openhouseai/apk-resource-inbox/$offerId")
+        check(inbox.mkdirs() || inbox.isDirectory) { "Unable to create APK resource inbox" }
+        File(inbox, ".ready").delete()
+        val bundle = File(inbox, INSTALL_BUNDLE_NAME)
+        var copiedBytes = 0L
+        val reusable = bundle.isFile && bundle.length() == expectedSize && sha256(bundle) == expectedSha
+        if (!reusable) {
+            bundle.delete()
+            val digest = MessageDigest.getInstance("SHA-256")
+            appContext.assets.open(INSTALL_BUNDLE_ASSET).use { input ->
+                bundle.outputStream().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        if (read > 0) {
+                            output.write(buffer, 0, read)
+                            digest.update(buffer, 0, read)
+                            copiedBytes += read
+                        }
+                    }
+                }
+            }
+            check(copiedBytes == expectedSize && digest.digest().toHex() == expectedSha) {
+                bundle.delete()
+                "APK install bundle integrity verification failed"
+            }
+        }
+        check(bundle.length() == expectedSize && sha256(bundle) == expectedSha) {
+            bundle.delete()
+            "APK install bundle changed after staging"
+        }
+        val offer = JSONObject()
+            .put("schema", 1)
+            .put("offerId", offerId)
+            .put("apkVersionName", packageInfo.versionName.orEmpty())
+            .put("apkVersionCode", versionCode)
+            .put("bundleFile", INSTALL_BUNDLE_NAME)
+            .put("bundleSha256", expectedSha)
+            .put("bundleSize", expectedSize)
+            .put("resourceSet", JSONObject(metadata.getJSONObject("resourceSet").toString()))
+        File(inbox, "offer.json").writeText(offer.toString(2) + "\n")
+        check(File(inbox, ".ready").createNewFile()) { "Unable to publish APK resource ready marker" }
+        return JSONObject(offer.toString())
+            .put("operation", "stage_apk_install_bundle")
+            .put("asset", INSTALL_BUNDLE_ASSET)
+            .put("inboxDirectory", inbox.absolutePath)
+            .put("bundlePath", bundle.absolutePath)
+            .put("stagedBytes", copiedBytes)
+    }
+
+    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+        .digest(bytes)
+        .toHex()
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                if (read > 0) digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().toHex()
+    }
+
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     private fun embeddedPermissionNotRequired(operation: String, reason: String) = success(
         operation,

@@ -20,6 +20,7 @@ SETUP_NODE_DIST_MIRROR="auto"
 SETUP_NPM_REGISTRY="auto"
 SETUP_RUNTIME_ARCHIVE=""
 SETUP_RUNTIME_ARCHIVE_EXPLICIT=0
+SETUP_RESOURCE_INBOX=""
 SETUP_APK_VERSION_CODE="${OPENHOUSEAI_APK_VERSION_CODE:-}"
 
 log() {
@@ -65,6 +66,12 @@ compact_log() {
 current_resource_dir() {
   local native_root="$TERMUX_HOME/.local/share/wuxianpi/install-resources/current"
   local root="$TERMUX_HOME/.local/share/openhouseai/update-resources"
+  if [ -f "$native_root/bundle-manifest.json" ] \
+    && [ -f "$native_root/bootstrap/bootstrap.sh" ] \
+    && [ -f "$native_root/resources/resource-set.json" ]; then
+    printf '%s\n' "$native_root"
+    return 0
+  fi
   if [ -f "$native_root/.complete" ] \
     && [ -f "$native_root/bootstrap/bootstrap.sh" ] \
     && [ -f "$native_root/product-payloads/manifest.json" ]; then
@@ -103,7 +110,11 @@ payload_dir() {
   local root
   root="$(resource_dir)"
   [ -n "$root" ] || return 1
-  printf '%s/product-payloads\n' "$root"
+  if [ -f "$root/resources/resource-set.json" ]; then
+    printf '%s/resources\n' "$root"
+  else
+    printf '%s/product-payloads\n' "$root"
+  fi
 }
 
 runtime_archive_candidates() {
@@ -111,6 +122,7 @@ runtime_archive_candidates() {
   [ -n "$SETUP_RUNTIME_ARCHIVE" ] && printf '%s\n' "$SETUP_RUNTIME_ARCHIVE"
   printf '%s/.local/share/wuxianpi/install-resources/runtime-aarch64.tgz\n' "$TERMUX_HOME"
   root="$(resource_dir || true)"
+  [ -n "$root" ] && printf '%s/resources/runtime-aarch64.tgz\n' "$root"
   [ -n "$root" ] && printf '%s/product-payloads/runtime-aarch64.tgz\n' "$root"
 }
 
@@ -336,14 +348,17 @@ run_core_install() {
   run_bootstrap termux-packages
   run_bootstrap termux-node
 
-  local resource_updater="$TERMUX_HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh"
-  [ -x "$resource_updater" ] || {
-    log "缺少资源集合更新器：$resource_updater"
+  local resource_import="$TERMUX_PREFIX/bin/openhouse-resource-import"
+  [ -x "$resource_import" ] || {
+    log "缺少 APK 离线资源导入器：$resource_import"
+    return 1
+  }
+  [ -n "$SETUP_RESOURCE_INBOX" ] || {
+    log '缺少 APK 资源 Inbox；请使用 --resource-inbox 指定已发布的总包目录。'
     return 1
   }
   write_state running resource-set '正在收敛 OpenHouse 五个核心资源'
-  OPENHOUSEAI_APK_VERSION_CODE="$(resolve_apk_version_code)" \
-    "$resource_updater" apply
+  "$resource_import" "$SETUP_RESOURCE_INBOX"
 
   write_state running ubuntu '正在安装 Ubuntu'
   run_bootstrap ubuntu
@@ -395,7 +410,7 @@ resolve_apk_version_code() {
 
 write_request() {
   ensure_state_dir
-  printf '{"region":"%s","termuxRepo":"%s","ubuntuRootfsMirror":"%s","ubuntuAptMirror":"%s","nodeDistMirror":"%s","npmRegistry":"%s","runtimeArchive":"%s","apkVersionCode":%s,"updatedAt":%s}\n' \
+  printf '{"region":"%s","termuxRepo":"%s","ubuntuRootfsMirror":"%s","ubuntuAptMirror":"%s","nodeDistMirror":"%s","npmRegistry":"%s","runtimeArchive":"%s","resourceInbox":"%s","apkVersionCode":%s,"updatedAt":%s}\n' \
     "$(json_escape "$SETUP_REGION")" \
     "$(json_escape "$SETUP_TERMUX_REPO")" \
     "$(json_escape "$SETUP_UBUNTU_ROOTFS_MIRROR")" \
@@ -403,6 +418,7 @@ write_request() {
     "$(json_escape "$SETUP_NODE_DIST_MIRROR")" \
     "$(json_escape "$SETUP_NPM_REGISTRY")" \
     "$(json_escape "$SETUP_RUNTIME_ARCHIVE")" \
+    "$(json_escape "$SETUP_RESOURCE_INBOX")" \
     "$(resolve_apk_version_code)" \
     "$(date +%s)" > "$REQUEST_FILE.tmp"
   mv "$REQUEST_FILE.tmp" "$REQUEST_FILE"
@@ -431,6 +447,8 @@ load_request() {
   if [ "$SETUP_RUNTIME_ARCHIVE_EXPLICIT" -eq 0 ] && [ -n "$value" ]; then
     SETUP_RUNTIME_ARCHIVE="$value"
   fi
+  value="$(request_json_value "$file" resourceInbox)"
+  [ -z "$value" ] || SETUP_RESOURCE_INBOX="$value"
   value="$(request_json_number "$file" apkVersionCode)"
   [ -z "$value" ] || SETUP_APK_VERSION_CODE="$value"
 }
@@ -449,6 +467,11 @@ apply_options() {
         [ -n "${2:-}" ] || { log '缺少 --runtime-archive 的文件路径。'; return 2; }
         SETUP_RUNTIME_ARCHIVE="${2:-}"
         SETUP_RUNTIME_ARCHIVE_EXPLICIT=1
+        shift 2
+        ;;
+      --resource-inbox)
+        [ -n "${2:-}" ] || { log '缺少 --resource-inbox 的目录路径。'; return 2; }
+        SETUP_RESOURCE_INBOX="${2:-}"
         shift 2
         ;;
       *) log "未知安装参数：$1"; return 2 ;;
@@ -542,6 +565,7 @@ Options:
   --node-dist-mirror URL|auto
   --npm-registry URL|auto
   --runtime-archive FILE
+  --resource-inbox DIRECTORY
 EOF
 }
 

@@ -203,30 +203,32 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     }.getOrElse { failure("prepare_persistent_termux", it.message ?: "Unable to stage pre-tmux setup") }
 
     override suspend fun startWuxianPiSetup(): OperitHostOperationResult = runCatching {
-        val resourceSet = termuxHomeRepository.stageBundledResourceSet()
-        val bytes = termuxHomeRepository.stageAsset(SETUP_RESOURCES_ASSET, SETUP_RESOURCES_HOME_PATH)
+        val bundle = termuxHomeRepository.stageInstallBundle()
         val request = JSONObject()
             .put("version", 1)
             .put("region", "auto")
-            .put("apkVersionCode", resourceSet.apkVersionCode)
-            .put("runtimeArchive", resourceSet.runtimeArchive)
-            .put("resourcesArchive", "$TERMUX_HOME/$SETUP_RESOURCES_HOME_PATH")
+            .put("apkVersionCode", bundle.apkVersionCode)
+            .put("resourceInbox", bundle.inboxDirectory)
+            .put("resourcesArchive", bundle.bundlePath)
         termuxHomeRepository.writeText(SETUP_REQUEST_HOME_PATH, request.toString(2))
         val command = buildWuxianPiSetupLaunchCommand(
             TERMUX_PREFIX,
             TERMUX_HOME,
-            resourceSet.runtimeArchive,
-            resourceSet.apkVersionCode,
+            bundle.inboxDirectory,
+            bundle.bundlePath,
+            bundle.apkVersionCode,
         )
         success(
             "start_wuxianpi_setup",
             setupLaunchDetails(command)
-                .put("asset", SETUP_RESOURCES_ASSET)
-                .put("resourceSetVersion", resourceSet.version)
-                .put("resourceSetSequence", resourceSet.sequence)
-                .put("resourceDirectory", resourceSet.resourceDirectory)
-                .put("resourceStagedBytes", resourceSet.copiedBytes)
-                .put("stagedBytes", bytes)
+                .put("asset", INSTALL_BUNDLE_ASSET)
+                .put("offerId", bundle.offerId)
+                .put("resourceSetVersion", bundle.resourceSetVersion)
+                .put("resourceSetSequence", bundle.resourceSetSequence)
+                .put("resourceInbox", bundle.inboxDirectory)
+                .put("bundleSha256", bundle.bundleSha256)
+                .put("bundleSize", bundle.bundleSize)
+                .put("stagedBytes", bundle.copiedBytes)
                 .put("request", "$TERMUX_HOME/$SETUP_REQUEST_HOME_PATH"),
         )
     }.getOrElse { failure("start_wuxianpi_setup", it.message ?: "Unable to stage WuxianPi setup resources") }
@@ -257,33 +259,22 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             .put("flow", "native-pairing-runtime"),
     )
 
-    override suspend fun stageApkResourceOffer(
-        offerId: String,
-        resourceId: String,
-        archiveName: String,
-        payload: ByteArray,
-        sha256: String,
-    ): OperitHostOperationResult = runCatching {
-        require(offerId.matches(Regex("[a-f0-9]{24}"))) { "Invalid APK resource offer id" }
-        require(archiveName.matches(Regex("[A-Za-z0-9._-]+\\.tgz"))) { "Invalid archive name" }
-        val actualSha = MessageDigest.getInstance("SHA-256").digest(payload)
-            .joinToString("") { "%02x".format(it) }
-        require(actualSha == sha256.lowercase()) { "APK resource checksum changed before staging" }
-        val homePath = ".local/share/openhouseai/resource-manager/apk-offers/$offerId/$archiveName"
-        val copied = termuxHomeRepository.stageBytes(homePath, payload, actualSha)
+    override suspend fun stageApkInstallBundle(): OperitHostOperationResult = runCatching {
+        val staged = termuxHomeRepository.stageInstallBundle()
         success(
-            "stage_apk_resource_offer",
+            "stage_apk_install_bundle",
             JSONObject()
-                .put("offerId", offerId)
-                .put("resourceId", resourceId)
-                .put("path", "$TERMUX_HOME/$homePath")
-                .put("size", copied)
-                .put("sha256", actualSha),
+                .put("offerId", staged.offerId)
+                .put("inboxDirectory", staged.inboxDirectory)
+                .put("bundlePath", staged.bundlePath)
+                .put("bundleSize", staged.bundleSize)
+                .put("bundleSha256", staged.bundleSha256)
+                .put("stagedBytes", staged.copiedBytes),
         )
     }.getOrElse {
         failure(
-            "stage_apk_resource_offer",
-            it.message ?: "Unable to stage APK resource through Termux Home SAF",
+            "stage_apk_install_bundle",
+            it.message ?: "Unable to stage APK install bundle through Termux Home SAF",
         )
     }
 
@@ -468,17 +459,21 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
 internal fun buildWuxianPiSetupLaunchCommand(
     prefix: String,
     home: String,
-    runtimeArchive: String,
+    resourceInbox: String,
+    bundlePath: String,
     apkVersionCode: Long,
 ): String =
     "set -e; root='$home/.local/share/wuxianpi/install-resources/current'; " +
-        "runtime='$runtimeArchive'; " +
-        "[ -s \"\$runtime\" ] || { printf '%s\\n' 'Native WuxianPi Runtime asset is missing: \$runtime' >&2; exit 1; }; " +
+        "inbox='$resourceInbox'; bundle='$bundlePath'; " +
+        "[ -f \"\$inbox/.ready\" ] || { printf '%s\\n' 'APK resource offer is not ready' >&2; exit 1; }; " +
+        "[ -s \"\$bundle\" ] || { printf '%s\\n' 'APK install bundle is missing' >&2; exit 1; }; " +
         "rm -rf \"\$root\"; mkdir -p \"\$root\"; " +
-        "'$prefix/bin/tar' -xf '$home/$SETUP_RESOURCES_HOME_PATH' -C \"\$root\"; " +
-        "OPENHOUSEAI_APK_VERSION_CODE='$apkVersionCode' '$prefix/bin/bash' \"\$root/bootstrap/wuxianpi-setup\" install " +
+        "'$prefix/bin/tar' -xf \"\$bundle\" -C \"\$root\"; " +
+        "install -m 700 \"\$root/bootstrap/scripts/openhouse-resource-import\" '$prefix/bin/openhouse-resource-import'; " +
+        "install -m 700 \"\$root/bootstrap/scripts/openhouse-resource-manager\" '$prefix/bin/openhouse-resource-manager'; " +
+        "OPENHOUSEAI_APK_VERSION_CODE='$apkVersionCode' '$prefix/bin/bash' \"\$root/bootstrap/scripts/wuxianpi-setup\" install " +
         "--request '$home/$SETUP_REQUEST_HOME_PATH' " +
-        "--runtime-archive \"\$runtime\""
+        "--resource-inbox \"\$inbox\""
 
 internal fun setupLaunchDetails(command: String): JSONObject =
     JSONObject()
