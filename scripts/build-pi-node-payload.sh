@@ -28,7 +28,9 @@ fi
 (
   cd "$build"
   npm run typecheck
-  npm test
+  # Payload verification must be reproducible and must not block an APK build
+  # on optional remote model catalog refreshes.
+  PI_OFFLINE=1 npm test
   node -e 'const p=require("./node_modules/@earendil-works/pi-coding-agent/package.json");if(p.version!=="0.80.10")process.exit(1)'
 )
 rm -rf "$build/node_modules/@types" "$build/node_modules/typescript" "$build/node_modules/undici-types"
