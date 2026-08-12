@@ -7,7 +7,7 @@ payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 "$repo_dir/scripts/generate-resource-set-v2.sh" --check
 jq -e '
   .schema == 2 and .id == "openhouse-core-stack" and
-  .version == "2026.08.10.1" and .sequence == 2026081001 and
+  .version == "2026.08.12.1" and .sequence == 2026081201 and
   .abi == "arm64-v8a" and .minApkVersionCode == 126 and
   ([.resources[].id] | sort) == [
     "openhouse-control-plane", "openhouse-runtime", "openhouse-web", "service-manager", "wuyou"

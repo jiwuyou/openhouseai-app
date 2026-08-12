@@ -8,8 +8,8 @@ distribution_dir="$repo_dir/distribution/resources-v2"
 mode="${1:-generate}"
 
 resource_set_id="${OPENHOUSE_RESOURCE_SET_ID:-openhouse-core-stack}"
-resource_set_version="${OPENHOUSE_RESOURCE_SET_VERSION:-2026.08.10.1}"
-resource_set_sequence="${OPENHOUSE_RESOURCE_SET_SEQUENCE:-2026081001}"
+resource_set_version="${OPENHOUSE_RESOURCE_SET_VERSION:-2026.08.12.1}"
+resource_set_sequence="${OPENHOUSE_RESOURCE_SET_SEQUENCE:-2026081201}"
 min_apk_version_code="${OPENHOUSE_RESOURCE_MIN_APK_VERSION_CODE:-126}"
 
 case "$mode" in

@@ -2,13 +2,13 @@
   "schema": 1,
   "bundleAsset": "wuxianpi-install/openhouse-install-bundle.tar",
   "bundleFile": "openhouse-install-bundle.tar",
-  "bundleSha256": "ca3745317ee308acb86b9823b45c9e3387d48fb851f920e3f1c8d24b2e248687",
+  "bundleSha256": "bec38457dc4f4ad554893f91a9011832888a9997c575e8efa744c6dddf062804",
   "bundleSize": 38174720,
   "resourceSet": {
     "schema": 2,
     "id": "openhouse-core-stack",
-    "version": "2026.08.10.1",
-    "sequence": 2026081001,
+    "version": "2026.08.12.1",
+    "sequence": 2026081201,
     "abi": "arm64-v8a",
     "minApkVersionCode": 126,
     "resources": [

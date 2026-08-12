@@ -35,7 +35,7 @@
   ],
   "resourceSet": {
     "id": "openhouse-core-stack",
-    "version": "2026.08.10.1",
-    "manifestPath": "distribution/resources-v2/resource-sets/openhouse-core-stack/2026.08.10.1/manifest.json"
+    "version": "2026.08.12.1",
+    "manifestPath": "distribution/resources-v2/resource-sets/openhouse-core-stack/2026.08.12.1/manifest.json"
   }
 }
