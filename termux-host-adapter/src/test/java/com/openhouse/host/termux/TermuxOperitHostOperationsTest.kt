@@ -1,5 +1,7 @@
 package com.openhouse.host.termux
 
+import android.content.Context
+import android.content.ContextWrapper
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponentParser
@@ -168,6 +170,21 @@ class TermuxOperitHostOperationsTest {
     }
 
     @Test
+    fun embeddedHostDoesNotRequireExternalTermuxStages() = runBlocking {
+        val context = TestContext(temporaryFolder.root)
+        val operations = TermuxOperitHostOperations(context)
+
+        val configure = operations.configureTermuxExternalApps()
+        val verify = operations.verifyTermuxRunCommand()
+
+        listOf(configure, verify).forEach { result ->
+            assertTrue(result.success)
+            assertTrue(result.details.getBoolean("skipped"))
+            assertFalse(result.details.getBoolean("required"))
+        }
+    }
+
+    @Test
     fun registryLoadsOffCallerThreadAndPublishesDynamicApiEntry() {
         val dynamic = RegistryManifest.fromManifestJson(dynamicManifest())
         val cache = RecordingCache()
@@ -315,6 +332,13 @@ class TermuxOperitHostOperationsTest {
         val prootLog: File,
         val executor: TermuxHostCommandExecutor,
     )
+
+    private class TestContext(private val directory: File) : ContextWrapper(null) {
+        override fun getApplicationContext(): Context = this
+        override fun getFilesDir(): File = directory
+        override fun getCacheDir(): File = directory
+        override fun getPackageName(): String = "com.termux"
+    }
 
     private class RecordingCache : RegistryCache {
         var saved = false

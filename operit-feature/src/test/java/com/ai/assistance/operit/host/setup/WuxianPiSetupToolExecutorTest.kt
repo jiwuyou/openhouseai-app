@@ -36,6 +36,12 @@ class WuxianPiSetupToolExecutorTest {
         override fun requestTermuxRunCommandPermission(context: Context) =
             called(WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION)
 
+        override suspend fun configureTermuxExternalApps() =
+            called(WuxianPiSetupContract.TOOL_CONFIGURE_TERMUX_EXTERNAL_APPS)
+
+        override suspend fun verifyTermuxRunCommand() =
+            called(WuxianPiSetupContract.TOOL_VERIFY_TERMUX_RUN_COMMAND)
+
         override suspend fun preparePersistentTermux() =
             called(WuxianPiSetupContract.TOOL_PREPARE_PERSISTENT_TERMUX)
 

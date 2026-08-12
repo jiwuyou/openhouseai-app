@@ -19,6 +19,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 internal const val EXTERNAL_TERMUX_PACKAGE = "com.termux"
 internal const val TERMUX_SUCCESS_ERROR_CODE = -1
+internal const val TERMUX_READY_MARKER = "wuxianpi-termux-ready"
 
 internal enum class ExternalTermuxCommandTarget {
     TERMUX,
@@ -151,6 +152,20 @@ internal fun buildNativeTermuxCommandRequest(
             workingDirectory = home,
         )
     }
+}
+
+/** The post-reload readiness probe bypasses profiles and has no filesystem or process side effects. */
+internal fun buildTermuxRunCommandProbe(
+    termuxPackage: String = EXTERNAL_TERMUX_PACKAGE,
+): NativeTermuxCommandRequest {
+    val prefix = "/data/data/$termuxPackage/files/usr"
+    val home = "/data/data/$termuxPackage/files/home"
+    return NativeTermuxCommandRequest(
+        command = "printf $TERMUX_READY_MARKER",
+        executable = "$prefix/bin/printf",
+        arguments = listOf(TERMUX_READY_MARKER),
+        workingDirectory = home,
+    )
 }
 
 internal fun interface NativeTermuxRawCommandTransport {

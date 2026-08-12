@@ -5,6 +5,7 @@ PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 MANAGER_ROOT="${OPENHOUSEAI_RESOURCE_MANAGER_ROOT:-$HOME/.local/share/openhouseai/resource-manager}"
 TRANSACTIONS="$MANAGER_ROOT/transactions"
 OFFER_RECEIPTS="$MANAGER_ROOT/receipts/apk-offers"
+FAILED_ROOT="$MANAGER_ROOT/failed"
 INBOX_ROOT="$HOME/.local/share/openhouseai/apk-resource-inbox"
 BUNDLE_NAME="openhouse-install-bundle.tar"
 
@@ -98,27 +99,91 @@ verify_extracted_bundle() {
 }
 
 write_offer_receipt() {
-  local offer_id="$1" offer="$2" installed_set="$3" target temporary
+  local offer_id="$1" offer="$2" delivery="$3" content="$4" activation="$5" target temporary installed_sha=''
   target="$OFFER_RECEIPTS/$offer_id.json"
   temporary="$target.tmp.$$"
+  [[ ! -f "$MANAGER_ROOT/installed-set.json" ]] \
+    || installed_sha="$(sha_file "$MANAGER_ROOT/installed-set.json")"
   jq -n \
     --arg offerId "$offer_id" \
     --arg bundleSha256 "$(jq -r '.bundleSha256' "$offer")" \
     --arg resourceSetVersion "$(jq -r '.resourceSet.version' "$offer")" \
     --argjson resourceSetSequence "$(jq -r '.resourceSet.sequence' "$offer")" \
-    --arg installedSetSha256 "$(sha_file "$installed_set")" \
-    --arg completedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:1,offerId:$offerId,bundleSha256:$bundleSha256,resourceSetVersion:$resourceSetVersion,resourceSetSequence:$resourceSetSequence,installedSetSha256:$installedSetSha256,status:"satisfied",completedAt:$completedAt}' \
+    --arg installedSetSha256 "$installed_sha" \
+    --arg delivery "$delivery" --arg content "$content" --arg activation "$activation" \
+    --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:2,offerId:$offerId,bundleSha256:$bundleSha256,resourceSetVersion:$resourceSetVersion,resourceSetSequence:$resourceSetSequence,installedSetSha256:$installedSetSha256,delivery:$delivery,content:$content,activation:$activation,status:"pending",updatedAt:$updatedAt}' \
     >"$temporary"
   chmod 600 "$temporary"
+  mv -f "$temporary" "$target"
+}
+
+IMPORT_TRANSACTION=''
+IMPORT_FAILED_STEP='initializing'
+
+write_import_failure_snapshot() {
+  local failed="$1" message="$2" exit_code="$3" temporary
+  local resource_set=missing plan=missing previous_links=missing diagnostics=missing
+  [[ -f "$failed/bundle/resources/resource-set.json" ]] && resource_set=bundle/resources/resource-set.json
+  [[ -f "$failed/plan.tsv" ]] && plan=plan.tsv
+  [[ -f "$failed/previous-links.tsv" ]] && previous_links=previous-links.tsv
+  if [[ ! -f "$failed/diagnostics.log" ]]; then
+    printf 'phase=delivery\nfailedStep=%s\nmessage=%s\nexitCode=%s\n' \
+      "$IMPORT_FAILED_STEP" "$message" "$exit_code" >"$failed/diagnostics.log"
+  fi
+  diagnostics=diagnostics.log
+  chmod 600 "$failed/diagnostics.log"
+  temporary="$failed/failure.json.tmp.$$"
+  jq -n --arg transactionId "$(basename "$failed")" \
+    --arg phase delivery --arg failedStep "$IMPORT_FAILED_STEP" --arg message "$message" \
+    --arg resourceSet "$resource_set" --arg plan "$plan" \
+    --arg previousLinks "$previous_links" --arg diagnostics "$diagnostics" \
+    --argjson exitCode "$exit_code" --arg failedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:2,transactionId:$transactionId,phase:$phase,failedStep:$failedStep,message:$message,exitCode:$exitCode,failedAt:$failedAt,resourceSet:$resourceSet,plan:$plan,previousLinks:$previousLinks,diagnostics:$diagnostics}' \
+    >"$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$failed/failure.json"
+  temporary="$FAILED_ROOT/last-failure.json.tmp.$$"
+  cp "$failed/failure.json" "$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$FAILED_ROOT/last-failure.json"
+}
+
+record_import_diagnostic() {
+  [[ -n "$IMPORT_TRANSACTION" && -d "$IMPORT_TRANSACTION" ]] || return 0
+  printf '%s step=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$IMPORT_FAILED_STEP" "$1" >>"$IMPORT_TRANSACTION/diagnostics.log"
+  chmod 600 "$IMPORT_TRANSACTION/diagnostics.log"
+}
+
+cleanup_import_transaction() {
+  local status="$1" failed
+  [[ -n "$IMPORT_TRANSACTION" && -d "$IMPORT_TRANSACTION" ]] || return "$status"
+  if [[ "$status" -eq 0 ]]; then
+    rm -rf -- "$IMPORT_TRANSACTION"
+  else
+    failed="$FAILED_ROOT/$(basename "$IMPORT_TRANSACTION")"
+    mkdir -p "$FAILED_ROOT"
+    mv "$IMPORT_TRANSACTION" "$failed"
+    write_import_failure_snapshot "$failed" 'APK bundle import failed' "$status"
+    log "失败现场已保留：$failed"
+  fi
+  IMPORT_TRANSACTION=''
+  return "$status"
+}
+
+atomic_install_script() {
+  local source="$1" target="$2" temporary
+  temporary="$target.tmp.$$"
+  install -m 700 "$source" "$temporary"
   mv -f "$temporary" "$target"
 }
 
 main() {
   require_tools
   [[ $# -eq 1 ]] || die 'usage: openhouse-resource-import INBOX_DIRECTORY'
-  mkdir -p "$INBOX_ROOT" "$TRANSACTIONS" "$OFFER_RECEIPTS"
-  chmod 700 "$INBOX_ROOT" "$MANAGER_ROOT" "$TRANSACTIONS" "$OFFER_RECEIPTS"
+  mkdir -p "$INBOX_ROOT" "$TRANSACTIONS" "$OFFER_RECEIPTS" "$FAILED_ROOT"
+  chmod 700 "$INBOX_ROOT" "$MANAGER_ROOT" "$TRANSACTIONS" "$OFFER_RECEIPTS" "$FAILED_ROOT"
 
   local inbox offer ready bundle offer_id expected_sha expected_size actual_size transaction extracted
   inbox="$(canonical_inbox "$1")"
@@ -151,17 +216,24 @@ main() {
 
   if [[ -f "$OFFER_RECEIPTS/$offer_id.json" ]] \
     && [[ "$(jq -r '.bundleSha256 // empty' "$OFFER_RECEIPTS/$offer_id.json")" == "$expected_sha" ]] \
+    && [[ "$(jq -r '.content // empty' "$OFFER_RECEIPTS/$offer_id.json")" == installed ]] \
     && "$PREFIX/bin/bash" "$PREFIX/bin/openhouse-resource-manager" verify >/dev/null 2>&1; then
-    log "offer already satisfied: $offer_id"
+    log "offer content already installed; activation remains independent: $offer_id"
     exit 0
   fi
+  write_offer_receipt "$offer_id" "$offer" ready pending pending
 
+  IMPORT_FAILED_STEP=validate-bundle
   validate_tar_paths "$bundle"
   transaction="$TRANSACTIONS/apk-offer-$offer_id-$$"
   extracted="$transaction/bundle"
-  trap 'rm -rf -- "$transaction"' EXIT
+  IMPORT_TRANSACTION="$transaction"
+  trap 'cleanup_import_transaction $?' EXIT
+  record_import_diagnostic "offerId=$offer_id bundleSha256=$expected_sha"
   mkdir -p "$extracted"
+  IMPORT_FAILED_STEP=extract-bundle
   tar -xf "$bundle" -C "$extracted" --no-same-owner --no-same-permissions
+  IMPORT_FAILED_STEP=verify-bundle
   verify_extracted_bundle "$extracted"
   jq -e --slurpfile set "$extracted/resources/resource-set.json" '
     .resourceSet.id == $set[0].id and
@@ -169,19 +241,22 @@ main() {
     .resourceSet.sequence == $set[0].sequence and
     .resourceSet.abi == $set[0].abi
   ' "$offer" >/dev/null || die 'offer resource set does not match the install bundle'
-  install -m 700 "$extracted/bootstrap/scripts/openhouse-resource-manager" "$PREFIX/bin/openhouse-resource-manager"
-  install -m 700 "$extracted/bootstrap/scripts/openhouse-resource-import" "$PREFIX/bin/openhouse-resource-import"
+  IMPORT_FAILED_STEP=install-resource-manager
+  atomic_install_script "$extracted/bootstrap/scripts/openhouse-resource-manager" "$PREFIX/bin/openhouse-resource-manager"
+  atomic_install_script "$extracted/bootstrap/scripts/openhouse-resource-import" "$PREFIX/bin/openhouse-resource-import"
 
+  IMPORT_FAILED_STEP=install-content
   OPENHOUSEAI_RESOURCE_SET_FILE="$extracted/resources/resource-set.json" \
   OPENHOUSEAI_RESOURCE_SOURCE_DIR="$extracted/resources" \
   OPENHOUSEAI_APK_VERSION_CODE="$(jq -r '.apkVersionCode' "$offer")" \
     "$PREFIX/bin/bash" "$PREFIX/bin/openhouse-resource-manager" apply
+  IMPORT_FAILED_STEP=verify-content
   "$PREFIX/bin/bash" "$PREFIX/bin/openhouse-resource-manager" verify
-  write_offer_receipt "$offer_id" "$offer" "$MANAGER_ROOT/installed-set.json"
-  printf '{"offerId":"%s","status":"satisfied"}\n' "$offer_id" >"$inbox/.consumed"
-  rm -rf -- "$transaction"
+  write_offer_receipt "$offer_id" "$offer" ready installed pending
+  printf '{"schema":2,"offerId":"%s","delivery":"ready","content":"installed","activation":"pending","status":"pending"}\n' "$offer_id" >"$inbox/.imported"
+  cleanup_import_transaction 0
   trap - EXIT
-  log "offer imported: $offer_id"
+  log "offer content imported; runtime activation is pending: $offer_id"
 }
 
 main "$@"

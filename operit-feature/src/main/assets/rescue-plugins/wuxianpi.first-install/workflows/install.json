@@ -33,7 +33,27 @@
       "kind": "tool",
       "tool": "request_termux_run_command_permission",
       "when": "runtimeHost.externalTermux",
-      "description": "获取外部 Termux RUN_COMMAND 权限并验证 allow-external-apps = true；验证成功前不进入下一步。"
+      "description": "只获取外部 Termux RUN_COMMAND Android 权限；此时不得执行命令探针。"
+    },
+    {
+      "id": "configure-external-apps",
+      "kind": "tool",
+      "tool": "configure_termux_external_apps",
+      "when": "runtimeHost.externalTermux",
+      "description": "通过已授权 SAF 读取并规范 $HOME/.termux/termux.properties，使其仅保留 allow-external-apps = true；写后重新读取验证。"
+    },
+    {
+      "id": "reload-termux-settings",
+      "kind": "user-action",
+      "when": "runtimeHost.externalTermux",
+      "description": "暂停工作流：请打开 Termux，在终端执行 termux-reload-settings，执行完成后返回维修助手继续。"
+    },
+    {
+      "id": "verify-run-command",
+      "kind": "tool",
+      "tool": "verify_termux_run_command",
+      "when": "runtimeHost.externalTermux",
+      "description": "仅在用户完成 termux-reload-settings 后执行无副作用 RUN_COMMAND 探针。"
     },
     {
       "id": "persistent-terminal",
@@ -132,31 +152,18 @@
       "description": "All-in-One 使用 stage-setup 返回的命令导入同一份 canonical TAR。"
     },
     {
-      "id": "start-openhouse-control-plane",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "\"$PREFIX/bin/openhouse-control-plane-start\"",
-        "working_directory": "$HOME",
-        "session_name": "openhouse-control-plane-start",
-        "yield_time_ms": 1000
-      },
-      "description": "通过固定 Termux 入口启动 service-manager；原样保留 stdout、stderr 和退出码。"
-    },
-    {
-      "id": "verify",
+      "id": "verify-content",
       "kind": "poll-tool",
       "tool": "get_wuxianpi_setup_status",
       "retryPolicy": {
         "maxAttempts": 10,
         "delayMs": 3000,
         "retryWhen": [
-          "runsvdir 尚未就绪",
-          "sv up service-manager 返回 unable to change to service directory",
-          "service-manager 20087 健康检查暂不可达"
+          "资源导入仍在运行",
+          "Ubuntu 安装仍在运行"
         ]
       },
-      "description": "轮询系统依赖、Ubuntu、资源集合和 service-manager 状态。"
+      "description": "仅等待 delivery=ready、content=installed 和 Ubuntu 就绪；运行激活尚未开始。"
     },
     {
       "id": "read-openhouse-registration-script",
@@ -193,28 +200,37 @@
       "description": "写入当前版本的桌面组件注册脚本。"
     },
     {
-      "id": "register-openhouse-component",
+      "id": "activate-runtime",
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "chmod 700 \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\" && \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\" register",
+        "command": "\"$PREFIX/bin/wuxianpi-setup\" activate --request \"$HOME/.local/state/wuxianpi-setup/request.json\"",
         "working_directory": "$HOME",
-        "session_name": "wuxianpi-openhouse-component-register",
+        "session_name": "wuxianpi-runtime-activation",
         "yield_time_ms": 1000
       },
-      "description": "通过 canonical service-manager 注册 yuanshengwuxianpi 桌面组件。"
+      "description": "独立、可重试地创建 canonical 配置、安装 runit、启动 service-manager、注册资源、验证带 token 服务列表和 WuxianPi health；失败绝不回滚 content。"
     },
     {
-      "id": "verify-openhouse-component",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "\"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\" verify",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-openhouse-component-verify",
-        "yield_time_ms": 1000
+      "id": "verify-activation",
+      "kind": "poll-tool",
+      "tool": "get_wuxianpi_setup_status",
+      "retryPolicy": {
+        "maxAttempts": 10,
+        "delayMs": 3000,
+        "retryWhen": [
+          "activation=pending",
+          "service-manager 20087 暂不可达",
+          "registry 同步仍在进行"
+        ]
       },
-      "description": "验证 components.d/yuanshengwuxianpi.json 和 registry API。"
+      "description": "要求 activation=ready、canonicalAuthReady、serviceListReady、registryFileReady、registryApiReady 和 wuxianPiHealth 全部为 true。"
+    },
+    {
+      "id": "complete-resource-offer",
+      "kind": "tool",
+      "tool": "complete_apk_resource_offer",
+      "description": "仅在宿主重新核验 offerId/sequence、activation=ready、canonical auth、服务列表、registry 和 WuxianPi health 后，将 APK offer 标记 satisfied。"
     }
   ]
 }

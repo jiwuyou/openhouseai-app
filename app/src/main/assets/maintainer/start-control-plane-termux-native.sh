@@ -151,6 +151,34 @@ service_manager_auth_ready() (
   curl -q -fsS --max-time 3 -K "$curl_cfg" "$url/api/v1/services" >/dev/null 2>&1
 )
 
+diagnostic_result() {
+  printf '[SmallPhoneAI control-plane] diagnostic %s=%s\n' "$1" "$2"
+}
+
+diagnose_control_plane() {
+  local binary="$1" config="$2" bind="$3" url="$4" pids status
+  if [ -s "$config" ]; then diagnostic_result canonicalConfig ok; else diagnostic_result canonicalConfig missing; fi
+  if [ -s "$HOME/.config/service-manager/config.json" ]; then diagnostic_result legacyConfig present; else diagnostic_result legacyConfig absent; fi
+  if termux_runsvdir_active; then diagnostic_result runsvdir running; else diagnostic_result runsvdir stopped; fi
+  if [ -x "$SVDIR/service-manager/run" ]; then diagnostic_result runitServiceFile ok; else diagnostic_result runitServiceFile missing; fi
+  status="$(env SVDIR="$SVDIR" sv status service-manager 2>/dev/null || true)"
+  case "$status" in run:*) diagnostic_result runitService running ;; down:*) diagnostic_result runitService stopped ;; *) diagnostic_result runitService unknown ;; esac
+  pids="$(service_manager_serve_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//' || true)"
+  case "${pids:-}" in '') diagnostic_result processCount 0 ;; *' '*) diagnostic_result processCount multiple ;; *) diagnostic_result processCount 1 ;; esac
+  if service_manager_instance_matches_expected "$binary" "$config" "$bind"; then diagnostic_result instanceArguments matched; else diagnostic_result instanceArguments mismatched; fi
+  if service_manager_health_ready "$url"; then diagnostic_result health20087 ok; else diagnostic_result health20087 failed; fi
+  if service_manager_auth_ready "$config" "$url"; then diagnostic_result canonicalAuth ok; else diagnostic_result canonicalAuth failed; fi
+}
+
+fail_control_plane_start() {
+  local code="$1" message="$2" binary="${3:-}" \
+    config="${4:-$HOME/.config/openhouseai/service-manager/config.json}" \
+    bind="${5:-127.0.0.1:20087}" url="${6:-http://127.0.0.1:20087}"
+  warn "$message"
+  diagnose_control_plane "$binary" "$config" "$bind" "$url"
+  return "$code"
+}
+
 service_manager_serve_pids() {
   local proc comm args
   if command -v pgrep >/dev/null 2>&1; then
@@ -231,39 +259,42 @@ start_control_plane() {
   local config bind url binary existing_pids log_dir log_file service_root runsvdir_pid sv_status
 
   is_termux_native || {
-    warn "运行中枢只允许从 Termux native 环境启动。"
-    return 2
+    fail_control_plane_start 2 "运行中枢只允许从 Termux native 环境启动。"
+    return $?
   }
   command -v curl >/dev/null 2>&1 || {
-    warn "缺少 curl，无法验证 service-manager health 与 canonical token。"
-    return 2
+    fail_control_plane_start 2 "缺少 curl，无法验证 service-manager health 与 canonical token。"
+    return $?
   }
 
   config="$(find_canonical_config || true)"
   if [ -z "$config" ]; then
-    warn "未找到现有 OpenHouse canonical service-manager 配置；不会创建或恢复配置。"
-    return 2
+    fail_control_plane_start 2 "未找到现有 OpenHouse canonical service-manager 配置；不会创建或恢复配置。"
+    return $?
   fi
   if [ -z "$(read_config_value "$config" auth_token authToken || true)" ]; then
-    warn "canonical service-manager 配置缺少 token；不会修改配置：$config"
-    return 2
+    fail_control_plane_start 2 "canonical service-manager 配置缺少 token；不会修改配置。" '' "$config"
+    return $?
   fi
   bind="$(config_bind "$config")" || {
-    warn "canonical service-manager bind 无效：$config"
-    return 2
+    fail_control_plane_start 2 "canonical service-manager bind 无效。" '' "$config"
+    return $?
   }
-  url="$(config_url "$config")" || return 2
+  url="$(config_url "$config")" || {
+    fail_control_plane_start 2 "canonical service-manager URL 无效。" '' "$config" "$bind"
+    return $?
+  }
 
   binary="$(find_installed_service_manager || true)"
   if [ -z "$binary" ]; then
-    warn "未找到当前已安装的 Termux native service-manager；不会从 APK 安装或覆盖。"
-    return 2
+    fail_control_plane_start 2 "未找到当前已安装的 Termux native service-manager；不会从 APK 安装或覆盖。" '' "$config" "$bind" "$url"
+    return $?
   fi
   service_root="$SVDIR"
   log "Termux service environment: SVDIR=$SVDIR LOGDIR=$LOGDIR serviceRoot=$service_root"
   if ! ensure_termux_services_daemon; then
-    warn "termux-services/runsvdir 不可用；正式启动不会回退到 nohup。"
-    return 2
+    fail_control_plane_start 2 "termux-services/runsvdir 不可用；正式启动不会回退到 nohup。" "$binary" "$config" "$bind" "$url"
+    return $?
   fi
   runsvdir_pid="$(oh_termux_runsvdir_pid || true)"
   log "runit readiness: runsvdirPid=${runsvdir_pid:-unavailable} serviceManagerRunFile=$service_root/service-manager/run"
@@ -275,18 +306,19 @@ start_control_plane() {
       log "运行中枢已由 runit 常驻并通过 canonical config 认证：$url"
       return 0
     fi
-    warn "service-manager API 可达，但未同时满足 canonical 认证、唯一实例与 runit 常驻；请运行受控修复。"
+    diagnose_control_plane "$binary" "$config" "$bind" "$url"
+    warn "service-manager API 可达，但 canonical 认证、唯一实例或 runit 常驻失败；见逐项 diagnostic。"
     return 1
   fi
 
   existing_pids="$(service_manager_serve_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//' || true)"
   if [ -n "$existing_pids" ]; then
-    warn "检测到已有 service-manager serve 进程但 canonical API 不可用；不会停止或替换：pids=$existing_pids"
-    return 1
+    fail_control_plane_start 1 "检测到已有 service-manager serve 进程但 canonical API 不可用；不会停止或替换。" "$binary" "$config" "$bind" "$url"
+    return $?
   fi
   if canonical_port_open "$bind"; then
-    warn "canonical 端口已被其他进程占用；不会启动第二实例：$bind"
-    return 1
+    fail_control_plane_start 1 "canonical 端口已被其他进程占用；不会启动第二实例。" "$binary" "$config" "$bind" "$url"
+    return $?
   fi
 
   log_dir="${SMALLPHONEAI_LOG_DIR:-$HOME/.smallphoneai/logs}"
@@ -297,17 +329,17 @@ start_control_plane() {
 
   log "正在通过 termux-services 安装并启动运行中枢：binary=$binary bind=$bind"
   "$binary" install-service --config "$config" --bind "$bind" --log-file "$log_file" || {
-    warn "service-manager install-service 失败。"
-    return 1
+    fail_control_plane_start 1 "service-manager install-service 失败。" "$binary" "$config" "$bind" "$url"
+    return $?
   }
   [ -x "$service_root/service-manager/run" ] || {
-    warn "service-manager runit run 文件未生成：$service_root/service-manager/run"
-    return 1
+    fail_control_plane_start 1 "service-manager runit run 文件未生成。" "$binary" "$config" "$bind" "$url"
+    return $?
   }
   if ! oh_service_manager_sv_up_with_retry service-manager \
     "${SMALLPHONEAI_SERVICE_MANAGER_SV_UP_ATTEMPTS:-10}"; then
-    warn "sv up service-manager 在有限重试后仍失败：SVDIR=$SVDIR run=$service_root/service-manager/run"
-    return 1
+    fail_control_plane_start 1 "sv up service-manager 在有限重试后仍失败。" "$binary" "$config" "$bind" "$url"
+    return $?
   fi
   sv_status="$(env SVDIR="$service_root" sv status service-manager 2>/dev/null || true)"
   log "runit service status: svStatus=${sv_status:-unavailable} healthUrl=$url/api/v1/health"
@@ -320,7 +352,8 @@ start_control_plane() {
 
   env SVDIR="$service_root" sv down service-manager >/dev/null 2>&1 || true
   sv_status="$(env SVDIR="$service_root" sv status service-manager 2>/dev/null || true)"
-  warn "service-manager 未能通过有限等待、canonical 认证、唯一实例与 runit 常驻验证；runsvdirPid=${runsvdir_pid:-unavailable} serviceManagerRunFile=$service_root/service-manager/run svStatus=${sv_status:-unavailable} healthUrl=$url/api/v1/health 正式日志：$log_file"
+  diagnose_control_plane "$binary" "$config" "$bind" "$url"
+  warn "service-manager 未通过有限等待；runsvdirPid=${runsvdir_pid:-unavailable} serviceManagerRunFile=$service_root/service-manager/run svStatus=${sv_status:-unavailable} healthUrl=$url/api/v1/health 正式日志：$log_file"
   return 1
 }
 

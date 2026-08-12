@@ -29,7 +29,7 @@ import com.ai.assistance.operit.rescue.ui.plugins.RescuePluginMarketActivity
 class RescueToolDispatcher private constructor(
     private val appContext: Context,
     private val toolHandler: AIToolHandler?,
-    operationsProvider: () -> OperitHostOperations,
+    private val operationsProvider: () -> OperitHostOperations,
     private val deferUserActions: Boolean,
 ) {
     data class Completion(
@@ -140,11 +140,7 @@ class RescueToolDispatcher private constructor(
         try {
             when (toolName) {
                 in WuxianPiSetupContract.toolNames ->
-                    if (deferUserActions && toolName in DEFERRED_USER_ACTION_TOOLS) {
-                        deferredUserAction(toolName)
-                    } else {
-                        hostCompletion(setupToolExecutor.execute(toolName, appContext))
-                    }
+                    hostCompletion(setupToolExecutor.execute(toolName, appContext))
                 RescuePluginContract.TOOL_SEARCH ->
                     success(pluginManager.search(args.optString("query")))
                 RescuePluginContract.TOOL_LIST_INSTALLED ->
@@ -230,9 +226,23 @@ class RescueToolDispatcher private constructor(
                                 "Unsupported APK resource offer status"
                             )
                         }
+                    val detail = args.getString("detail")
+                    if (status == ApkResourceOfferStatus.SATISFIED) {
+                        val offer = requireNotNull(resourceOfferStore.current()) {
+                            "APK resource offer is unavailable"
+                        }
+                        val hostStatus = operationsProvider().wuxianPiSetupStatus()
+                        require(hostStatus.success) {
+                            hostStatus.error ?: "Unable to verify the real Termux setup status"
+                        }
+                        val gate = verifySatisfiedApkResourceOffer(offer.toJson(), hostStatus.details)
+                        require(gate.accepted) {
+                            "APK resource offer cannot be satisfied: ${gate.failures.joinToString(", ")}"
+                        }
+                    }
                     success(
                         requireNotNull(
-                            pluginManager.completeApkResourceOffer(status, args.getString("detail"))
+                            pluginManager.completeApkResourceOffer(status, detail)
                         ) { "APK resource offer is unavailable" }.toJson()
                     )
                 }
@@ -347,25 +357,6 @@ class RescueToolDispatcher private constructor(
     private fun success(details: JSONObject): Completion =
         Completion(details.toString(), details, isError = false, error = null)
 
-    private fun deferredUserAction(toolName: String): Completion {
-        val message = "请先阅读说明，然后点击聊天中的操作卡片继续。"
-        val details =
-            JSONObject()
-                .put(WuxianPiSetupContract.DETAIL_OPERATION, toolName)
-                .put(WuxianPiSetupContract.DETAIL_SUPPORTED, true)
-                .put(WuxianPiSetupContract.DETAIL_SUCCESS, false)
-                .put(WuxianPiSetupContract.DETAIL_USER_ACTION_REQUIRED, true)
-                .put(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION, toolName)
-                .put("message", message)
-        return Completion(
-            content = message,
-            details = details,
-            isError = false,
-            error = null,
-            userActionRequired = true,
-        )
-    }
-
     private suspend fun deferredPluginCommentPublish(draftId: String): Completion {
         val details = pluginManager.preparePublish(draftId)
         val message = details.getString("message")
@@ -403,11 +394,6 @@ class RescueToolDispatcher private constructor(
 
     companion object {
         private const val NATIVE_APPLICATION_ID = "com.wuxianpi"
-        private val DEFERRED_USER_ACTION_TOOLS =
-            setOf(
-                WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
-                WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION,
-            )
         private const val DEFAULT_RUNTIME_HEALTH_URL = "http://127.0.0.1:8765/health"
         private val PAYLOAD_ASSET_PATHS =
             listOf(
@@ -423,4 +409,102 @@ class RescueToolDispatcher private constructor(
             com.ai.assistance.operit.core.config.SystemToolPrompts.fileSystemTools.tools
                 .mapTo(linkedSetOf()) { it.name }
     }
+}
+
+internal data class ApkResourceOfferVerification(
+    val accepted: Boolean,
+    val failures: List<String>,
+)
+
+/** SATISFIED means the host independently proved both installed content and live activation. */
+internal fun verifySatisfiedApkResourceOffer(
+    offer: JSONObject,
+    hostDetails: JSONObject,
+): ApkResourceOfferVerification {
+    val status = hostDetails.optJSONObject("status") ?: hostDetails
+    val failures = mutableListOf<String>()
+    val expectedOfferId = offer.optString("offerId")
+    val expectedSequence = offer.optJSONObject("resourceSet")?.optLong("sequence", -1L) ?: -1L
+
+    fun state(vararg keys: String): String? = findStatusValue(status, keys.toSet())
+    fun requireState(label: String, expected: String, vararg keys: String) {
+        val actual = state(*keys)
+        if (!actual.equals(expected, ignoreCase = true)) failures += "$label=${actual ?: "missing"}"
+    }
+    fun requireOk(label: String, vararg keys: String) {
+        val actual = state(*keys)
+        if (actual?.lowercase() !in VERIFIED_OK_VALUES) failures += "$label=${actual ?: "missing"}"
+    }
+
+    requireState("delivery", "ready", "delivery", "deliveryState", "resourceDelivery")
+    requireState("content", "installed", "content", "contentState", "installState")
+    requireState("activation", "ready", "activation", "activationState")
+
+    val actualOfferId = state("offerId", "apkOfferId", "resourceOfferId")
+    if (expectedOfferId.isBlank() || actualOfferId != expectedOfferId) {
+        failures += "offerId=${actualOfferId ?: "missing"}"
+    }
+    val actualSequence = findStatusLong(status, setOf("resourceSetSequence", "setSequence", "sequence"))
+    if (expectedSequence < 0L || actualSequence != expectedSequence) {
+        failures += "sequence=${actualSequence ?: "missing"}"
+    }
+
+    requireOk("canonicalAuth", "canonicalAuth", "canonicalAuthReady", "canonicalAuthentication")
+    requireOk(
+        "serviceList",
+        "serviceList",
+        "serviceListReady",
+        "serviceListQuery",
+        "canonicalServiceList",
+    )
+    val unifiedRegistry = state("registry", "registryStatus")
+    if (unifiedRegistry?.lowercase() !in VERIFIED_OK_VALUES) {
+        requireOk("registryFile", "registryFile", "registryFileReady")
+        requireOk("registryApi", "registryApi", "registryApiReady")
+    }
+    requireOk("wuxianpiHealth", "wuxianpiHealth", "runtimeHealth", "wuxianPiHealth")
+
+    return ApkResourceOfferVerification(failures.isEmpty(), failures)
+}
+
+private val VERIFIED_OK_VALUES = setOf("ok", "ready", "success", "healthy", "true")
+
+private fun findStatusValue(root: JSONObject, keys: Set<String>, depth: Int = 0): String? {
+    if (depth > 4) return null
+    keys.forEach { key ->
+        if (root.has(key) && !root.isNull(key)) {
+            val value = root.get(key)
+            return when (value) {
+                is Boolean -> value.toString()
+                is Number, is String -> value.toString().trim()
+                is JSONObject ->
+                    listOf("state", "status", "result", "value", "ok")
+                        .firstNotNullOfOrNull { nested ->
+                            value.takeIf { it.has(nested) && !it.isNull(nested) }
+                                ?.get(nested)?.toString()?.trim()
+                        }
+                else -> null
+            }
+        }
+    }
+    root.keys().forEach { key ->
+        val child = root.optJSONObject(key) ?: return@forEach
+        findStatusValue(child, keys, depth + 1)?.let { return it }
+    }
+    return null
+}
+
+private fun findStatusLong(root: JSONObject, keys: Set<String>, depth: Int = 0): Long? {
+    if (depth > 4) return null
+    keys.forEach { key ->
+        if (root.has(key) && !root.isNull(key)) {
+            root.optLong(key, Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }?.let { return it }
+            root.optString(key).toLongOrNull()?.let { return it }
+        }
+    }
+    root.keys().forEach { key ->
+        val child = root.optJSONObject(key) ?: return@forEach
+        findStatusLong(child, keys, depth + 1)?.let { return it }
+    }
+    return null
 }

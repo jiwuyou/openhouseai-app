@@ -16,6 +16,9 @@ class RescuePiChatEngineSetupPromptTest {
                 "prepare_runtime_host",
                 "request_termux_home_access",
                 "request_termux_run_command_permission",
+                "configure_termux_external_apps",
+                "termux-reload-settings",
+                "verify_termux_run_command",
                 "prepare_persistent_termux",
                 "start_wuxianpi_setup",
                 "get_wuxianpi_setup_status",
@@ -33,6 +36,7 @@ class RescuePiChatEngineSetupPromptTest {
         assertTrue(prompt.contains("not Rescue AI process memory"))
         assertTrue(prompt.contains("termuxHomeEnvironment=repo:termux-home"))
         assertTrue(prompt.contains("All-in-One host keeps its direct file behavior"))
+        assertTrue(prompt.contains("Never call verify_termux_run_command before"))
         assertTrue(prompt.contains("default every Termux command, short or long, to termux_exec_command"))
     }
 

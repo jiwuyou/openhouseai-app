@@ -23,6 +23,13 @@ internal const val INSTALL_BUNDLE_ASSET = "wuxianpi-install/openhouse-install-bu
 internal const val INSTALL_BUNDLE_METADATA_ASSET = "wuxianpi-install/openhouse-install-bundle.json"
 internal const val INSTALL_BUNDLE_NAME = "openhouse-install-bundle.tar"
 internal const val APK_RESOURCE_INBOX_ROOT = ".local/share/openhouseai/apk-resource-inbox"
+internal const val TERMUX_PROPERTIES_HOME_PATH = ".termux/termux.properties"
+
+internal data class TermuxPropertiesState(
+    val content: String,
+    val allowExternalApps: Boolean,
+    val duplicateCount: Int,
+)
 
 internal data class InstallBundleStageResult(
     val offerId: String,
@@ -62,6 +69,64 @@ internal class NativeTermuxHomeRepository(context: Context) {
                 .put("termuxHomeReadWriteReady", probeReady)
                 .put("rescueWorkspaceReady", bookmarkReady && probeReady)
         }
+
+    suspend fun inspectExternalAppsConfiguration(): JSONObject = withContext(Dispatchers.IO) {
+        val root = requireRoot()
+        val parent = findDocument(root, TERMUX_PROPERTIES_HOME_PATH.substringBeforeLast('/'))
+            ?.takeIf(DocumentFile::isDirectory)
+        val properties = findDocument(root, TERMUX_PROPERTIES_HOME_PATH)?.takeIf(DocumentFile::isFile)
+        if (properties == null) {
+            return@withContext JSONObject()
+                .put("propertiesPath", "\$HOME/$TERMUX_PROPERTIES_HOME_PATH")
+                .put("propertiesReadable", false)
+                .put("parentWritable", parent != null)
+                .put("allowExternalApps", false)
+                .put("duplicateCount", 0)
+        }
+        val state = readTermuxProperties(properties)
+        JSONObject()
+            .put("propertiesPath", "\$HOME/$TERMUX_PROPERTIES_HOME_PATH")
+            .put("propertiesReadable", true)
+            .put("parentWritable", true)
+            .put("allowExternalApps", state.allowExternalApps)
+            .put("duplicateCount", state.duplicateCount)
+    }
+
+    /**
+     * Enables Termux's external command opt-in without using RUN_COMMAND or relying on
+     * DocumentsProvider rename support. All unrelated properties and comments are retained.
+     */
+    suspend fun configureExternalApps(): JSONObject = withContext(Dispatchers.IO) {
+        val root = requireRoot()
+        val parent = ensureDirectory(root, TERMUX_PROPERTIES_HOME_PATH.substringBeforeLast('/'))
+        val fileName = TERMUX_PROPERTIES_HOME_PATH.substringAfterLast('/')
+        val properties = parent.findFile(fileName)?.also {
+            require(it.isFile) { "$TERMUX_PROPERTIES_HOME_PATH is not a regular file" }
+        } ?: requireNotNull(parent.createFile("text/plain", fileName)) {
+            "Unable to create $TERMUX_PROPERTIES_HOME_PATH"
+        }
+        val current = readTermuxProperties(properties)
+        val normalized = normalizeTermuxProperties(current.content)
+        requireNotNull(resolver.openOutputStream(properties.uri, "wt")) {
+            "Unable to open $TERMUX_PROPERTIES_HOME_PATH for writing"
+        }.bufferedWriter().use { it.write(normalized) }
+        val verified = readTermuxProperties(properties)
+        require(verified.content == normalized) {
+            "Unable to verify $TERMUX_PROPERTIES_HOME_PATH after SAF write"
+        }
+        require(verified.allowExternalApps && verified.duplicateCount == 0) {
+            "Termux external-app configuration was not normalized"
+        }
+        JSONObject()
+            .put("propertiesPath", "\$HOME/$TERMUX_PROPERTIES_HOME_PATH")
+            .put("propertiesReadable", true)
+            .put("parentWritable", true)
+            .put("allowExternalApps", true)
+            .put("duplicateCount", 0)
+            .put("userActionRequired", true)
+            .put("action", "reload_termux_settings")
+            .put("command", "termux-reload-settings")
+    }
 
     suspend fun stageAsset(assetPath: String, homePath: String): Long = withContext(Dispatchers.IO) {
         val root = requireRoot()
@@ -347,6 +412,13 @@ internal class NativeTermuxHomeRepository(context: Context) {
         }
     }
 
+    private fun readTermuxProperties(file: DocumentFile): TermuxPropertiesState {
+        val content = requireNotNull(resolver.openInputStream(file.uri)) {
+            "Unable to read $TERMUX_PROPERTIES_HOME_PATH"
+        }.bufferedReader().use { it.readText() }
+        return inspectTermuxProperties(content)
+    }
+
     private fun findDocument(root: DocumentFile, path: String): DocumentFile? {
         var current: DocumentFile? = root
         for (segment in path.split('/').filter(String::isNotBlank)) {
@@ -399,3 +471,30 @@ internal class NativeTermuxHomeRepository(context: Context) {
 internal fun isTermuxHomeWorkspaceReady(details: JSONObject): Boolean =
     details.optBoolean("termuxHomeBookmarkReady", false) &&
         details.optBoolean("termuxHomeReadWriteReady", false)
+
+private val TERMUX_EXTERNAL_APPS_LINE =
+    Regex("""^\s*#?\s*allow-external-apps\s*=.*$""")
+private val TERMUX_EXTERNAL_APPS_ACTIVE =
+    Regex("""^\s*allow-external-apps\s*=\s*true\s*(?:#.*)?$""", RegexOption.IGNORE_CASE)
+private val TERMUX_EXTERNAL_APPS_ANY_ACTIVE =
+    Regex("""^\s*allow-external-apps\s*=.*$""")
+
+internal fun inspectTermuxProperties(content: String): TermuxPropertiesState {
+    val activeLines = content.lineSequence().filter(TERMUX_EXTERNAL_APPS_ANY_ACTIVE::matches).toList()
+    return TermuxPropertiesState(
+        content = content,
+        allowExternalApps = activeLines.size == 1 && TERMUX_EXTERNAL_APPS_ACTIVE.matches(activeLines.single()),
+        duplicateCount = (activeLines.size - 1).coerceAtLeast(0),
+    )
+}
+
+internal fun normalizeTermuxProperties(content: String): String {
+    val source = content.replace("\r\n", "\n").replace('\r', '\n')
+    val lines = source.split('\n').toMutableList()
+    if (lines.lastOrNull()?.isEmpty() == true) lines.removeAt(lines.lastIndex)
+    val first = lines.indexOfFirst(TERMUX_EXTERNAL_APPS_LINE::matches)
+    val retained = lines.filterNot(TERMUX_EXTERNAL_APPS_LINE::matches).toMutableList()
+    val insertion = if (first < 0) retained.size else first.coerceAtMost(retained.size)
+    retained.add(insertion, "allow-external-apps = true")
+    return retained.joinToString("\n") + "\n"
+}

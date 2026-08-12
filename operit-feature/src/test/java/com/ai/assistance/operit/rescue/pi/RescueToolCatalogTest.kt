@@ -36,6 +36,8 @@ class RescueToolCatalogTest {
             "request_termux_run_command_permission missing",
             "request_termux_run_command_permission" in names,
         )
+        assertTrue("configure_termux_external_apps missing", "configure_termux_external_apps" in names)
+        assertTrue("verify_termux_run_command missing", "verify_termux_run_command" in names)
         assertTrue("prepare_persistent_termux missing", "prepare_persistent_termux" in names)
         assertTrue("start_wuxianpi_setup missing", "start_wuxianpi_setup" in names)
         assertTrue("get_wuxianpi_setup_status missing", "get_wuxianpi_setup_status" in names)
@@ -85,6 +87,8 @@ class RescueToolCatalogTest {
                 "prepare_runtime_host",
                 "request_termux_home_access",
                 "request_termux_run_command_permission",
+                "configure_termux_external_apps",
+                "verify_termux_run_command",
                 "prepare_persistent_termux",
                 "start_wuxianpi_setup",
                 "get_wuxianpi_setup_status",

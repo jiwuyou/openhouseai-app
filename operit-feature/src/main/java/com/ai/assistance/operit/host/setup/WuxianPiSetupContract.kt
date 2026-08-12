@@ -13,6 +13,8 @@ object WuxianPiSetupContract {
     const val TOOL_REQUEST_TERMUX_HOME_ACCESS = "request_termux_home_access"
     const val TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION =
         "request_termux_run_command_permission"
+    const val TOOL_CONFIGURE_TERMUX_EXTERNAL_APPS = "configure_termux_external_apps"
+    const val TOOL_VERIFY_TERMUX_RUN_COMMAND = "verify_termux_run_command"
     const val TOOL_PREPARE_PERSISTENT_TERMUX = "prepare_persistent_termux"
     const val TOOL_START_SETUP = "start_wuxianpi_setup"
     const val TOOL_SETUP_STATUS = "get_wuxianpi_setup_status"
@@ -22,6 +24,8 @@ object WuxianPiSetupContract {
     const val OPERATION_REQUEST_TERMUX_HOME_ACCESS = "request_termux_home_access"
     const val OPERATION_REQUEST_TERMUX_RUN_COMMAND_PERMISSION =
         "request_termux_run_command_permission"
+    const val OPERATION_CONFIGURE_TERMUX_EXTERNAL_APPS = "configure_termux_external_apps"
+    const val OPERATION_VERIFY_TERMUX_RUN_COMMAND = "verify_termux_run_command"
     const val OPERATION_PREPARE_PERSISTENT_TERMUX = "prepare_persistent_termux"
     const val OPERATION_START_SETUP = "start_wuxianpi_setup"
     const val OPERATION_SETUP_STATUS = "wuxianpi_setup_status"
@@ -38,6 +42,8 @@ object WuxianPiSetupContract {
             TOOL_PREPARE_RUNTIME_HOST,
             TOOL_REQUEST_TERMUX_HOME_ACCESS,
             TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION,
+            TOOL_CONFIGURE_TERMUX_EXTERNAL_APPS,
+            TOOL_VERIFY_TERMUX_RUN_COMMAND,
             TOOL_PREPARE_PERSISTENT_TERMUX,
             TOOL_START_SETUP,
             TOOL_SETUP_STATUS,

@@ -2,8 +2,8 @@
   "schema": 1,
   "bundleAsset": "wuxianpi-install/openhouse-install-bundle.tar",
   "bundleFile": "openhouse-install-bundle.tar",
-  "bundleSha256": "86a92bb87d89e0bb59108a2b5270da69c219d7e8e352555baef1964327c558a9",
-  "bundleSize": 38154240,
+  "bundleSha256": "ca3745317ee308acb86b9823b45c9e3387d48fb851f920e3f1c8d24b2e248687",
+  "bundleSize": 38174720,
   "resourceSet": {
     "schema": 2,
     "id": "openhouse-core-stack",
@@ -19,8 +19,8 @@
       },
       {
         "id": "openhouse-control-plane",
-        "version": "1.0.1",
-        "sha256": "6f0dfc1d4480d4bfc97603e9ca0e75e543e3ab41637634a46ab123c2c5b9c89d"
+        "version": "1.0.2",
+        "sha256": "d5b30a825cf0f593f2089b01d97c5b06827a884b87b0838e516d665e5697351e"
       },
       {
         "id": "openhouse-runtime",

@@ -47,7 +47,17 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION,
                     description =
-                        "Request external Termux RUN_COMMAND access when needed. The result accurately reports any pending user action.",
+                        "Request only Android's external Termux RUN_COMMAND permission when needed. This stage never executes a Termux command.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_CONFIGURE_TERMUX_EXTERNAL_APPS,
+                    description =
+                        "Using only the authorized Termux Home SAF repository, normalize ${'$'}HOME/.termux/termux.properties to one active allow-external-apps = true setting while preserving unrelated content. The result requires the user to run termux-reload-settings inside Termux.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_VERIFY_TERMUX_RUN_COMMAND,
+                    description =
+                        "After the user ran termux-reload-settings, execute the one side-effect-free printf probe and prove that external Termux RUN_COMMAND is ready.",
                 ),
                 definition(
                     name = WuxianPiSetupContract.TOOL_PREPARE_PERSISTENT_TERMUX,
@@ -198,7 +208,7 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = RescuePluginContract.TOOL_COMPLETE_APK_RESOURCE_OFFER,
                     description =
-                        "Record the verified APK resource result. satisfied and superseded require concrete verification evidence; failed keeps the reminder active.",
+                        "Record the APK resource result. satisfied is accepted only after a fresh host status proves matching offer/sequence, delivery ready, content installed, activation ready, canonical auth, service list, registry, and WuxianPi health; failed keeps the reminder active.",
                     properties =
                         JSONObject()
                             .put("status", JSONObject().put("type", "string").put("description", "satisfied, superseded, or failed"))

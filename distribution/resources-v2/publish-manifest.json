@@ -10,9 +10,9 @@
     },
     {
       "id": "openhouse-control-plane",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "archivePath": "app/src/main/assets/openhouse/product-payloads/openhouse-control-plane.tgz",
-      "metadataPath": "distribution/resources-v2/resources/openhouse-control-plane/1.0.1/metadata.json"
+      "metadataPath": "distribution/resources-v2/resources/openhouse-control-plane/1.0.2/metadata.json"
     },
     {
       "id": "openhouse-runtime",

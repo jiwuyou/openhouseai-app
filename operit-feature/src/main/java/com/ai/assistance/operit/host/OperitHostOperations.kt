@@ -80,6 +80,18 @@ interface OperitHostOperations {
             WuxianPiSetupContract.OPERATION_REQUEST_TERMUX_RUN_COMMAND_PERMISSION
         )
 
+    /** Normalizes external Termux command opt-in using the already-authorized Home repository. */
+    suspend fun configureTermuxExternalApps(): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(
+            WuxianPiSetupContract.OPERATION_CONFIGURE_TERMUX_EXTERNAL_APPS
+        )
+
+    /** Proves RUN_COMMAND only after the user has reloaded Termux settings. */
+    suspend fun verifyTermuxRunCommand(): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(
+            WuxianPiSetupContract.OPERATION_VERIFY_TERMUX_RUN_COMMAND
+        )
+
     suspend fun preparePersistentTermux(): OperitHostOperationResult =
         WuxianPiSetupContract.unsupported(WuxianPiSetupContract.OPERATION_PREPARE_PERSISTENT_TERMUX)
 

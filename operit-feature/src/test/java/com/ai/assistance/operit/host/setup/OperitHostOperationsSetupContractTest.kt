@@ -21,6 +21,10 @@ class OperitHostOperationsSetupContractTest {
                     operations.requestTermuxHomeAccess(context),
                 WuxianPiSetupContract.OPERATION_REQUEST_TERMUX_RUN_COMMAND_PERMISSION to
                     operations.requestTermuxRunCommandPermission(context),
+                WuxianPiSetupContract.OPERATION_CONFIGURE_TERMUX_EXTERNAL_APPS to
+                    operations.configureTermuxExternalApps(),
+                WuxianPiSetupContract.OPERATION_VERIFY_TERMUX_RUN_COMMAND to
+                    operations.verifyTermuxRunCommand(),
                 WuxianPiSetupContract.OPERATION_PREPARE_PERSISTENT_TERMUX to
                     operations.preparePersistentTermux(),
                 WuxianPiSetupContract.OPERATION_START_SETUP to operations.startWuxianPiSetup(),

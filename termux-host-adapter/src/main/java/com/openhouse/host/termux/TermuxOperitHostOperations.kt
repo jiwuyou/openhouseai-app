@@ -223,6 +223,18 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
             "RUN_COMMAND permission is not required inside the embedded Termux host",
         )
 
+    override suspend fun configureTermuxExternalApps(): OperitHostOperationResult =
+        embeddedPermissionNotRequired(
+            "configure_termux_external_apps",
+            "External-app configuration is not required inside the embedded Termux host",
+        )
+
+    override suspend fun verifyTermuxRunCommand(): OperitHostOperationResult =
+        embeddedPermissionNotRequired(
+            "verify_termux_run_command",
+            "RUN_COMMAND verification is not required inside the embedded Termux host",
+        )
+
     override suspend fun preparePersistentTermux(): OperitHostOperationResult = withContext(Dispatchers.IO) {
         runCatching {
             val staged = stageInstallBundle()

@@ -23,6 +23,10 @@ class WuxianPiSetupToolExecutor(
                 operations.requestTermuxHomeAccess(context)
             WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION ->
                 operations.requestTermuxRunCommandPermission(context)
+            WuxianPiSetupContract.TOOL_CONFIGURE_TERMUX_EXTERNAL_APPS ->
+                operations.configureTermuxExternalApps()
+            WuxianPiSetupContract.TOOL_VERIFY_TERMUX_RUN_COMMAND ->
+                operations.verifyTermuxRunCommand()
             WuxianPiSetupContract.TOOL_PREPARE_PERSISTENT_TERMUX ->
                 operations.preparePersistentTermux()
             WuxianPiSetupContract.TOOL_START_SETUP -> operations.startWuxianPiSetup()

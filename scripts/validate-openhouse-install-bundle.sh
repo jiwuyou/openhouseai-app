@@ -139,8 +139,37 @@ workflow_text = json.dumps(workflow, ensure_ascii=False)
 if "wuxianpi.resource-update" in workflow_text:
     raise SystemExit("first-install workflow must not require the online resource updater")
 manifest = json.loads((repo / "operit-feature/src/main/assets/rescue-plugins/wuxianpi.first-install/manifest.json").read_text())
-if manifest.get("version") != "1.0.10":
-    raise SystemExit("bundled first-install plugin must be 1.0.10")
+if manifest.get("version") != "1.0.11":
+    raise SystemExit("bundled first-install plugin must be 1.0.11")
+
+manager = (repo / "app/src/main/assets/smallphoneai/bootstrap/scripts/openhouse-resource-manager").read_text()
+for forbidden in (
+    "start_control_plane", "verify_live_stack", "register_resources",
+    "/api/v1/services", "/api/v1/health", "20765", "service-daemon start", "sv up",
+):
+    if forbidden in manager:
+        raise SystemExit(f"content resource manager still owns runtime activation: {forbidden}")
+for required in (
+    'CONFIG_PATH="$HOME/.config/openhouseai/service-manager/config.json"',
+    'BIND="127.0.0.1:20087"',
+    "INSTALL_SERVICE=0",
+    '"$directory/scripts/install.sh"',
+):
+    if required not in manager:
+        raise SystemExit(f"content resource manager is missing static contract: {required}")
+
+importer = (repo / "app/src/main/assets/smallphoneai/bootstrap/scripts/openhouse-resource-import").read_text()
+if 'status:"satisfied"' in importer or '"$inbox/.consumed"' in importer:
+    raise SystemExit("resource importer must leave APK offer pending until runtime activation")
+if 'activation":"pending"' not in importer or '"$inbox/.imported"' not in importer:
+    raise SystemExit("resource importer does not publish independent content/activation state")
+
+for required in (
+    "activate_runtime()", "canonical_auth_failed", "registry_sync_failed",
+    "wuxianpi_health_failed", "serviceListReady", "registryApiReady",
+):
+    if required not in setup:
+        raise SystemExit(f"wuxianpi-setup is missing activation/status contract: {required}")
 print(f"Install bundle validated: sha256={bundle_sha} size={bundle.stat().st_size}")
 PY
 

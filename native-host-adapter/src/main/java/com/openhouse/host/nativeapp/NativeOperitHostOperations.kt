@@ -30,7 +30,6 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         const val TERMUX_PREFIX = "/data/data/com.termux/files/usr"
         const val TERMUX_HOME = "/data/data/com.termux/files/home"
         const val SETUP_COMMAND = "$TERMUX_PREFIX/bin/wuxianpi-setup"
-        const val SERVICE_MANAGER_COMMAND = "$TERMUX_PREFIX/bin/service-manager"
     }
 
     private val appContext = context.applicationContext
@@ -87,30 +86,17 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
                     PackageManager.PERMISSION_GRANTED,
             )
         termuxHomeRepository.persistedTreeUri()?.let {
-            runCatching { termuxHomeRepository.registerAndProbe(it) }
-                .getOrNull()?.let { readiness -> mergeDetails(details, readiness) }
+            runCatching {
+                val readiness = termuxHomeRepository.registerAndProbe(it)
+                mergeDetails(readiness, termuxHomeRepository.inspectExternalAppsConfiguration())
+            }.getOrNull()?.let { readiness -> mergeDetails(details, readiness) }
         } ?: details.put("termuxHomeAccess", false)
-        if (!canUseTermuxRunCommand(probe) ||
-            appContext.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            return success("inspect_wuxianpi_setup", details)
-        }
-        val binaryProbe = externalTermuxExecutor.execute(
-            "test -x '$SETUP_COMMAND' && echo setup=1 || echo setup=0; " +
-                "test -x '$SERVICE_MANAGER_COMMAND' && echo service_manager=1 || echo service_manager=0; " +
-                "test -x '$TERMUX_PREFIX/bin/tmux' && echo tmux=1 || echo tmux=0",
-            ExternalTermuxCommandTarget.TERMUX,
-            10_000L,
+        return success(
+            "inspect_wuxianpi_setup",
+            details
+                .put("wuxianPiSetupPath", SETUP_COMMAND)
+                .put("runCommandVerificationRequired", true),
         )
-        details.put("binaryProbe", binaryProbe.stdout)
-            .put("wuxianPiSetupPath", SETUP_COMMAND)
-            .put("serviceManagerPath", SERVICE_MANAGER_COMMAND)
-        return if (binaryProbe.stdout.contains("setup=1")) {
-            setupCommand("inspect", "inspect_wuxianpi_setup", 20_000L, details)
-        } else {
-            success("inspect_wuxianpi_setup", details.put("setupInstallerReady", false))
-        }
     }
 
     override fun prepareRuntimeHost(context: Context): OperitHostOperationResult {
@@ -184,12 +170,82 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             }
             return failure("request_termux_run_command_permission", message, details)
         }
+        if (context.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return success(
+                "request_termux_run_command_permission",
+                details.put("alreadyGranted", true).put("permissionGranted", true),
+            )
+        }
         return launchCoordinator(
             context,
             NativeTermuxRunCommandPermissionActivity::class.java,
             "request_termux_run_command_permission",
             details,
         )
+    }
+
+    override suspend fun configureTermuxExternalApps(): OperitHostOperationResult = runCatching {
+        val details = termuxHomeRepository.configureExternalApps()
+        success("configure_termux_external_apps", details)
+    }.getOrElse {
+        failure(
+            "configure_termux_external_apps",
+            it.message ?: "Unable to configure Termux external app access through SAF",
+        )
+    }
+
+    override suspend fun verifyTermuxRunCommand(): OperitHostOperationResult {
+        val details = JSONObject().put("probe", "printf").put("expectedStdout", TERMUX_READY_MARKER)
+        if (appContext.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return failure(
+                "verify_termux_run_command",
+                "Missing ${NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION}",
+                details.put("permissionGranted", false),
+            )
+        }
+        return runCatching {
+            val configuration = termuxHomeRepository.inspectExternalAppsConfiguration()
+            mergeDetails(details, configuration)
+            require(
+                configuration.optBoolean("propertiesReadable", false) &&
+                    configuration.optBoolean("parentWritable", false) &&
+                    configuration.optBoolean("allowExternalApps", false) &&
+                    configuration.optInt("duplicateCount", -1) == 0
+            ) {
+                "Termux external-app configuration must be normalized through SAF before verification"
+            }
+            val startedAt = System.currentTimeMillis()
+            val response = runCommandTransport.execute(buildTermuxRunCommandProbe(), 15_000L)
+            details.put("permissionGranted", true)
+                .put("exitCode", response.exitCode)
+                .put("stdout", response.stdout)
+                .put("stderr", response.stderr)
+                .put("timedOut", response.timedOut)
+                .put("durationMs", System.currentTimeMillis() - startedAt)
+            if (!response.timedOut && response.errorCode == TERMUX_SUCCESS_ERROR_CODE &&
+                response.exitCode == 0 && response.stdout == TERMUX_READY_MARKER
+            ) {
+                success("verify_termux_run_command", details.put("verified", true))
+            } else {
+                failure(
+                    "verify_termux_run_command",
+                    response.errorMessage.ifBlank { response.stderr }.ifBlank {
+                        "Termux RUN_COMMAND probe did not return the exact readiness marker"
+                    },
+                    details.put("verified", false),
+                )
+            }
+        }.getOrElse {
+            failure(
+                "verify_termux_run_command",
+                it.message ?: "Termux RUN_COMMAND verification failed",
+                details.put("verified", false),
+            )
+        }
     }
 
     override suspend fun preparePersistentTermux(): OperitHostOperationResult = runCatching {
@@ -218,9 +274,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             bundle.bundlePath,
             bundle.apkVersionCode,
         )
-        success(
-            "start_wuxianpi_setup",
-            setupLaunchDetails(command)
+        setupLaunchDetails(command)
                 .put("asset", INSTALL_BUNDLE_ASSET)
                 .put("offerId", bundle.offerId)
                 .put("resourceSetVersion", bundle.resourceSetVersion)
@@ -229,8 +283,10 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
                 .put("bundleSha256", bundle.bundleSha256)
                 .put("bundleSize", bundle.bundleSize)
                 .put("stagedBytes", bundle.copiedBytes)
-                .put("request", "$TERMUX_HOME/$SETUP_REQUEST_HOME_PATH"),
-        )
+                .put("request", "$TERMUX_HOME/$SETUP_REQUEST_HOME_PATH")
+                .let { details ->
+                    success("start_wuxianpi_setup", details)
+                }
     }.getOrElse { failure("start_wuxianpi_setup", it.message ?: "Unable to stage WuxianPi setup resources") }
 
     override suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
@@ -391,15 +447,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             ExternalTermuxCommandTarget.TERMUX,
             timeoutMs,
         )
-        baseDetails.put("exitCode", result.exitCode)
-            .put("stdout", result.stdout)
-            .put("stderr", result.stderr)
-            .put("timedOut", result.timedOut)
-            .put("durationMs", result.durationMs)
-        return if (result.isSuccess) success(operation, baseDetails)
-        else failure(operation, result.error.ifBlank { result.stderr }.ifBlank {
-            "$SETUP_COMMAND $subcommand failed with exit code ${result.exitCode}"
-        }, baseDetails)
+        return nativeSetupOperationResult(operation, subcommand, result, baseDetails)
     }
 
     private suspend fun commandResult(
@@ -484,6 +532,36 @@ internal fun setupLaunchDetails(command: String): JSONObject =
         .put("executorTool", "termux_exec_command")
         .put("persistent", true)
         .put("launchRequired", true)
+
+/** Keeps external-Termux setup status structurally identical to the embedded host status. */
+internal fun nativeSetupOperationResult(
+    operation: String,
+    action: String,
+    result: OperitHostCommandResult,
+    baseDetails: JSONObject = JSONObject(),
+): OperitHostOperationResult {
+    val details = baseDetails
+        .put("operation", operation)
+        .put("action", action)
+        .put("exitCode", result.exitCode)
+        .put("timedOut", result.timedOut)
+        .put("durationMs", result.durationMs)
+        .put("stdout", result.stdout.take(256 * 1024))
+        .put("stderr", result.stderr.take(64 * 1024))
+    result.stdout.lineSequence()
+        .map(String::trim)
+        .filter { it.startsWith("{") && it.endsWith("}") }
+        .lastOrNull()
+        ?.let { json -> runCatching { details.put("status", JSONObject(json)) } }
+    return if (result.isSuccess) {
+        OperitHostOperationResult(true, details, operation, null)
+    } else {
+        val message = result.error.ifBlank {
+            result.stderr.ifBlank { result.stdout.ifBlank { "$action failed" } }
+        }
+        OperitHostOperationResult(false, details, message, message)
+    }
+}
 
 private fun mergeDetails(target: JSONObject, source: JSONObject): JSONObject {
     source.keys().forEach { key -> target.put(key, source.get(key)) }

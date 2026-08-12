@@ -1,10 +1,43 @@
 # WuxianPi 首次安装
 
-`wuxianpi.first-install 1.0.10` 负责宿主权限、APK 离线总包导入、Termux/Ubuntu 基础环境、运行中枢固定入口和桌面组件注册。Runtime/Web 等通用资源后续仍可由 `wuxianpi.resource-update` 在线差异更新，但首次安装和运行中枢启动链路都不依赖该插件。
+`wuxianpi.first-install 1.0.11` 将权限准备、APK 投递、静态资源安装和运行激活拆成独立阶段。运行激活失败不会删除已经校验并安装的资源，也不会要求重新投递约 38 MiB 的 APK 总包。
 
-首次安装入口应先刷新维修助手市场并运行已 promote 的最新 `wuxianpi.first-install`。APK 内置 bootstrap seed 已包含本地资源管理器，可在没有 `wuxianpi.resource-update` 和没有网络时导入 APK 离线资源。
+## Native 权限顺序
 
-核心资源集合包含：
+Termux 运行中枢入口固定为 `$PREFIX/bin/openhouse-control-plane-start`，它只转发到 `$PREFIX/libexec/openhouse/start-service-manager.sh`。
+
+外部 Termux 必须严格按以下顺序处理：
+
+1. 获取 Termux Home SAF。
+2. 获取 Android `RUN_COMMAND` 权限；此时只授权，不执行命令探针。
+3. 通过 SAF 读取 `$HOME/.termux/termux.properties`。
+4. 将注释、`false` 或重复的配置规范为唯一一行：
+
+   ```properties
+   allow-external-apps = true
+   ```
+
+5. 提示用户打开 Termux，执行：
+
+   ```sh
+   termux-reload-settings
+   ```
+
+6. 用户返回后，再用无副作用命令验证 `RUN_COMMAND`。
+
+重载设置是明确的人工步骤。维修助手不能在配置尚未生效时反复探测或绕过权限。
+
+## 三个独立阶段
+
+首次安装的核心资源集合仍然固定为五个资源：service-manager、openhouse-control-plane、openhouse-runtime、wuyou 和 openhouse-web。
+
+### 1. Delivery
+
+Android 只把 canonical `openhouse-install-bundle.tar` 写入 Termux Inbox，重新读取校验大小和 SHA-256，最后创建 `.ready`。这一阶段不启动服务、不读取 token，也不注册组件。
+
+### 2. Content
+
+`openhouse-resource-import` 校验 TAR 安全性及其中五个资源，然后调用 `openhouse-resource-manager` 完成静态安装和 `current` 指针切换：
 
 ```text
 service-manager
@@ -14,47 +47,42 @@ wuyou
 openhouse-web
 ```
 
-首次安装将单一 `openhouse-install-bundle.tar` 投递到 Termux Inbox，再由 Termux 校验和安装。总包中的五个资源仍独立比较；当前安装与目标 SHA-256 相同时不会重复安装。
+Content 管理器不得访问 20087/20765，不得执行 `service-daemon`、`sv up` 或 registry API。service-manager 安装必须显式使用：
 
-## 执行顺序
-
-1. 检查宿主类型和真实安装状态。
-2. 准备 All-in-One 内部 Termux，或为 Native 获取 Termux Home SAF 与 RUN_COMMAND 权限。
-3. 安装 tmux、curl、jq、tar、gzip、flock 和 Node 等基础能力。
-4. 直接安装 `$PREFIX/bin/openhouse-control-plane-start` 和 `$PREFIX/libexec/openhouse/start-service-manager.sh`。
-5. 将 canonical TAR 写入 `apk-resource-inbox/<offerId>/`，校验后最后创建 `.ready`。
-6. 运行宿主返回的 `wuxianpi-setup --resource-inbox ...`，由 Termux 导入器完成五资源事务安装并安装 Ubuntu。
-7. 通过固定入口启动 service-manager；脚本不读取 token、资源版本或 registry。
-8. 验证资源、service-manager health、带 token 的服务列表和 registry。
-9. 注册 `yuanshengwuxianpi` 桌面组件。
-
-All-in-One 与 Native 使用同一份 TAR、资源 ID、版本和 SHA-256。Native SAF 只使用创建、写入、读取和删除，不要求 `renameDocument`；本机资源集合 sequence 高于 APK 时拒绝自动降级。
-
-## Android-Termux 控制面
-
-Android 只调用固定入口：
-
-```text
-$PREFIX/bin/openhouse-control-plane-start
-  -> $PREFIX/libexec/openhouse/start-service-manager.sh
+```sh
+CONFIG_PATH="$HOME/.config/openhouseai/service-manager/config.json"
+BIND="127.0.0.1:20087"
+INSTALL_SERVICE=0
 ```
 
-第二层脚本只设置 `SVDIR/LOGDIR`、获取 `flock`、启动 `service-daemon`、等待 `runsvdir` 并重试 `sv up service-manager`。它不安装服务、不读取 token、不访问 API。Android 在命令结束后分别验证 health 和带 token 的服务列表。
+资源安装失败才回滚 `current`，失败候选和诊断保存在 `resource-manager/failed/`。运行失败绝不回滚 content。
 
-## 桌面组件
+### 3. Activation
 
-服务 ID、组件 ID 和文件名统一为：
-
-```text
-yuanshengwuxianpi
-components.d/yuanshengwuxianpi.json
-```
-
-注册接口：
+`wuxianpi-setup activate` 独立执行并可重复运行：
 
 ```text
-PUT /api/v1/registry/components/yuanshengwuxianpi
-POST /api/v1/registry/sync
+创建或验证 canonical 配置
+→ 使用显式 --config/--bind 安装 runit service
+→ 启动 runsvdir/service-manager
+→ 带 canonical token 查询服务列表
+→ 注册资源并同步 registry
+→ 启动和验证 WuxianPi
 ```
 
-新版宿主返回桌面时会刷新组件，不需要强制停止 App。重复执行首次安装和资源收敛都是幂等的，不能删除用户配置、模型、会话或自定义组件。
+失败写入具体 `activationFailure`，例如 `canonical_auth_failed`、`registry_sync_failed` 或 `wuxianpi_health_failed`。日志只输出判定结果，不输出 token。
+
+## APK offer 完成
+
+资源导入后 offer 保持：
+
+```text
+delivery=ready
+content=installed
+activation=pending
+status=pending
+```
+
+只有 `get_wuxianpi_setup_status` 返回匹配的 `offerId`、`resourceSetSequence`，且 canonical auth、服务列表、runit、registry 和 WuxianPi health 全部通过后，才调用 `complete_apk_resource_offer` 标记 `satisfied`。失败或忽略不能伪造完成。
+
+All-in-One 与 Native 使用同一份 TAR。首次安装和运行中枢启动链路都不依赖该插件 `wuxianpi.resource-update`；后续在线更新仍只处理静态 content。

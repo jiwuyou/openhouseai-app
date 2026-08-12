@@ -39,6 +39,7 @@ EOF
     openhouse-runtime)
       mkdir -p "$root/bin"
       printf '#!/usr/bin/env sh\nexit 0\n' >"$root/install.sh"
+      printf '#!/usr/bin/env sh\nexit 0\n' >"$root/scripts/install.sh"
       printf '#!/usr/bin/env sh\nexit 0\n' >"$root/bin/wuxianpi-node"
       printf '#!/usr/bin/env sh\nexit 0\n' >"$root/scripts/check.sh"
       ;;
@@ -149,10 +150,18 @@ mv "$inbox/offer.json.tmp" "$inbox/offer.json"
 bash "$importer" "$inbox" >"$work/import.log"
 [[ -f "$HOME/.local/share/openhouseai/resource-manager/receipts/apk-offers/$offer_id.json" ]]
 [[ -f "$HOME/.local/share/openhouseai/resource-manager/installed-set.json" ]]
-[[ -f "$inbox/.consumed" ]]
+[[ -f "$inbox/.imported" ]]
+[[ ! -e "$inbox/.consumed" ]]
+jq -e '.delivery == "ready" and .content == "installed" and .activation == "pending" and .status == "pending"' \
+  "$HOME/.local/share/openhouseai/resource-manager/receipts/apk-offers/$offer_id.json" >/dev/null
 [[ ! -e "$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update" ]]
 bash "$importer" "$inbox" >"$work/reimport.log"
-grep -Fq 'offer already satisfied' "$work/reimport.log"
+grep -Fq 'offer content already installed' "$work/reimport.log"
 bash "$PREFIX/bin/openhouse-resource-manager" verify >/dev/null
+
+if rg -n 'start_control_plane|verify_live_stack|register_resources|/api/v1|20765|sv up|service-daemon' "$PREFIX/bin/openhouse-resource-manager"; then
+  printf 'Content manager still owns runtime activation\n' >&2
+  exit 1
+fi
 
 printf 'OpenHouse install bundle import contract passed\n'

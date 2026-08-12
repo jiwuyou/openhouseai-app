@@ -52,7 +52,7 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 manifest = json.loads((root / "control-plane-manifest.json").read_text(encoding="utf-8"))
-if manifest.get("bundleId") != "openhouse-control-plane" or manifest.get("version") != "1.0.1":
+if manifest.get("bundleId") != "openhouse-control-plane" or manifest.get("version") != "1.0.2":
     raise SystemExit("invalid canonical control-plane manifest")
 expected = {item["name"]: item["sha256"] for item in manifest.get("files", [])}
 if set(expected) != {

@@ -10,14 +10,74 @@ APK_ROOT="${OPENHOUSEAI_APK_RESOURCES_ROOT:-$HOME/.local/share/openhouseai/updat
 ARCHIVES="$MANAGER_ROOT/archives"
 RECEIPTS="$MANAGER_ROOT/receipts"
 TRANSACTIONS="$MANAGER_ROOT/transactions"
+FAILED_TRANSACTIONS="$MANAGER_ROOT/failed"
 INSTALLED_SET="$MANAGER_ROOT/installed-set.json"
 PREVIOUS_SET="$MANAGER_ROOT/previous-set.json"
 COMMAND="${1:-apply}"
 APK_VERSION_CODE="${OPENHOUSEAI_APK_VERSION_CODE:-}"
 CORE_RESOURCE_IDS='["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"]'
+CURRENT_TRANSACTION=''
+PLAN_WORKSPACE=''
+CURRENT_FAILED_STEP='initializing'
 
 log() { printf '[resource-update] %s\n' "$*"; }
 die() { printf '[resource-update] ERROR: %s\n' "$*" >&2; exit 1; }
+
+resource_manager_exit() {
+  local status="$1" failed_root
+  [[ -z "$PLAN_WORKSPACE" || ! -d "$PLAN_WORKSPACE" ]] || rm -rf -- "$PLAN_WORKSPACE"
+  if [[ "$status" -ne 0 && -n "$CURRENT_TRANSACTION" && -d "$CURRENT_TRANSACTION" ]]; then
+    failed_root="$FAILED_TRANSACTIONS/$(basename "$CURRENT_TRANSACTION")"
+    if [[ ! -e "$failed_root" ]]; then
+      mkdir -p "$FAILED_TRANSACTIONS"
+      cp -a "$CURRENT_TRANSACTION" "$failed_root"
+    fi
+    if [[ ! -f "$failed_root/failure.json" ]]; then
+      write_failure_snapshot "$failed_root" content "$CURRENT_FAILED_STEP" \
+        'content transaction terminated before commit' "$status"
+    else
+      atomic_json_copy "$failed_root/failure.json" "$FAILED_TRANSACTIONS/last-failure.json"
+    fi
+    log "失败事务现场：$failed_root"
+  fi
+  return "$status"
+}
+
+# Keep failure evidence separate from the rollback result.  The paths in this
+# record are relative to the failed transaction so the report is portable and
+# never exposes a user's Termux home directory.
+write_failure_snapshot() {
+  local failed_root="$1" phase="$2" step="$3" message="$4" exit_code="$5"
+  local resource_set=missing plan=missing previous_links=missing diagnostics=missing temporary
+  [[ -f "$failed_root/resource-set.json" ]] && resource_set=resource-set.json
+  [[ -f "$failed_root/plan.tsv" ]] && plan=plan.tsv
+  [[ -f "$failed_root/previous-links.tsv" ]] && previous_links=previous-links.tsv
+  if [[ ! -f "$failed_root/diagnostics.log" ]]; then
+    printf 'phase=%s\nfailedStep=%s\nmessage=%s\nexitCode=%s\n' \
+      "$phase" "$step" "$message" "$exit_code" >"$failed_root/diagnostics.log"
+  fi
+  diagnostics=diagnostics.log
+  chmod 600 "$failed_root/diagnostics.log"
+  temporary="$failed_root/failure.json.tmp.$$"
+  jq -n --arg transactionId "$(basename "$failed_root")" \
+    --arg phase "$phase" --arg failedStep "$step" --arg message "$message" \
+    --arg resourceSet "$resource_set" --arg plan "$plan" \
+    --arg previousLinks "$previous_links" --arg diagnostics "$diagnostics" \
+    --argjson exitCode "$exit_code" --arg failedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:2,transactionId:$transactionId,phase:$phase,failedStep:$failedStep,message:$message,exitCode:$exitCode,failedAt:$failedAt,resourceSet:$resourceSet,plan:$plan,previousLinks:$previousLinks,diagnostics:$diagnostics}' \
+    >"$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$failed_root/failure.json"
+  atomic_json_copy "$failed_root/failure.json" "$FAILED_TRANSACTIONS/last-failure.json"
+}
+
+record_transaction_diagnostic() {
+  local message="$1"
+  [[ -n "$CURRENT_TRANSACTION" && -d "$CURRENT_TRANSACTION" ]] || return 0
+  printf '%s step=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$CURRENT_FAILED_STEP" "$message" >>"$CURRENT_TRANSACTION/diagnostics.log"
+  chmod 600 "$CURRENT_TRANSACTION/diagnostics.log"
+}
 
 temporary_directory() {
   local name="$1" parent="${TMPDIR:-${PREFIX:-/tmp}/tmp}"
@@ -355,7 +415,10 @@ install_handler() {
   case "$id" in
     service-manager)
       chmod 755 "$directory/service-manager" "$directory/scripts/"*.sh
-      "$directory/scripts/install.sh" "$directory/service-manager"
+      CONFIG_PATH="$HOME/.config/openhouseai/service-manager/config.json" \
+        BIND="127.0.0.1:20087" \
+        INSTALL_SERVICE=0 \
+        "$directory/scripts/install.sh" "$directory/service-manager"
       ;;
     openhouse-control-plane)
       chmod 700 "$directory/"*.sh
@@ -363,7 +426,9 @@ install_handler() {
       ;;
     openhouse-runtime)
       chmod 755 "$directory/install.sh" "$directory/scripts/"*.sh "$directory/bin/"*
-      "$directory/install.sh"
+      # The archive-level installer also registers a live service. Resource
+      # content convergence must have no service or registry side effects.
+      "$directory/scripts/install.sh"
       ;;
     wuyou)
       chmod 755 "$directory/wuyou" "$directory/scripts/"*.sh
@@ -375,114 +440,6 @@ install_handler() {
       ;;
     *) die "no installer is registered for resource: $id" ;;
   esac
-}
-
-register_resources() {
-  local id directory
-  for id in openhouse-runtime wuyou openhouse-web; do
-    directory="$INSTALL_ROOT/$id/current"
-    [[ -d "$directory" && -x "$directory/scripts/register-service.sh" ]] || continue
-    "$directory/scripts/register-service.sh"
-  done
-}
-
-service_manager_token() {
-  local config="$HOME/.config/openhouseai/service-manager/config.json"
-  command -v service-manager >/dev/null 2>&1 || return 1
-  service-manager token show --config "$config" 2>/dev/null | head -n 1 | tr -d '\r\n'
-}
-
-sm_request() {
-  local method="$1" path="$2" token auth_dir auth_config
-  token="$(service_manager_token)" || return 1
-  [[ -n "$token" ]] || return 1
-  auth_dir="$(temporary_directory openhouse-resource-auth)"
-  auth_config="$auth_dir/curl.conf"
-  chmod 700 "$auth_dir"
-  printf 'header = "Authorization: Bearer %s"\n' "$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')" >"$auth_config"
-  chmod 600 "$auth_config"
-  local status
-  if curl -q -fsS --connect-timeout 3 --max-time 15 --config "$auth_config" \
-    -X "$method" "http://127.0.0.1:20087$path"; then
-    status=0
-  else
-    status=$?
-  fi
-  rm -f "$auth_config"
-  rmdir "$auth_dir" 2>/dev/null || true
-  return "$status"
-}
-
-service_state() {
-  sm_request GET "/api/v1/services/$1/status" 2>/dev/null \
-    | jq -r '.state // .status.state // empty' 2>/dev/null
-}
-
-stop_affected_services() {
-  local plan_file="$1" state_file="$2" id version digest source source_path service state
-  : >"$state_file"
-  [[ -z "${OPENHOUSEAI_SKIP_LIVE_HEALTH:-}" ]] || return 0
-  while IFS=$'\t' read -r id version digest source source_path; do
-    [[ "$source" != skip ]] || continue
-    case "$id" in
-      openhouse-runtime) service=yuanshengwuxianpi ;;
-      openhouse-web) service=openhouse-web ;;
-      *) continue ;;
-    esac
-    state="$(service_state "$service" || true)"
-    [[ -n "$state" ]] || continue
-    printf '%s\t%s\n' "$service" "$state" >>"$state_file"
-    case "$state" in
-      running|starting) sm_request POST "/api/v1/services/$service/stop" >/dev/null 2>&1 || true ;;
-    esac
-  done <"$plan_file"
-}
-
-restore_service_states() {
-  local state_file="$1" service state
-  [[ -f "$state_file" ]] || return 0
-  while IFS=$'\t' read -r service state; do
-    case "$state" in
-      running|starting) sm_request POST "/api/v1/services/$service/start" >/dev/null 2>&1 || true ;;
-    esac
-  done <"$state_file"
-}
-
-start_control_plane() {
-  local script="$HOME/.local/share/openhouseai/control-plane/current/start-control-plane-termux-native.sh"
-  if [[ -x "$script" ]]; then
-    "$script" start
-  elif command -v service-daemon >/dev/null 2>&1 && command -v service-manager >/dev/null 2>&1; then
-    service-daemon start
-    service-manager install-service
-  else
-    die "control plane cannot be started"
-  fi
-}
-
-verify_live_stack() {
-  local state started=0 attempt
-  [[ -z "${OPENHOUSEAI_SKIP_LIVE_HEALTH:-}" ]] || return 0
-  curl -q -fsS --connect-timeout 3 --max-time 8 http://127.0.0.1:20087/api/v1/health >/dev/null \
-    || return 1
-  state="$(service_state yuanshengwuxianpi || true)"
-  [[ -n "$state" ]] || return 1
-  case "$state" in
-    running|starting) ;;
-    *)
-      sm_request POST /api/v1/services/yuanshengwuxianpi/start >/dev/null || return 1
-      started=1
-      ;;
-  esac
-  for attempt in 1 2 3 4 5 6 7 8 9 10; do
-    if curl -q -fsS --connect-timeout 2 --max-time 3 http://127.0.0.1:20765/health >/dev/null 2>&1; then
-      (( started == 0 )) || sm_request POST /api/v1/services/yuanshengwuxianpi/stop >/dev/null 2>&1 || true
-      return 0
-    fi
-    sleep 1
-  done
-  (( started == 0 )) || sm_request POST /api/v1/services/yuanshengwuxianpi/stop >/dev/null 2>&1 || true
-  return 1
 }
 
 verify_handler() {
@@ -503,27 +460,42 @@ write_receipt() {
   tree="$(tree_sha "$directory")"
   jq -n --arg id "$id" --arg version "$version" --arg archiveSha256 "$digest" \
     --arg installedManifestSha256 "$tree" --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:2,id:$id,version:$version,archiveSha256:$archiveSha256,installedManifestSha256:$installedManifestSha256,health:"ok",updatedAt:$updatedAt}' \
+    '{schema:2,id:$id,version:$version,archiveSha256:$archiveSha256,installedManifestSha256:$installedManifestSha256,content:"installed",updatedAt:$updatedAt}' \
     >"$temporary"
   chmod 600 "$temporary"
   mv -f "$temporary" "$RECEIPTS/$id.json"
 }
 
-safe_remove_version_directory() {
-  local directory="$1"
-  case "$directory" in
-    "$INSTALL_ROOT"/*/versions/*) rm -rf -- "$directory" ;;
-    *) return 1 ;;
-  esac
+write_transaction_state() {
+  local transaction="$1" status="$2" phase="$3" message="${4:-}" temporary
+  temporary="$transaction/state.json.tmp.$$"
+  jq -n --arg status "$status" --arg phase "$phase" --arg message "$message" \
+    --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:1,status:$status,phase:$phase,message:$message,updatedAt:$updatedAt}' >"$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$transaction/state.json"
+}
+
+reconcile_control_plane_legacy_link() {
+  local target="${1:-}" link="$HOME/.local/share/openhouseai/control-plane/current"
+  if [[ -n "$target" && "$target" != - && -d "$target" ]]; then
+    atomic_symlink "$target" "$link"
+  else
+    rm -f "$link"
+  fi
 }
 
 rollback_links() {
-  local previous_links="$1" receipts_backup="$2" service_states="$3"
-  local id old_target target backup current receipt backup_receipt
+  local previous_links="$1" receipts_backup="$2" failed_root="$3"
+  local id old_target target backup current receipt backup_receipt failed_candidate
   [[ -f "$previous_links" ]] || return 0
   while IFS=$'\t' read -r id old_target target backup; do
     current="$INSTALL_ROOT/$id/current"
-    [[ ! -e "$target" ]] || safe_remove_version_directory "$target" || true
+    if [[ -e "$target" ]]; then
+      failed_candidate="$failed_root/candidates/$id"
+      mkdir -p "$(dirname "$failed_candidate")"
+      mv "$target" "$failed_candidate"
+    fi
     if [[ "$backup" != - && -d "$backup" ]]; then
       mkdir -p "$(dirname "$target")"
       mv "$backup" "$target"
@@ -534,6 +506,7 @@ rollback_links() {
       atomic_symlink "$old_target" "$current"
       install_handler "$id" "$old_target" || true
     fi
+    [[ "$id" != openhouse-control-plane ]] || reconcile_control_plane_legacy_link "$old_target"
     receipt="$RECEIPTS/$id.json"
     backup_receipt="$receipts_backup/$id.json"
     if [[ -f "$backup_receipt" ]]; then
@@ -543,19 +516,27 @@ rollback_links() {
       rm -f "$receipt"
     fi
   done < <(tac "$previous_links")
-  start_control_plane >/dev/null 2>&1 || true
-  register_resources >/dev/null 2>&1 || true
-  restore_service_states "$service_states"
+}
+
+fail_content_transaction() {
+  local transaction="$1" message="$2" failed_root
+  failed_root="$FAILED_TRANSACTIONS/$(basename "$transaction")"
+  mkdir -p "$failed_root"
+  rollback_links "$transaction/previous-links.tsv" "$transaction/receipts" "$failed_root"
+  write_transaction_state "$transaction" failed content "$message"
+  cp -a "$transaction/." "$failed_root/"
+  write_failure_snapshot "$failed_root" content "$CURRENT_FAILED_STEP" "$message" 1
+  log "失败现场已保留：$failed_root"
 }
 
 activate_resources() {
   local set_file="$1" plan_file="$2" stage_root="$3" transaction="$4"
   local previous_links="$transaction/previous-links.tsv" receipts_backup="$transaction/receipts"
-  local service_states="$transaction/service-states.tsv" id version digest source source_path
+  local id version digest source source_path
   local versions target current old_target staged backup
   mkdir -p "$receipts_backup" "$transaction/backups"
   : >"$previous_links"
-  stop_affected_services "$plan_file" "$service_states"
+  write_transaction_state "$transaction" running content 'installing static resource content'
   while IFS=$'\t' read -r id version digest source source_path; do
     [[ "$source" == skip ]] && continue
     versions="$INSTALL_ROOT/$id/versions"
@@ -575,39 +556,33 @@ activate_resources() {
     printf '%s\t%s\t%s\t%s\n' "$id" "$old_target" "$target" "$backup" >>"$previous_links"
     mv "$staged" "$target"
     atomic_symlink "$target" "$current"
+    CURRENT_FAILED_STEP="install-content:$id"
+    record_transaction_diagnostic "installing resource=$id version=$version source=$source"
     if ! install_handler "$id" "$target"; then
-      rollback_links "$previous_links" "$receipts_backup" "$service_states"
+      fail_content_transaction "$transaction" "resource content install failed: $id"
       die "resource activation failed: $id"
     fi
   done <"$plan_file"
-  if ! start_control_plane || ! register_resources; then
-    rollback_links "$previous_links" "$receipts_backup" "$service_states"
-    die "service-manager or registry activation failed"
-  fi
   while IFS=$'\t' read -r id version digest source source_path; do
+    CURRENT_FAILED_STEP="verify-content:$id"
+    record_transaction_diagnostic "verifying resource=$id version=$version"
     verify_handler "$id" "$INSTALL_ROOT/$id/current" || {
-      rollback_links "$previous_links" "$receipts_backup" "$service_states"
+      fail_content_transaction "$transaction" "static resource verification failed: $id"
       die "resource verification failed: $id"
     }
   done <"$plan_file"
-  if ! verify_live_stack; then
-    rollback_links "$previous_links" "$receipts_backup" "$service_states"
-    die "service-manager, WuxianPi health, or component state verification failed"
-  fi
   while IFS=$'\t' read -r id version digest source source_path; do
     [[ "$source" == skip ]] && continue
+    CURRENT_FAILED_STEP="write-receipt:$id"
+    record_transaction_diagnostic "committing receipt resource=$id version=$version"
     if ! write_receipt "$id" "$version" "$digest" "$INSTALL_ROOT/$id/current"; then
-      rollback_links "$previous_links" "$receipts_backup" "$service_states"
+      fail_content_transaction "$transaction" "resource receipt commit failed: $id"
       die "resource receipt commit failed: $id"
     fi
   done <"$plan_file"
-  restore_service_states "$service_states"
   [[ -f "$INSTALLED_SET" ]] && atomic_json_copy "$INSTALLED_SET" "$PREVIOUS_SET"
   atomic_json_copy "$set_file" "$INSTALLED_SET"
-  if [[ -f "$APK_ROOT/PENDING_APK_RESOURCES.json" ]]; then
-    rm -f "$APK_ROOT/PENDING_APK_RESOURCES.json"
-  fi
-  find "$APK_ROOT" -mindepth 2 -maxdepth 2 -type f -name .pending -delete 2>/dev/null || true
+  write_transaction_state "$transaction" completed content 'static resource content installed'
 }
 
 verify_installed_set() {
@@ -627,43 +602,49 @@ verify_installed_set() {
 run_plan() {
   local workspace set_file plan_file candidates cleanup
   workspace="$(temporary_directory openhouse-resource-plan)"
-  printf -v cleanup 'rm -rf -- %q' "$workspace"
-  trap "$cleanup" EXIT
+  PLAN_WORKSPACE="$workspace"
   set_file="$workspace/resource-set.json"
   plan_file="$workspace/plan.tsv"
   candidates="$workspace/candidates.txt"
+  CURRENT_FAILED_STEP=select-target-set
   select_target_set "$set_file" "$candidates"
+  CURRENT_FAILED_STEP=build-plan
   build_plan "$set_file" "$plan_file"
   print_plan "$plan_file"
   if [[ "$COMMAND" == plan || "$COMMAND" == check ]]; then
     rm -rf -- "$workspace"
-    trap - EXIT
+    PLAN_WORKSPACE=''
     return 0
   fi
   local transaction="$TRANSACTIONS/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  CURRENT_TRANSACTION="$transaction"
   mkdir -p "$transaction"
   cp "$set_file" "$transaction/resource-set.json"
   cp "$plan_file" "$transaction/plan.tsv"
+  CURRENT_FAILED_STEP=stage-resources
+  record_transaction_diagnostic "transaction created"
   stage_resources "$plan_file" "$transaction/staged"
+  CURRENT_FAILED_STEP=activate-content
   activate_resources "$set_file" "$plan_file" "$transaction/staged" "$transaction"
   printf 'resource_update=applied\nresource_set=%s\nversion=%s\nsequence=%s\n' \
     "$RESOURCE_SET_ID" "$(jq -r '.version' "$set_file")" "$(jq -r '.sequence' "$set_file")"
   rm -rf -- "$workspace"
-  trap - EXIT
+  PLAN_WORKSPACE=''
 }
 
 main() {
+  trap 'resource_manager_exit $?' EXIT
   require_tools
   APK_VERSION_CODE="$(detect_apk_version_code)"
   [[ "$APK_VERSION_CODE" =~ ^[0-9]+$ ]] && (( APK_VERSION_CODE > 0 )) \
     || die "invalid APK version code"
-  mkdir -p "$ARCHIVES" "$RECEIPTS" "$TRANSACTIONS" "$INSTALL_ROOT"
-  chmod 700 "$MANAGER_ROOT" "$ARCHIVES" "$RECEIPTS" "$TRANSACTIONS" "$INSTALL_ROOT"
+  mkdir -p "$ARCHIVES" "$RECEIPTS" "$TRANSACTIONS" "$FAILED_TRANSACTIONS" "$INSTALL_ROOT"
+  chmod 700 "$MANAGER_ROOT" "$ARCHIVES" "$RECEIPTS" "$TRANSACTIONS" "$FAILED_TRANSACTIONS" "$INSTALL_ROOT"
   exec 9>"$MANAGER_ROOT/update.lock"
   flock -n 9 || die "another resource update is already running"
   case "$COMMAND" in
     check|plan|apply) run_plan ;;
-    verify) verify_installed_set && verify_live_stack ;;
+    verify) verify_installed_set ;;
     rollback)
       [[ -f "$PREVIOUS_SET" ]] || die "previous resource set is unavailable"
       OPENHOUSEAI_RESOURCE_SET_FILE="$PREVIOUS_SET" OPENHOUSEAI_ALLOW_DOWNGRADE=1 COMMAND=apply run_plan

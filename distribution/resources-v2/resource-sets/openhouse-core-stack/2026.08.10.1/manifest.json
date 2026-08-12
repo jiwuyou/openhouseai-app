@@ -13,8 +13,8 @@
     },
     {
       "id": "openhouse-control-plane",
-      "version": "1.0.1",
-      "sha256": "6f0dfc1d4480d4bfc97603e9ca0e75e543e3ab41637634a46ab123c2c5b9c89d"
+      "version": "1.0.2",
+      "sha256": "d5b30a825cf0f593f2089b01d97c5b06827a884b87b0838e516d665e5697351e"
     },
     {
       "id": "openhouse-runtime",

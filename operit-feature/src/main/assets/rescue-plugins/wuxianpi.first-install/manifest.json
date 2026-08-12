@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "wuxianpi.first-install",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "name": "首次安装",
-  "description": "通过 APK 离线总包准备五资源、Termux 和 Ubuntu，安装运行中枢固定入口并注册桌面组件。",
+  "description": "先规范 Termux 外部命令权限，再独立完成 APK 投递、静态资源安装和运行激活。",
   "category": "setup",
   "minHostVersion": 12,
   "requiredCapabilities": ["setup-tools", "termux", "persistent-terminal"],

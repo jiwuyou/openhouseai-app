@@ -356,6 +356,104 @@ class NativeOperitHostOperationsTest {
     }
 
     @Test
+    fun termuxPropertiesNormalizationPreservesUnrelatedSettingsAndCreatesOneActiveOptIn() {
+        val original = """
+            # terminal-transcript-rows = 2000
+            # allow-external-apps = true
+            allow-external-apps=false
+            extra-keys = [['ESC','CTRL']]
+            allow-external-apps = false
+        """.trimIndent() + "\n"
+
+        val normalized = normalizeTermuxProperties(original)
+        val state = inspectTermuxProperties(normalized)
+
+        assertTrue(state.allowExternalApps)
+        assertEquals(0, state.duplicateCount)
+        assertEquals(1, normalized.lineSequence().count { it == "allow-external-apps = true" })
+        assertTrue(normalized.contains("# terminal-transcript-rows = 2000"))
+        assertTrue(normalized.contains("extra-keys = [['ESC','CTRL']]"))
+        assertFalse(normalized.contains("allow-external-apps=false"))
+    }
+
+    @Test
+    fun termuxPropertiesNormalizationIsIdempotentAndNormalizesLineEndings() {
+        val once = normalizeTermuxProperties("foo=bar\r\nallow-external-apps = TRUE\r\n")
+        val twice = normalizeTermuxProperties(once)
+
+        assertEquals("foo=bar\nallow-external-apps = true\n", once)
+        assertEquals(once, twice)
+        assertTrue(inspectTermuxProperties(twice).allowExternalApps)
+    }
+
+    @Test
+    fun termuxPropertiesInspectionRejectsFalseOrDuplicateActiveValues() {
+        assertFalse(inspectTermuxProperties("allow-external-apps = false\n").allowExternalApps)
+        val duplicate = inspectTermuxProperties(
+            "allow-external-apps = true\nallow-external-apps=true\n",
+        )
+        assertFalse(duplicate.allowExternalApps)
+        assertEquals(1, duplicate.duplicateCount)
+    }
+
+    @Test
+    fun postReloadProbeUsesOnlyPrintfWithoutShellOrProfile() {
+        val probe = buildTermuxRunCommandProbe()
+
+        assertEquals("/data/data/com.termux/files/usr/bin/printf", probe.executable)
+        assertEquals(listOf(TERMUX_READY_MARKER), probe.arguments)
+        assertEquals("printf $TERMUX_READY_MARKER", probe.command)
+        assertFalse(probe.arguments.any { it.contains("bash") || it.contains("-lc") })
+        assertEquals("/data/data/com.termux/files/home", probe.workingDirectory)
+    }
+
+    @Test
+    fun nativeSetupStatusParsesFinalJsonLineForSharedOfferCompletionGate() {
+        val result = nativeSetupOperationResult(
+            operation = "wuxianpi_setup_status",
+            action = "status",
+            result = com.ai.assistance.operit.host.OperitHostCommandResult(
+                command = "wuxianpi-setup status",
+                exitCode = 0,
+                stdout = "notice\n{\"delivery\":\"ready\",\"content\":\"installed\",\"activation\":\"ready\"}\n",
+                stderr = "",
+                error = "",
+                timedOut = false,
+                durationMs = 9L,
+            ),
+            baseDetails = org.json.JSONObject().put("hostState", "external_termux"),
+        )
+
+        assertTrue(result.success)
+        assertEquals("external_termux", result.details.getString("hostState"))
+        assertEquals("ready", result.details.getJSONObject("status").getString("delivery"))
+        assertEquals("installed", result.details.getJSONObject("status").getString("content"))
+        assertEquals("ready", result.details.getJSONObject("status").getString("activation"))
+    }
+
+    @Test
+    fun nativeSetupStatusKeepsRawOutputWhenFinalJsonIsMalformed() {
+        val result = nativeSetupOperationResult(
+            operation = "wuxianpi_setup_status",
+            action = "status",
+            result = com.ai.assistance.operit.host.OperitHostCommandResult(
+                command = "wuxianpi-setup status",
+                exitCode = 0,
+                stdout = "notice\n{not-json}\n",
+                stderr = "warning",
+                error = "",
+                timedOut = false,
+                durationMs = 9L,
+            ),
+        )
+
+        assertTrue(result.success)
+        assertFalse(result.details.has("status"))
+        assertEquals("notice\n{not-json}\n", result.details.getString("stdout"))
+        assertEquals("warning", result.details.getString("stderr"))
+    }
+
+    @Test
     fun tmuxSessionTransportReportsUnavailableExternalTermux() = runBlocking {
         val transport = NativeTermuxSessionTransport(
             NativeTermuxCommandTransport { _, _ ->
