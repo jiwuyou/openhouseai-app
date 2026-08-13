@@ -792,7 +792,7 @@ readiness_object() {
 service_manager_dir="$(component_dir_from_env "${SMALLPHONEAI_SERVICE_MANAGER_DIR:-}" service-manager /root/projects/service-manager)"
 cc_connect_dir="$(component_dir_from_env "${SMALLPHONEAI_CC_CONNECT_DIR:-}" openhouse-connect /root/openhouse-connect-fresh /root/cc-connect-fresh)"
 smallphone_dir="$(component_dir_from_env "${SMALLPHONEAI_SMALLPHONE_DIR:-}" smallphone-active /root/projects/smallphone/smallphone-active)"
-pi_agent_dir="$(component_dir_from_env "${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-}}" pi-runtime /root/projects/pi)"
+pi_agent_dir="${OPENHOUSE_PI_AGENT_DIR:-${SMALLPHONEAI_PI_AGENT_DIR:-$HOME/.local/share/wuxianpi}}"
 
 sm_url="$(configured_service_manager_url)"
 cc_host="${SMALLPHONEAI_CC_CONNECT_HOST:-127.0.0.1}"
@@ -939,13 +939,13 @@ likegirl_reachable="$(probe_url "$likegirl_url")"
 likegirl_clone_reachable="$(probe_url "$likegirl_clone_url")"
 pi_agent_satisfied=0
 if [ -d "$pi_agent_dir" ] \
-  && [ -x "$pi_agent_dir/bin/wuxianpi" ] \
-  && [ -x "$pi_agent_dir/bin/wuxianpi-node" ] \
-  && [ -x "$pi_agent_dir/bin/wuxianpi-node-start" ] \
-  && [ -f "$pi_agent_dir/node/dist/index.js" ] \
-  && [ -f "$pi_agent_dir/scripts/install.sh" ] \
-  && [ -f "$pi_agent_dir/scripts/check.sh" ] \
-  && [ -f "$pi_agent_dir/scripts/register-service.sh" ]; then
+  && [ -x "$HOME/.local/bin/wuxianpi" ] \
+  && [ -x "$HOME/.local/bin/wuxianpi-node" ] \
+  && [ -x "$HOME/.local/bin/wuxianpi-node-start" ] \
+  && [ -f "$pi_agent_dir/runtime/dist/index.js" ] \
+  && [ -f "$pi_agent_dir/runtime/builtin-packages/task-manager/wuxianpi-package.json" ] \
+  && [ -f "$pi_agent_dir/web/index.html" ] \
+  && [ -f "$pi_agent_dir/base/node_modules/@earendil-works/pi-coding-agent/package.json" ]; then
   pi_agent_satisfied=1
 fi
 ready=0

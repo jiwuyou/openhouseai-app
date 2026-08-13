@@ -93,7 +93,7 @@ setup = (repo / "app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-set
 for token in ("activation.lock", "canonical_auth_failed", "registry_sync_failed", "wuxianpi_endpoint_failed", "wuxianpi_health_failed"):
     if token not in setup: raise SystemExit(f"activation contract is missing: {token}")
 manifest = json.loads((repo / "operit-feature/src/main/assets/rescue-plugins/wuxianpi.first-install/manifest.json").read_text())
-if manifest.get("version") != "1.0.14": raise SystemExit("bundled first-install version must be 1.0.14")
+if manifest.get("version") != "1.0.15": raise SystemExit("bundled first-install version must be 1.0.15")
 print(f"Install bundle validated: sha256={hashlib.sha256(bundle.read_bytes()).hexdigest()} size={bundle.stat().st_size}")
 PY
 

@@ -6,9 +6,13 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ "${SKIP_RUNTIME_BUILD:-0}" == "1" ]] || "$repo_dir/scripts/build-pi-node-payload.sh"
 runtime_payload="$repo_dir/app/src/main/assets/openhouse/product-payloads/runtime-aarch64.tgz"
 [[ -s "$runtime_payload" ]] || { printf 'Missing WuxianPi Node runtime payload: %s\n' "$runtime_payload" >&2; exit 1; }
-for required in ./bin/wuxianpi-node ./bin/wuxianpi-node-start ./node/dist/index.js ./scripts/install.sh; do
+for required in ./bin/wuxianpi-node ./bin/wuxianpi-node-start ./scripts/install-release.sh ./scripts/install.sh; do
   tar -tzf "$runtime_payload" | awk -v required="$required" '$0 == required || $0 == "./" required { found = 1 } END { exit found ? 0 : 1 }' \
     || { printf 'All-in-One runtime payload is missing %s\n' "$required" >&2; exit 1; }
+done
+for layer in base runtime web; do
+  tar -tzf "$runtime_payload" | grep -Eq "^\./layers/wuxianpi-${layer}-[^/]+\.tar\.zst$" \
+    || { printf 'All-in-One runtime payload is missing the official %s layer\n' "$layer" >&2; exit 1; }
 done
 [[ ! -e "$repo_dir/app/src/main/assets/openhouse/product-payloads/pi-runtime.tar" ]] \
   || { printf 'Legacy pi-runtime.tar must not be bundled\n' >&2; exit 1; }

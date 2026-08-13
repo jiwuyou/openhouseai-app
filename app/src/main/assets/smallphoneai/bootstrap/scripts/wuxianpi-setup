@@ -140,9 +140,17 @@ runtime_archive_has_required_members() {
   for member in \
     './bin/wuxianpi-node' \
     './bin/wuxianpi-node-start' \
-    './node/dist/index.js' \
-    './scripts/install.sh'; do
-    grep -Fxq "${member#./}" <<<"$listing" || return 1
+    './layers/wuxianpi-base-' \
+    './layers/wuxianpi-runtime-' \
+    './layers/wuxianpi-web-' \
+    './scripts/install.sh' \
+    './scripts/install-release.sh' \
+    './scripts/register-service.sh'; do
+    if [[ "$member" == './layers/'*'-' ]]; then
+      grep -Eq "^${member#./}[^/]+\\.tar\\.zst$" <<<"$listing" || return 1
+    else
+      grep -Fxq "${member#./}" <<<"$listing" || return 1
+    fi
   done
 }
 
@@ -255,7 +263,13 @@ wuxianpi_service_registered() {
 }
 
 pi_health_body() {
+  local endpoint
   command -v curl >/dev/null 2>&1 || return 1
+  endpoint="$(wuxianpi_endpoint_url 2>/dev/null || true)"
+  if [ -n "$endpoint" ]; then
+    curl -fsS --max-time 3 "${endpoint%/}/health" 2>/dev/null
+    return
+  fi
   curl -fsS --max-time 3 "$PI_URL/health" 2>/dev/null
 }
 
@@ -360,11 +374,17 @@ canonical_service_manager_registry_ready() {
   printf '%s' "$body" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"yuanshengwuxianpi"'
 }
 
-wuxianpi_web_endpoint_ready() {
-  local attempt body
+wuxianpi_endpoint_url() {
+  local body
+  body="$(authenticated_service_manager_request GET /api/v1/services/yuanshengwuxianpi/endpoints/runtime 2>/dev/null || true)"
+  printf '%s' "$body" | jq -r 'select(.name == "runtime" and (.port | type == "number")) | .url // empty' 2>/dev/null
+}
+
+wuxianpi_runtime_endpoint_ready() {
+  local attempt endpoint
   for attempt in $(seq 1 10); do
-    body="$(authenticated_service_manager_request GET /api/v1/services/yuanshengwuxianpi/endpoints/web 2>/dev/null || true)"
-    if printf '%s' "$body" | jq -e '.name == "web" and .port == 20765' >/dev/null 2>&1; then
+    endpoint="$(wuxianpi_endpoint_url)"
+    if [ -n "$endpoint" ]; then
       return 0
     fi
     sleep 1
@@ -741,12 +761,48 @@ ensure_canonical_service_manager_config() {
 }
 
 register_installed_resources() {
-  local id script token
+  local id script token spec_dir spec
   token="$(service-manager token show --config "$CANONICAL_SM_CONFIG" 2>/dev/null | head -n 1 | tr -d '\r\n')"
   [ -n "$token" ] || return 1
   for id in openhouse-runtime wuyou openhouse-web; do
     script="$RESOURCE_INSTALL_ROOT/$id/current/scripts/register-service.sh"
     [ -x "$script" ] || { log "activation resource registration script missing: $id"; return 1; }
+    if [ "$id" = openhouse-runtime ]; then
+      spec_dir="$(mktemp -d "${TMPDIR:-$TERMUX_PREFIX/tmp}/wuxianpi-service-spec.XXXXXX")"
+      spec="$spec_dir/yuanshengwuxianpi.json"
+      jq -n \
+        --arg home "$TERMUX_HOME" \
+        --arg prefix "$TERMUX_PREFIX" \
+        '{
+          name:"yuanshengwuxianpi",
+          description:"WuxianPi Web and Node Runtime",
+          provider:"termux-process",
+          command:["sh","-lc","wuxianpi-node-start & child=$!; trap '\''kill -TERM $child 2>/dev/null; wait $child 2>/dev/null || true'\'' TERM INT HUP; wait $child"],
+          working_dir:($home + "/workspace"),
+          env:{
+            HOME:$home,
+            PATH:($home + "/.local/bin:" + $prefix + "/bin:/system/bin"),
+            PI_CODING_AGENT_DIR:($home + "/.pi/agent"),
+            OPENHOUSE_PI_LISTEN:"127.0.0.1:{{port:runtime}}",
+            OPENHOUSE_PI_RUNTIME_ORIGIN:"http://127.0.0.1:{{port:runtime}}",
+            OPENHOUSE_AIONUI_ORIGIN:"http://127.0.0.1:25808/",
+            WUXIANPI_WEB_ROOT:($home + "/.local/share/wuxianpi/web")
+          },
+          runtime:{strategy:"termux-process",runtime:"termux",platform:"android-arm64"},
+          ports:[{name:"runtime",host:"127.0.0.1",preferred:20765,dynamic:true,pool:"local-web",protocol:"tcp",envVar:"OPENHOUSE_PI_PORT",endpoint:{scheme:"http",path:"/"}}],
+          restart:{mode:"on-failure",max_retries:5},
+          health:[{type:"http",url:"http://127.0.0.1:{{port:runtime}}/health",interval:"15s",timeout:"3s"}],
+          enabled:true,
+          residentByDefault:false,
+          tags:["wuxianpi","agent","openhouse-component:yuanshengwuxianpi"]
+        }' >"$spec"
+      if ! "$script" --spec "$spec"; then
+        rm -rf "$spec_dir"
+        return 1
+      fi
+      rm -rf "$spec_dir"
+      continue
+    fi
     SERVICE_MANAGER_TOKEN="$token" \
       SERVICE_MANAGER_URL="$CANONICAL_SM_URL" \
       SERVICE_MANAGER_CONFIG_PATH="$CANONICAL_SM_CONFIG" \
@@ -774,9 +830,11 @@ authenticated_service_manager_request() {
 }
 
 wait_wuxianpi_health() {
-  local attempt=1
+  local attempt=1 endpoint
   while [ "$attempt" -le 30 ]; do
-    if curl -q -fsS --connect-timeout 2 --max-time 3 "$PI_URL/health" >/dev/null 2>&1; then
+    endpoint="$(wuxianpi_endpoint_url)"
+    if [ -n "$endpoint" ] \
+      && curl -q -fsS --connect-timeout 2 --max-time 3 "${endpoint%/}/health" >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
@@ -833,7 +891,7 @@ activate_runtime() {
     || activation_fail component_registry_missing
   authenticated_service_manager_request POST /api/v1/services/yuanshengwuxianpi/start >/dev/null \
     || activation_fail wuxianpi_start_failed
-  wuxianpi_web_endpoint_ready || activation_fail wuxianpi_endpoint_failed
+  wuxianpi_runtime_endpoint_ready || activation_fail wuxianpi_endpoint_failed
   wait_wuxianpi_health || activation_fail wuxianpi_health_failed
 
   activation_json ready '' "$offer_id"

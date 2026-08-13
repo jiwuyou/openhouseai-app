@@ -7,9 +7,13 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$repo_dir/scripts/generate-native-install-resources.sh"
 asset="$repo_dir/app/src/main/assets/openhouse/product-payloads/runtime-aarch64.tgz"
 [[ -s "$asset" ]] || { printf 'Missing canonical ARM64 runtime input: %s\n' "$asset" >&2; exit 1; }
-for required in ./install.sh ./bin/wuxianpi ./bin/wuxianpi-node ./bin/wuxianpi-node-start ./node/dist/index.js ./metadata/build.json; do
+for required in ./install.sh ./bin/wuxianpi ./bin/wuxianpi-node ./bin/wuxianpi-node-start ./scripts/install-release.sh ./metadata/build.json; do
   tar -tzf "$asset" | awk -v required="$required" '$0 == required { found = 1 } END { exit found ? 0 : 1 }' \
     || { printf 'Native runtime asset is missing %s\n' "$required" >&2; exit 1; }
+done
+for layer in base runtime web; do
+  tar -tzf "$asset" | grep -Eq "^\./layers/wuxianpi-${layer}-[^/]+\.tar\.zst$" \
+    || { printf 'Native runtime asset is missing the official %s layer\n' "$layer" >&2; exit 1; }
 done
 "$repo_dir/scripts/validate-openhouse-payloads.sh"
 "$repo_dir/scripts/validate-native-install-resources.sh"

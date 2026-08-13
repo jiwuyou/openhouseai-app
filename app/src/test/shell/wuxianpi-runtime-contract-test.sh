@@ -25,30 +25,33 @@ grep -Fq 'termux_runsvdir_active' "$PACKAGES" || fail 'formal package stage does
 
 for script in "$COMPONENTS" "$START"; do
   grep -Fq 'install-service --config' "$script" || fail "$script does not install the runit service"
-  grep -Fq 'SVDIR="$service_root" sv up service-manager' "$script" || fail "$script does not use the Termux service root"
+  grep -Fq 'oh_service_manager_sv_up_with_retry service-manager' "$script" \
+    || fail "$script does not use the bounded runit startup helper"
+  grep -Fq 'env SVDIR="$service_root" sv status service-manager' "$script" \
+    || fail "$script does not inspect service-manager in the Termux service root"
   if grep -Eq 'install-service[^\n]*\|\| true|sv up service-manager[^\n]*\|\| true' "$script"; then
     fail "$script hides a critical runit failure"
   fi
 done
 
-grep -Fq 'yuanshengwuxianpi.json' "$PAYLOAD_BUILDER" || fail 'stable WuxianPi service filename missing'
-grep -Fq '"name": "yuanshengwuxianpi"' "$PAYLOAD_BUILDER" || fail 'stable WuxianPi service id missing'
-grep -Fq '127.0.0.1:20765' "$PAYLOAD_BUILDER" || fail 'system WuxianPi port 20765 missing'
-grep -Fq '"residentByDefault": false' "$PAYLOAD_BUILDER" || fail 'WuxianPi must remain on demand'
-grep -Fq '"restart": {"mode": "on-failure"' "$PAYLOAD_BUILDER" || fail 'WuxianPi restart policy must be on-failure'
-if grep -Fq '"restart": {"mode": "always"' "$PAYLOAD_BUILDER"; then
-  fail 'WuxianPi payload still declares restart always'
-fi
-if grep -Fq '"tags": ["group:local-stack"' "$PAYLOAD_BUILDER"; then
-  fail 'on-demand WuxianPi service is still part of the automatically started local stack'
-fi
+grep -Fq 'build-source-release.sh' "$PAYLOAD_BUILDER" \
+  || fail 'runtime payload does not consume the official WuxianPi source release'
+grep -Fq 'wuxianpi-install-arm64-' "$PAYLOAD_BUILDER" \
+  || fail 'runtime payload does not consume the official ARM64 install artifact'
+grep -Fq 'sourceRepo": "https://github.com/jiwuyou/wuxianpi.git"' "$PAYLOAD_BUILDER" \
+  || fail 'runtime payload does not identify the WuxianPi source repository'
+grep -Fq '"$script" --spec "$spec"' "$SETUP" || fail 'activation does not pass the complete OpenHouse ServiceSpec'
+grep -Fq 'name:"runtime"' "$SETUP" || fail 'OpenHouse runtime port declaration is missing'
+grep -Fq 'dynamic:true' "$SETUP" || fail 'OpenHouse runtime port is not dynamic'
+grep -Fq '{{port:runtime}}/health' "$SETUP" || fail 'OpenHouse runtime health is not templated'
 
 grep -Fq 'http://127.0.0.1:20765' "$SETUP" || fail 'setup verification still uses the old runtime port'
 if grep -Fq 'SMALLPHONEAI_START_TARGETS=pi-agent run_bootstrap start' "$SETUP"; then
   fail 'first installation must register WuxianPi without starting it'
 fi
-grep -Fq 'SMALLPHONEAI_COMPONENT_ACTION=install-register' "$SETUP" || fail 'first installation does not register WuxianPi'
-grep -Fq 'Registered on-demand service-manager service (not started)' "$PAYLOAD_BUILDER" || fail 'WuxianPi payload does not document deferred startup'
+grep -Fq 'register_installed_resources || activation_fail registry_file_failed' "$SETUP" \
+  || fail 'activation does not register the installed WuxianPi resource'
+grep -Fq 'wuxianpi_runtime_endpoint_ready' "$SETUP" || fail 'setup does not resolve the actual runtime endpoint'
 grep -Fq 'wuxianpi-node-start' "$SETUP" || fail 'setup does not verify installed WuxianPi payload'
 grep -Fq 'pi_runtime_port="${OPENHOUSE_PI_RUNTIME_PORT:-20765}"' "$STATUS" || fail 'status script still defaults to port 8765'
 grep -Fq 'readiness_object "yuanshengwuxianpi"' "$STATUS" || fail 'status readiness uses the legacy service id'
@@ -72,21 +75,24 @@ fi
     rm -rf "$status_root"
   }
   trap cleanup_status_fixture EXIT INT HUP TERM
-  mkdir -p "$status_root/bin" "$status_root/home" "$status_root/pi-runtime/bin" \
-    "$status_root/pi-runtime/node/dist" "$status_root/pi-runtime/scripts"
+  mkdir -p "$status_root/bin" "$status_root/home/.local/bin" \
+    "$status_root/pi-runtime/runtime/dist" \
+    "$status_root/pi-runtime/runtime/builtin-packages/task-manager" \
+    "$status_root/pi-runtime/web" \
+    "$status_root/pi-runtime/base/node_modules/@earendil-works/pi-coding-agent"
   cat > "$status_root/bin/curl" <<'EOF'
 #!/usr/bin/env sh
 exit 0
 EOF
   chmod 755 "$status_root/bin/curl"
   for executable in wuxianpi wuxianpi-node wuxianpi-node-start; do
-    printf '#!/usr/bin/env sh\nexit 0\n' > "$status_root/pi-runtime/bin/$executable"
-    chmod 755 "$status_root/pi-runtime/bin/$executable"
+    printf '#!/usr/bin/env sh\nexit 0\n' > "$status_root/home/.local/bin/$executable"
+    chmod 755 "$status_root/home/.local/bin/$executable"
   done
-  : > "$status_root/pi-runtime/node/dist/index.js"
-  for script in install.sh check.sh register-service.sh; do
-    : > "$status_root/pi-runtime/scripts/$script"
-  done
+  : > "$status_root/pi-runtime/runtime/dist/index.js"
+  : > "$status_root/pi-runtime/runtime/builtin-packages/task-manager/wuxianpi-package.json"
+  : > "$status_root/pi-runtime/web/index.html"
+  : > "$status_root/pi-runtime/base/node_modules/@earendil-works/pi-coding-agent/package.json"
   status_port="$(python3 - <<'PY'
 import socket
 with socket.socket() as sock:

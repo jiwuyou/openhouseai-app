@@ -107,7 +107,7 @@ clones from GitHub. It is not an air-gapped install: apt, npm, pip, model
 providers, and ordinary network checks may still be used when a stage needs
 operating-system or package dependencies. The stable `pi-agent` component ID
 installs the Node/Pi SDK payload from `runtime-aarch64.tgz`; runtime code is
-installed under `$HOME/.local/share/openhouseai/runtime`, Pi conversations and
+installed under `$HOME/.local/share/wuxianpi`, Pi conversations and
 extensions remain under `$HOME/.pi`, and the tokenless service listens on
 `127.0.0.1:8765` using `wuxianpi-sdk-v1`. It requires Termux Node.js 22.19 or
 newer. The lean APK does not bundle AionUI or pi-web. `wuyou` continues to use

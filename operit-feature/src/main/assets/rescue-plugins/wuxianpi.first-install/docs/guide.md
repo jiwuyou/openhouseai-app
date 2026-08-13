@@ -1,8 +1,8 @@
 # WuxianPi 首次安装
 
-`wuxianpi.first-install 1.0.14` 将权限准备、APK 投递、静态资源安装和运行激活拆成独立阶段。运行激活失败不会删除已经安装的资源，也不会要求重新投递 APK 总包。
+`wuxianpi.first-install 1.0.15` 将权限准备、APK 投递、静态资源安装和运行激活拆成独立阶段。运行激活失败不会删除已经安装的资源，也不会要求重新投递 APK 总包。
 
-持久 Termux 准备完成后，首次安装会先更新基础包，并确认 `jq`、`curl`、`tar`、`gzip`、`tmux`、`sv` 和 `service-daemon` 可用。APK 离线内容导入后，联网时安装并复用 `wuxianpi.resource-update 3.0.0` 收敛到市场中最新的兼容资源集合；五个资源版本相同时不会重复下载。市场不可用时直接使用 APK 集合继续激活。
+持久 Termux 准备完成后，首次安装会先更新基础包，并确认 `jq`、`curl`、`tar`、`gzip`、`zstd`、`tmux`、`sv` 和 `service-daemon` 可用。APK 离线内容导入后，联网时安装并复用 `wuxianpi.resource-update 3.0.0` 收敛到市场中最新的兼容资源集合；五个资源版本相同时不会重复下载。市场不可用时直接使用 APK 集合继续激活。
 
 ## Native 权限顺序
 

@@ -59,14 +59,14 @@
       "id": "persistent-terminal",
       "kind": "tool",
       "tool": "prepare_persistent_termux",
-      "description": "安装 tmux、curl、jq、tar、gzip 和 flock 所需的最小 Termux 基础能力。"
+      "description": "安装 tmux、curl、jq、tar、gzip、zstd 和 flock 所需的最小 Termux 基础能力。"
     },
     {
       "id": "update-termux-base-packages",
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "set -eu; pkg update -y; pkg upgrade -y; pkg install -y bash jq curl tar gzip coreutils findutils procps tmux termux-services; for command in jq curl tar gzip tmux sv service-daemon; do command -v \"$command\" >/dev/null || { printf 'missing Termux command: %s\\n' \"$command\" >&2; exit 1; }; done",
+        "command": "set -eu; pkg update -y; pkg upgrade -y; pkg install -y bash jq curl tar gzip zstd coreutils findutils procps tmux termux-services; for command in jq curl tar gzip zstd tmux sv service-daemon; do command -v \"$command\" >/dev/null || { printf 'missing Termux command: %s\\n' \"$command\" >&2; exit 1; }; done",
         "working_directory": "$HOME",
         "session_name": "wuxianpi-termux-base-packages",
         "yield_time_ms": 1000

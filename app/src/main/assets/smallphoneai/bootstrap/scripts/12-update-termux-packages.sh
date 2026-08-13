@@ -305,8 +305,8 @@ install_termux_base_packages() {
       continue
     fi
 
-    log "正在执行 apt install -y proot-distro openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates termux-services（源：$repo）"
-    if run_termux_apt_install proot-distro openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates termux-services; then
+    log "正在执行 apt install -y proot-distro openssh curl jq zstd libcurl libngtcp2 libnghttp2 openssl ca-certificates termux-services（源：$repo）"
+    if run_termux_apt_install proot-distro openssh curl jq zstd libcurl libngtcp2 libnghttp2 openssl ca-certificates termux-services; then
       return 0
     fi
 
@@ -407,7 +407,7 @@ fi
 if ! curl --version >/dev/null 2>&1; then
   log "curl 仍不可用，尝试完整升级 Termux 依赖。"
   repair_termux_package_state
-  run_termux_apt_install openssh curl jq libcurl libngtcp2 libnghttp2 openssl ca-certificates termux-services || true
+  run_termux_apt_install openssh curl jq zstd libcurl libngtcp2 libnghttp2 openssl ca-certificates termux-services || true
 fi
 
 if ! curl --version >/dev/null 2>&1; then

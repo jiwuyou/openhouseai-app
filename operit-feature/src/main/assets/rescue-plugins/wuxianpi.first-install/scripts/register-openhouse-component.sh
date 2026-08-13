@@ -3,11 +3,9 @@ set -euo pipefail
 
 SERVICE_ID="yuanshengwuxianpi"
 COMPONENT_ID="$SERVICE_ID"
-COMPONENT_URL="http://127.0.0.1:20765/"
 DEFAULT_SERVICE_MANAGER_URL="http://127.0.0.1:20087"
 CANONICAL_CONFIG="$HOME/.config/openhouseai/service-manager/config.json"
 SERVICE_SPEC="$HOME/.config/openhouseai/service-manager/services.d/$SERVICE_ID.json"
-RUNTIME_REGISTER="$HOME/.local/share/openhouseai/resources/openhouse-runtime/current/scripts/register-service.sh"
 WORK_DIR=""
 
 log() { printf '[OpenHouse registry] %s\n' "$*"; }
@@ -119,14 +117,12 @@ register_component() {
   local manifest payload auth_file
   command -v jq >/dev/null 2>&1 || die '缺少 jq'
   command -v curl >/dev/null 2>&1 || die '缺少 curl'
-  [[ -x "$RUNTIME_REGISTER" ]] || die "Runtime 服务注册脚本不存在：$RUNTIME_REGISTER"
-  "$RUNTIME_REGISTER"
   [[ -s "$SERVICE_SPEC" ]] || die "Runtime 未生成服务定义：$SERVICE_SPEC"
   jq -e --arg id "$SERVICE_ID" '
     .name == $id and .provider == "termux-process" and
-    any(.ports[]?; .name == "web" and .preferred == 20765 and .envVar == "OPENHOUSE_PI_PORT") and
-    any(.health[]?; .url == "http://127.0.0.1:{{port:web}}/health")
-  ' "$SERVICE_SPEC" >/dev/null || die "Runtime 服务定义缺少标准 web 端口或模板化健康检查"
+    any(.ports[]?; .name == "runtime" and .preferred == 20765 and .dynamic == true and .envVar == "OPENHOUSE_PI_PORT") and
+    any(.health[]?; .url == "http://127.0.0.1:{{port:runtime}}/health")
+  ' "$SERVICE_SPEC" >/dev/null || die "Runtime 服务定义缺少动态 runtime 端口或模板化健康检查"
 
   WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-openhouse-registry.XXXXXX")"
   manifest="$WORK_DIR/component.json"
@@ -145,7 +141,7 @@ register_component() {
 }
 
 verify_component() {
-  local attempt auth_file services components endpoint
+  local attempt auth_file services components endpoint endpoint_url endpoint_port
   command -v jq >/dev/null 2>&1 || die '缺少 jq'
   WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-openhouse-verify.XXXXXX")"
   auth_file="$WORK_DIR/curl.cfg"
@@ -158,15 +154,17 @@ verify_component() {
     || die "组件列表中没有 $COMPONENT_ID"
   endpoint=''
   for attempt in $(seq 1 10); do
-    endpoint="$(api_request GET "/api/v1/services/$SERVICE_ID/endpoints/web" "$auth_file" 2>/dev/null || true)"
-    jq -e '.name == "web" and .port == 20765' <<<"$endpoint" >/dev/null 2>&1 && break
+    endpoint="$(api_request GET "/api/v1/services/$SERVICE_ID/endpoints/runtime" "$auth_file" 2>/dev/null || true)"
+    jq -e '.name == "runtime" and (.port | type == "number") and (.url | type == "string")' <<<"$endpoint" >/dev/null 2>&1 && break
     endpoint=''
     sleep 1
   done
-  [[ -n "$endpoint" ]] || die 'WuxianPi web 端点未在 10 秒内就绪或端口不是 20765'
-  curl -q -fsS --max-time 5 "${COMPONENT_URL%/}/health" >/dev/null \
-    || die 'WuxianPi 20765 health 检查失败'
-  printf 'registry_component=%s\nregistry_api=ok\nservice=ok\nendpoint_web=20765\nhealth=ok\n' "$COMPONENT_ID"
+  [[ -n "$endpoint" ]] || die 'WuxianPi runtime 端点未在 10 秒内就绪'
+  endpoint_url="$(jq -r '.url' <<<"$endpoint")"
+  endpoint_port="$(jq -r '.port' <<<"$endpoint")"
+  curl -q -fsS --max-time 5 "${endpoint_url%/}/health" >/dev/null \
+    || die "WuxianPi $endpoint_port health 检查失败"
+  printf 'registry_component=%s\nregistry_api=ok\nservice=ok\nendpoint_runtime=%s\nhealth=ok\n' "$COMPONENT_ID" "$endpoint_port"
 }
 
 case "${1:-}" in

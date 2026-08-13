@@ -978,7 +978,7 @@ install_default_subjects() {
   fi
 
   install_default_subject_file "pi-agent.json" <<'JSON'
-{"id":"pi-agent","title":"WuxianPi Node Runtime","kind":"runtime-http","summary":"Node service embedding the official Pi SDK and preserving native Pi JSONL sessions.","serviceRefs":[{"id":"yuanshengwuxianpi","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/workspace","workdir":"$HOME/workspace","command":"wuxianpi-node-start","entryCommand":"wuxianpi-node-start"}],"entries":[{"type":"runtime","label":"WuxianPi SDK API","url":"http://127.0.0.1:20765/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","purpose":"APK-managed WuxianPi Node payload source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/openhouseai/runtime","purpose":"Installed Node service and Pi SDK"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Pi conversation data, extensions, skills, and settings"}],"ai":{"description":"The yuanshengwuxianpi service starts wuxianpi-node-start on demand on port 20765 and embeds @earendil-works/pi-coding-agent directly.","whenUnavailable":"Start yuanshengwuxianpi through service-manager and verify Node >=22.19."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/bin/wuxianpi-node-start","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.pi/agent/sessions","timeoutSeconds":4}]}}
+{"id":"pi-agent","title":"WuxianPi Node Runtime","kind":"runtime-http","summary":"Node service embedding the official Pi SDK and preserving native Pi JSONL sessions.","serviceRefs":[{"id":"yuanshengwuxianpi","runtime":"termux","manager":"service-manager","home":"/data/data/com.termux/files/home","workingDirectory":"$HOME/workspace","workdir":"$HOME/workspace","command":"wuxianpi-node-start","entryCommand":"wuxianpi-node-start"}],"entries":[{"type":"runtime","label":"WuxianPi SDK API","url":"http://127.0.0.1:20765/"}],"locations":[{"runtime":"termux","path":"/data/data/com.termux/files/home/smallphoneai-repos/pi-runtime","purpose":"APK-managed WuxianPi Node payload source"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/wuxianpi","purpose":"Official WuxianPi Web, Runtime, and Base installation"},{"runtime":"termux","path":"/data/data/com.termux/files/home/.pi","purpose":"Pi conversation data, extensions, skills, and settings"}],"ai":{"description":"The yuanshengwuxianpi service starts wuxianpi-node-start on demand on port 20765 and embeds @earendil-works/pi-coding-agent directly.","whenUnavailable":"Start yuanshengwuxianpi through service-manager and verify Node >=22.19."},"checks":{"serviceTimeoutSeconds":5,"afterServiceOk":[{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/bin/wuxianpi-node-start","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.local/share/wuxianpi/runtime/dist/index.js","timeoutSeconds":4},{"type":"pathExists","runtime":"termux","path":"/data/data/com.termux/files/home/.pi/agent/sessions","timeoutSeconds":4}]}}
 JSON
   install_default_subject_file "file-inbox.json" <<'JSON'
 {"id":"file-inbox","title":"File Inbox","kind":"file","summary":"Shared staging area for files opened with or shared to OpenHouse.","serviceRefs":[],"entries":[{"type":"file","label":"Android inbox","path":"/storage/emulated/0/OpenHouse/Inbox"}],"locations":[{"runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","purpose":"user-visible Android storage"},{"runtime":"termux","path":"/data/data/com.termux/files/home/OpenHouse/Inbox","purpose":"Termux-native inbox projection"},{"runtime":"ubuntu","path":"/root/OpenHouse/Inbox","purpose":"Ubuntu/proot inbox projection"}],"ai":{"description":"Files from Android share/open-with flows should be staged here before AI processing.","whenUnavailable":"Check storage permission and projected inbox directories."},"checks":{"afterServiceOk":[{"type":"pathExists","runtime":"android","path":"/storage/emulated/0/OpenHouse/Inbox","timeoutSeconds":3}]}}
@@ -1474,15 +1474,15 @@ payload_dir_needs_refresh() {
       [ -x "$source/bin/wuxianpi" ] \
         && [ -x "$source/bin/wuxianpi-node" ] \
         && [ -x "$source/bin/wuxianpi-node-start" ] \
-        && [ -f "$source/node/dist/index.js" ] \
+        && compgen -G "$source/layers/wuxianpi-runtime-*.tar.zst" >/dev/null \
+        && compgen -G "$source/layers/wuxianpi-base-*.tar.zst" >/dev/null \
+        && compgen -G "$source/layers/wuxianpi-web-*.tar.zst" >/dev/null \
+        && [ -f "$source/scripts/install-release.sh" ] \
         && [ -f "$source/scripts/install.sh" ] \
         && [ -f "$source/scripts/check.sh" ] \
         && [ -f "$source/scripts/register-service.sh" ] \
         && grep -Fq 'wuxianpi-node-start' "$source/scripts/register-service.sh" \
-        && grep -Fq 'yuanshengwuxianpi.json' "$source/scripts/register-service.sh" \
-        && grep -Fq '127.0.0.1:20765' "$source/scripts/register-service.sh" \
-        && grep -Fq '"residentByDefault": false' "$source/scripts/register-service.sh" \
-        && grep -Fq '"mode": "on-failure"' "$source/scripts/register-service.sh" \
+        && grep -Fq -- '--spec' "$source/scripts/register-service.sh" \
         || return 0
       ;;
     pi-web)
@@ -1625,11 +1625,14 @@ validate_payload_source() {
       if [ ! -x "$source/bin/wuxianpi" ] \
         || [ ! -x "$source/bin/wuxianpi-node" ] \
         || [ ! -x "$source/bin/wuxianpi-node-start" ] \
-        || [ ! -f "$source/node/dist/index.js" ] \
+        || ! compgen -G "$source/layers/wuxianpi-runtime-*.tar.zst" >/dev/null \
+        || ! compgen -G "$source/layers/wuxianpi-base-*.tar.zst" >/dev/null \
+        || ! compgen -G "$source/layers/wuxianpi-web-*.tar.zst" >/dev/null \
+        || [ ! -f "$source/scripts/install-release.sh" ] \
         || [ ! -f "$source/scripts/install.sh" ] \
         || [ ! -f "$source/scripts/check.sh" ] \
         || [ ! -f "$source/scripts/register-service.sh" ]; then
-        warn "$name: WuxianPi Node payload must contain bin/wuxianpi, bin/wuxianpi-node, bin/wuxianpi-node-start, node/dist/index.js and install/check/register scripts: $source"
+        warn "$name: WuxianPi Node payload must contain official base/runtime/web layers, launchers, and install/check/register scripts: $source"
         return 1
       fi
       return 0
@@ -1672,11 +1675,14 @@ validate_payload_source() {
       if ! payload_archive_contains_executable "$source" '^bin/wuxianpi$' \
         || ! payload_archive_contains_executable "$source" '^bin/wuxianpi-node$' \
         || ! payload_archive_contains_executable "$source" '^bin/wuxianpi-node-start$' \
-        || ! payload_archive_contains "$source" '(^|/)node/dist/index\.js$' \
+        || ! payload_archive_contains "$source" '(^|/)layers/wuxianpi-runtime-[^/]+\.tar\.zst$' \
+        || ! payload_archive_contains "$source" '(^|/)layers/wuxianpi-base-[^/]+\.tar\.zst$' \
+        || ! payload_archive_contains "$source" '(^|/)layers/wuxianpi-web-[^/]+\.tar\.zst$' \
+        || ! payload_archive_contains "$source" '(^|/)scripts/install-release\.sh$' \
         || ! payload_archive_contains "$source" '(^|/)scripts/install\.sh$' \
         || ! payload_archive_contains "$source" '(^|/)scripts/check\.sh$' \
         || ! payload_archive_contains "$source" '(^|/)scripts/register-service\.sh$'; then
-        warn "$name: WuxianPi Node payload archive must contain Node launchers, node/dist/index.js and install/check/register scripts: $source"
+        warn "$name: WuxianPi Node payload archive must contain the official base/runtime/web layers, launchers, and install/check/register scripts: $source"
         return 1
       fi
       return 0

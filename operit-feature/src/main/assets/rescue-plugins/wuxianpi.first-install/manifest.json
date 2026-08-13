@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "wuxianpi.first-install",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "name": "首次安装",
   "description": "准备 Termux 基础环境，收敛最新核心资源，并独立完成资源安装和运行激活。",
   "category": "setup",

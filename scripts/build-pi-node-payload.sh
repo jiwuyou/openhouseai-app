@@ -2,176 +2,87 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source_dir="$repo_dir/runtime/wuxianpi-node"
-web_source_dir="$repo_dir/ai-web-ui"
+wuxianpi_source="${WUXIANPI_SOURCE_DIR:-$repo_dir/../../wuxianpi}"
+build_host="${WUXIANPI_RELEASE_BUILD_SSH:-phonetermux}"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 output="$payload_dir/runtime-aarch64.tgz"
-stage="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-payload.XXXXXX")"
-build="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-node-build.XXXXXX")"
-web_build="$(mktemp -d "${TMPDIR:-/tmp}/wuxianpi-web-build.XXXXXX")"
-trap 'rm -rf -- "$stage" "$build" "$web_build"' EXIT
+stage="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-wuxianpi-payload.XXXXXX")"
+remote_dir=""
 
-log() { printf '[wuxianpi-node payload] %s\n' "$*"; }
-die() { printf '[wuxianpi-node payload] ERROR: %s\n' "$*" >&2; exit 1; }
+cleanup() {
+  rm -rf -- "$stage"
+  if [[ -n "$remote_dir" && "${WUXIANPI_KEEP_REMOTE_BUILD:-0}" != 1 ]]; then
+    ssh "$build_host" "rm -rf -- '$remote_dir'" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
 
-[[ -f "$source_dir/package-lock.json" ]] || die "missing committed package-lock.json"
-[[ -f "$web_source_dir/package-lock.json" ]] || die "missing ai-web-ui package-lock.json"
-grep -Fq '"@earendil-works/pi-coding-agent": "0.80.10"' "$source_dir/package.json" \
-  || die "Pi SDK must be pinned exactly to 0.80.10"
+log() { printf '[wuxianpi payload] %s\n' "$*"; }
+die() { printf '[wuxianpi payload] ERROR: %s\n' "$*" >&2; exit 1; }
 
-cp -a "$source_dir/package.json" "$source_dir/package-lock.json" "$source_dir/tsconfig.json" "$source_dir/src" "$source_dir/test" "$build/"
-if [[ -d "${WUXIANPI_NODE_MODULES_DIR:-$source_dir/node_modules}" ]]; then
-  cp -a "${WUXIANPI_NODE_MODULES_DIR:-$source_dir/node_modules}" "$build/node_modules"
-else
-  (cd "$build" && npm ci --include=dev)
-fi
-(
-  cd "$build"
-  npm run typecheck
-  # Payload verification must be reproducible and must not block an APK build
-  # on optional remote model catalog refreshes.
-  PI_OFFLINE=1 npm test
-  node -e 'const p=require("./node_modules/@earendil-works/pi-coding-agent/package.json");if(p.version!=="0.80.10")process.exit(1)'
-)
-rm -rf "$build/node_modules/@types" "$build/node_modules/typescript" "$build/node_modules/undici-types"
-rm -f "$build/node_modules/.bin/tsc" "$build/node_modules/.bin/tsserver"
+[[ -x "$wuxianpi_source/packaging/termux/build-source-release.sh" ]] \
+  || die 'missing WuxianPi source release builder'
+[[ -f "$wuxianpi_source/runtime/wuxianpi-node/package-lock.json" ]] \
+  || die 'missing WuxianPi Runtime package-lock.json'
+[[ -f "$wuxianpi_source/apps/web/package-lock.json" ]] \
+  || die 'missing WuxianPi Web package-lock.json'
 
-(cd "$web_source_dir" && tar --exclude='./node_modules' --exclude='./dist' -cf - .) \
-  | (cd "$web_build" && tar -xf -)
-if [[ -d "${WUXIANPI_WEB_NODE_MODULES_DIR:-$web_source_dir/node_modules}" ]]; then
-  cp -a "${WUXIANPI_WEB_NODE_MODULES_DIR:-$web_source_dir/node_modules}" "$web_build/node_modules"
-else
-  (cd "$web_build" && npm ci)
-fi
-(
-  cd "$web_build"
-  npm run typecheck
-  npm test
-  npm run build
-  test -s dist/index.html
-)
+runtime_version="${WUXIANPI_RUNTIME_VERSION:-0.2.0}"
+remote_dir="$(ssh "$build_host" 'base="${TMPDIR:-$HOME/.cache}"; mkdir -p "$base"; mktemp -d "$base/openhouse-wuxianpi-release.XXXXXX"')"
 
-mkdir -p "$stage/bin" "$stage/node" "$stage/scripts" "$stage/metadata"
-cp -a "$build/package.json" "$build/package-lock.json" "$build/dist" "$build/node_modules" "$stage/node/"
-cp -a "$web_build/dist" "$stage/node/web"
+log "copying WuxianPi source to ARM64 Termux builder"
+tar --exclude='.git' --exclude='node_modules' --exclude='dist' --exclude='.next' \
+  --exclude='release/dist' --exclude='coverage' --exclude='*.tsbuildinfo' \
+  -cf - -C "$wuxianpi_source" . \
+  | ssh "$build_host" "mkdir -p '$remote_dir/source'; tar -xf - -C '$remote_dir/source'"
 
-cat > "$stage/bin/wuxianpi-node" <<'EOF'
-#!/data/data/com.termux/files/usr/bin/sh
-set -eu
-: "${HOME:?HOME is required}"
-exec node "$HOME/.local/share/openhouseai/runtime/node/dist/index.js" "$@"
-EOF
+log "building the official minimal ARM64 release"
+ssh "$build_host" "
+  set -eu
+  chmod 755 '$remote_dir/source/packaging/termux/'*.sh '$remote_dir/source/packaging/termux/bundle/'*.sh
+  '$remote_dir/source/packaging/termux/build-source-release.sh' \
+    --version '$runtime_version' \
+    --output '$remote_dir/release'
+"
 
-cat > "$stage/bin/wuxianpi-node-start" <<'EOF'
-#!/data/data/com.termux/files/usr/bin/sh
-set -eu
-: "${HOME:?HOME is required}"
-mkdir -p "$HOME/.pi/agent/sessions" "$HOME/workspace"
-web_port="${OPENHOUSE_PI_PORT:-20765}"
-exec "$HOME/.local/bin/wuxianpi-node" \
-  --listen "${OPENHOUSE_PI_LISTEN:-127.0.0.1:$web_port}" \
-  --agent-dir "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}" \
-  --idle-timeout-ms "${OPENHOUSE_PI_IDLE_TIMEOUT_MS:-300000}" \
-  --web-root "${WUXIANPI_WEB_ROOT:-$HOME/.local/share/openhouseai/runtime/node/web}" \
-  --preferred-web-ui-url "${OPENHOUSE_AIONUI_ORIGIN:-http://127.0.0.1:25808/}"
-EOF
+install_archive="wuxianpi-install-arm64-$runtime_version.tar.zst"
+ssh "$build_host" "test -s '$remote_dir/release/$install_archive'"
+mkdir -p "$stage/resource" "$stage/resource/scripts" "$stage/resource/metadata"
+ssh "$build_host" "tar -cf - -C '$remote_dir/release' runtime-manifest.json -C '$remote_dir/source' packaging/termux/README.md" \
+  | tar -xf - -C "$stage/resource/metadata"
+ssh "$build_host" "zstd -q -dc '$remote_dir/release/$install_archive'" \
+  | tar -xf - -C "$stage/resource"
 
-cat > "$stage/bin/wuxianpi" <<'EOF'
-#!/data/data/com.termux/files/usr/bin/sh
-set -eu
-: "${HOME:?HOME is required}"
-exec node "$HOME/.local/share/openhouseai/runtime/node/node_modules/@earendil-works/pi-coding-agent/dist/cli.js" "$@"
-EOF
-
-cat > "$stage/scripts/install.sh" <<'EOF'
+cat >"$stage/resource/scripts/install.sh" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/sh
 set -eu
 : "${HOME:?HOME is required}"
 root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
-runtime="$HOME/.local/share/openhouseai/runtime"
-local_bin="$HOME/.local/bin"
-new_node="$runtime/node.new.$$"
-mkdir -p "$runtime" "$runtime/bin" "$runtime/state" "$local_bin" "$HOME/.pi/agent/sessions" "$HOME/workspace"
-rm -rf "$new_node"
-mkdir -p "$new_node"
-(cd "$root/node" && tar -cf - .) | (cd "$new_node" && tar -xf -)
-node -e 'const [major,minor]=process.versions.node.split(".").map(Number);if(major<22||(major===22&&minor<19))process.exit(1)'
-node "$new_node/dist/index.js" --help >/dev/null
-rm -rf "$runtime/node.old.$$"
-if [ -d "$runtime/node" ]; then mv "$runtime/node" "$runtime/node.old.$$"; fi
-mv "$new_node" "$runtime/node"
-rm -rf "$runtime/node.old.$$"
-for name in wuxianpi wuxianpi-node wuxianpi-node-start; do
-  install -m 0755 "$root/bin/$name" "$runtime/bin/$name"
-  install -m 0755 "$root/bin/$name" "$local_bin/$name"
-done
-printf 'Installed WuxianPi Node SDK runtime under %s\n' "$runtime"
+command -v zstd >/dev/null
+WUXIANPI_INSTALL_ROOT="${WUXIANPI_INSTALL_ROOT:-$HOME/.local/share/wuxianpi}" \
+  "$root/scripts/install-release.sh" "$root"
 EOF
 
-cat > "$stage/scripts/check.sh" <<'EOF'
+cat >"$stage/resource/scripts/check.sh" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/sh
 set -eu
 : "${HOME:?HOME is required}"
-runtime="$HOME/.local/share/openhouseai/runtime"
+product_root=${WUXIANPI_INSTALL_ROOT:-$HOME/.local/share/wuxianpi}
 command -v node >/dev/null
-node -e 'const [major,minor]=process.versions.node.split(".").map(Number);if(major<22||(major===22&&minor<19))process.exit(1)'
+command -v zstd >/dev/null
+test -x "$HOME/.local/bin/wuxianpi"
 test -x "$HOME/.local/bin/wuxianpi-node"
 test -x "$HOME/.local/bin/wuxianpi-node-start"
-test -f "$runtime/node/dist/index.js"
-test -s "$runtime/node/web/index.html"
-test -f "$runtime/node/node_modules/@earendil-works/pi-coding-agent/package.json"
-node -e 'const p=require(process.env.HOME+"/.local/share/openhouseai/runtime/node/node_modules/@earendil-works/pi-coding-agent/package.json");if(p.version!=="0.80.10")process.exit(1)'
-printf 'ok: WuxianPi Node SDK runtime is installed\n'
+test -s "$product_root/runtime/dist/index.js"
+test -s "$product_root/runtime/builtin-packages/task-manager/wuxianpi-package.json"
+test -s "$product_root/web/index.html"
+test -s "$product_root/base/node_modules/@earendil-works/pi-coding-agent/package.json"
+node -e 'const p=require(process.argv[1]);if(p.version!=="0.80.10")process.exit(1)' \
+  "$product_root/base/node_modules/@earendil-works/pi-coding-agent/package.json"
+printf 'ok: official WuxianPi ARM64 release is installed\n'
 EOF
 
-cat > "$stage/scripts/register-service.sh" <<'EOF'
-#!/data/data/com.termux/files/usr/bin/sh
-set -eu
-: "${HOME:?HOME is required}"
-service_dir="${OPENHOUSEAI_CONFIG_DIR:-$HOME/.config/openhouseai}/service-manager/services.d"
-spec="$service_dir/yuanshengwuxianpi.json"
-mkdir -p "$service_dir"
-tmp=$(mktemp "${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/yuanshengwuxianpi.json.XXXXXX")
-cat > "$tmp" <<JSON
-{
-  "name": "yuanshengwuxianpi",
-  "description": "WuxianPi Web and Node Runtime",
-  "provider": "termux-process",
-  "command": ["sh", "-lc", "wuxianpi-node-start & child=\$!; trap 'kill -TERM \$child 2>/dev/null; wait \$child 2>/dev/null || true' TERM INT HUP; wait \$child"],
-  "working_dir": "$HOME/workspace",
-  "env": {
-    "HOME": "$HOME",
-    "PATH": "$HOME/.local/bin:${PREFIX:-/data/data/com.termux/files/usr}/bin:/system/bin",
-    "PI_CODING_AGENT_DIR": "$HOME/.pi/agent",
-    "OPENHOUSE_PI_LISTEN": "127.0.0.1:{{port:web}}",
-    "OPENHOUSE_PI_RUNTIME_ORIGIN": "http://127.0.0.1:{{port:web}}",
-    "OPENHOUSE_AIONUI_ORIGIN": "http://127.0.0.1:25808/",
-    "WUXIANPI_WEB_ROOT": "$HOME/.local/share/openhouseai/runtime/node/web"
-  },
-  "runtime": {"strategy": "termux-process", "runtime": "termux"},
-  "ports": [{
-    "name": "web",
-    "host": "127.0.0.1",
-    "preferred": 20765,
-    "dynamic": false,
-    "pool": "local-web",
-    "protocol": "tcp",
-    "envVar": "OPENHOUSE_PI_PORT",
-    "endpoint": {"scheme": "http", "path": "/"}
-  }],
-  "restart": {"mode": "on-failure", "max_retries": 5},
-  "health": [{"type": "http", "url": "http://127.0.0.1:{{port:web}}/health", "interval": "15s", "timeout": "3s"}],
-  "enabled": true,
-  "residentByDefault": false,
-  "tags": ["wuxianpi", "agent", "openhouse-component:yuanshengwuxianpi"]
-}
-JSON
-node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$tmp"
-mv "$tmp" "$spec"
-printf 'Registered on-demand service-manager service (not started): %s\n' "$spec"
-EOF
-
-cat > "$stage/install.sh" <<'EOF'
+cat >"$stage/resource/install.sh" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/sh
 set -eu
 root=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -179,45 +90,69 @@ root=$(CDPATH= cd "$(dirname "$0")" && pwd)
 "$root/scripts/register-service.sh"
 EOF
 
-chmod 0755 "$stage/install.sh" "$stage/bin/"* "$stage/scripts/"*.sh
-python3 - "$stage/metadata/build.json" <<'PY'
-import json, pathlib
-path = pathlib.Path(__import__('sys').argv[1])
+chmod 0755 "$stage/resource/install.sh" "$stage/resource/bin/"* "$stage/resource/scripts/"*.sh
+python3 - "$stage/resource/metadata/build.json" "$wuxianpi_source" "$runtime_version" <<'PY'
+import json
+import pathlib
+import subprocess
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = pathlib.Path(sys.argv[2])
+version = sys.argv[3]
+commit = subprocess.check_output(["git", "-C", source, "rev-parse", "HEAD"], text=True).strip()
+dirty = bool(subprocess.check_output(
+    ["git", "-C", source, "status", "--porcelain", "--untracked-files=all"],
+    text=True,
+).strip())
 path.write_text(json.dumps({
-    "schema": 2,
+    "schema": 3,
     "runtime": "wuxianpi-node",
+    "version": version,
+    "sourceCommit": commit,
+    "sourceDirty": dirty,
+    "sourceRepo": "https://github.com/jiwuyou/wuxianpi.git",
+    "releaseFormat": "wuxianpi-install-arm64",
     "protocol": "wuxianpi-sdk-v1",
     "piSdkPackage": "@earendil-works/pi-coding-agent",
     "piSdkVersion": "0.80.10",
     "node": ">=22.19.0",
-    "staticWebUi": True,
-    "staticWebUiPath": "node/web/index.html",
-    "uiMetadataPath": "/v1/ui/metadata",
-    "preferredWebUi": "http://127.0.0.1:25808/",
 }, indent=2) + "\n", encoding="utf-8")
 PY
 
-gzip -n < <(tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf - -C "$stage" .) > "$output.tmp"
+gzip -n < <(tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner \
+  -cf - -C "$stage/resource" .) >"$output.tmp"
 mv "$output.tmp" "$output"
 chmod 0644 "$output"
-
 rm -f "$payload_dir/pi-runtime.tar"
 
-python3 - "$payload_dir/manifest.json" "$payload_dir/payload-manifest.json" "$output" <<'PY'
-import hashlib, json, pathlib, sys
-manifest_path, payload_manifest_path, archive = map(pathlib.Path, sys.argv[1:])
-def digest(path):
-    data = path.read_bytes(); return len(data), hashlib.sha256(data).hexdigest()
-size, sha = digest(archive)
+python3 - "$payload_dir/manifest.json" "$payload_dir/payload-manifest.json" "$output" "$runtime_version" "$wuxianpi_source" <<'PY'
+import hashlib
+import json
+import pathlib
+import subprocess
+import sys
+
+manifest_path, payload_manifest_path, archive = map(pathlib.Path, sys.argv[1:4])
+version = sys.argv[4]
+source = pathlib.Path(sys.argv[5])
+source_commit = subprocess.check_output(["git", "-C", source, "rev-parse", "HEAD"], text=True).strip()
+source_dirty = bool(subprocess.check_output(
+    ["git", "-C", source, "status", "--porcelain", "--untracked-files=all"],
+    text=True,
+).strip())
+data = archive.read_bytes()
 for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloads")):
     doc = json.loads(path.read_text(encoding="utf-8"))
     entry = next(item for item in doc[key] if item.get("id") == "pi-agent")
-    entry.clear(); entry.update({
+    entry.clear()
+    entry.update({
         "id": "pi-agent", "archive": archive.name, "targetDir": "pi-runtime",
         "compression": "gzip", "abi": "arm64-v8a",
-        "sha256": sha, "size": size,
-        "platform": "termux-android-arm64", "version": "0.1.1+pi.0.80.10",
-        "sourceRepo": "https://github.com/earendil-works/pi.git",
+        "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+        "platform": "termux-android-arm64", "version": version,
+        "sourceRepo": "https://github.com/jiwuyou/wuxianpi.git",
+        "sourceCommit": source_commit, "sourceDirty": source_dirty,
         "sdkPackage": "@earendil-works/pi-coding-agent", "sdkVersion": "0.80.10",
         "nodeVersion": ">=22.19.0", "transport": "wuxianpi-sdk-v1",
         "registrationRequires": {"serviceManager": ">=0.3.1", "registryApiVersion": 2},

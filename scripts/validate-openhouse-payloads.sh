@@ -25,9 +25,11 @@ python3 - \
   "$REPO_DIR/app/src/main/assets/maintainer/update-termux-packages.sh" \
   "$REPO_DIR/app/src/main/assets/smallphoneai/bootstrap/scripts/12-update-termux-packages.sh" <<'PY'
 import hashlib
+import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tarfile
 
@@ -310,7 +312,7 @@ def validate_bootstrap_pi_contract(product_manifest):
         fail("lean Pi subject must not expose standalone pi-web or AionUI")
     for required in (
         "127.0.0.1:20765",
-        "/.local/share/openhouseai/runtime",
+        "/.local/share/wuxianpi",
         "/.pi",
         "/smallphoneai-repos/pi-runtime",
     ):
@@ -926,9 +928,8 @@ def validate_pi_agent_payload(pi_agent_entry):
         members = {member.name.lstrip("./"): member for member in tar.getmembers()}
         required = (
             "install.sh", "bin/wuxianpi", "bin/wuxianpi-node", "bin/wuxianpi-node-start",
-            "node/dist/index.js", "node/package-lock.json", "node/web/index.html",
-            "node/node_modules/@earendil-works/pi-coding-agent/package.json",
-            "scripts/install.sh", "scripts/check.sh", "scripts/register-service.sh", "metadata/build.json",
+            "scripts/install-release.sh", "scripts/install.sh", "scripts/check.sh",
+            "scripts/register-service.sh", "metadata/build.json", "metadata/runtime-manifest.json",
         )
         for name in required:
             member = members.get(name)
@@ -939,33 +940,79 @@ def validate_pi_agent_payload(pi_agent_entry):
             member = members.get(name)
             if member is not None and member.mode & 0o111 == 0:
                 fail(f"runtime-aarch64.tgz executable bit is missing: {name}")
-        package = members.get("node/node_modules/@earendil-works/pi-coding-agent/package.json")
-        if package is not None:
-            extracted = tar.extractfile(package)
-            doc = json.loads(extracted.read().decode("utf-8")) if extracted is not None else {}
-            if doc.get("version") != required_pi_sdk_version:
-                fail(f"bundled Pi SDK version must be {required_pi_sdk_version}")
+        layers = {}
+        for kind in ("base", "runtime", "web"):
+            matches = [name for name in members if re.fullmatch(rf"layers/wuxianpi-{kind}-[^/]+\.tar\.zst", name)]
+            if len(matches) != 1:
+                fail(f"runtime-aarch64.tgz must contain exactly one official {kind} layer")
+                continue
+            layer_member = members[matches[0]]
+            extracted = tar.extractfile(layer_member)
+            if extracted is None:
+                fail(f"cannot read official {kind} layer")
+                continue
+            process = subprocess.run(
+                ["zstd", "-q", "-dc"], input=extracted.read(), stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, check=False,
+            )
+            if process.returncode != 0:
+                fail(f"official {kind} layer is not valid zstd")
+                continue
+            try:
+                with tarfile.open(fileobj=io.BytesIO(process.stdout), mode="r:") as layer_tar:
+                    layers[kind] = {
+                        member.name.lstrip("./"): member
+                        for member in layer_tar.getmembers()
+                    }
+            except tarfile.TarError as exc:
+                fail(f"official {kind} layer is not a valid tar: {exc}")
+
+        runtime = layers.get("runtime", {})
+        for name in (
+            "payload/dist/index.js", "payload/package.json", "payload/package-lock.json",
+            "payload/builtin-packages/task-manager/wuxianpi-package.json",
+            "payload/builtin-packages/timer/wuxianpi-package.json",
+            "payload/builtin-packages/automation-control/wuxianpi-package.json",
+        ):
+            if name not in runtime:
+                fail(f"official Runtime layer is missing {name}")
+        if any(name.startswith("payload/node_modules/") for name in runtime):
+            fail("official Runtime layer must not contain node_modules")
+
+        web = layers.get("web", {})
+        if "payload/index.html" not in web:
+            fail("official Web layer is missing payload/index.html")
+
+        base = layers.get("base", {})
+        sdk_name = "payload/node_modules/@earendil-works/pi-coding-agent/package.json"
+        if sdk_name not in base:
+            fail("official Base layer is missing the Pi SDK")
+        for dev_name in (
+            "payload/node_modules/typescript/package.json",
+            "payload/node_modules/@types/node/package.json",
+        ):
+            if dev_name in base:
+                fail(f"official Base layer contains development dependency: {dev_name}")
         forbidden = ("bin/" + "pi", "bin/openhouse-" + "pi-runtime", "openhouse-tools/android-bridge-" + "request.sh")
         for name in forbidden:
             if name in members:
                 fail(f"runtime-aarch64.tgz contains removed runtime member: {name}")
     register_script = read_tar_member(archive_path, ["scripts/register-service.sh"])
     install_script = read_tar_member(archive_path, ["scripts/install.sh"])
+    install_release_script = read_tar_member(archive_path, ["scripts/install-release.sh"])
     if "wuxianpi-node-start" not in register_script:
         fail("pi-agent service must launch wuxianpi-node-start")
     if '"provider": "termux-process"' not in register_script:
         fail("pi-agent service must use termux-process")
-    if "mv \"$tmp\" \"$spec\"" not in register_script:
+    if "--spec" not in register_script or "mv \"$incoming\" \"$spec\"" not in register_script:
         fail("pi-agent service spec must be atomically installed")
-    if "$HOME/.pi/agent/sessions" not in install_script:
+    if "$HOME/.pi/agent/sessions" not in install_release_script:
         fail("pi-agent install must preserve/use Pi native $HOME/.pi sessions")
     if re.search(r"rm\s+-rf\s+[^\n]*\$HOME/\.pi", install_script):
         fail("pi-agent install must never remove $HOME/.pi")
     start_script = read_tar_member(archive_path, ["bin/wuxianpi-node-start"])
-    if "--web-root" not in start_script or "node/web" not in start_script:
+    if "--web-root" not in start_script or "$root/web" not in start_script:
         fail("pi-agent must serve the bundled ai-web-ui dist through wuxianpi-node")
-    if "--preferred-web-ui-url" not in start_script or "127.0.0.1:25808" not in start_script:
-        fail("pi-agent must expose AionUI as the preferred Advanced UI endpoint")
     provides = pi_agent_entry.get("provides")
     if not isinstance(provides, dict) or provides.get("staticWebUi") is not True or provides.get("uiMetadata") is not True:
         fail("pi-agent manifest must advertise staticWebUi and uiMetadata")
