@@ -53,6 +53,7 @@ import com.termux.app.activities.OpenHouseAgreementActivity;
 import com.termux.app.activities.OpenHouseHomeActivity;
 import com.termux.app.activities.OpenHouseOnboardingActivity;
 import com.termux.app.activities.SettingsActivity;
+import com.wuxianpi.openhouse.feature.OpenHouseActivity;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.app.terminal.TermuxSessionsListViewController;
@@ -851,7 +852,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void setOpenHouseMenuButtonView() {
-        findViewById(R.id.openhouse_menu_button).setOnClickListener(v -> openOpenHouseMenuEntry());
+        findViewById(R.id.openhouse_menu_button).setOnClickListener(v -> {
+            Intent intent = new Intent(this, OpenHouseActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
+            finish();
+        });
     }
 
     private void setTerminalListButtonView() {

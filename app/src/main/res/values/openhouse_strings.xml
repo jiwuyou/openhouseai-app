@@ -5,7 +5,7 @@
     <string name="openhouse_home_subtitle">菜单总览</string>
     <string name="openhouse_drawer_title">openhouse ai</string>
     <string name="openhouse_drawer_subtitle">SmallPhone / pi-agent / cc/codex</string>
-    <string name="openhouse_action_menu">菜单</string>
+    <string name="openhouse_action_menu">桌面</string>
     <string name="openhouse_action_copy">复制</string>
     <string name="openhouse_action_open_browser">浏览器打开</string>
     <string name="openhouse_action_control">控制</string>
