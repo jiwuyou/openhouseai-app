@@ -1,6 +1,8 @@
 # WuxianPi 首次安装
 
-`wuxianpi.first-install 1.0.13` 将权限准备、APK 投递、静态资源安装和运行激活拆成独立阶段。运行激活失败不会删除已经安装的资源，也不会要求重新投递约 38 MiB 的 APK 总包。
+`wuxianpi.first-install 1.0.14` 将权限准备、APK 投递、静态资源安装和运行激活拆成独立阶段。运行激活失败不会删除已经安装的资源，也不会要求重新投递 APK 总包。
+
+持久 Termux 准备完成后，首次安装会先更新基础包，并确认 `jq`、`curl`、`tar`、`gzip`、`tmux`、`sv` 和 `service-daemon` 可用。APK 离线内容导入后，联网时安装并复用 `wuxianpi.resource-update 3.0.0` 收敛到市场中最新的兼容资源集合；五个资源版本相同时不会重复下载。市场不可用时直接使用 APK 集合继续激活。
 
 ## Native 权限顺序
 
@@ -85,4 +87,4 @@ status=pending
 
 只有 `get_wuxianpi_setup_status` 返回匹配的 `offerId`、`resourceSetSequence`，且 canonical auth、服务列表、runit、registry 和 WuxianPi health 全部通过后，才调用 `complete_apk_resource_offer` 标记 `satisfied`。失败或忽略不能伪造完成。
 
-All-in-One 与 Native 使用同一份 TAR。首次安装和运行中枢启动链路都不依赖该插件 `wuxianpi.resource-update`；后续在线更新仍只处理静态 content。
+All-in-One 与 Native 使用同一份 TAR。离线 TAR 负责保底，在线首次安装和后续更新复用同一个 `wuxianpi.resource-update 3.0.0` 差异收敛流程。运行中枢固定启动链路仍不依赖资源更新插件。

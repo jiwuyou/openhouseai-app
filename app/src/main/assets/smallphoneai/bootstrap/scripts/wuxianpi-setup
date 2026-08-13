@@ -360,6 +360,18 @@ canonical_service_manager_registry_ready() {
   printf '%s' "$body" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"yuanshengwuxianpi"'
 }
 
+wuxianpi_web_endpoint_ready() {
+  local attempt body
+  for attempt in $(seq 1 10); do
+    body="$(authenticated_service_manager_request GET /api/v1/services/yuanshengwuxianpi/endpoints/web 2>/dev/null || true)"
+    if printf '%s' "$body" | jq -e '.name == "web" and .port == 20765' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 prepare_tmux() {
   termux_ready || {
     log 'Termux bootstrap 尚未完成。'
@@ -821,6 +833,7 @@ activate_runtime() {
     || activation_fail component_registry_missing
   authenticated_service_manager_request POST /api/v1/services/yuanshengwuxianpi/start >/dev/null \
     || activation_fail wuxianpi_start_failed
+  wuxianpi_web_endpoint_ready || activation_fail wuxianpi_endpoint_failed
   wait_wuxianpi_health || activation_fail wuxianpi_health_failed
 
   activation_json ready '' "$offer_id"

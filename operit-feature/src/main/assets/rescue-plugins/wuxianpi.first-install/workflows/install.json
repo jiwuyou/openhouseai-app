@@ -62,6 +62,18 @@
       "description": "安装 tmux、curl、jq、tar、gzip 和 flock 所需的最小 Termux 基础能力。"
     },
     {
+      "id": "update-termux-base-packages",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "set -eu; pkg update -y; pkg upgrade -y; pkg install -y bash jq curl tar gzip coreutils findutils procps tmux termux-services; for command in jq curl tar gzip tmux sv service-daemon; do command -v \"$command\" >/dev/null || { printf 'missing Termux command: %s\\n' \"$command\" >&2; exit 1; }; done",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-termux-base-packages",
+        "yield_time_ms": 1000
+      },
+      "description": "tmux 准备完成后更新 Termux 基础环境并确认资源安装和服务启动所需命令；失败时停止后续步骤。"
+    },
+    {
       "id": "read-control-plane-entry",
       "kind": "tool",
       "tool": "read_rescue_plugin_document",
@@ -200,11 +212,91 @@
       "description": "写入当前版本的桌面组件注册脚本。"
     },
     {
+      "id": "make-openhouse-registration-executable",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "chmod 700 \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\" && test -x \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\"",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-openhouse-registration-prepare",
+        "yield_time_ms": 1000
+      },
+      "description": "SAF 写入后显式恢复执行位，避免 activate 因脚本不可执行而失败。"
+    },
+    {
+      "id": "install-resource-updater",
+      "kind": "tool",
+      "tool": "install_rescue_plugin",
+      "arguments": {
+        "pluginId": "wuxianpi.resource-update",
+        "version": "3.0.0"
+      },
+      "description": "安装或确认资源更新插件 3.0.0。市场不可用时不得阻塞离线首次安装，应跳过在线收敛并继续使用已导入的 APK 集合。"
+    },
+    {
+      "id": "read-resource-updater",
+      "kind": "tool",
+      "tool": "read_rescue_plugin_document",
+      "arguments": {
+        "pluginId": "wuxianpi.resource-update",
+        "path": "scripts/update-resources.sh"
+      },
+      "description": "读取已安装的资源更新插件脚本；上一步因离线跳过时，本步及其 plan/apply 一并跳过。"
+    },
+    {
+      "id": "prepare-resource-updater-directory",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "mkdir -p \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update\"",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-resource-update-stage",
+        "yield_time_ms": 1000
+      },
+      "description": "准备资源更新脚本目录。"
+    },
+    {
+      "id": "write-resource-updater",
+      "kind": "tool-from-result",
+      "tool": "write_file",
+      "sourceStep": "read-resource-updater",
+      "arguments": {
+        "environment": "repo:termux-home",
+        "path": ".local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh",
+        "content": "{{steps.read-resource-updater.content}}"
+      },
+      "description": "复用资源更新插件的唯一差异收敛实现。"
+    },
+    {
+      "id": "plan-resource-update",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "chmod 700 \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" && \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" plan",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-resource-update-stage",
+        "yield_time_ms": 1000
+      },
+      "description": "比较 APK、缓存、市场和本机集合，仅计划真正变化的资源。若市场不可用，使用已导入的 APK 集合。"
+    },
+    {
+      "id": "apply-resource-update",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "\"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" apply",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-resource-update",
+        "yield_time_ms": 1000
+      },
+      "description": "调用现有资源管理器安装差异资源并执行独立激活；激活失败不回滚已安装内容。若 read-resource-updater 失败，跳过本步并直接执行后续首次激活。"
+    },
+    {
       "id": "activate-runtime",
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "\"$PREFIX/bin/wuxianpi-setup\" activate --request \"$HOME/.local/state/wuxianpi-setup/request.json\" --offer-id \"$(basename \"$(jq -r '.resourceInbox' \"$HOME/.local/state/wuxianpi-setup/request.json\")\")\"",
+        "command": "set -eu; status=\"$($PREFIX/bin/wuxianpi-setup status)\"; if ! jq -e '.activation == \"ready\"' >/dev/null <<<\"$status\"; then \"$PREFIX/bin/wuxianpi-setup\" activate --request \"$HOME/.local/state/wuxianpi-setup/request.json\" --offer-id \"$(basename \"$(jq -r '.resourceInbox' \"$HOME/.local/state/wuxianpi-setup/request.json\")\")\"; else printf 'activation already ready; skipping duplicate activation\\n'; fi",
         "working_directory": "$HOME",
         "session_name": "wuxianpi-runtime-activation",
         "yield_time_ms": 1000

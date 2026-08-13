@@ -67,8 +67,9 @@ cat > "$stage/bin/wuxianpi-node-start" <<'EOF'
 set -eu
 : "${HOME:?HOME is required}"
 mkdir -p "$HOME/.pi/agent/sessions" "$HOME/workspace"
+web_port="${OPENHOUSE_PI_PORT:-20765}"
 exec "$HOME/.local/bin/wuxianpi-node" \
-  --listen "${OPENHOUSE_PI_LISTEN:-127.0.0.1:20765}" \
+  --listen "${OPENHOUSE_PI_LISTEN:-127.0.0.1:$web_port}" \
   --agent-dir "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}" \
   --idle-timeout-ms "${OPENHOUSE_PI_IDLE_TIMEOUT_MS:-300000}" \
   --web-root "${WUXIANPI_WEB_ROOT:-$HOME/.local/share/openhouseai/runtime/node/web}" \
@@ -142,14 +143,24 @@ cat > "$tmp" <<JSON
     "HOME": "$HOME",
     "PATH": "$HOME/.local/bin:${PREFIX:-/data/data/com.termux/files/usr}/bin:/system/bin",
     "PI_CODING_AGENT_DIR": "$HOME/.pi/agent",
-    "OPENHOUSE_PI_LISTEN": "127.0.0.1:20765",
-    "OPENHOUSE_PI_RUNTIME_ORIGIN": "http://127.0.0.1:20765",
+    "OPENHOUSE_PI_LISTEN": "127.0.0.1:{{port:web}}",
+    "OPENHOUSE_PI_RUNTIME_ORIGIN": "http://127.0.0.1:{{port:web}}",
     "OPENHOUSE_AIONUI_ORIGIN": "http://127.0.0.1:25808/",
     "WUXIANPI_WEB_ROOT": "$HOME/.local/share/openhouseai/runtime/node/web"
   },
-  "runtime": {"strategy": "termux-process", "runtime": "termux", "platform": "android-arm64"},
+  "runtime": {"strategy": "termux-process", "runtime": "termux"},
+  "ports": [{
+    "name": "web",
+    "host": "127.0.0.1",
+    "preferred": 20765,
+    "dynamic": false,
+    "pool": "local-web",
+    "protocol": "tcp",
+    "envVar": "OPENHOUSE_PI_PORT",
+    "endpoint": {"scheme": "http", "path": "/"}
+  }],
   "restart": {"mode": "on-failure", "max_retries": 5},
-  "health": [{"type": "http", "url": "http://127.0.0.1:20765/health", "interval": "15s", "timeout": "3s"}],
+  "health": [{"type": "http", "url": "http://127.0.0.1:{{port:web}}/health", "interval": "15s", "timeout": "3s"}],
   "enabled": true,
   "residentByDefault": false,
   "tags": ["wuxianpi", "agent", "openhouse-component:yuanshengwuxianpi"]
@@ -205,7 +216,7 @@ for path, key in ((manifest_path, "components"), (payload_manifest_path, "payloa
         "id": "pi-agent", "archive": archive.name, "targetDir": "pi-runtime",
         "compression": "gzip", "abi": "arm64-v8a",
         "sha256": sha, "size": size,
-        "platform": "termux-android-arm64", "version": "0.1.0+pi.0.80.10",
+        "platform": "termux-android-arm64", "version": "0.1.1+pi.0.80.10",
         "sourceRepo": "https://github.com/earendil-works/pi.git",
         "sdkPackage": "@earendil-works/pi-coding-agent", "sdkVersion": "0.80.10",
         "nodeVersion": ">=22.19.0", "transport": "wuxianpi-sdk-v1",

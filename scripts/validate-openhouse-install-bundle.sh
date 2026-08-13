@@ -90,10 +90,10 @@ for token in runtime_forbidden:
 for token in ("curl", "/api/v1/", "service-daemon", "sv up", "token show", "registry/sync"):
     if token in manager or token in importer: raise SystemExit(f"content layer owns activation/network logic: {token}")
 setup = (repo / "app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-setup").read_text()
-for token in ("activation.lock", "canonical_auth_failed", "registry_sync_failed", "wuxianpi_health_failed"):
+for token in ("activation.lock", "canonical_auth_failed", "registry_sync_failed", "wuxianpi_endpoint_failed", "wuxianpi_health_failed"):
     if token not in setup: raise SystemExit(f"activation contract is missing: {token}")
 manifest = json.loads((repo / "operit-feature/src/main/assets/rescue-plugins/wuxianpi.first-install/manifest.json").read_text())
-if manifest.get("version") != "1.0.13": raise SystemExit("bundled first-install version must be 1.0.13")
+if manifest.get("version") != "1.0.14": raise SystemExit("bundled first-install version must be 1.0.14")
 print(f"Install bundle validated: sha256={hashlib.sha256(bundle.read_bytes()).hexdigest()} size={bundle.stat().st_size}")
 PY
 
