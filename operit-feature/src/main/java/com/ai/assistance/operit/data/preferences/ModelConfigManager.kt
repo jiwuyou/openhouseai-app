@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ai.assistance.operit.data.model.CustomParameterData
 import com.ai.assistance.operit.data.model.ModelConfigData
+import com.ai.assistance.operit.data.model.ModelConfigDefaults
 import com.ai.assistance.operit.data.model.ModelConfigSummary
 import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.ParameterCategory
@@ -118,6 +119,9 @@ class ModelConfigManager(
                     name = context.getString(R.string.model_config_default_name),
                     apiProviderType = ApiProviderType.OPENAI_GENERIC,
                     apiProviderTypeId = ApiProviderType.OPENAI_GENERIC.name,
+                    contextLength = 256.0f,
+                    maxContextLength = 256.0f,
+                    enableSummaryByMessageCount = false,
                     enableToolCall = true,
             )
         }
@@ -281,6 +285,15 @@ class ModelConfigManager(
                         apiProviderTypeId =
                                 if (isRescueStore) ApiProviderType.OPENAI_GENERIC.name
                                 else PI_RUNTIME_PROVIDER_TYPE_ID,
+                        contextLength =
+                                if (isRescueStore) 256.0f
+                                else ModelConfigDefaults.DEFAULT_CONTEXT_LENGTH,
+                        maxContextLength =
+                                if (isRescueStore) 256.0f
+                                else ModelConfigDefaults.DEFAULT_MAX_CONTEXT_LENGTH,
+                        enableSummaryByMessageCount =
+                                if (isRescueStore) false
+                                else ModelConfigDefaults.DEFAULT_ENABLE_SUMMARY_BY_MESSAGE_COUNT,
                         enableToolCall = true
                 )
 
