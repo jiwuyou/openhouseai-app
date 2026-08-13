@@ -13,7 +13,6 @@ import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.json.JSONArray
 import org.json.JSONObject
 
 enum class ApkResourceOfferStatus {
@@ -48,9 +47,10 @@ data class ApkResourceOffer(
     val packageLastUpdateTime: Long,
     val reason: String,
     val bundleAsset: String,
-    val bundleSha256: String,
     val bundleSize: Long,
-    val resourceSet: JSONObject,
+    val bundleId: String,
+    val resourceSetVersion: String,
+    val resourceSetSequence: Long,
     val status: ApkResourceOfferStatus,
     val detail: String?,
     val updatedAt: String,
@@ -65,9 +65,10 @@ data class ApkResourceOffer(
             .put("apkVersionCode", apkVersionCode)
             .put("packageLastUpdateTime", packageLastUpdateTime)
             .put("reason", reason)
-            .put("bundleSha256", bundleSha256)
             .put("bundleSize", bundleSize)
-            .put("resourceSet", JSONObject(resourceSet.toString()))
+            .put("bundleId", bundleId)
+            .put("resourceSetVersion", resourceSetVersion)
+            .put("resourceSetSequence", resourceSetSequence)
             .put("status", status.name.lowercase())
             .put("detail", detail ?: JSONObject.NULL)
             .put("updatedAt", updatedAt)
@@ -88,16 +89,17 @@ class ApkResourceOfferStore private constructor(context: Context) {
             appContext.packageManager.getPackageInfo(appContext.packageName, 0)
         }.getOrNull() ?: return null
         val metadata = readBundleMetadata() ?: return null
-        val resourceSet = metadata.getJSONObject("resourceSet")
-        validateResourceSet(resourceSet, packageVersionCode(packageInfo))
-        val bundleAsset = metadata.getString("bundleAsset")
-        val bundleSha256 = metadata.getString("bundleSha256").lowercase()
-        val bundleSize = metadata.getLong("bundleSize")
-        require(bundleAsset == BUNDLE_ASSET && bundleSha256.matches(Regex("[a-f0-9]{64}")) && bundleSize > 0L) {
-            "APK install bundle metadata is invalid"
-        }
         val versionCode = packageVersionCode(packageInfo)
-        val offerId = sha256("${appContext.packageName}:$versionCode:${packageInfo.lastUpdateTime}").take(24)
+        require(metadata.optInt("schema") == 2) { "Unsupported APK install bundle index" }
+        val bundleAsset = metadata.getString("bundleAsset")
+        val bundleSize = metadata.getLong("bundleSize")
+        val bundleId = metadata.getString("bundleId")
+        val resourceSetVersion = metadata.getString("resourceSetVersion")
+        val resourceSetSequence = metadata.getLong("resourceSetSequence")
+        require(bundleAsset == BUNDLE_ASSET && bundleSize > 0L && bundleId.isNotBlank() && resourceSetSequence > 0L) {
+            "APK install bundle index is invalid"
+        }
+        val offerId = "${appContext.packageName}-$versionCode-$resourceSetSequence"
         val existing = readActive()
         if (existing?.offerId == offerId) {
             _activeOffer.value = existing
@@ -114,9 +116,10 @@ class ApkResourceOfferStore private constructor(context: Context) {
                 packageLastUpdateTime = packageInfo.lastUpdateTime,
                 reason = if (previousVersion <= 0L) "first-install" else "apk-update",
                 bundleAsset = bundleAsset,
-                bundleSha256 = bundleSha256,
                 bundleSize = bundleSize,
-                resourceSet = resourceSet,
+                bundleId = bundleId,
+                resourceSetVersion = resourceSetVersion,
+                resourceSetSequence = resourceSetSequence,
                 status = ApkResourceOfferStatus.PENDING,
                 detail = null,
                 updatedAt = Instant.now().toString(),
@@ -177,9 +180,10 @@ class ApkResourceOfferStore private constructor(context: Context) {
                     packageLastUpdateTime = value.getLong("packageLastUpdateTime"),
                     reason = value.getString("reason"),
                     bundleAsset = value.getString("bundleAsset"),
-                    bundleSha256 = value.getString("bundleSha256"),
                     bundleSize = value.getLong("bundleSize"),
-                    resourceSet = value.getJSONObject("resourceSet"),
+                    bundleId = value.getString("bundleId"),
+                    resourceSetVersion = value.getString("resourceSetVersion"),
+                    resourceSetSequence = value.getLong("resourceSetSequence"),
                     status = ApkResourceOfferStatus.valueOf(value.getString("status").uppercase()),
                     detail = value.optString("detail").takeIf(String::isNotBlank),
                     updatedAt = value.getString("updatedAt"),
@@ -190,33 +194,8 @@ class ApkResourceOfferStore private constructor(context: Context) {
     private fun readBundleMetadata(): JSONObject? = runCatching {
         appContext.assets.open(BUNDLE_METADATA_ASSET).bufferedReader().use {
             JSONObject(it.readText())
-        }.also { require(it.optInt("schema") == 1) { "Unsupported APK install bundle metadata" } }
+        }.also { require(it.optInt("schema") == 2) { "Unsupported APK install bundle index" } }
     }.getOrNull()
-
-    private fun validateResourceSet(resourceSet: JSONObject, apkVersionCode: Long) {
-        require(resourceSet.optInt("schema") == 2) { "Unsupported APK resource set schema" }
-        require(resourceSet.optString("id") == "openhouse-core-stack") {
-            "Unexpected APK resource set id"
-        }
-        require(resourceSet.optString("abi") == "arm64-v8a") {
-            "APK resource set has an unsupported ABI"
-        }
-        require(resourceSet.optLong("minApkVersionCode", Long.MAX_VALUE) <= apkVersionCode) {
-            "APK resource set requires a newer host"
-        }
-        val resources = resourceSet.optJSONArray("resources") ?: JSONArray()
-        require(resources.length() == ARCHIVES.size) { "APK resource set is incomplete" }
-        ARCHIVES.keys.forEach { findResource(resourceSet, it) }
-    }
-
-    private fun findResource(resourceSet: JSONObject, resourceId: String): JSONObject {
-        val resources = resourceSet.getJSONArray("resources")
-        for (index in 0 until resources.length()) {
-            val resource = resources.getJSONObject(index)
-            if (resource.optString("id") == resourceId) return resource
-        }
-        error("APK resource set is missing $resourceId")
-    }
 
     @Suppress("DEPRECATION")
     private fun packageVersionCode(info: PackageInfo): Long =
@@ -234,16 +213,7 @@ class ApkResourceOfferStore private constructor(context: Context) {
         private const val PREFERENCES_NAME = "rescue_resource_offers"
         private const val KEY_OBSERVED_VERSION = "observed_apk_version"
         private const val BUNDLE_ASSET = "wuxianpi-install/openhouse-install-bundle.tar"
-        private const val BUNDLE_METADATA_ASSET = "wuxianpi-install/openhouse-install-bundle.json"
-        private val ARCHIVES =
-            linkedMapOf(
-                "service-manager" to "service-manager.tgz",
-                "openhouse-control-plane" to "openhouse-control-plane.tgz",
-                "openhouse-runtime" to "runtime-aarch64.tgz",
-                "wuyou" to "wuyou.tgz",
-                "openhouse-web" to "openhouse-web.tgz",
-            )
-
+        private const val BUNDLE_METADATA_ASSET = "wuxianpi-install/bundle-index.json"
         @Volatile private var instance: ApkResourceOfferStore? = null
 
         @JvmStatic

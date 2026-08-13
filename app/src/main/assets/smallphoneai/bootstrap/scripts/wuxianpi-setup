@@ -21,6 +21,7 @@ SETUP_NPM_REGISTRY="auto"
 SETUP_RUNTIME_ARCHIVE=""
 SETUP_RUNTIME_ARCHIVE_EXPLICIT=0
 SETUP_RESOURCE_INBOX=""
+SETUP_OFFER_ID=""
 SETUP_APK_VERSION_CODE="${OPENHOUSEAI_APK_VERSION_CODE:-}"
 RESOURCE_MANAGER_ROOT="$TERMUX_HOME/.local/share/openhouseai/resource-manager"
 RESOURCE_INSTALL_ROOT="$TERMUX_HOME/.local/share/openhouseai/resources"
@@ -526,6 +527,11 @@ apply_options() {
         SETUP_RESOURCE_INBOX="${2:-}"
         shift 2
         ;;
+      --offer-id)
+        [ -n "${2:-}" ] || { log '缺少 --offer-id。'; return 2; }
+        SETUP_OFFER_ID="${2:-}"
+        shift 2
+        ;;
       *) log "未知安装参数：$1"; return 2 ;;
     esac
   done
@@ -670,11 +676,9 @@ activation_json() {
 }
 
 offer_id_from_inbox() {
-  local offer
+  [ -z "$SETUP_OFFER_ID" ] || { printf '%s\n' "$SETUP_OFFER_ID"; return 0; }
   [ -n "$SETUP_RESOURCE_INBOX" ] || return 0
-  offer="$SETUP_RESOURCE_INBOX/offer.json"
-  [ -f "$offer" ] || return 0
-  jq -r '.offerId // empty' "$offer" 2>/dev/null || true
+  basename "$SETUP_RESOURCE_INBOX"
 }
 
 update_offer_activation() {
@@ -773,6 +777,8 @@ activate_runtime() {
   local control_script services offer_id component_registration token
   mkdir -p "$ACTIVATION_ROOT"
   chmod 700 "$ACTIVATION_ROOT"
+  exec 8>"$ACTIVATION_ROOT/activation.lock"
+  flock -n 8 || { log '已有运行激活任务正在执行。'; return 1; }
   offer_id="$(offer_id_from_inbox)"
   activation_json running '' "$offer_id"
   update_offer_activation pending ''
@@ -784,7 +790,9 @@ activate_runtime() {
   ensure_canonical_service_manager_config \
     || activation_fail canonical_config_invalid
 
-  control_script="$RESOURCE_INSTALL_ROOT/openhouse-control-plane/current/start-control-plane-termux-native.sh"
+  service-manager install-service --config "$CANONICAL_SM_CONFIG" --bind "$CANONICAL_SM_BIND" \
+    || activation_fail runit_install_failed
+  control_script="$TERMUX_PREFIX/bin/openhouse-control-plane-start"
   [ -x "$control_script" ] || activation_fail control_plane_entry_missing
   "$control_script" || activation_fail service_manager_start_failed
 
@@ -839,6 +847,7 @@ Options:
   --npm-registry URL|auto
   --runtime-archive FILE
   --resource-inbox DIRECTORY
+  --offer-id ID
 EOF
 }
 

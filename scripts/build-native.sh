@@ -45,11 +45,11 @@ if grep -Eq '^lib/(armeabi-v7a|x86|x86_64)/' <<<"$apk_entries"; then
 fi
 grep -Eq '^lib/arm64-v8a/' <<<"$apk_entries" \
   || { printf 'Native APK is missing arm64-v8a native libraries\n' >&2; exit 1; }
-for required_asset in assets/wuxianpi-install/pre-tmux.sh assets/wuxianpi-install/openhouse-install-bundle.tar assets/wuxianpi-install/openhouse-install-bundle.json; do
+for required_asset in assets/wuxianpi-install/pre-tmux.sh assets/wuxianpi-install/openhouse-install-bundle.tar assets/wuxianpi-install/bundle-index.json; do
   awk -v required="$required_asset" '$0 == required { found = 1 } END { exit found ? 0 : 1 }' <<<"$apk_entries" \
     || { printf 'Native APK is missing %s\n' "$required_asset" >&2; exit 1; }
 done
-for asset_name in pre-tmux.sh openhouse-install-bundle.tar openhouse-install-bundle.json; do
+for asset_name in pre-tmux.sh openhouse-install-bundle.tar bundle-index.json; do
   expected="$(sha256sum "$repo_dir/native-app/src/main/assets/wuxianpi-install/$asset_name" | awk '{print $1}')"
   actual="$(unzip -p "$apk" "assets/wuxianpi-install/$asset_name" | sha256sum | awk '{print $1}')"
   [[ "$expected" == "$actual" ]] || { printf 'Native APK install asset checksum mismatch: %s\n' "$asset_name" >&2; exit 1; }

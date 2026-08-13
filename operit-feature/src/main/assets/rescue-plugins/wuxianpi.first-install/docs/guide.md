@@ -1,6 +1,6 @@
 # WuxianPi 首次安装
 
-`wuxianpi.first-install 1.0.11` 将权限准备、APK 投递、静态资源安装和运行激活拆成独立阶段。运行激活失败不会删除已经校验并安装的资源，也不会要求重新投递约 38 MiB 的 APK 总包。
+`wuxianpi.first-install 1.0.13` 将权限准备、APK 投递、静态资源安装和运行激活拆成独立阶段。运行激活失败不会删除已经安装的资源，也不会要求重新投递约 38 MiB 的 APK 总包。
 
 ## Native 权限顺序
 
@@ -8,8 +8,8 @@ Termux 运行中枢入口固定为 `$PREFIX/bin/openhouse-control-plane-start`�
 
 外部 Termux 必须严格按以下顺序处理：
 
-1. 获取 Termux Home SAF。
-2. 获取 Android `RUN_COMMAND` 权限；此时只授权，不执行命令探针。
+1. 调用 SAF 检查工具。未授权或旧授权失效时，只在对话中展示说明卡片，不自动打开系统页面；用户点击卡片后才打开目录选择器，返回后再次检查真实读写状态。
+2. 调用 Android `RUN_COMMAND` 权限检查工具。未授权时只展示卡片；用户点击后才申请权限，返回后再次检查。此时不得执行命令探针。
 3. 通过 SAF 读取 `$HOME/.termux/termux.properties`。
 4. 将注释、`false` 或重复的配置规范为唯一一行：
 
@@ -17,15 +17,15 @@ Termux 运行中枢入口固定为 `$PREFIX/bin/openhouse-control-plane-start`�
    allow-external-apps = true
    ```
 
-5. 提示用户打开 Termux，执行：
+5. 配置写入并验证成功后展示 reload 卡片。用户点击卡片打开 Termux，并手工执行：
 
    ```sh
    termux-reload-settings
    ```
 
-6. 用户返回后，再用无副作用命令验证 `RUN_COMMAND`。
+6. 用户明确表示已经执行并返回后，再用无副作用命令验证 `RUN_COMMAND`。
 
-重载设置是明确的人工步骤。维修助手不能在配置尚未生效时反复探测或绕过权限。
+检查工具、卡片启动动作和最终验证是三个不同阶段。卡片出现时工作流必须暂停；“系统页面已打开”不代表授权、重载或探针已经成功。重载设置是明确的人工步骤，维修助手不能在用户确认前继续，也不能在配置尚未生效时反复探测或绕过权限。
 
 ## 三个独立阶段
 
@@ -33,7 +33,7 @@ Termux 运行中枢入口固定为 `$PREFIX/bin/openhouse-control-plane-start`�
 
 ### 1. Delivery
 
-Android 只把 canonical `openhouse-install-bundle.tar` 写入 Termux Inbox，重新读取校验大小和 SHA-256，最后创建 `.ready`。这一阶段不启动服务、不读取 token，也不注册组件。
+Android 只把 canonical `openhouse-install-bundle.tar` 写入 Termux Inbox，确认写入字节数和最终文件大小，最后创建 `.ready`。这一阶段不启动服务、不读取 token，也不注册组件。
 
 ### 2. Content
 

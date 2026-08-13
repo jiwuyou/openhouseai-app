@@ -41,9 +41,9 @@ tasks.register("generateOpenHouseInstallBundle", Exec) {
     inputs.dir(file("app/src/main/assets/openhouse/product-payloads"))
     outputs.files(
         file("app/src/main/assets/wuxianpi-install/openhouse-install-bundle.tar"),
-        file("app/src/main/assets/wuxianpi-install/openhouse-install-bundle.json"),
+        file("app/src/main/assets/wuxianpi-install/bundle-index.json"),
         file("native-app/src/main/assets/wuxianpi-install/openhouse-install-bundle.tar"),
-        file("native-app/src/main/assets/wuxianpi-install/openhouse-install-bundle.json"),
+        file("native-app/src/main/assets/wuxianpi-install/bundle-index.json"),
         file("native-app/src/main/assets/wuxianpi-install/pre-tmux.sh"),
     )
     commandLine "bash", generator.absolutePath

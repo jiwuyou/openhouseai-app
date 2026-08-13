@@ -26,34 +26,34 @@
       "kind": "tool",
       "tool": "request_termux_home_access",
       "when": "runtimeHost.externalTermux && !permissions.termuxHomeWorkspace",
-      "description": "显示用户点击后才跳转的 SAF 授权卡片，并确认工作区已绑定到 Termux Home。"
+      "description": "仅检查 Termux Home SAF 状态，不得自动跳转。未授权、用户取消或旧授权失效时显示延迟卡片并立即暂停；只有用户点击卡片后才打开目录选择器。用户返回后必须重新调用本工具，确认 repo:termux-home 可读写后才能继续。"
     },
     {
       "id": "run-command",
       "kind": "tool",
       "tool": "request_termux_run_command_permission",
       "when": "runtimeHost.externalTermux",
-      "description": "只获取外部 Termux RUN_COMMAND Android 权限；此时不得执行命令探针。"
+      "description": "仅检查外部 Termux RUN_COMMAND Android 权限，不得自动弹出权限页，也不得执行命令探针。未授权时显示延迟卡片并立即暂停；只有用户点击卡片后才申请权限。用户返回后必须重新调用本工具确认真实权限状态。"
     },
     {
       "id": "configure-external-apps",
       "kind": "tool",
       "tool": "configure_termux_external_apps",
       "when": "runtimeHost.externalTermux",
-      "description": "通过已授权 SAF 读取并规范 $HOME/.termux/termux.properties，使其仅保留 allow-external-apps = true；写后重新读取验证。"
+      "description": "两个授权检查都成功后，通过 SAF 规范 $HOME/.termux/termux.properties，使其仅保留 allow-external-apps = true，并重新读取验证。成功后展示 reload 延迟卡片并立即暂停，不得继续调用后续工具。"
     },
     {
       "id": "reload-termux-settings",
       "kind": "user-action",
       "when": "runtimeHost.externalTermux",
-      "description": "暂停工作流：请打开 Termux，在终端执行 termux-reload-settings，执行完成后返回维修助手继续。"
+      "description": "等待用户点击卡片打开 Termux，并在终端手工执行 termux-reload-settings。打开 Termux 不等于已经执行成功；用户明确表示完成并返回维修助手后才能继续。"
     },
     {
       "id": "verify-run-command",
       "kind": "tool",
       "tool": "verify_termux_run_command",
       "when": "runtimeHost.externalTermux",
-      "description": "仅在用户完成 termux-reload-settings 后执行无副作用 RUN_COMMAND 探针。"
+      "description": "仅在用户明确确认已经手工执行 termux-reload-settings 后，检查配置并执行无副作用 RUN_COMMAND 探针；不得因卡片已点击或系统页面已打开而提前执行。"
     },
     {
       "id": "persistent-terminal",
@@ -204,7 +204,7 @@
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "\"$PREFIX/bin/wuxianpi-setup\" activate --request \"$HOME/.local/state/wuxianpi-setup/request.json\"",
+        "command": "\"$PREFIX/bin/wuxianpi-setup\" activate --request \"$HOME/.local/state/wuxianpi-setup/request.json\" --offer-id \"$(basename \"$(jq -r '.resourceInbox' \"$HOME/.local/state/wuxianpi-setup/request.json\")\")\"",
         "working_directory": "$HOME",
         "session_name": "wuxianpi-runtime-activation",
         "yield_time_ms": 1000

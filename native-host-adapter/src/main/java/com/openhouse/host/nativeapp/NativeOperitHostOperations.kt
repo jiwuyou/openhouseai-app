@@ -135,29 +135,35 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             return failure("request_termux_home_access", message, details)
         }
         termuxHomeRepository.persistedTreeUri()?.let { uri ->
-            return runCatching {
+            val readiness = runCatching {
                 val readiness = runBlocking(Dispatchers.IO) {
                     termuxHomeRepository.registerAndProbe(uri)
                 }
-                val completedDetails = mergeDetails(details.put("alreadyGranted", true), readiness)
-                if (isTermuxHomeWorkspaceReady(readiness)) {
-                    success("request_termux_home_access", completedDetails)
-                } else {
-                    failure(
-                        "request_termux_home_access",
-                        "Termux Home bookmark or read/write probe is not ready",
-                        completedDetails,
-                    )
-                }
-            }.getOrElse { failure("request_termux_home_access", it.message.orEmpty(), details) }
+                mergeDetails(details.put("alreadyGranted", true), readiness)
+            }.getOrElse { error ->
+                details
+                    .put("alreadyGranted", true)
+                    .put("termuxHomeAccess", false)
+                    .put("authorizationProbeError", error.message.orEmpty())
+            }
+            if (isTermuxHomeWorkspaceReady(readiness)) {
+                return success("request_termux_home_access", readiness)
+            }
+            return termuxHomeAccessAction(
+                readiness.put("existingAuthorizationInvalid", true),
+                "Termux Home 授权已经失效或无法读写，请重新选择 Termux Home。",
+            )
         }
-        return launchCoordinator(
+        return termuxHomeAccessAction(details)
+    }
+
+    override fun launchTermuxHomeAccess(context: Context): OperitHostOperationResult =
+        launchCoordinator(
             context,
             NativeTermuxHomeAccessActivity::class.java,
             "request_termux_home_access",
-            details,
+            JSONObject(),
         )
-    }
 
     override fun requestTermuxRunCommandPermission(context: Context): OperitHostOperationResult {
         val probe = NativeExternalHostInspector.inspect(context)
@@ -178,17 +184,35 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
                 details.put("alreadyGranted", true).put("permissionGranted", true),
             )
         }
-        return launchCoordinator(
-            context,
-            NativeTermuxRunCommandPermissionActivity::class.java,
+        return deferredAction(
             "request_termux_run_command_permission",
             details,
+            stage = "termux_run_command",
+            title = "允许调用 Termux 命令",
+            description = "需要允许 OpenHouse 调用 Termux 执行安装和诊断命令。",
+            button = "打开权限请求",
         )
     }
 
+    override fun launchTermuxRunCommandPermission(context: Context): OperitHostOperationResult =
+        launchCoordinator(
+            context,
+            NativeTermuxRunCommandPermissionActivity::class.java,
+            "request_termux_run_command_permission",
+            JSONObject(),
+        )
+
     override suspend fun configureTermuxExternalApps(): OperitHostOperationResult = runCatching {
         val details = termuxHomeRepository.configureExternalApps()
-        success("configure_termux_external_apps", details)
+        deferredAction(
+            operation = "configure_termux_external_apps",
+            action = "reload_termux_settings",
+            details = details,
+            stage = "termux_reload",
+            title = "让 Termux 配置生效",
+            description = "配置已经写入 Termux，请打开 Termux 执行 termux-reload-settings，然后返回维修助手。",
+            button = "打开 Termux",
+        )
     }.getOrElse {
         failure(
             "configure_termux_external_apps",
@@ -280,7 +304,6 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
                 .put("resourceSetVersion", bundle.resourceSetVersion)
                 .put("resourceSetSequence", bundle.resourceSetSequence)
                 .put("resourceInbox", bundle.inboxDirectory)
-                .put("bundleSha256", bundle.bundleSha256)
                 .put("bundleSize", bundle.bundleSize)
                 .put("stagedBytes", bundle.copiedBytes)
                 .put("request", "$TERMUX_HOME/$SETUP_REQUEST_HOME_PATH")
@@ -324,7 +347,6 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
                 .put("inboxDirectory", staged.inboxDirectory)
                 .put("bundlePath", staged.bundlePath)
                 .put("bundleSize", staged.bundleSize)
-                .put("bundleSha256", staged.bundleSha256)
                 .put("stagedBytes", staged.copiedBytes),
         )
     }.getOrElse {
@@ -478,6 +500,19 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         )
     }.getOrElse { failure(operation, it.message ?: "Unable to launch $operation", details) }
 
+    private fun termuxHomeAccessAction(
+        details: JSONObject,
+        description: String = "需要访问 Termux Home，用于修改 Termux 配置、投递安装包和读取安装结果。",
+    ): OperitHostOperationResult =
+        deferredAction(
+            operation = "request_termux_home_access",
+            details = details,
+            stage = "termux_home",
+            title = "授权 Termux Home",
+            description = description,
+            button = "打开文件授权",
+        )
+
     private fun pairingScript(baseUrl: String, token: String): String = """
         #!/data/data/com.termux/files/usr/bin/bash
         set -euo pipefail
@@ -572,3 +607,25 @@ internal fun launchedUserActionDetails(details: JSONObject): JSONObject =
     details
         .put("launched", true)
         .put(WuxianPiSetupContract.DETAIL_USER_ACTION_REQUIRED, true)
+
+private fun deferredAction(
+    operation: String,
+    details: JSONObject,
+    stage: String,
+    title: String,
+    description: String,
+    button: String,
+    action: String = operation,
+): OperitHostOperationResult =
+    OperitHostOperationResult(
+        success = false,
+        details = details
+            .put("operation", operation)
+            .put(WuxianPiSetupContract.DETAIL_USER_ACTION_REQUIRED, true)
+            .put(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION, action)
+            .put(WuxianPiSetupContract.DETAIL_ACTION_STAGE, stage)
+            .put(WuxianPiSetupContract.DETAIL_ACTION_TITLE, title)
+            .put(WuxianPiSetupContract.DETAIL_ACTION_DESCRIPTION, description)
+            .put(WuxianPiSetupContract.DETAIL_ACTION_BUTTON, button),
+        message = description,
+    )

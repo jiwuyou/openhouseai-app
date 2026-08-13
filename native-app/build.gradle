@@ -104,7 +104,7 @@ tasks.register("verifyDebugResourceAssets") {
             if (archive.entries().find { it.name.startsWith("assets/openhouse-resources-v2/") } != null) {
                 throw new GradleException("Native APK contains retired duplicate per-resource assets")
             }
-            ["pre-tmux.sh", "openhouse-install-bundle.tar", "openhouse-install-bundle.json"].each { name ->
+            ["pre-tmux.sh", "openhouse-install-bundle.tar", "bundle-index.json"].each { name ->
                 def bundled = new File(nativeInstallAssets, name)
                 def path = "assets/wuxianpi-install/${name}"
                 def bundledEntry = archive.getEntry(path)

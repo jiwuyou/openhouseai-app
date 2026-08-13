@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "wuxianpi.first-install",
-  "version": "1.0.11",
+  "version": "1.0.13",
   "name": "首次安装",
   "description": "先规范 Termux 外部命令权限，再独立完成 APK 投递、静态资源安装和运行激活。",
   "category": "setup",

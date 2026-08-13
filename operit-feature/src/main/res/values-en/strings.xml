@@ -7852,7 +7852,11 @@
     <string name="wuxianpi_action_run_command_title">Allow Termux commands</string>
     <string name="wuxianpi_action_run_command_description">This opens the Android permission prompt. After approval, WuxianPi sends a test command to confirm the connection.</string>
     <string name="wuxianpi_action_run_command_button">Open permission prompt</string>
+    <string name="wuxianpi_action_reload_termux_title">Apply the Termux setting</string>
+    <string name="wuxianpi_action_reload_termux_description">The setting has been written. Open Termux, run termux-reload-settings, then return to the Rescue Assistant.</string>
+    <string name="wuxianpi_action_reload_termux_button">Open Termux</string>
     <string name="wuxianpi_action_opened">The system page is open. Return to this conversation when finished.</string>
+    <string name="wuxianpi_action_opened_button">Open again</string>
     <string name="wuxianpi_action_completed">Completed</string>
     <string name="wuxianpi_action_failed">Unable to open the system action</string>
 </resources>

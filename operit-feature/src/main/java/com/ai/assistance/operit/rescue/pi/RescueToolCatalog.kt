@@ -42,17 +42,17 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
                     description =
-                        "Request Termux Home file access when the active host needs SAF. Success registers repo:termux-home and proves real read/write access for rescue file tools.",
+                        "Check Termux Home SAF access without opening any system UI. Existing valid access succeeds; missing, cancelled, or stale access returns a deferred conversation card that only the user can click. Re-run this check after the user returns to prove repo:termux-home read/write access.",
                 ),
                 definition(
                     name = WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION,
                     description =
-                        "Request only Android's external Termux RUN_COMMAND permission when needed. This stage never executes a Termux command.",
+                        "Check Android's external Termux RUN_COMMAND permission without opening a permission UI or executing a command. Missing permission returns a deferred conversation card that only the user can click; re-run this check after the user returns.",
                 ),
                 definition(
                     name = WuxianPiSetupContract.TOOL_CONFIGURE_TERMUX_EXTERNAL_APPS,
                     description =
-                        "Using only the authorized Termux Home SAF repository, normalize ${'$'}HOME/.termux/termux.properties to one active allow-external-apps = true setting while preserving unrelated content. The result requires the user to run termux-reload-settings inside Termux.",
+                        "Using only the authorized Termux Home SAF repository, normalize ${'$'}HOME/.termux/termux.properties to one active allow-external-apps = true setting while preserving unrelated content. It then returns a deferred card; stop and wait for the user to open Termux and run termux-reload-settings.",
                 ),
                 definition(
                     name = WuxianPiSetupContract.TOOL_VERIFY_TERMUX_RUN_COMMAND,
@@ -198,12 +198,12 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = RescuePluginContract.TOOL_INSPECT_APK_RESOURCE_OFFER,
                     description =
-                        "Inspect the Android-private APK resource offer and its five bundled resource digests without copying archives into Termux.",
+                        "Inspect the Android-private APK update offer, bundle id, resource-set sequence and bundle size without copying archives into Termux.",
                 ),
                 definition(
                     name = RescuePluginContract.TOOL_STAGE_APK_RESOURCE_BUNDLE,
                     description =
-                        "Stream the APK's checksum-verified canonical install TAR into the Termux inbox and publish it with a final .ready marker.",
+                        "Stream the APK's signed canonical install TAR into the Termux inbox, verify the final byte count, and publish it with a final .ready marker.",
                 ),
                 definition(
                     name = RescuePluginContract.TOOL_COMPLETE_APK_RESOURCE_OFFER,

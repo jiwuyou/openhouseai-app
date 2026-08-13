@@ -26,6 +26,11 @@ for forbidden in \
   ! grep -Fq "$forbidden" "$manager" || fail "content manager contains runtime operation: $forbidden"
 done
 
+grep -Fq 'control_script="$TERMUX_PREFIX/bin/openhouse-control-plane-start"' "$setup" \
+  || fail 'activation does not use the fixed Android-Termux control-plane entry'
+grep -Fq 'service-manager install-service --config "$CANONICAL_SM_CONFIG" --bind "$CANONICAL_SM_BIND"' "$setup" \
+  || fail 'activation does not install the canonical runit service before starting it'
+
 grep -Fq 'CONFIG_PATH="$HOME/.config/openhouseai/service-manager/config.json"' "$manager" \
   || fail 'service-manager content installer does not use the canonical config path'
 grep -Fq 'BIND="127.0.0.1:20087"' "$manager" \
@@ -37,8 +42,8 @@ grep -Fq '"$directory/scripts/install.sh"' "$manager" \
 
 grep -Fq 'delivery:$delivery,content:$content,activation:$activation,status:"pending"' "$importer" \
   || fail 'import receipt does not preserve independent pending activation'
-grep -Fq '"$inbox/.imported"' "$importer" \
-  || fail 'importer does not publish the content-installed marker'
+! grep -Fq '"$inbox/.imported"' "$importer" \
+  || fail 'importer still writes a third inbox protocol file'
 ! grep -Fq 'status":"satisfied"' "$importer" \
   || fail 'importer still marks an APK offer satisfied'
 ! grep -Fq 'trap '\''rm -rf -- "$transaction"' "$importer" \

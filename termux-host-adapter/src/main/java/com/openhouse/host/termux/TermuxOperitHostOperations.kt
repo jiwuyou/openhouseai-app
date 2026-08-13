@@ -14,12 +14,12 @@ import com.wuxianpi.openhouse.core.service.ServiceAction
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
-import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -30,7 +30,7 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         const val PREPARE_HOST_ACTION = "com.termux.WUXIANPI_PREPARE_HOST"
         const val SETUP_COMMAND = "/data/data/com.termux/files/usr/bin/wuxianpi-setup"
         const val INSTALL_BUNDLE_ASSET = "wuxianpi-install/openhouse-install-bundle.tar"
-        const val INSTALL_BUNDLE_METADATA_ASSET = "wuxianpi-install/openhouse-install-bundle.json"
+        const val INSTALL_BUNDLE_METADATA_ASSET = "wuxianpi-install/bundle-index.json"
         const val INSTALL_BUNDLE_NAME = "openhouse-install-bundle.tar"
     }
 
@@ -291,14 +291,12 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         val metadata = appContext.assets.open(INSTALL_BUNDLE_METADATA_ASSET).bufferedReader().use {
             JSONObject(it.readText())
         }
-        require(metadata.optInt("schema") == 1 && metadata.optString("bundleAsset") == INSTALL_BUNDLE_ASSET) {
-            "Invalid APK install bundle metadata"
+        require(metadata.optInt("schema") == 2 && metadata.optString("bundleAsset") == INSTALL_BUNDLE_ASSET) {
+            "Invalid APK install bundle index"
         }
-        val expectedSha = metadata.getString("bundleSha256").lowercase()
         val expectedSize = metadata.getLong("bundleSize")
-        require(expectedSha.matches(Regex("[a-f0-9]{64}")) && expectedSize > 0L) {
-            "Invalid APK install bundle integrity metadata"
-        }
+        val resourceSetSequence = metadata.getLong("resourceSetSequence")
+        require(expectedSize > 0L && resourceSetSequence > 0L) { "Invalid APK install bundle index" }
         val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
         @Suppress("DEPRECATION")
         val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -306,76 +304,53 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         } else {
             packageInfo.versionCode.toLong()
         }
-        val offerId = sha256("${appContext.packageName}:$versionCode:${packageInfo.lastUpdateTime}".toByteArray()).take(24)
+        val offerId = "${appContext.packageName}-$versionCode-$resourceSetSequence"
         val inbox = File(runtimeLayout.home, ".local/share/openhouseai/apk-resource-inbox/$offerId")
         check(inbox.mkdirs() || inbox.isDirectory) { "Unable to create APK resource inbox" }
-        File(inbox, ".ready").delete()
+        val ready = File(inbox, ".ready")
         val bundle = File(inbox, INSTALL_BUNDLE_NAME)
         var copiedBytes = 0L
-        val reusable = bundle.isFile && bundle.length() == expectedSize && sha256(bundle) == expectedSha
+        val reusable = ready.isFile && ready.length() == 0L && bundle.isFile && bundle.length() == expectedSize
         if (!reusable) {
-            bundle.delete()
-            val digest = MessageDigest.getInstance("SHA-256")
+            check(!ready.exists() || ready.delete()) { "Unable to clear APK resource ready marker" }
+            check(!bundle.exists() || bundle.delete()) { "Unable to replace invalid APK install bundle" }
             appContext.assets.open(INSTALL_BUNDLE_ASSET).use { input ->
-                bundle.outputStream().use { output ->
+                FileOutputStream(bundle).use { output ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     while (true) {
                         val read = input.read(buffer)
                         if (read < 0) break
                         if (read > 0) {
                             output.write(buffer, 0, read)
-                            digest.update(buffer, 0, read)
                             copiedBytes += read
                         }
                     }
+                    output.flush()
+                    output.fd.sync()
                 }
             }
-            check(copiedBytes == expectedSize && digest.digest().toHex() == expectedSha) {
+            check(copiedBytes == expectedSize) {
                 bundle.delete()
                 "APK install bundle integrity verification failed"
             }
         }
-        check(bundle.length() == expectedSize && sha256(bundle) == expectedSha) {
+        check(bundle.length() == expectedSize) {
             bundle.delete()
             "APK install bundle changed after staging"
         }
-        val offer = JSONObject()
-            .put("schema", 1)
+        if (!reusable) check(ready.createNewFile()) { "Unable to publish APK resource ready marker" }
+        return JSONObject()
+            .put("schema", 2)
             .put("offerId", offerId)
-            .put("apkVersionName", packageInfo.versionName.orEmpty())
             .put("apkVersionCode", versionCode)
-            .put("bundleFile", INSTALL_BUNDLE_NAME)
-            .put("bundleSha256", expectedSha)
-            .put("bundleSize", expectedSize)
-            .put("resourceSet", JSONObject(metadata.getJSONObject("resourceSet").toString()))
-        File(inbox, "offer.json").writeText(offer.toString(2) + "\n")
-        check(File(inbox, ".ready").createNewFile()) { "Unable to publish APK resource ready marker" }
-        return JSONObject(offer.toString())
+            .put("resourceSetVersion", metadata.optString("resourceSetVersion"))
+            .put("resourceSetSequence", resourceSetSequence)
             .put("operation", "stage_apk_install_bundle")
             .put("asset", INSTALL_BUNDLE_ASSET)
             .put("inboxDirectory", inbox.absolutePath)
             .put("bundlePath", bundle.absolutePath)
             .put("stagedBytes", copiedBytes)
     }
-
-    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
-        .digest(bytes)
-        .toHex()
-
-    private fun sha256(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                if (read > 0) digest.update(buffer, 0, read)
-            }
-        }
-        return digest.digest().toHex()
-    }
-
-    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     private fun embeddedPermissionNotRequired(operation: String, reason: String) = success(
         operation,

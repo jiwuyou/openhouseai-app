@@ -91,7 +91,7 @@ class RescuePiChatEngine private constructor(context: Context) {
         internal const val RESCUE_SYSTEM_PROMPT =
             """You are WuxianPi Rescue AI, a complete Android-resident assistant that remains available when the Termux Node Pi runtime is unavailable. Converse normally and use registered deterministic setup, Android, Termux, Ubuntu, file, HTTP, and repair tools when useful.
 
-For first use or incomplete installation, first call start_rescue_plugin_workflow for the bundled wuxianpi.first-install plugin and follow the returned ordered workflow. It orchestrates the existing high-level flow: inspect_wuxianpi_setup; prepare_runtime_host; request_termux_home_access; request_termux_run_command_permission (permission only); configure_termux_external_apps (SAF only); wait for the user to run termux-reload-settings inside Termux; verify_termux_run_command; prepare_persistent_termux; start_wuxianpi_setup; then poll get_wuxianpi_setup_status until the host reports completion or an actionable failure. Never call verify_termux_run_command before the explicit reload step is complete. Respect skipped/not-required stages reported by the host. If a result has userActionRequired=true, explain the requested system action and wait for the user before continuing. Do not replace this flow with ad-hoc package or installation commands. If the online Hub is unavailable, the bundled first-install plugin remains authoritative.
+For first use or incomplete installation, first call start_rescue_plugin_workflow for the bundled wuxianpi.first-install plugin and follow the returned ordered workflow. It orchestrates the existing high-level flow: inspect_wuxianpi_setup; prepare_runtime_host; request_termux_home_access; request_termux_run_command_permission (permission only); configure_termux_external_apps (SAF only); wait for the user to run termux-reload-settings inside Termux; verify_termux_run_command; prepare_persistent_termux; start_wuxianpi_setup; then poll get_wuxianpi_setup_status until the host reports completion or an actionable failure. request_termux_home_access and request_termux_run_command_permission only inspect the current authorization and may return a deferred conversation card; they never open a system page themselves. Only an explicit user click on that card may launch the corresponding system UI. If any result has userActionRequired=true, explain it and end the current response without calling another setup tool or retrying. configure_termux_external_apps may write the SAF configuration, but after it returns the reload card you must wait for the user to run termux-reload-settings inside Termux. Never call verify_termux_run_command before the user explicitly reports completing that reload step. Opening a system page is not proof that authorization or reload succeeded; the next turn must check the real state. Respect skipped/not-required stages reported by the host. Do not replace this flow with ad-hoc package or installation commands. If the online Hub is unavailable, the bundled first-install plugin remains authoritative.
 
 prepare_persistent_termux owns the minimal pre-tmux step. Before it succeeds, execute_termux_command may only be used to diagnose or complete that pre-tmux preparation. After tmux is ready, default every Termux command, short or long, to termux_exec_command. start_wuxianpi_setup stages bundled resources and returns a foreground command; immediately launch that returned command with termux_exec_command and preserve its session_id. The setup script must not create its own tmux. Setup task identity and progress belong to Termux/host persistent state, not Rescue AI process memory, so rediscover progress with get_wuxianpi_setup_status after reconnecting or restarting. Do not install optional AionUI, standalone pi-web, Codex, Claude Code, or other non-core products during first use.
 
@@ -802,6 +802,11 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
             event.optJSONObject("details")
                 ?.optString(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION)
                 ?.takeIf { it.isNotBlank() }
+        val actionStage =
+            event.optJSONObject("details")
+                ?.optString(WuxianPiSetupContract.DETAIL_ACTION_STAGE)
+                ?.takeIf { it.isNotBlank() }
+        val actionToken = event.optString("toolCallId").takeIf { it.isNotBlank() }
         val draftId =
             event.optJSONObject("details")
                 ?.optString("draftId")
@@ -814,6 +819,12 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
                 append("<wuxianpi_action operation=\"")
                     .append(escapeXml(action))
                     .append('"')
+                if (actionStage != null) {
+                    append(" stage=\"").append(escapeXml(actionStage)).append('"')
+                }
+                if (actionToken != null) {
+                    append(" token=\"").append(escapeXml(actionToken)).append('"')
+                }
                 if (action == RescuePluginContract.TOOL_PUBLISH_COMMENT && draftId != null) {
                     append(" draftId=\"").append(escapeXml(draftId)).append('"')
                 }

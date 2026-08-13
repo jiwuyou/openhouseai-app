@@ -424,7 +424,7 @@ internal fun verifySatisfiedApkResourceOffer(
     val status = hostDetails.optJSONObject("status") ?: hostDetails
     val failures = mutableListOf<String>()
     val expectedOfferId = offer.optString("offerId")
-    val expectedSequence = offer.optJSONObject("resourceSet")?.optLong("sequence", -1L) ?: -1L
+    val expectedSequence = offer.optLong("resourceSetSequence", -1L)
 
     fun state(vararg keys: String): String? = findStatusValue(status, keys.toSet())
     fun requireState(label: String, expected: String, vararg keys: String) {

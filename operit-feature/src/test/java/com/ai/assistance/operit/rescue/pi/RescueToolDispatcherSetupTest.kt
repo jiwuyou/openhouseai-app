@@ -40,7 +40,7 @@ class RescueToolDispatcherSetupTest {
     }
 
     @Test
-    fun nativePermissionToolTriggersTheRealHostFlowImmediately() = runBlocking {
+    fun nativePermissionToolReturnsAnExplicitDeferredAction() = runBlocking {
         val host = UserActionHostOperations()
         val dispatcher =
             RescueToolDispatcher(
@@ -60,7 +60,55 @@ class RescueToolDispatcherSetupTest {
         assertEquals(1, host.requestCount)
         assertTrue(completion.userActionRequired)
         assertFalse(completion.isError)
-        assertFalse(completion.details.has(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION))
+        assertEquals(
+            WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
+            completion.details.getString(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION),
+        )
+    }
+
+    @Test
+    fun permissionChecksDoNotLaunchSystemActivities() = runBlocking {
+        val host = DeferredPermissionHostOperations()
+        val dispatcher = RescueToolDispatcher(
+            context = ContextWrapper(null),
+            operationsProvider = { host },
+            deferUserActions = true,
+        )
+
+        val completion = dispatcher.execute(
+            RescueToolCatalog.default(),
+            WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
+            JSONObject(),
+            onUpdate = {},
+        )
+
+        assertTrue(completion.userActionRequired)
+        assertEquals(0, host.launchCount)
+        assertEquals(
+            WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS,
+            completion.details.getString(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION),
+        )
+    }
+
+    @Test
+    fun reloadInstructionIsRenderedAsDeferredUserAction() = runBlocking {
+        val host = DeferredPermissionHostOperations()
+        val dispatcher = RescueToolDispatcher(
+            context = ContextWrapper(null),
+            operationsProvider = { host },
+            deferUserActions = true,
+        )
+
+        val completion = dispatcher.execute(
+            RescueToolCatalog.default(),
+            WuxianPiSetupContract.TOOL_CONFIGURE_TERMUX_EXTERNAL_APPS,
+            JSONObject(),
+            onUpdate = {},
+        )
+
+        assertTrue(completion.userActionRequired)
+        assertEquals("reload_termux_settings", completion.details.getString(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION))
+        assertEquals("termux_reload", completion.details.getString(WuxianPiSetupContract.DETAIL_ACTION_STAGE))
     }
 
     @Test
@@ -84,8 +132,8 @@ class RescueToolDispatcherSetupTest {
         assertEquals(1, host.configureCount)
         assertTrue(completion.userActionRequired)
         assertFalse(completion.isError)
-        assertFalse(completion.details.has(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION))
-        assertEquals("reload_termux_settings", completion.details.getString("action"))
+        assertEquals("reload_termux_settings", completion.details.getString(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION))
+        assertEquals("termux_reload", completion.details.getString(WuxianPiSetupContract.DETAIL_ACTION_STAGE))
     }
 
     @Test
@@ -117,7 +165,7 @@ class RescueToolDispatcherSetupTest {
     fun satisfiedOfferGateRequiresEveryRealStatusAndMatchingIdentity() {
         val offer = JSONObject()
             .put("offerId", "offer-126")
-            .put("resourceSet", JSONObject().put("sequence", 2026081201L))
+            .put("resourceSetSequence", 2026081201L)
         val status = JSONObject().put(
             "status",
             JSONObject()
@@ -144,7 +192,7 @@ class RescueToolDispatcherSetupTest {
     fun satisfiedOfferGateRejectsMissingEvidenceInsteadOfTrustingDetail() {
         val offer = JSONObject()
             .put("offerId", "offer-126")
-            .put("resourceSet", JSONObject().put("sequence", 2026081201L))
+            .put("resourceSetSequence", 2026081201L)
         val status = JSONObject()
             .put("delivery", "ready")
             .put("content", "installed")
@@ -175,6 +223,8 @@ class RescueToolDispatcherSetupTest {
                 details =
                     JSONObject()
                         .put(WuxianPiSetupContract.DETAIL_USER_ACTION_REQUIRED, true)
+                        .put(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION, WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS)
+                        .put(WuxianPiSetupContract.DETAIL_ACTION_STAGE, "termux_home")
                         .put("request", JSONObject().put("root", "termux-home:")),
                 message = "Choose Termux Home",
             )
@@ -191,7 +241,8 @@ class RescueToolDispatcherSetupTest {
                         .put("parentWritable", true)
                         .put("allowExternalApps", true)
                         .put("duplicateCount", 0)
-                        .put("action", "reload_termux_settings")
+                        .put(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION, "reload_termux_settings")
+                        .put(WuxianPiSetupContract.DETAIL_ACTION_STAGE, "termux_reload")
                         .put("command", "termux-reload-settings"),
                 message = "Run termux-reload-settings in Termux",
             )
@@ -217,13 +268,41 @@ class RescueToolDispatcherSetupTest {
                 success = true,
                 details = JSONObject()
                     .put(WuxianPiSetupContract.DETAIL_USER_ACTION_REQUIRED, true)
-                    .put("action", "reload_termux_settings"),
+                    .put(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION, "reload_termux_settings")
+                    .put(WuxianPiSetupContract.DETAIL_ACTION_STAGE, "termux_reload"),
             )
         }
 
         override suspend fun verifyTermuxRunCommand(): OperitHostOperationResult {
             calls += WuxianPiSetupContract.TOOL_VERIFY_TERMUX_RUN_COMMAND
             return OperitHostOperationResult(true, JSONObject().put("verified", true))
+        }
+    }
+
+    private class DeferredPermissionHostOperations : TestOperitHostOperations() {
+        var launchCount = 0
+
+        override fun requestTermuxHomeAccess(context: Context): OperitHostOperationResult =
+            OperitHostOperationResult(
+                success = false,
+                details = JSONObject()
+                    .put(WuxianPiSetupContract.DETAIL_USER_ACTION_REQUIRED, true)
+                    .put(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION, WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS),
+                message = "Choose Termux Home",
+            )
+
+        override suspend fun configureTermuxExternalApps(): OperitHostOperationResult =
+            OperitHostOperationResult(
+                success = true,
+                details = JSONObject()
+                    .put(WuxianPiSetupContract.DETAIL_USER_ACTION_REQUIRED, true)
+                    .put(WuxianPiSetupContract.DETAIL_DEFERRED_USER_ACTION, "reload_termux_settings")
+                    .put(WuxianPiSetupContract.DETAIL_ACTION_STAGE, "termux_reload"),
+            )
+
+        override fun launchTermuxHomeAccess(context: Context): OperitHostOperationResult {
+            launchCount += 1
+            return OperitHostOperationResult(true)
         }
     }
 }

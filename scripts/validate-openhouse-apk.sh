@@ -8,7 +8,7 @@ max_universal_bytes=$((300 * 1024 * 1024))
 max_debug_arm64_bytes=$((512 * 1024 * 1024))
 max_debug_universal_bytes=$((1536 * 1024 * 1024))
 bundle_source="$repo_dir/app/src/main/assets/wuxianpi-install/openhouse-install-bundle.tar"
-bundle_metadata_source="$repo_dir/app/src/main/assets/wuxianpi-install/openhouse-install-bundle.json"
+bundle_metadata_source="$repo_dir/app/src/main/assets/wuxianpi-install/bundle-index.json"
 min_mtime="${OPENHOUSE_APK_MIN_MTIME:-0}"
 
 command -v unzip >/dev/null 2>&1 || { printf 'unzip is required\n' >&2; exit 2; }
@@ -66,8 +66,8 @@ for apk in "${apks[@]}"; do
   entries="$(unzip -Z1 "$apk")"
   grep -Fxq 'assets/wuxianpi-install/openhouse-install-bundle.tar' <<<"$entries" \
     || { printf '%s APK is missing openhouse-install-bundle.tar\n' "$label" >&2; exit 1; }
-  grep -Fxq 'assets/wuxianpi-install/openhouse-install-bundle.json' <<<"$entries" \
-    || { printf '%s APK is missing install bundle metadata\n' "$label" >&2; exit 1; }
+  grep -Fxq 'assets/wuxianpi-install/bundle-index.json' <<<"$entries" \
+    || { printf '%s APK is missing install bundle index\n' "$label" >&2; exit 1; }
   if grep -Eq '^assets/openhouse-resources-v2/' <<<"$entries"; then
     printf '%s APK contains retired Native per-resource assets\n' "$label" >&2
     exit 1
@@ -84,8 +84,8 @@ for apk in "${apks[@]}"; do
   fi
   actual_sha="$(unzip -p "$apk" assets/wuxianpi-install/openhouse-install-bundle.tar | sha256sum | awk '{print $1}')"
   [[ "$actual_sha" = "$bundle_sha" ]] || { printf '%s APK install bundle checksum mismatch\n' "$label" >&2; exit 1; }
-  cmp -s <(unzip -p "$apk" assets/wuxianpi-install/openhouse-install-bundle.json) "$bundle_metadata_source" \
-    || { printf '%s APK install bundle metadata mismatch\n' "$label" >&2; exit 1; }
+  cmp -s <(unzip -p "$apk" assets/wuxianpi-install/bundle-index.json) "$bundle_metadata_source" \
+    || { printf '%s APK install bundle index mismatch\n' "$label" >&2; exit 1; }
   if command -v apksigner >/dev/null 2>&1; then
     apksigner verify --verbose "$apk" >/dev/null || { printf 'APK signature verification failed: %s\n' "$apk" >&2; exit 1; }
   fi

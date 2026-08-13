@@ -1,413 +1,185 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
-MARKET_URL="${WUXIANPI_RESCUE_MARKET_URL:-https://wuxianpirescue.webefficacy.com}"
-MARKET_URL="${MARKET_URL%/}"
-RESOURCE_SET_ID="${OPENHOUSEAI_RESOURCE_SET_ID:-openhouse-core-stack}"
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 MANAGER_ROOT="${OPENHOUSEAI_RESOURCE_MANAGER_ROOT:-$HOME/.local/share/openhouseai/resource-manager}"
 INSTALL_ROOT="${OPENHOUSEAI_RESOURCE_INSTALL_ROOT:-$HOME/.local/share/openhouseai/resources}"
-APK_ROOT="${OPENHOUSEAI_APK_RESOURCES_ROOT:-$HOME/.local/share/openhouseai/update-resources}"
-ARCHIVES="$MANAGER_ROOT/archives"
-RECEIPTS="$MANAGER_ROOT/receipts"
+RECEIPTS="$MANAGER_ROOT/receipts/resources"
 TRANSACTIONS="$MANAGER_ROOT/transactions"
-FAILED_TRANSACTIONS="$MANAGER_ROOT/failed"
+FAILED="$MANAGER_ROOT/failed"
 INSTALLED_SET="$MANAGER_ROOT/installed-set.json"
 PREVIOUS_SET="$MANAGER_ROOT/previous-set.json"
-COMMAND="${1:-apply}"
-APK_VERSION_CODE="${OPENHOUSEAI_APK_VERSION_CODE:-}"
-CORE_RESOURCE_IDS='["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"]'
-CURRENT_TRANSACTION=''
-PLAN_WORKSPACE=''
-CURRENT_FAILED_STEP='initializing'
+LOCK_FILE="$MANAGER_ROOT/update.lock"
+LEGACY="$MANAGER_ROOT/legacy"
+SET_FILE="${OPENHOUSEAI_RESOURCE_SET_FILE:-}"
+SOURCE_DIR="${OPENHOUSEAI_RESOURCE_SOURCE_DIR:-}"
+COMMAND="${1:-inspect}"
+FORCE_RESOURCE=""
+CURRENT_TRANSACTION=""
+FAILED_STEP="initializing"
 
-log() { printf '[resource-update] %s\n' "$*"; }
-die() { printf '[resource-update] ERROR: %s\n' "$*" >&2; exit 1; }
-
-resource_manager_exit() {
-  local status="$1" failed_root
-  [[ -z "$PLAN_WORKSPACE" || ! -d "$PLAN_WORKSPACE" ]] || rm -rf -- "$PLAN_WORKSPACE"
-  if [[ "$status" -ne 0 && -n "$CURRENT_TRANSACTION" && -d "$CURRENT_TRANSACTION" ]]; then
-    failed_root="$FAILED_TRANSACTIONS/$(basename "$CURRENT_TRANSACTION")"
-    if [[ ! -e "$failed_root" ]]; then
-      mkdir -p "$FAILED_TRANSACTIONS"
-      cp -a "$CURRENT_TRANSACTION" "$failed_root"
-    fi
-    if [[ ! -f "$failed_root/failure.json" ]]; then
-      write_failure_snapshot "$failed_root" content "$CURRENT_FAILED_STEP" \
-        'content transaction terminated before commit' "$status"
-    else
-      atomic_json_copy "$failed_root/failure.json" "$FAILED_TRANSACTIONS/last-failure.json"
-    fi
-    log "失败事务现场：$failed_root"
-  fi
-  return "$status"
-}
-
-# Keep failure evidence separate from the rollback result.  The paths in this
-# record are relative to the failed transaction so the report is portable and
-# never exposes a user's Termux home directory.
-write_failure_snapshot() {
-  local failed_root="$1" phase="$2" step="$3" message="$4" exit_code="$5"
-  local resource_set=missing plan=missing previous_links=missing diagnostics=missing temporary
-  [[ -f "$failed_root/resource-set.json" ]] && resource_set=resource-set.json
-  [[ -f "$failed_root/plan.tsv" ]] && plan=plan.tsv
-  [[ -f "$failed_root/previous-links.tsv" ]] && previous_links=previous-links.tsv
-  if [[ ! -f "$failed_root/diagnostics.log" ]]; then
-    printf 'phase=%s\nfailedStep=%s\nmessage=%s\nexitCode=%s\n' \
-      "$phase" "$step" "$message" "$exit_code" >"$failed_root/diagnostics.log"
-  fi
-  diagnostics=diagnostics.log
-  chmod 600 "$failed_root/diagnostics.log"
-  temporary="$failed_root/failure.json.tmp.$$"
-  jq -n --arg transactionId "$(basename "$failed_root")" \
-    --arg phase "$phase" --arg failedStep "$step" --arg message "$message" \
-    --arg resourceSet "$resource_set" --arg plan "$plan" \
-    --arg previousLinks "$previous_links" --arg diagnostics "$diagnostics" \
-    --argjson exitCode "$exit_code" --arg failedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:2,transactionId:$transactionId,phase:$phase,failedStep:$failedStep,message:$message,exitCode:$exitCode,failedAt:$failedAt,resourceSet:$resourceSet,plan:$plan,previousLinks:$previousLinks,diagnostics:$diagnostics}' \
-    >"$temporary"
-  chmod 600 "$temporary"
-  mv -f "$temporary" "$failed_root/failure.json"
-  atomic_json_copy "$failed_root/failure.json" "$FAILED_TRANSACTIONS/last-failure.json"
-}
-
-record_transaction_diagnostic() {
-  local message="$1"
-  [[ -n "$CURRENT_TRANSACTION" && -d "$CURRENT_TRANSACTION" ]] || return 0
-  printf '%s step=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    "$CURRENT_FAILED_STEP" "$message" >>"$CURRENT_TRANSACTION/diagnostics.log"
-  chmod 600 "$CURRENT_TRANSACTION/diagnostics.log"
-}
-
-temporary_directory() {
-  local name="$1" parent="${TMPDIR:-${PREFIX:-/tmp}/tmp}"
-  mkdir -p "$parent"
-  chmod 700 "$parent" 2>/dev/null || true
-  mktemp -d "$parent/$name.XXXXXX"
-}
+log() { printf '[resource-manager] %s\n' "$*"; }
+die() { printf '[resource-manager] ERROR: %s\n' "$*" >&2; exit 1; }
 
 require_tools() {
-  local name
-  for name in jq sha256sum tar gzip find sort awk sed curl flock readlink tac; do
-    command -v "$name" >/dev/null 2>&1 || die "missing required command: $name"
+  local tool
+  for tool in jq tar gzip find sort awk sed readlink flock stat tee mktemp; do
+    command -v "$tool" >/dev/null 2>&1 || die "missing required command: $tool"
   done
 }
 
-detect_apk_version_code() {
-  local value marker candidate
-  value="${APK_VERSION_CODE:-}"
-  case "$value" in
-    ''|*[!0-9]*) ;;
-    *) printf '%s\n' "$value"; return ;;
-  esac
-  marker="$APK_ROOT/PENDING_APK_RESOURCES.json"
-  if [[ -f "$marker" ]]; then
-    value="$(jq -r '.apkVersionCode // empty' "$marker" 2>/dev/null || true)"
-    case "$value" in
-      ''|*[!0-9]*) ;;
-      *) printf '%s\n' "$value"; return ;;
-    esac
+setup_dirs() {
+  mkdir -p "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY/receipts"
+  chmod 700 "$MANAGER_ROOT" "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY" "$LEGACY/receipts"
+  local receipt schema name
+  for receipt in "$RECEIPTS"/*.json; do
+    [[ -f "$receipt" ]] || continue
+    schema="$(jq -r '.schema // 0' "$receipt" 2>/dev/null || printf 0)"
+    [[ "$schema" == 3 ]] && continue
+    name="$(basename "$receipt" .json)-$(date -u +%Y%m%dT%H%M%SZ).json"
+    mv "$receipt" "$LEGACY/receipts/$name"
+  done
+  if [[ -f "$INSTALLED_SET" ]] && [[ "$(jq -r '.schema // 0' "$INSTALLED_SET" 2>/dev/null || printf 0)" != 3 ]]; then
+    mv "$INSTALLED_SET" "$LEGACY/installed-set-$(date -u +%Y%m%dT%H%M%SZ).json"
   fi
-  while IFS= read -r candidate; do
-    value="$(jq -r '.apkVersionCode // empty' "$(dirname "$(dirname "$candidate")")/.complete" 2>/dev/null || true)"
-    case "$value" in
-      ''|*[!0-9]*) continue ;;
-      *) printf '%s\n' "$value"; return ;;
-    esac
-  done < <(latest_apk_set_candidates)
-  printf '126\n'
 }
 
-safe_value() {
-  [[ "$1" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]{0,79}$ ]] || die "unsafe version: $1"
-}
-
-archive_name() {
-  case "$1" in
-    service-manager) printf '%s\n' service-manager.tgz ;;
-    openhouse-control-plane) printf '%s\n' openhouse-control-plane.tgz ;;
-    openhouse-runtime) printf '%s\n' runtime-aarch64.tgz ;;
-    wuyou) printf '%s\n' wuyou.tgz ;;
-    openhouse-web) printf '%s\n' openhouse-web.tgz ;;
-    *) die "unsupported resource id: $1" ;;
-  esac
-}
-
-sha_file() { sha256sum "$1" | awk '{print $1}'; }
-
-tree_sha() {
-  local directory
-  directory="$(readlink -f "$1")"
-  [[ -d "$directory" ]] || return 1
-  (
-    cd "$directory"
-    find . -type f -exec sha256sum {} \; | LC_ALL=C sort | sha256sum | awk '{print $1}'
-  )
-}
-
-atomic_json_copy() {
+atomic_file() {
   local source="$1" target="$2" temporary
-  temporary="${target}.tmp.$$"
-  cp "$source" "$temporary"
+  temporary="$target.tmp.$$"
+  install -m 600 "$source" "$temporary"
+  mv -f "$temporary" "$target"
+}
+
+atomic_json() {
+  local content="$1" target="$2" temporary
+  temporary="$target.tmp.$$"
+  printf '%s\n' "$content" >"$temporary"
   chmod 600 "$temporary"
   mv -f "$temporary" "$target"
 }
 
-atomic_symlink() {
-  local target="$1" link="$2" temporary
-  temporary="${link}.tmp.$$"
-  mkdir -p "$(dirname "$link")"
-  ln -s "$target" "$temporary"
-  mv -Tf "$temporary" "$link"
+safe_value() {
+  [[ "$1" != *$'\t'* && "$1" != *$'\n'* && "$1" != *'/'* && "$1" != *'..'* ]] \
+    || die "unsafe resource value: $1"
 }
 
-validate_archive_paths() {
-  local archive="$1"
-  gzip -t "$archive"
-  tar -tzf "$archive" | awk '
-    /^\// { exit 1 }
-    /(^|\/)\.\.($|\/)/ { exit 1 }
-    /\\/ { exit 1 }
-    { count++ }
-    END { if (count == 0) exit 1 }
-  ' || die "unsafe or empty archive: $archive"
-}
-
-receipt_valid() {
-  local id="$1" version="$2" expected_sha="$3"
-  local receipt="$RECEIPTS/$id.json" current="$INSTALL_ROOT/$id/current"
-  local version_dir="$INSTALL_ROOT/$id/versions/$version" expected_tree actual_tree
-  [[ -f "$receipt" && -L "$current" && -d "$version_dir" ]] || return 1
-  [[ "$(jq -r '.version // empty' "$receipt")" == "$version" ]] || return 1
-  [[ "$(jq -r '.archiveSha256 // empty' "$receipt")" == "$expected_sha" ]] || return 1
-  [[ "$(readlink -f "$current")" == "$(readlink -f "$version_dir")" ]] || return 1
-  expected_tree="$(jq -r '.installedManifestSha256 // empty' "$receipt")"
-  [[ ${#expected_tree} -eq 64 ]] || return 1
-  actual_tree="$(tree_sha "$version_dir")"
-  [[ "$actual_tree" == "$expected_tree" ]]
-}
-
-latest_apk_set_candidates() {
-  local directory candidate
-  while IFS= read -r directory; do
-    [[ -f "$directory/.complete" ]] || continue
-    candidate="$directory/product-payloads/resource-set.json"
-    [[ -f "$candidate" ]] && printf '%s\n' "$candidate"
-  done < <(find "$APK_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'apk-*' 2>/dev/null | LC_ALL=C sort -r)
-}
-
-resource_set_structure_valid() {
+read_set() {
   local file="$1"
-  jq -e --arg id "$RESOURCE_SET_ID" --argjson expected "$CORE_RESOURCE_IDS" '
-    .schema == 2 and .id == $id and .abi == "arm64-v8a" and
+  [[ -f "$file" ]] || die "resource set is missing: $file"
+  jq -e '
+    .schema == 2 and .id == "openhouse-core-stack" and
     (.version | type == "string" and length > 0) and
-    (.sequence | type == "number") and .sequence > 0 and
-    (.minApkVersionCode | type == "number") and .minApkVersionCode > 0 and
-    (.resources | type == "array") and (.resources | length) == 5 and
-    ([.resources[].id] | sort) == $expected and
-    ([.resources[].id] | unique | length) == 5 and
-    all(.resources[];
-      (.version | type == "string" and length > 0) and
-      (.sha256 | type == "string" and test("^[a-f0-9]{64}$")))
-  ' "$file" >/dev/null 2>&1
+    (.sequence | type == "number" and . > 0) and .abi == "arm64-v8a" and
+    (.resources | length) == 5 and
+    ([.resources[].id] | sort) == ["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"] and
+    ([.resources[].id] | length) == ([.resources[].id] | unique | length)
+  ' "$file" >/dev/null || die "resource set structure is invalid"
+  jq -e '
+    (reduce .resources[] as $item ({}; .[$item.id] = $item.archive)) == {
+      "service-manager":"service-manager.tgz",
+      "openhouse-control-plane":"openhouse-control-plane.tgz",
+      "openhouse-runtime":"runtime-aarch64.tgz",
+      "wuyou":"wuyou.tgz",
+      "openhouse-web":"openhouse-web.tgz"
+    } and all(.resources[]; (.size | type == "number" and . > 0 and . <= 62914560))
+  ' "$file" >/dev/null || die "resource archive mapping is invalid"
 }
 
-resource_set_apk_compatible() {
-  local file="$1"
-  resource_set_structure_valid "$file" \
-    && jq -e --argjson apk "$APK_VERSION_CODE" '.minApkVersionCode <= $apk' "$file" >/dev/null 2>&1
+resource_rows() {
+  jq -r '.resources[] | [.id,.version,.archive,.size] | @tsv' "$1"
 }
 
-copy_market_set_candidate() {
-  local output="$1" detail latest
-  [[ -z "${OPENHOUSEAI_DISABLE_NETWORK:-}" ]] || return 1
-  detail="$(curl -q -fsS --connect-timeout 8 --max-time 20 \
-    "$MARKET_URL/api/v2/resource-sets/$RESOURCE_SET_ID" 2>/dev/null)" || return 1
-  latest="$(jq -r '.latestVersion // empty' <<<"$detail")"
-  [[ -n "$latest" ]] || return 1
-  jq -e --arg version "$latest" '.versions[] | select(.version == $version)' <<<"$detail" >"$output" \
-    && resource_set_apk_compatible "$output"
-}
-
-select_target_set() {
-  local output="$1" candidates="$2" candidate installed_sequence target_sequence
-  local explicit=0
-  local -a candidate_files=()
-  : >"$candidates"
-  if [[ -n "${OPENHOUSEAI_RESOURCE_SET_FILE:-}" ]]; then
-    explicit=1
-    cp "$OPENHOUSEAI_RESOURCE_SET_FILE" "$candidates.override"
-    resource_set_apk_compatible "$candidates.override" || die "explicit resource set is invalid or incompatible"
-    candidate_files+=("$candidates.override")
-  else
-    if copy_market_set_candidate "$candidates.market"; then
-      candidate_files+=("$candidates.market")
-    fi
-    while IFS= read -r candidate; do
-      [[ -f "$candidate" ]] || continue
-      resource_set_apk_compatible "$candidate" || continue
-      candidate_files+=("$candidate")
-    done < <(latest_apk_set_candidates)
-  fi
-  if (( explicit == 0 )) && [[ -f "$INSTALLED_SET" ]] && resource_set_structure_valid "$INSTALLED_SET"; then
-    candidate_files+=("$INSTALLED_SET")
-  fi
-  ((${#candidate_files[@]} > 0)) || die "no compatible resource set is available"
-  printf '%s\n' "${candidate_files[@]}" >"$candidates"
-  jq -s 'max_by(.sequence)' "${candidate_files[@]}" >"$output"
-  resource_set_structure_valid "$output" || die "selected resource set is invalid"
-  if [[ -f "$INSTALLED_SET" ]]; then
-    installed_sequence="$(jq -r '.sequence // 0' "$INSTALLED_SET")"
-    target_sequence="$(jq -r '.sequence' "$output")"
-    if [[ -z "${OPENHOUSEAI_ALLOW_DOWNGRADE:-}" ]]; then
-      (( target_sequence >= installed_sequence )) || die "automatic resource downgrade is forbidden"
-    fi
-  fi
-}
-
-find_apk_archive() {
-  local id="$1" expected_sha="$2" name candidate
-  name="$(archive_name "$id")"
-  while IFS= read -r candidate; do
-    candidate="$(dirname "$candidate")/$name"
-    [[ -f "$candidate" ]] || continue
-    [[ "$(sha_file "$candidate")" == "$expected_sha" ]] || continue
+archive_for() {
+  local id="$1" archive="$2" candidate
+  [[ -n "$SOURCE_DIR" ]] || die "resource source directory is not set"
+  candidate="$SOURCE_DIR/$archive"
+  if [[ -f "$candidate" ]]; then
     printf '%s\n' "$candidate"
     return 0
-  done < <(latest_apk_set_candidates)
-  return 1
+  fi
+  candidate="$SOURCE_DIR/$id/$archive"
+  [[ -f "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
 }
 
-market_release_json() {
-  local id="$1" version="$2"
-  curl -q -fsS --connect-timeout 8 --max-time 20 "$MARKET_URL/api/v2/resources/$id" \
-    | jq -e --arg version "$version" --arg id "$id" --arg archive "$(archive_name "$id")" '
-        .versions[] |
-        select(.version == $version and .id == $id and .archive == $archive and
-          .compression == "gzip" and .abi == "arm64-v8a")
-      '
+resource_required() {
+  case "$1" in
+    service-manager) [[ -x "$2/service-manager" && -x "$2/scripts/install.sh" && -x "$2/scripts/check.sh" ]] ;;
+    openhouse-control-plane) [[ -x "$2/start-control-plane-termux-native.sh" ]] ;;
+    openhouse-runtime) [[ -x "$2/install.sh" && -x "$2/scripts/check.sh" && -x "$2/scripts/register-service.sh" ]] ;;
+    wuyou) [[ -x "$2/wuyou" && -x "$2/scripts/install.sh" && -x "$2/scripts/check.sh" && -x "$2/scripts/register-service.sh" ]] ;;
+    openhouse-web) [[ -x "$2/scripts/install.sh" && -x "$2/scripts/check.sh" && -x "$2/scripts/register-service.sh" ]] ;;
+    *) return 1 ;;
+  esac
 }
 
-source_for() {
-  local id="$1" version="$2" expected_sha="$3" cache candidate
-  cache="$ARCHIVES/$expected_sha.tgz"
-  if receipt_valid "$id" "$version" "$expected_sha"; then
-    printf 'skip\t-\n'
-    return
-  fi
-  if [[ -f "$cache" && "$(sha_file "$cache")" == "$expected_sha" ]]; then
-    printf 'cache\t%s\n' "$cache"
-    return
-  fi
-  if [[ -n "${OPENHOUSEAI_RESOURCE_SOURCE_DIR:-}" ]]; then
-    candidate="$OPENHOUSEAI_RESOURCE_SOURCE_DIR/$(archive_name "$id")"
-    if [[ -f "$candidate" && "$(sha_file "$candidate")" == "$expected_sha" ]]; then
-      printf 'local\t%s\n' "$candidate"
-      return
-    fi
-  fi
-  if candidate="$(find_apk_archive "$id" "$expected_sha")"; then
-    printf 'apk\t%s\n' "$candidate"
-    return
-  fi
-  printf 'market\t-\n'
+current_target() { readlink -f "$INSTALL_ROOT/$1/current" 2>/dev/null || true; }
+
+current_valid() {
+  local id="$1" version="$2" target receipt_version
+  target="$(current_target "$id")"
+  [[ -n "$target" && -d "$target" && "$target" == "$INSTALL_ROOT/$id/versions/"* ]] || return 1
+  [[ -f "$RECEIPTS/$id.json" ]] || return 1
+  [[ "$(jq -r '.schema // 0' "$RECEIPTS/$id.json" 2>/dev/null || true)" == 3 ]] || return 1
+  receipt_version="$(jq -r '.version // empty' "$RECEIPTS/$id.json" 2>/dev/null || true)"
+  [[ "$receipt_version" == "$version" ]] || return 1
+  resource_required "$id" "$target"
+}
+
+write_receipt() {
+  local id="$1" version="$2" temporary
+  temporary="$RECEIPTS/$id.json.tmp.$$"
+  jq -n --arg id "$id" --arg version "$version" \
+    --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:3,id:$id,version:$version,content:"installed",updatedAt:$updatedAt}' >"$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$RECEIPTS/$id.json"
+}
+
+write_installed_set() {
+  local set_file="$1" temporary
+  temporary="$INSTALLED_SET.tmp.$$"
+  jq '{schema:3,id,version,sequence,abi,resources:[.resources[] | {id,version}]}' \
+    "$set_file" >"$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$INSTALLED_SET"
 }
 
 build_plan() {
-  local set_file="$1" plan_file="$2" id version digest source source_path
-  : >"$plan_file"
-  while IFS=$'\t' read -r id version digest; do
-    safe_value "$id"
-    safe_value "$version"
-    [[ "$digest" =~ ^[a-f0-9]{64}$ ]] || die "invalid resource digest for $id"
-    IFS=$'\t' read -r source source_path < <(source_for "$id" "$version" "$digest")
-    printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$version" "$digest" "$source" "$source_path" >>"$plan_file"
-  done < <(jq -r '.resources[] | [.id,.version,.sha256] | @tsv' "$set_file")
+  local set_file="$1" plan="$2" id version archive size source status
+  : >"$plan"
+  while IFS=$'\t' read -r id version archive size; do
+    safe_value "$id"; safe_value "$version"; safe_value "$archive"
+    if [[ "$FORCE_RESOURCE" != all && "$FORCE_RESOURCE" != "$id" ]] && current_valid "$id" "$version"; then
+      status=skip; source=-
+    elif [[ "$COMMAND" == plan ]]; then
+      source=-
+      status=apply
+    else
+      source="$(archive_for "$id" "$archive" || true)"
+      [[ -n "$source" ]] || die "resource archive is missing: $id@$version ($archive)"
+      status=apply
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$version" "$archive" "$size" "$status" >>"$plan"
+  done < <(resource_rows "$set_file")
 }
 
 print_plan() {
-  local plan_file="$1" total skip apk cache local market download_size=0 id version digest source source_path release
-  total="$(wc -l <"$plan_file" | tr -d ' ')"
-  skip="$(awk -F '\t' '$4 == "skip" { count++ } END { print count+0 }' "$plan_file")"
-  apk="$(awk -F '\t' '$4 == "apk" { count++ } END { print count+0 }' "$plan_file")"
-  cache="$(awk -F '\t' '$4 == "cache" { count++ } END { print count+0 }' "$plan_file")"
-  local="$(awk -F '\t' '$4 == "local" { count++ } END { print count+0 }' "$plan_file")"
-  market="$(awk -F '\t' '$4 == "market" { count++ } END { print count+0 }' "$plan_file")"
-  if (( market > 0 )) && [[ -z "${OPENHOUSEAI_DISABLE_NETWORK:-}" ]]; then
-    while IFS=$'\t' read -r id version digest source source_path; do
-      [[ "$source" == market ]] || continue
-      release="$(market_release_json "$id" "$version")" || continue
-      download_size=$(( download_size + $(jq -r '.size' <<<"$release") ))
-    done <"$plan_file"
-  fi
-  printf 'resource_set=%s\ntarget_resources=%s\nunchanged=%s\nfrom_apk=%s\nfrom_cache=%s\nfrom_local=%s\nfrom_market=%s\ndownload_bytes=%s\n' \
-    "$RESOURCE_SET_ID" "$total" "$skip" "$apk" "$cache" "$local" "$market" "$download_size"
-}
-
-obtain_archive() {
-  local id="$1" version="$2" digest="$3" source="$4" source_path="$5"
-  local cache part release url size actual_size
-  cache="$ARCHIVES/$digest.tgz"
-  part="$ARCHIVES/$digest.part"
-  if [[ "$source" != market ]]; then
-    [[ -f "$source_path" ]] || die "resource source is missing: $id"
-    cp "$source_path" "$part"
-  else
-    [[ -z "${OPENHOUSEAI_DISABLE_NETWORK:-}" ]] || die "network resource is required but network is disabled: $id"
-    release="$(market_release_json "$id" "$version")" || die "market release is unavailable: $id@$version"
-    [[ "$(jq -r '.sha256' <<<"$release")" == "$digest" ]] || die "market digest mismatch: $id"
-    size="$(jq -r '.size' <<<"$release")"
-    url="$(jq -r '.url' <<<"$release")"
-    [[ "$size" =~ ^[0-9]+$ ]] && (( size > 0 && size <= 60 * 1024 * 1024 )) \
-      || die "market size is invalid: $id"
-    actual_size=0
-    [[ ! -f "$part" ]] || actual_size="$(stat -c '%s' "$part")"
-    if (( actual_size > size )); then
-      : >"$part"
-      actual_size=0
-    fi
-    if (( actual_size < size )); then
-      if (( actual_size > 0 )); then
-        curl -q -fL --connect-timeout 10 --max-time 600 --retry 3 --retry-delay 2 \
-          -C - "$MARKET_URL$url" -o "$part" || {
-            : >"$part"
-            curl -q -fL --connect-timeout 10 --max-time 600 --retry 3 --retry-delay 2 \
-              "$MARKET_URL$url" -o "$part"
-          }
-      else
-        curl -q -fL --connect-timeout 10 --max-time 600 --retry 3 --retry-delay 2 \
-          "$MARKET_URL$url" -o "$part"
-      fi
-    fi
-    actual_size="$(stat -c '%s' "$part")"
-    [[ "$actual_size" == "$size" ]] || die "download size mismatch: $id"
-  fi
-  [[ "$(sha_file "$part")" == "$digest" ]] || die "resource SHA-256 mismatch: $id"
-  validate_archive_paths "$part"
-  mv -f "$part" "$cache"
-  chmod 600 "$cache"
-  printf '%s\n' "$cache"
-}
-
-stage_resources() {
-  local plan_file="$1" stage_root="$2" id version digest source source_path archive target
-  mkdir -p "$stage_root"
-  while IFS=$'\t' read -r id version digest source source_path; do
-    [[ "$source" == skip ]] && continue
-    archive="$(obtain_archive "$id" "$version" "$digest" "$source" "$source_path")"
-    target="$stage_root/$id"
-    mkdir -p "$target"
-    tar -xzf "$archive" -C "$target" --no-same-owner --no-same-permissions
-    [[ -n "$(find "$target" -mindepth 1 -print -quit)" ]] || die "resource extracted empty: $id"
-  done <"$plan_file"
-}
-
-legacy_link() {
-  local target="$1" link="$2"
-  if [[ -e "$link" && ! -L "$link" ]]; then
-    mv "$link" "${link}.legacy-$(date +%Y%m%d-%H%M%S)"
-  fi
-  atomic_symlink "$target" "$link"
+  local plan="$1" total changed bytes=0 id version archive size status
+  total="$(wc -l <"$plan" | tr -d ' ')"
+  changed="$(awk -F '\t' '$5 == "apply" {n++} END {print n+0}' "$plan")"
+  while IFS=$'\t' read -r id version archive size status; do
+    [[ "$status" == apply ]] || continue
+    [[ "$size" =~ ^[0-9]+$ ]] || die "resource size is invalid: $id"
+    bytes=$((bytes + size))
+  done <"$plan"
+  printf 'target_resources=%s\nchanged=%s\nunchanged=%s\nbytes=%s\n' \
+    "$total" "$changed" "$((total - changed))" "$bytes"
+  while IFS=$'\t' read -r id version archive size status; do
+    printf 'resource=%s version=%s action=%s archive=%s size=%s\n' \
+      "$id" "$version" "$status" "$archive" "$size"
+  done <"$plan"
 }
 
 install_handler() {
@@ -416,241 +188,212 @@ install_handler() {
     service-manager)
       chmod 755 "$directory/service-manager" "$directory/scripts/"*.sh
       CONFIG_PATH="$HOME/.config/openhouseai/service-manager/config.json" \
-        BIND="127.0.0.1:20087" \
-        INSTALL_SERVICE=0 \
-        "$directory/scripts/install.sh" "$directory/service-manager"
-      ;;
+        BIND="127.0.0.1:20087" INSTALL_SERVICE=0 \
+        "$directory/scripts/install.sh" "$directory/service-manager" ;;
     openhouse-control-plane)
       chmod 700 "$directory/"*.sh
-      legacy_link "$directory" "$HOME/.local/share/openhouseai/control-plane/current"
-      ;;
+      mkdir -p "$HOME/.local/share/openhouseai/control-plane"
+      ln -sfn "$directory" "$HOME/.local/share/openhouseai/control-plane/current" ;;
     openhouse-runtime)
       chmod 755 "$directory/install.sh" "$directory/scripts/"*.sh "$directory/bin/"*
-      # The archive-level installer also registers a live service. Resource
-      # content convergence must have no service or registry side effects.
-      "$directory/scripts/install.sh"
-      ;;
+      # The archive root installer also registers a live service. Content
+      # convergence only installs the static runtime files.
+      "$directory/scripts/install.sh" ;;
     wuyou)
       chmod 755 "$directory/wuyou" "$directory/scripts/"*.sh
-      "$directory/scripts/install.sh"
-      ;;
+      "$directory/scripts/install.sh" ;;
     openhouse-web)
       chmod 755 "$directory/scripts/"*.sh
-      "$directory/scripts/install.sh"
-      ;;
-    *) die "no installer is registered for resource: $id" ;;
+      "$directory/scripts/install.sh" ;;
+    *) die "resource is not allowlisted: $id" ;;
   esac
 }
 
 verify_handler() {
   local id="$1" directory="$2"
-  case "$id" in
-    service-manager) command -v service-manager >/dev/null 2>&1 && service-manager --version >/dev/null ;;
-    openhouse-control-plane) [[ -x "$HOME/.local/share/openhouseai/control-plane/current/start-control-plane-termux-native.sh" ]] ;;
-    openhouse-runtime) "$directory/scripts/check.sh" ;;
-    wuyou) "$directory/scripts/check.sh" ;;
-    openhouse-web) "$directory/scripts/check.sh" ;;
-    *) return 1 ;;
-  esac
+  resource_required "$id" "$directory"
 }
 
-write_receipt() {
-  local id="$1" version="$2" digest="$3" directory="$4" tree temporary
-  temporary="$RECEIPTS/$id.json.tmp.$$"
-  tree="$(tree_sha "$directory")"
-  jq -n --arg id "$id" --arg version "$version" --arg archiveSha256 "$digest" \
-    --arg installedManifestSha256 "$tree" --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:2,id:$id,version:$version,archiveSha256:$archiveSha256,installedManifestSha256:$installedManifestSha256,content:"installed",updatedAt:$updatedAt}' \
-    >"$temporary"
-  chmod 600 "$temporary"
-  mv -f "$temporary" "$RECEIPTS/$id.json"
+validate_archive() {
+  local id="$1" archive="$2" expected_size="$3" actual_size
+  actual_size="$(stat -c '%s' "$archive")"
+  [[ "$actual_size" == "$expected_size" ]] || die "resource archive size mismatch: $id"
+  gzip -t "$archive" || die "resource archive gzip is invalid: $id"
+  tar -tzf "$archive" | awk '
+    substr($0, 1, 1) == "/" || /(^|\/)\.\.($|\/)/ || /\\/ {bad=1}
+    {count++}
+    END {if (bad || count == 0 || count > 100000) exit 1}
+  ' || die "resource archive path list is unsafe: $id"
+  tar -tvzf "$archive" | awk '
+    {kind=substr($1,1,1); if (kind != "-" && kind != "d" && kind != "l") bad=1; bytes += $3; count++}
+    END {if (bad || count > 100000 || bytes > 1073741824) exit 1}
+  ' || die "resource archive entries are unsafe or too large: $id"
 }
 
-write_transaction_state() {
-  local transaction="$1" status="$2" phase="$3" message="${4:-}" temporary
-  temporary="$transaction/state.json.tmp.$$"
-  jq -n --arg status "$status" --arg phase "$phase" --arg message "$message" \
-    --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:1,status:$status,phase:$phase,message:$message,updatedAt:$updatedAt}' >"$temporary"
-  chmod 600 "$temporary"
-  mv -f "$temporary" "$transaction/state.json"
+validate_extracted_links() {
+  local root="$1" link target resolved
+  while IFS= read -r -d '' link; do
+    target="$(readlink "$link")"
+    [[ "$target" != /* && "$target" != *'\\'* ]] || die 'resource archive contains an unsafe symbolic link'
+    resolved="$(readlink -f "$link" 2>/dev/null || true)"
+    [[ -n "$resolved" && "$resolved" == "$root"/* ]] || die 'resource archive symbolic link escapes resource root'
+  done < <(find "$root" -type l -print0)
 }
 
-reconcile_control_plane_legacy_link() {
-  local target="${1:-}" link="$HOME/.local/share/openhouseai/control-plane/current"
-  if [[ -n "$target" && "$target" != - && -d "$target" ]]; then
-    atomic_symlink "$target" "$link"
+rollback() {
+  local transaction="$1" id target old backup receipt receipt_backup
+  [[ -f "$transaction/previous.tsv" ]] || return 0
+  while IFS=$'\t' read -r id target old backup; do
+    [[ "$target" == - ]] || { [[ ! -e "$target" ]] || mv "$target" "$transaction/failed-$id"; }
+    [[ ! -d "$backup" ]] || mv "$backup" "$target"
+    if [[ "$old" == - ]]; then
+      rm -f "$INSTALL_ROOT/$id/current"
+    else
+      ln -sfn "$old" "$INSTALL_ROOT/$id/current"
+      install_handler "$id" "$old" || true
+    fi
+    receipt="$RECEIPTS/$id.json"; receipt_backup="$transaction/receipts/$id.json"
+    if [[ -f "$receipt_backup" ]]; then cp "$receipt_backup" "$receipt"; else rm -f "$receipt"; fi
+  done < <(tac "$transaction/previous.tsv")
+  if [[ -f "$transaction/installed-set.json" ]]; then
+    install -m 600 "$transaction/installed-set.json" "$INSTALLED_SET"
   else
-    rm -f "$link"
+    rm -f "$INSTALLED_SET"
   fi
 }
 
-rollback_links() {
-  local previous_links="$1" receipts_backup="$2" failed_root="$3"
-  local id old_target target backup current receipt backup_receipt failed_candidate
-  [[ -f "$previous_links" ]] || return 0
-  while IFS=$'\t' read -r id old_target target backup; do
+apply_content() {
+  local set_file="$1" plan="$2" transaction="$3" id version archive size status source target current old backup staged
+  mkdir -p "$transaction/staged" "$transaction/receipts" "$transaction/backups"
+  : >"$transaction/previous.tsv"
+  [[ ! -f "$INSTALLED_SET" ]] || install -m 600 "$INSTALLED_SET" "$transaction/installed-set.json"
+  while IFS=$'\t' read -r id version archive size status; do
+    [[ "$status" == apply ]] || continue
+    source="$(archive_for "$id" "$archive")"
+    validate_archive "$id" "$source" "$size"
+    staged="$transaction/staged/$id"
+    mkdir -p "$staged"
+    tar -xzf "$source" -C "$staged" --no-same-owner --no-same-permissions
+    validate_extracted_links "$staged"
+    resource_required "$id" "$staged" || die "resource archive structure is invalid: $id"
+  done <"$plan"
+  while IFS=$'\t' read -r id version archive size status; do
+    [[ "$status" == apply ]] || continue
+    target="$INSTALL_ROOT/$id/versions/$version"
     current="$INSTALL_ROOT/$id/current"
-    if [[ -e "$target" ]]; then
-      failed_candidate="$failed_root/candidates/$id"
-      mkdir -p "$(dirname "$failed_candidate")"
-      mv "$target" "$failed_candidate"
-    fi
-    if [[ "$backup" != - && -d "$backup" ]]; then
-      mkdir -p "$(dirname "$target")"
-      mv "$backup" "$target"
-    fi
-    if [[ "$old_target" == - ]]; then
-      rm -f "$current"
-    elif [[ -d "$old_target" ]]; then
-      atomic_symlink "$old_target" "$current"
-      install_handler "$id" "$old_target" || true
-    fi
-    [[ "$id" != openhouse-control-plane ]] || reconcile_control_plane_legacy_link "$old_target"
-    receipt="$RECEIPTS/$id.json"
-    backup_receipt="$receipts_backup/$id.json"
-    if [[ -f "$backup_receipt" ]]; then
-      cp "$backup_receipt" "$receipt"
-      chmod 600 "$receipt"
-    else
-      rm -f "$receipt"
-    fi
-  done < <(tac "$previous_links")
+    old="$(current_target "$id")"; [[ -n "$old" ]] || old=-
+    backup="$transaction/backups/$id"
+    mkdir -p "$(dirname "$target")"
+    [[ ! -f "$RECEIPTS/$id.json" ]] || cp "$RECEIPTS/$id.json" "$transaction/receipts/$id.json"
+    printf '%s\t%s\t%s\t%s\n' "$id" "$target" "$old" "$backup" >>"$transaction/previous.tsv"
+    [[ ! -e "$target" ]] || mv "$target" "$backup"
+    mv "$transaction/staged/$id" "$target"
+    ln -sfn "$target" "$current"
+    FAILED_STEP="install:$id"
+    printf '%s\n' "$FAILED_STEP" >"$transaction/failed-step"
+    install_handler "$id" "$target"
+    verify_handler "$id" "$target"
+    write_receipt "$id" "$version"
+  done <"$plan"
+  [[ ! -f "$INSTALLED_SET" ]] || install -m 600 "$INSTALLED_SET" "$PREVIOUS_SET"
+  write_installed_set "$set_file"
 }
 
-fail_content_transaction() {
-  local transaction="$1" message="$2" failed_root
-  failed_root="$FAILED_TRANSACTIONS/$(basename "$transaction")"
-  mkdir -p "$failed_root"
-  rollback_links "$transaction/previous-links.tsv" "$transaction/receipts" "$failed_root"
-  write_transaction_state "$transaction" failed content "$message"
-  cp -a "$transaction/." "$failed_root/"
-  write_failure_snapshot "$failed_root" content "$CURRENT_FAILED_STEP" "$message" 1
-  log "失败现场已保留：$failed_root"
+run_apply() {
+  local workspace plan transaction
+  [[ -n "$SET_FILE" && -n "$SOURCE_DIR" ]] || die 'apply requires OPENHOUSEAI_RESOURCE_SET_FILE and OPENHOUSEAI_RESOURCE_SOURCE_DIR'
+  read_set "$SET_FILE"
+  local temp_root="${TMPDIR:-$PREFIX/tmp}"
+  mkdir -p "$temp_root"
+  workspace="$(mktemp -d "$temp_root/openhouse-resource-plan.XXXXXX")"
+  plan="$workspace/plan.tsv"
+  build_plan "$SET_FILE" "$plan"
+  print_plan "$plan"
+  [[ "$COMMAND" == plan || "$COMMAND" == inspect ]] && { rm -rf "$workspace"; return 0; }
+  transaction="$TRANSACTIONS/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  CURRENT_TRANSACTION="$transaction"; mkdir -p "$transaction"
+  cp "$SET_FILE" "$transaction/resource-set.json"; cp "$plan" "$transaction/plan.tsv"
+  set +e
+  ( set -e; apply_content "$SET_FILE" "$plan" "$transaction" ) 2>&1 | tee "$transaction/diagnostics.log"
+  local code=${PIPESTATUS[0]}
+  set -e
+  if [[ "$code" -ne 0 ]]; then
+    rollback "$transaction" || true
+    mkdir -p "$FAILED/$(basename "$transaction")"
+    printf 'failedStep=%s\nexitCode=%s\n' \
+      "$(cat "$transaction/failed-step" 2>/dev/null || printf unknown)" "$code" >>"$transaction/diagnostics.log"
+    cp -a "$transaction/." "$FAILED/$(basename "$transaction")/"
+    rm -rf "$workspace" "$transaction"
+    die "static content transaction failed; evidence kept in $FAILED/$(basename "$transaction")"
+  fi
+  rm -rf "$workspace" "$transaction"
+  printf 'content=installed\nresource_set=%s\nsequence=%s\n' \
+    "$(jq -r '.id + "@" + .version' "$SET_FILE")" "$(jq -r '.sequence' "$SET_FILE")"
 }
 
-activate_resources() {
-  local set_file="$1" plan_file="$2" stage_root="$3" transaction="$4"
-  local previous_links="$transaction/previous-links.tsv" receipts_backup="$transaction/receipts"
-  local id version digest source source_path
-  local versions target current old_target staged backup
-  mkdir -p "$receipts_backup" "$transaction/backups"
-  : >"$previous_links"
-  write_transaction_state "$transaction" running content 'installing static resource content'
-  while IFS=$'\t' read -r id version digest source source_path; do
-    [[ "$source" == skip ]] && continue
-    versions="$INSTALL_ROOT/$id/versions"
-    target="$versions/$version"
-    current="$INSTALL_ROOT/$id/current"
-    mkdir -p "$versions"
-    old_target=-
-    [[ -L "$current" ]] && old_target="$(readlink -f "$current")"
-    [[ ! -f "$RECEIPTS/$id.json" ]] || cp "$RECEIPTS/$id.json" "$receipts_backup/$id.json"
-    staged="$stage_root/$id"
-    backup=-
-    if [[ -e "$target" ]]; then
-      [[ -d "$target" && ! -L "$target" ]] || die "unsafe existing resource target: $target"
-      backup="$transaction/backups/$id"
-      mv "$target" "$backup"
-    fi
-    printf '%s\t%s\t%s\t%s\n' "$id" "$old_target" "$target" "$backup" >>"$previous_links"
-    mv "$staged" "$target"
-    atomic_symlink "$target" "$current"
-    CURRENT_FAILED_STEP="install-content:$id"
-    record_transaction_diagnostic "installing resource=$id version=$version source=$source"
-    if ! install_handler "$id" "$target"; then
-      fail_content_transaction "$transaction" "resource content install failed: $id"
-      die "resource activation failed: $id"
-    fi
-  done <"$plan_file"
-  while IFS=$'\t' read -r id version digest source source_path; do
-    CURRENT_FAILED_STEP="verify-content:$id"
-    record_transaction_diagnostic "verifying resource=$id version=$version"
-    verify_handler "$id" "$INSTALL_ROOT/$id/current" || {
-      fail_content_transaction "$transaction" "static resource verification failed: $id"
-      die "resource verification failed: $id"
-    }
-  done <"$plan_file"
-  while IFS=$'\t' read -r id version digest source source_path; do
-    [[ "$source" == skip ]] && continue
-    CURRENT_FAILED_STEP="write-receipt:$id"
-    record_transaction_diagnostic "committing receipt resource=$id version=$version"
-    if ! write_receipt "$id" "$version" "$digest" "$INSTALL_ROOT/$id/current"; then
-      fail_content_transaction "$transaction" "resource receipt commit failed: $id"
-      die "resource receipt commit failed: $id"
-    fi
-  done <"$plan_file"
-  [[ -f "$INSTALLED_SET" ]] && atomic_json_copy "$INSTALLED_SET" "$PREVIOUS_SET"
-  atomic_json_copy "$set_file" "$INSTALLED_SET"
-  write_transaction_state "$transaction" completed content 'static resource content installed'
-}
-
-verify_installed_set() {
-  local set_file="${1:-$INSTALLED_SET}" id version digest failures=0
-  [[ -f "$set_file" ]] || die "installed resource set is missing"
-  while IFS=$'\t' read -r id version digest; do
-    if receipt_valid "$id" "$version" "$digest" && verify_handler "$id" "$INSTALL_ROOT/$id/current"; then
+verify_installed() {
+  [[ -f "$INSTALLED_SET" ]] || die 'installed set is missing'
+  local failures=0 id version target
+  while IFS=$'\t' read -r id version; do
+    target="$(current_target "$id")"
+    if [[ -n "$target" ]] && current_valid "$id" "$version" && verify_handler "$id" "$target"; then
       printf 'resource=%s status=ok version=%s\n' "$id" "$version"
     else
-      printf 'resource=%s status=invalid version=%s\n' "$id" "$version" >&2
-      failures=$((failures + 1))
+      printf 'resource=%s status=invalid version=%s\n' "$id" "$version" >&2; failures=$((failures + 1))
     fi
-  done < <(jq -r '.resources[] | [.id,.version,.sha256] | @tsv' "$set_file")
-  (( failures == 0 ))
+  done < <(jq -r '.resources[] | [.id,.version] | @tsv' "$INSTALLED_SET")
+  ((failures == 0))
 }
 
-run_plan() {
-  local workspace set_file plan_file candidates cleanup
-  workspace="$(temporary_directory openhouse-resource-plan)"
-  PLAN_WORKSPACE="$workspace"
-  set_file="$workspace/resource-set.json"
-  plan_file="$workspace/plan.tsv"
-  candidates="$workspace/candidates.txt"
-  CURRENT_FAILED_STEP=select-target-set
-  select_target_set "$set_file" "$candidates"
-  CURRENT_FAILED_STEP=build-plan
-  build_plan "$set_file" "$plan_file"
-  print_plan "$plan_file"
-  if [[ "$COMMAND" == plan || "$COMMAND" == check ]]; then
-    rm -rf -- "$workspace"
-    PLAN_WORKSPACE=''
+inspect_installed() {
+  if [[ ! -f "$INSTALLED_SET" ]]; then
+    printf 'installed=false\n'
     return 0
   fi
-  local transaction="$TRANSACTIONS/$(date -u +%Y%m%dT%H%M%SZ)-$$"
-  CURRENT_TRANSACTION="$transaction"
-  mkdir -p "$transaction"
-  cp "$set_file" "$transaction/resource-set.json"
-  cp "$plan_file" "$transaction/plan.tsv"
-  CURRENT_FAILED_STEP=stage-resources
-  record_transaction_diagnostic "transaction created"
-  stage_resources "$plan_file" "$transaction/staged"
-  CURRENT_FAILED_STEP=activate-content
-  activate_resources "$set_file" "$plan_file" "$transaction/staged" "$transaction"
-  printf 'resource_update=applied\nresource_set=%s\nversion=%s\nsequence=%s\n' \
-    "$RESOURCE_SET_ID" "$(jq -r '.version' "$set_file")" "$(jq -r '.sequence' "$set_file")"
-  rm -rf -- "$workspace"
-  PLAN_WORKSPACE=''
+  printf 'installed=true\nresource_set=%s\nversion=%s\nsequence=%s\n' \
+    "$(jq -r '.id' "$INSTALLED_SET")" "$(jq -r '.version' "$INSTALLED_SET")" "$(jq -r '.sequence' "$INSTALLED_SET")"
+  verify_installed
+}
+
+rollback_previous() {
+  [[ -f "$PREVIOUS_SET" ]] || die 'previous set is unavailable'
+  local id version target current receipt
+  while IFS=$'\t' read -r id version; do
+    target="$INSTALL_ROOT/$id/versions/$version"
+    [[ -d "$target" ]] || die "previous resource version is missing: $id@$version"
+    resource_required "$id" "$target" || die "previous resource version is invalid: $id@$version"
+  done < <(jq -r '.resources[] | [.id,.version] | @tsv' "$PREVIOUS_SET")
+  while IFS=$'\t' read -r id version; do
+    target="$INSTALL_ROOT/$id/versions/$version"
+    current="$INSTALL_ROOT/$id/current"
+    ln -sfn "$target" "$current"
+    install_handler "$id" "$target"
+    write_receipt "$id" "$version"
+  done < <(jq -r '.resources[] | [.id,.version] | @tsv' "$PREVIOUS_SET")
+  install -m 600 "$INSTALLED_SET" "$INSTALLED_SET.rollback.$$"
+  install -m 600 "$PREVIOUS_SET" "$INSTALLED_SET"
+  mv -f "$INSTALLED_SET.rollback.$$" "$PREVIOUS_SET"
+  printf 'content=rolled-back\nsequence=%s\n' "$(jq -r '.sequence' "$INSTALLED_SET")"
 }
 
 main() {
-  trap 'resource_manager_exit $?' EXIT
-  require_tools
-  APK_VERSION_CODE="$(detect_apk_version_code)"
-  [[ "$APK_VERSION_CODE" =~ ^[0-9]+$ ]] && (( APK_VERSION_CODE > 0 )) \
-    || die "invalid APK version code"
-  mkdir -p "$ARCHIVES" "$RECEIPTS" "$TRANSACTIONS" "$FAILED_TRANSACTIONS" "$INSTALL_ROOT"
-  chmod 700 "$MANAGER_ROOT" "$ARCHIVES" "$RECEIPTS" "$TRANSACTIONS" "$FAILED_TRANSACTIONS" "$INSTALL_ROOT"
-  exec 9>"$MANAGER_ROOT/update.lock"
-  flock -n 9 || die "another resource update is already running"
+  require_tools; setup_dirs
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --set) SET_FILE="${2:-}"; shift 2 ;;
+      --source) SOURCE_DIR="${2:-}"; shift 2 ;;
+      --resource) FORCE_RESOURCE="${2:-}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  exec 9>"$LOCK_FILE"; flock -n 9 || die 'another content transaction is running'
   case "$COMMAND" in
-    check|plan|apply) run_plan ;;
-    verify) verify_installed_set ;;
-    rollback)
-      [[ -f "$PREVIOUS_SET" ]] || die "previous resource set is unavailable"
-      OPENHOUSEAI_RESOURCE_SET_FILE="$PREVIOUS_SET" OPENHOUSEAI_ALLOW_DOWNGRADE=1 COMMAND=apply run_plan
-      ;;
-    *) die "usage: update-resources.sh [check|plan|apply|verify|rollback]" ;;
+    inspect) inspect_installed ;;
+    plan|apply|force) [[ "$COMMAND" != force ]] || FORCE_RESOURCE="${FORCE_RESOURCE:-all}"; run_apply ;;
+    verify) verify_installed ;;
+    rollback) rollback_previous ;;
+    *) die 'usage: openhouse-resource-manager [inspect|plan|apply|force|verify|rollback] --set FILE --source DIR' ;;
   esac
 }
 
-main
+main "$@"

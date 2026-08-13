@@ -20,7 +20,7 @@ internal const val PRE_TMUX_ASSET = "wuxianpi-install/pre-tmux.sh"
 internal const val PRE_TMUX_HOME_PATH = ".local/share/wuxianpi/bootstrap/pre-tmux.sh"
 internal const val SETUP_REQUEST_HOME_PATH = ".local/state/wuxianpi-setup/request.json"
 internal const val INSTALL_BUNDLE_ASSET = "wuxianpi-install/openhouse-install-bundle.tar"
-internal const val INSTALL_BUNDLE_METADATA_ASSET = "wuxianpi-install/openhouse-install-bundle.json"
+internal const val INSTALL_BUNDLE_METADATA_ASSET = "wuxianpi-install/bundle-index.json"
 internal const val INSTALL_BUNDLE_NAME = "openhouse-install-bundle.tar"
 internal const val APK_RESOURCE_INBOX_ROOT = ".local/share/openhouseai/apk-resource-inbox"
 internal const val TERMUX_PROPERTIES_HOME_PATH = ".termux/termux.properties"
@@ -36,7 +36,6 @@ internal data class InstallBundleStageResult(
     val apkVersionCode: Long,
     val inboxDirectory: String,
     val bundlePath: String,
-    val bundleSha256: String,
     val bundleSize: Long,
     val resourceSetVersion: String,
     val resourceSetSequence: Long,
@@ -233,16 +232,15 @@ internal class NativeTermuxHomeRepository(context: Context) {
         val metadata = appContext.assets.open(INSTALL_BUNDLE_METADATA_ASSET).bufferedReader().use {
             JSONObject(it.readText())
         }
-        require(metadata.optInt("schema") == 1) { "Unsupported install bundle metadata" }
+        require(metadata.optInt("schema") == 2) { "Unsupported install bundle index" }
         require(metadata.optString("bundleAsset") == INSTALL_BUNDLE_ASSET) {
             "Unexpected install bundle asset"
         }
-        val bundleSha256 = metadata.getString("bundleSha256").lowercase()
         val bundleSize = metadata.getLong("bundleSize")
-        require(bundleSha256.matches(Regex("[0-9a-f]{64}")) && bundleSize > 0L) {
-            "Invalid install bundle integrity metadata"
+        val resourceSetSequence = metadata.getLong("resourceSetSequence")
+        require(bundleSize > 0L && resourceSetSequence > 0L) {
+            "Invalid install bundle index"
         }
-        val resourceSet = metadata.getJSONObject("resourceSet")
         val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
         @Suppress("DEPRECATION")
         val apkVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -250,65 +248,37 @@ internal class NativeTermuxHomeRepository(context: Context) {
         } else {
             packageInfo.versionCode.toLong()
         }
-        require(resourceSet.optInt("schema", 0) == 2) { "Unsupported bundled resource set schema" }
-        require(resourceSet.optString("id") == "openhouse-core-stack") { "Unexpected bundled resource set" }
-        require(resourceSet.optString("abi") == "arm64-v8a") { "Bundled resource set is not ARM64" }
-        require(resourceSet.optLong("minApkVersionCode", Long.MAX_VALUE) <= apkVersionCode) {
-            "Bundled resource set requires a newer APK"
-        }
-        val expectedIds = setOf(
-            "service-manager", "openhouse-control-plane", "openhouse-runtime", "wuyou", "openhouse-web",
-        )
-        val resources = resourceSet.optJSONArray("resources")
-            ?: error("Bundled resource set has no resources")
-        require(resources.length() == expectedIds.size) {
-            "Bundled resource set must contain exactly five resources"
-        }
-        val actualIds = linkedSetOf<String>()
-        for (index in 0 until resources.length()) {
-            val resource = resources.optJSONObject(index) ?: error("Invalid bundled resource entry")
-            val id = resource.optString("id")
-            require(id in expectedIds && actualIds.add(id)) {
-                "Unexpected or duplicate bundled resource: $id"
-            }
-            val digest = resource.optString("sha256").lowercase()
-            require(digest.matches(Regex("[0-9a-f]{64}"))) { "Invalid bundled resource checksum: $id" }
-        }
-        require(actualIds == expectedIds) { "Bundled resource set is incomplete" }
-
         val root = requireRoot()
-        val offerId = sha256("${appContext.packageName}:$apkVersionCode:${packageInfo.lastUpdateTime}").take(24)
+        val offerId = "${appContext.packageName}-$apkVersionCode-$resourceSetSequence"
         val relativeDirectory = "$APK_RESOURCE_INBOX_ROOT/$offerId"
-        findDocument(root, "$relativeDirectory/.ready")?.let { ready ->
+        val existingReady = findDocument(root, "$relativeDirectory/.ready")
+        val existingBundle = findDocument(root, "$relativeDirectory/$INSTALL_BUNDLE_NAME")
+        val reusable = existingReady?.isFile == true && existingReady.length() == 0L &&
+            existingBundle?.isFile == true && existingBundle.length() == bundleSize
+        if (!reusable) existingReady?.let { ready ->
             require(ready.delete()) { "Unable to clear the previous APK resource ready marker" }
         }
-        val copiedBytes = stageVerifiedAsset(
-            root = root,
-            assetPath = INSTALL_BUNDLE_ASSET,
-            homePath = "$relativeDirectory/$INSTALL_BUNDLE_NAME",
-            expectedSha256 = bundleSha256,
-            expectedSize = bundleSize,
-        )
-        val offer = JSONObject()
-            .put("schema", 1)
-            .put("offerId", offerId)
-            .put("apkVersionName", packageInfo.versionName.orEmpty())
-            .put("apkVersionCode", apkVersionCode)
-            .put("bundleFile", INSTALL_BUNDLE_NAME)
-            .put("bundleSha256", bundleSha256)
-            .put("bundleSize", bundleSize)
-            .put("resourceSet", JSONObject(resourceSet.toString()))
-        writeTextDirect(root, "$relativeDirectory/offer.json", offer.toString(2) + "\n")
-        createReadyMarker(root, "$relativeDirectory/.ready")
+        val copiedBytes = if (reusable) {
+            0L
+        } else {
+            existingBundle?.let { bundle ->
+                require(bundle.delete()) { "Unable to replace the unpublished APK install bundle" }
+            }
+            stageAsset(
+                root = root,
+                assetPath = INSTALL_BUNDLE_ASSET,
+                homePath = "$relativeDirectory/$INSTALL_BUNDLE_NAME",
+                expectedSize = bundleSize,
+            ).also { createReadyMarker(root, "$relativeDirectory/.ready") }
+        }
         InstallBundleStageResult(
             offerId = offerId,
             apkVersionCode = apkVersionCode,
             inboxDirectory = "${NativeOpenHouseHost.TERMUX_HOME}/$relativeDirectory",
             bundlePath = "${NativeOpenHouseHost.TERMUX_HOME}/$relativeDirectory/$INSTALL_BUNDLE_NAME",
-            bundleSha256 = bundleSha256,
             bundleSize = bundleSize,
-            resourceSetVersion = resourceSet.getString("version"),
-            resourceSetSequence = resourceSet.getLong("sequence"),
+            resourceSetVersion = metadata.optString("resourceSetVersion"),
+            resourceSetSequence = resourceSetSequence,
             copiedBytes = copiedBytes,
         )
     }
@@ -320,19 +290,16 @@ internal class NativeTermuxHomeRepository(context: Context) {
         }
     }
 
-    private fun stageVerifiedAsset(
+    private fun stageAsset(
         root: DocumentFile,
         assetPath: String,
         homePath: String,
-        expectedSha256: String,
         expectedSize: Long,
     ): Long {
         val parent = ensureDirectory(root, homePath.substringBeforeLast('/', ""))
         val fileName = homePath.substringAfterLast('/')
         val existing = parent.findFile(fileName)
-        if (existing?.isFile == true && existing.length() == expectedSize &&
-            sha256Document(existing) == expectedSha256
-        ) {
+        if (existing?.isFile == true && existing.length() == expectedSize) {
             return 0L
         }
         existing?.let { document ->
@@ -343,7 +310,6 @@ internal class NativeTermuxHomeRepository(context: Context) {
         }
         try {
             var copied = 0L
-            val digest = MessageDigest.getInstance("SHA-256")
             appContext.assets.open(assetPath).use { input ->
                 requireNotNull(resolver.openOutputStream(target.uri, "w")) {
                     "Unable to open $homePath for writing"
@@ -354,19 +320,12 @@ internal class NativeTermuxHomeRepository(context: Context) {
                         if (read < 0) break
                         if (read == 0) continue
                         output.write(buffer, 0, read)
-                        digest.update(buffer, 0, read)
                         copied += read
                     }
                 }
             }
-            val actualSha256 = digest.digest().joinToString("") { byte ->
-                "%02x".format(byte.toInt() and 0xff)
-            }
-            require(copied == expectedSize && actualSha256 == expectedSha256) {
-                "Install bundle integrity mismatch for $fileName"
-            }
-            require(target.length() == expectedSize && sha256Document(target) == expectedSha256) {
-                "Install bundle changed after SAF staging"
+            require(copied == expectedSize && target.length() == expectedSize) {
+                "Install bundle size mismatch for $fileName"
             }
             return copied
         } catch (error: Throwable) {
@@ -439,10 +398,6 @@ internal class NativeTermuxHomeRepository(context: Context) {
         }
         digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
     }.getOrNull()
-
-    private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
-        .digest(value.toByteArray(Charsets.UTF_8))
-        .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
     private fun ensureDirectory(root: DocumentFile, path: String): DocumentFile {
         var current = root

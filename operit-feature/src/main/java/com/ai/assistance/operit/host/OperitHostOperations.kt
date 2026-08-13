@@ -75,10 +75,18 @@ interface OperitHostOperations {
     fun requestTermuxHomeAccess(context: Context): OperitHostOperationResult =
         WuxianPiSetupContract.unsupported(WuxianPiSetupContract.OPERATION_REQUEST_TERMUX_HOME_ACCESS)
 
+    /** Starts the SAF picker after the conversation action card was explicitly clicked. */
+    fun launchTermuxHomeAccess(context: Context): OperitHostOperationResult =
+        requestTermuxHomeAccess(context)
+
     fun requestTermuxRunCommandPermission(context: Context): OperitHostOperationResult =
         WuxianPiSetupContract.unsupported(
             WuxianPiSetupContract.OPERATION_REQUEST_TERMUX_RUN_COMMAND_PERMISSION
         )
+
+    /** Starts the Android permission flow after the conversation action card was explicitly clicked. */
+    fun launchTermuxRunCommandPermission(context: Context): OperitHostOperationResult =
+        requestTermuxRunCommandPermission(context)
 
     /** Normalizes external Termux command opt-in using the already-authorized Home repository. */
     suspend fun configureTermuxExternalApps(): OperitHostOperationResult =

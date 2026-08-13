@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -953,6 +954,12 @@ class CustomXmlRenderer(
                 ?.groupValues
                 ?.getOrNull(1)
                 .orEmpty()
+        val actionToken =
+            Regex("""\btoken\s*=\s*[\"']([^\"']+)[\"']""")
+                .find(content)
+                ?.groupValues
+                ?.getOrNull(1)
+                .orEmpty()
         val spec =
             when (operation) {
                 WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS ->
@@ -967,6 +974,12 @@ class CustomXmlRenderer(
                         R.string.wuxianpi_action_run_command_description,
                         R.string.wuxianpi_action_run_command_button,
                     )
+                "reload_termux_settings" ->
+                    Triple(
+                        R.string.wuxianpi_action_reload_termux_title,
+                        R.string.wuxianpi_action_reload_termux_description,
+                        R.string.wuxianpi_action_reload_termux_button,
+                    )
                 RescuePluginContract.TOOL_PUBLISH_COMMENT ->
                     Triple(
                         R.string.rescue_plugin_comment_confirm_title,
@@ -977,8 +990,10 @@ class CustomXmlRenderer(
             }
         if (spec == null) return
 
-        var feedback by remember(operation) { mutableStateOf<String?>(null) }
-        var completed by remember(operation) { mutableStateOf(false) }
+        val stateKey = "$operation:${actionToken.ifBlank { draftId }}"
+        var feedback by rememberSaveable(stateKey) { mutableStateOf<String?>(null) }
+        var launched by rememberSaveable(stateKey) { mutableStateOf(false) }
+        var completed by rememberSaveable(stateKey) { mutableStateOf(false) }
         var running by remember(operation) { mutableStateOf(false) }
 
         Card(
@@ -1005,7 +1020,7 @@ class CustomXmlRenderer(
                     Text(
                         text = message,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (completed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                    color = if (completed || launched) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                     )
                 }
                 OutlinedButton(
@@ -1034,9 +1049,10 @@ class CustomXmlRenderer(
                             val operations = OperitHostProvider.operationsOrUnsupported()
                             when (operation) {
                                 WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS ->
-                                    operations.requestTermuxHomeAccess(context)
+                                    operations.launchTermuxHomeAccess(context)
                                 WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION ->
-                                    operations.requestTermuxRunCommandPermission(context)
+                                    operations.launchTermuxRunCommandPermission(context)
+                                "reload_termux_settings" -> operations.openHostApp(context)
                                 else -> error("Unsupported WuxianPi action: $operation")
                             }
                         }.getOrElse { error ->
@@ -1048,10 +1064,11 @@ class CustomXmlRenderer(
                                 context.getString(R.string.wuxianpi_action_failed)
                             }
                         } else if (WuxianPiSetupContract.requiresUserAction(result)) {
+                            launched = true
                             feedback = context.getString(R.string.wuxianpi_action_opened)
                         } else {
-                            completed = true
-                            feedback = context.getString(R.string.wuxianpi_action_completed)
+                            launched = true
+                            feedback = context.getString(R.string.wuxianpi_action_opened)
                         }
                     },
                 ) {
@@ -1060,7 +1077,13 @@ class CustomXmlRenderer(
                         contentDescription = null,
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(if (completed) stringResource(R.string.wuxianpi_action_completed) else stringResource(spec.third))
+                    Text(
+                        when {
+                            completed -> stringResource(R.string.wuxianpi_action_completed)
+                            launched -> stringResource(R.string.wuxianpi_action_opened_button)
+                            else -> stringResource(spec.third)
+                        }
+                    )
                 }
             }
         }

@@ -128,7 +128,13 @@ for resource_id, component_id, archive_name in specs:
         version = component.get("version")
     if not isinstance(version, str) or not version:
         raise SystemExit(f"missing version for {resource_id}")
-    members.append({"id": resource_id, "version": version, "sha256": digest})
+    members.append({
+        "id": resource_id,
+        "version": version,
+        "archive": archive_name,
+        "size": len(data),
+        "sha256": digest,
+    })
     metadata = {
         "id": resource_id,
         "version": version,

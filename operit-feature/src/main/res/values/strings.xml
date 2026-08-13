@@ -7839,7 +7839,11 @@
     <string name="wuxianpi_action_run_command_title">允许调用 Termux 命令</string>
     <string name="wuxianpi_action_run_command_description">点击后会打开 Android 权限页面。允许后，WuxianPi 会发送一条测试命令确认连接。</string>
     <string name="wuxianpi_action_run_command_button">打开权限请求</string>
+    <string name="wuxianpi_action_reload_termux_title">让 Termux 配置生效</string>
+    <string name="wuxianpi_action_reload_termux_description">配置已经写入 Termux。请打开 Termux，在终端执行 termux-reload-settings，然后返回维修助手。</string>
+    <string name="wuxianpi_action_reload_termux_button">打开 Termux</string>
     <string name="wuxianpi_action_opened">系统页面已打开，完成后返回此对话。</string>
+    <string name="wuxianpi_action_opened_button">再次打开</string>
     <string name="wuxianpi_action_completed">已完成</string>
     <string name="wuxianpi_action_failed">无法打开系统操作</string>
 </resources>
