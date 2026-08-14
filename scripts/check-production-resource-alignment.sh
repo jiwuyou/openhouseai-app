@@ -4,7 +4,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 market_url="${WUXIANPI_RESCUE_MARKET_URL:-https://wuxianpirescue.webefficacy.com}"
 resource_set_path="$repo_dir/app/src/main/assets/openhouse/product-payloads/resource-set.json"
-publish_manifest_path="$repo_dir/distribution/resources-v2/publish-manifest.json"
+publish_manifest_path="$repo_dir/distribution/market-script-resources/publish-manifest.json"
 report_path="$repo_dir/build/reports/apk-build/resource-alignment.json"
 timeout_seconds="${WUXIANPI_RESCUE_ALIGNMENT_TIMEOUT_SECONDS:-60}"
 request_attempts="${WUXIANPI_RESCUE_ALIGNMENT_ATTEMPTS:-3}"
@@ -95,15 +95,6 @@ publish_manifest_path = pathlib.Path(publish_manifest_value).resolve()
 report_path = pathlib.Path(report_value).resolve()
 timeout_seconds = int(timeout_value)
 request_attempts = int(request_attempts_value)
-required_resource_ids = {
-    "service-manager",
-    "openhouse-control-plane",
-    "openhouse-runtime",
-    "wuyou",
-    "openhouse-web",
-}
-
-
 def fail(message):
     raise SystemExit(f"Production resource alignment failed: {message}")
 
@@ -216,8 +207,9 @@ local_sequence = local_set.get("sequence")
 if not isinstance(local_sequence, int) or isinstance(local_sequence, bool):
     fail("local resource set sequence must be an integer")
 local_members = members_by_id(local_set.get("resources"), "local resource set resources")
-if set(local_members) != required_resource_ids:
-    fail(f"local resource set must contain exactly {sorted(required_resource_ids)}")
+required_resource_ids = set(local_members)
+if not required_resource_ids:
+    fail("local resource set must not be empty")
 
 publish_manifest = load_json(publish_manifest_path, "V2 publish manifest")
 if publish_manifest.get("schema") != 2 or publish_manifest.get("market") != "rescue":

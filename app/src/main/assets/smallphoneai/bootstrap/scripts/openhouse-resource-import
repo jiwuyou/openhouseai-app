@@ -56,8 +56,8 @@ validate_manifest() {
   ' "$manifest" >/dev/null || die 'bundle manifest is invalid'
   jq -e '
     .schema == 2 and .id == "openhouse-core-stack" and .abi == "arm64-v8a" and
-    (.resources | length) == 5 and
-    ([.resources[].id] | sort) == ["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"] and
+    (([.resources[].id] | sort) == ["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"] or
+     ([.resources[].id] | sort) == ["openhouse-control-plane-start","openhouse-inspect-control-plane","openhouse-install-runtime-components","openhouse-register-component","openhouse-repair-control-plane","openhouse-resource-import","openhouse-resource-manager","openhouse-runtime","openhouse-start-service-manager","openhouse-start-smallphone","openhouse-termux-services-env","openhouse-web","service-manager","wuxianpi-setup","wuyou"]) and
     ([.resources[].id] | length) == ([.resources[].id] | unique | length) and
     all(.resources[]; (.archive | type == "string" and test("^[A-Za-z0-9._-]+\\.tgz$")) and (.size | type == "number" and . > 0))
   ' "$set" >/dev/null || die 'resource set is invalid'

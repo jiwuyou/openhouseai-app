@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-repair-control-plane",
+  "version": "1.0.1",
+  "archive": "openhouse-repair-control-plane.tgz",
+  "size": 7773,
+  "sha256": "8b60ae8d6328d44786ba0679cd8165c3f516cb6e283620173006fc2cd4731a47",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-repair-control-plane/1.0.1/openhouse-repair-control-plane.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

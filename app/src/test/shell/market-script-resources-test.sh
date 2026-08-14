@@ -4,14 +4,14 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 generator="$repo_dir/scripts/generate-market-script-resources.sh"
 root="$repo_dir/distribution/market-script-resources"
-set_file="$root/resource-sets/openhouse-core-stack/2026.08.14.1/manifest.json"
+set_file="$root/resource-sets/openhouse-core-stack/2026.08.14.2/manifest.json"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 "$generator" --check
 jq -e '
   .schema == 2 and .id == "openhouse-core-stack" and
-  .version == "2026.08.14.1" and .sequence == 2026081401 and
+  .version == "2026.08.14.2" and .sequence == 2026081402 and
   (.guide.title | length) > 0 and (.guide.markdown | contains("市场不可用")) and
   ([.resources[].id] | sort) == [
     "openhouse-control-plane-start",
@@ -44,17 +44,17 @@ while IFS=$'\t' read -r id version archive member; do
     || fail "$id has a non-Termux Bash shebang: $first"
   bash -n <(tar -xOzf "$path" "$member")
 done <<'EOF'
-openhouse-resource-manager	1.0.0	openhouse-resource-manager.tgz	openhouse-resource-manager
-openhouse-resource-import	1.0.0	openhouse-resource-import.tgz	openhouse-resource-import
-wuxianpi-setup	1.0.0	wuxianpi-setup.tgz	wuxianpi-setup
-openhouse-install-runtime-components	1.0.0	openhouse-install-runtime-components.tgz	50-install-runtime-components.sh
-openhouse-start-smallphone	1.0.0	openhouse-start-smallphone.tgz	60-start-smallphone.sh
-openhouse-register-component	1.0.0	openhouse-register-component.tgz	register-openhouse-component.sh
-openhouse-control-plane-start	1.0.0	openhouse-control-plane-start.tgz	openhouse-control-plane-start
-openhouse-termux-services-env	1.0.0	openhouse-termux-services-env.tgz	_termux-services-env.sh
-openhouse-start-service-manager	1.0.0	openhouse-start-service-manager.tgz	start-service-manager.sh
-openhouse-repair-control-plane	1.0.0	openhouse-repair-control-plane.tgz	repair-control-plane.sh
-openhouse-inspect-control-plane	1.0.0	openhouse-inspect-control-plane.tgz	inspect-control-plane.sh
+openhouse-resource-manager	1.0.1	openhouse-resource-manager.tgz	openhouse-resource-manager
+openhouse-resource-import	1.0.1	openhouse-resource-import.tgz	openhouse-resource-import
+wuxianpi-setup	1.0.1	wuxianpi-setup.tgz	wuxianpi-setup
+openhouse-install-runtime-components	1.0.1	openhouse-install-runtime-components.tgz	50-install-runtime-components.sh
+openhouse-start-smallphone	1.0.1	openhouse-start-smallphone.tgz	60-start-smallphone.sh
+openhouse-register-component	1.0.1	openhouse-register-component.tgz	register-openhouse-component.sh
+openhouse-control-plane-start	1.0.1	openhouse-control-plane-start.tgz	openhouse-control-plane-start
+openhouse-termux-services-env	1.0.1	openhouse-termux-services-env.tgz	_termux-services-env.sh
+openhouse-start-service-manager	1.0.1	openhouse-start-service-manager.tgz	start-service-manager.sh
+openhouse-repair-control-plane	1.0.1	openhouse-repair-control-plane.tgz	repair-control-plane.sh
+openhouse-inspect-control-plane	1.0.1	openhouse-inspect-control-plane.tgz	inspect-control-plane.sh
 EOF
 
 runtime="$root/resources/openhouse-runtime/0.2.0+registry.1/runtime-aarch64.tgz"
@@ -73,9 +73,9 @@ grep -Fq '"home": "$HOME"' <<<"$register" \
   || fail 'runtime resource is missing Termux runtime home'
 
 for resource in \
-  openhouse-install-runtime-components/1.0.0/openhouse-install-runtime-components.tgz:50-install-runtime-components.sh \
-  openhouse-start-smallphone/1.0.0/openhouse-start-smallphone.tgz:60-start-smallphone.sh \
-  openhouse-repair-control-plane/1.0.0/openhouse-repair-control-plane.tgz:repair-control-plane.sh; do
+openhouse-install-runtime-components/1.0.1/openhouse-install-runtime-components.tgz:50-install-runtime-components.sh \
+  openhouse-start-smallphone/1.0.1/openhouse-start-smallphone.tgz:60-start-smallphone.sh \
+  openhouse-repair-control-plane/1.0.1/openhouse-repair-control-plane.tgz:repair-control-plane.sh; do
   archive="${resource%%:*}"
   member="${resource#*:}"
   content="$(tar -xOzf "$root/resources/$archive" "$member")"

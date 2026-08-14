@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-register-component",
+  "version": "1.0.1",
+  "archive": "openhouse-register-component.tgz",
+  "size": 216,
+  "sha256": "b73bdf58ff9844fe7fa789ea62ee4368afaac9521da15dcea4164a230e3f9687",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-register-component/1.0.1/openhouse-register-component.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

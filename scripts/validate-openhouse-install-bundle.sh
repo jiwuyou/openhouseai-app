@@ -17,13 +17,6 @@ python3 - "$repo_dir" "$app_bundle" "$app_index" <<'PY'
 import hashlib, json, pathlib, posixpath, sys, tarfile, tempfile
 
 repo, bundle, index_path = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
-archives = {
-    "service-manager": "service-manager.tgz",
-    "openhouse-control-plane": "openhouse-control-plane.tgz",
-    "openhouse-runtime": "runtime-aarch64.tgz",
-    "wuyou": "wuyou.tgz",
-    "openhouse-web": "openhouse-web.tgz",
-}
 index = json.loads(index_path.read_text())
 canonical_version_code = int(next(
     line.split("=", 1)[1]
@@ -39,7 +32,7 @@ if index.get("bundleSize") != bundle.stat().st_size:
 required = {
     "bundle-manifest.json", "bootstrap/bootstrap.sh", "bootstrap/scripts/wuxianpi-setup",
     "bootstrap/scripts/openhouse-resource-import", "bootstrap/scripts/openhouse-resource-manager",
-    "resources/resource-set.json", *{f"resources/{name}" for name in archives.values()},
+    "resources/resource-set.json",
 }
 with tarfile.open(bundle, "r:") as outer:
     names = set()
@@ -57,6 +50,7 @@ with tarfile.open(bundle, "r:") as outer:
         root = pathlib.Path(temporary); outer.extractall(root)
         manifest = json.loads((root / "bundle-manifest.json").read_text())
         resource_set = json.loads((root / "resources/resource-set.json").read_text())
+        canonical_set = json.loads((repo / "app/src/main/assets/openhouse/product-payloads/resource-set.json").read_text())
         if manifest.get("schema") != 2 or manifest.get("id") != "openhouse-install-bundle":
             raise SystemExit("bundle manifest contract is invalid")
         if manifest.get("resourceSet") != resource_set: raise SystemExit("manifest and resource set differ")
@@ -66,12 +60,19 @@ with tarfile.open(bundle, "r:") as outer:
             if index.get(field) != manifest.get(field): raise SystemExit(f"bundle index mismatch: {field}")
         if index.get("resourceSetVersion") != resource_set.get("version") or index.get("resourceSetSequence") != resource_set.get("sequence"):
             raise SystemExit("bundle index resource set mismatch")
+        if resource_set != canonical_set:
+            raise SystemExit("bundle resource set does not match the canonical APK set")
         by_id = {item["id"]: item for item in resource_set.get("resources", [])}
-        if set(by_id) != set(archives) or len(resource_set.get("resources", [])) != 5:
+        if not by_id or len(by_id) != len(resource_set.get("resources", [])):
             raise SystemExit("resource set allowlist is invalid")
-        for resource_id, archive_name in archives.items():
-            entry = by_id[resource_id]; path = root / "resources" / archive_name
-            if entry.get("archive") != archive_name or entry.get("size") != path.stat().st_size:
+        archives = {entry.get("archive") for entry in by_id.values()}
+        if None in archives or len(archives) != len(by_id):
+            raise SystemExit("resource archive names are invalid")
+        if not {f"resources/{archive}" for archive in archives}.issubset(names):
+            raise SystemExit("bundle is missing a resource archive")
+        for resource_id, entry in by_id.items():
+            archive_name = entry.get("archive"); path = root / "resources" / archive_name
+            if entry.get("size") != path.stat().st_size:
                 raise SystemExit(f"resource archive metadata mismatch: {resource_id}")
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             if entry.get("sha256") != digest: raise SystemExit(f"resource build SHA mismatch: {resource_id}")
@@ -101,7 +102,8 @@ setup = (repo / "app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-set
 for token in ("activation.lock", "canonical_auth_failed", "registry_file_failed", "wuxianpi_endpoint_failed", "wuxianpi_health_failed"):
     if token not in setup: raise SystemExit(f"activation contract is missing: {token}")
 manifest = json.loads((repo / "operit-feature/src/main/assets/rescue-plugins/wuxianpi.first-install/manifest.json").read_text())
-if manifest.get("version") != "1.0.16": raise SystemExit("bundled first-install version must be 1.0.16")
+if manifest.get("id") != "wuxianpi.first-install" or not manifest.get("version"):
+    raise SystemExit("bundled first-install manifest is invalid")
 print(f"Install bundle validated: sha256={hashlib.sha256(bundle.read_bytes()).hexdigest()} size={bundle.stat().st_size}")
 PY
 

@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-start-service-manager",
+  "version": "1.0.1",
+  "archive": "openhouse-start-service-manager.tgz",
+  "size": 510,
+  "sha256": "7ef86ceb65e08ba8177aa93194e57f20e5b2f25b998edb8182679fbe44153ac8",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-start-service-manager/1.0.1/openhouse-start-service-manager.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

@@ -14,26 +14,15 @@ canonical_index="$app_assets/$index_name"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-install-bundle.XXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 
-"$repo_dir/scripts/generate-resource-set-v2.sh"
+"$repo_dir/scripts/sync-apk-resource-set.sh"
 
-resource_archives=(
-  service-manager.tgz
-  openhouse-control-plane.tgz
-  runtime-aarch64.tgz
-  wuyou.tgz
-  openhouse-web.tgz
-)
 required=(
   "$pre_tmux"
   "$bootstrap_dir/bootstrap.sh"
   "$bootstrap_dir/scripts/wuxianpi-setup"
   "$bootstrap_dir/scripts/openhouse-resource-import"
   "$bootstrap_dir/scripts/openhouse-resource-manager"
-  "$payload_dir/resource-set.json"
 )
-for archive in "${resource_archives[@]}"; do
-  required+=("$payload_dir/$archive")
-done
 for file in "${required[@]}"; do
   [[ -s "$file" ]] || { printf 'Missing install bundle input: %s\n' "$file" >&2; exit 1; }
 done
@@ -41,10 +30,15 @@ done
 mkdir -p "$stage/bootstrap" "$stage/resources" "$app_assets" "$native_assets"
 cp -a "$bootstrap_dir/." "$stage/bootstrap/"
 cp "$payload_dir/resource-set.json" "$stage/resources/resource-set.json"
-for archive in "${resource_archives[@]}"; do
-  gzip -t "$payload_dir/$archive"
-  cp "$payload_dir/$archive" "$stage/resources/$archive"
-done
+while IFS=$'\t' read -r id version archive; do
+  case "$id" in
+    service-manager|wuyou|openhouse-web) source="$payload_dir/$archive" ;;
+    *) source="$repo_dir/distribution/market-script-resources/resources/$id/$version/$archive" ;;
+  esac
+  [[ -s "$source" ]] || { printf 'Missing promoted resource archive: %s\n' "$source" >&2; exit 1; }
+  gzip -t "$source"
+  cp "$source" "$stage/resources/$archive"
+done < <(jq -r '.resources[] | [.id, .version, .archive] | @tsv' "$payload_dir/resource-set.json")
 chmod 755 \
   "$stage/bootstrap/scripts/wuxianpi-setup" \
   "$stage/bootstrap/scripts/wuxianpi-pre-tmux.sh" \

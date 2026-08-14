@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PAYLOAD_DIR="${1:-$REPO_DIR/app/src/main/assets/openhouse/product-payloads}"
-"$REPO_DIR/scripts/generate-resource-set-v2.sh" --check
+"$REPO_DIR/scripts/sync-apk-resource-set.sh" --check
 
 if ! command -v python3 >/dev/null 2>&1; then
   printf 'validate-openhouse-payloads: python3 is required for JSON/tar validation.\n' >&2

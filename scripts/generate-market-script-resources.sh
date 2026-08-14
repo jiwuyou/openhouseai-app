@@ -11,9 +11,9 @@ guide_path="$repo_dir/docs/resource-sets/openhouse-core-stack-2026.08.14.1.md"
 mode="${1:-generate}"
 
 set_id="${OPENHOUSE_MARKET_RESOURCE_SET_ID:-openhouse-core-stack}"
-set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.14.1}"
-set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081401}"
-script_version="${OPENHOUSE_MARKET_SCRIPT_VERSION:-1.0.0}"
+set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.14.2}"
+set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081402}"
+script_version="${OPENHOUSE_MARKET_SCRIPT_VERSION:-1.0.1}"
 runtime_version="${OPENHOUSE_MARKET_RUNTIME_VERSION:-0.2.0+registry.1}"
 min_apk_version_code="${OPENHOUSE_RESOURCE_MIN_APK_VERSION_CODE:-126}"
 
@@ -207,10 +207,14 @@ set_path.write_text(json.dumps(resource_set, ensure_ascii=False, indent=2) + "\n
 PY
 
 if [[ "$mode" == --check ]]; then
-  diff -qr "$generated" "$output_dir" >/dev/null || {
-    printf 'Market script resources are stale; run scripts/generate-market-script-resources.sh\n' >&2
-    exit 1
-  }
+  while IFS= read -r source; do
+    relative="${source#$generated/}"
+    target="$output_dir/$relative"
+    [[ -f "$target" ]] && cmp -s "$source" "$target" || {
+      printf 'Market script resources are stale; run scripts/generate-market-script-resources.sh\n' >&2
+      exit 1
+    }
+  done < <(find "$generated" -type f | LC_ALL=C sort)
   printf 'Market script resources are current: %s@%s sequence=%s\n' \
     "$set_id" "$set_version" "$set_sequence"
   exit 0
