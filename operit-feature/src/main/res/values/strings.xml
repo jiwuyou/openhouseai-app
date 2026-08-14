@@ -3310,7 +3310,7 @@
     <string name="memory_delete_confirmation">确定要删除选中的 %1$d 个记忆节点吗？</string>
     <string name="memory_delete_warning">此操作不可撤销，删除后将无法恢复这些记忆及其相关连接。</string>
     <string name="not_selected">未选择</string>
-    <string name="manage_config">管理配置</string>
+    <string name="manage_config">添加新的模型或管理已配置的模型</string>
     <string name="collapse_verb">收起</string>
     <string name="expand_verb">展开</string>
     <string name="hide_history">隐藏历史</string>
