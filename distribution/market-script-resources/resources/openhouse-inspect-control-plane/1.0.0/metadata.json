@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-inspect-control-plane",
+  "version": "1.0.0",
+  "archive": "openhouse-inspect-control-plane.tgz",
+  "size": 1977,
+  "sha256": "28952ba426c5300b564de5df203873e40cd121209716fb80c744191b6d982650",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-inspect-control-plane/1.0.0/openhouse-inspect-control-plane.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

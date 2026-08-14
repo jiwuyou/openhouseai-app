@@ -140,7 +140,7 @@ class RescueToolDispatcher private constructor(
         try {
             when (toolName) {
                 in WuxianPiSetupContract.toolNames ->
-                    hostCompletion(setupToolExecutor.execute(toolName, appContext))
+                    hostCompletion(setupToolExecutor.execute(toolName, appContext, args))
                 RescuePluginContract.TOOL_SEARCH ->
                     success(pluginManager.search(args.optString("query")))
                 RescuePluginContract.TOOL_LIST_INSTALLED ->

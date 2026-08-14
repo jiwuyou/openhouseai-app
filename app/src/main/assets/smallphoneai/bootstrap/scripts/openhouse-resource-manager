@@ -13,6 +13,9 @@ LOCK_FILE="$MANAGER_ROOT/update.lock"
 LEGACY="$MANAGER_ROOT/legacy"
 SET_FILE="${OPENHOUSEAI_RESOURCE_SET_FILE:-}"
 SOURCE_DIR="${OPENHOUSEAI_RESOURCE_SOURCE_DIR:-}"
+MARKET_ORIGIN="${OPENHOUSEAI_RESOURCE_MARKET_ORIGIN:-https://wuxianpirescue.webefficacy.com}"
+OFFICIAL_MARKET_ORIGIN="https://wuxianpirescue.webefficacy.com"
+MARKET_CACHE="$MANAGER_ROOT/market-cache"
 COMMAND="${1:-inspect}"
 FORCE_RESOURCE=""
 CURRENT_TRANSACTION=""
@@ -28,18 +31,25 @@ require_tools() {
   done
 }
 
+require_market_tools() {
+  local tool
+  for tool in curl sha256sum; do
+    command -v "$tool" >/dev/null 2>&1 || die "missing required market command: $tool"
+  done
+}
+
 setup_dirs() {
-  mkdir -p "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY/receipts"
-  chmod 700 "$MANAGER_ROOT" "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY" "$LEGACY/receipts"
+  mkdir -p "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY/receipts" "$MARKET_CACHE"
+  chmod 700 "$MANAGER_ROOT" "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY" "$LEGACY/receipts" "$MARKET_CACHE"
   local receipt schema name
   for receipt in "$RECEIPTS"/*.json; do
     [[ -f "$receipt" ]] || continue
     schema="$(jq -r '.schema // 0' "$receipt" 2>/dev/null || printf 0)"
-    [[ "$schema" == 3 ]] && continue
+    [[ "$schema" == 3 || "$schema" == 4 ]] && continue
     name="$(basename "$receipt" .json)-$(date -u +%Y%m%dT%H%M%SZ).json"
     mv "$receipt" "$LEGACY/receipts/$name"
   done
-  if [[ -f "$INSTALLED_SET" ]] && [[ "$(jq -r '.schema // 0' "$INSTALLED_SET" 2>/dev/null || printf 0)" != 3 ]]; then
+  if [[ -f "$INSTALLED_SET" ]] && ! jq -e '(.schema == 3 or .schema == 4)' "$INSTALLED_SET" >/dev/null 2>&1; then
     mv "$INSTALLED_SET" "$LEGACY/installed-set-$(date -u +%Y%m%dT%H%M%SZ).json"
   fi
 }
@@ -71,23 +81,35 @@ read_set() {
     .schema == 2 and .id == "openhouse-core-stack" and
     (.version | type == "string" and length > 0) and
     (.sequence | type == "number" and . > 0) and .abi == "arm64-v8a" and
-    (.resources | length) == 5 and
-    ([.resources[].id] | sort) == ["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"] and
+    (([.resources[].id] | sort) == ["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"] or
+     ([.resources[].id] | sort) == ["openhouse-control-plane-start","openhouse-inspect-control-plane","openhouse-install-runtime-components","openhouse-register-component","openhouse-repair-control-plane","openhouse-resource-import","openhouse-resource-manager","openhouse-runtime","openhouse-start-service-manager","openhouse-start-smallphone","openhouse-termux-services-env","openhouse-web","service-manager","wuxianpi-setup","wuyou"]) and
     ([.resources[].id] | length) == ([.resources[].id] | unique | length)
   ' "$file" >/dev/null || die "resource set structure is invalid"
   jq -e '
-    (reduce .resources[] as $item ({}; .[$item.id] = $item.archive)) == {
-      "service-manager":"service-manager.tgz",
+    {"service-manager":"service-manager.tgz",
       "openhouse-control-plane":"openhouse-control-plane.tgz",
       "openhouse-runtime":"runtime-aarch64.tgz",
       "wuyou":"wuyou.tgz",
-      "openhouse-web":"openhouse-web.tgz"
-    } and all(.resources[]; (.size | type == "number" and . > 0 and . <= 62914560))
+      "openhouse-web":"openhouse-web.tgz",
+      "openhouse-resource-manager":"openhouse-resource-manager.tgz",
+      "openhouse-resource-import":"openhouse-resource-import.tgz",
+      "wuxianpi-setup":"wuxianpi-setup.tgz",
+      "openhouse-install-runtime-components":"openhouse-install-runtime-components.tgz",
+      "openhouse-start-smallphone":"openhouse-start-smallphone.tgz",
+      "openhouse-register-component":"openhouse-register-component.tgz",
+      "openhouse-control-plane-start":"openhouse-control-plane-start.tgz",
+      "openhouse-termux-services-env":"openhouse-termux-services-env.tgz",
+      "openhouse-start-service-manager":"openhouse-start-service-manager.tgz",
+      "openhouse-repair-control-plane":"openhouse-repair-control-plane.tgz",
+      "openhouse-inspect-control-plane":"openhouse-inspect-control-plane.tgz"} as $archives |
+    all(.resources[]; $archives[.id] == .archive) and
+    all(.resources[]; (.sha256 | type == "string" and test("^[a-f0-9]{64}$"))) and
+    all(.resources[]; (.size | type == "number" and . > 0 and . <= 62914560))
   ' "$file" >/dev/null || die "resource archive mapping is invalid"
 }
 
 resource_rows() {
-  jq -r '.resources[] | [.id,.version,.archive,.size] | @tsv' "$1"
+  jq -r '.resources[] | [.id,.version,.archive,.size,.sha256] | @tsv' "$1"
 }
 
 archive_for() {
@@ -110,6 +132,17 @@ resource_required() {
     openhouse-runtime) [[ -x "$2/install.sh" && -x "$2/scripts/check.sh" && -x "$2/scripts/register-service.sh" ]] ;;
     wuyou) [[ -x "$2/wuyou" && -x "$2/scripts/install.sh" && -x "$2/scripts/check.sh" && -x "$2/scripts/register-service.sh" ]] ;;
     openhouse-web) [[ -x "$2/scripts/install.sh" && -x "$2/scripts/check.sh" && -x "$2/scripts/register-service.sh" ]] ;;
+    openhouse-resource-manager) [[ -x "$2/openhouse-resource-manager" ]] ;;
+    openhouse-resource-import) [[ -x "$2/openhouse-resource-import" ]] ;;
+    wuxianpi-setup) [[ -x "$2/wuxianpi-setup" ]] ;;
+    openhouse-install-runtime-components) [[ -x "$2/50-install-runtime-components.sh" ]] ;;
+    openhouse-start-smallphone) [[ -x "$2/60-start-smallphone.sh" ]] ;;
+    openhouse-register-component) [[ -x "$2/register-openhouse-component.sh" ]] ;;
+    openhouse-control-plane-start) [[ -x "$2/openhouse-control-plane-start" ]] ;;
+    openhouse-termux-services-env) [[ -x "$2/_termux-services-env.sh" ]] ;;
+    openhouse-start-service-manager) [[ -x "$2/start-service-manager.sh" ]] ;;
+    openhouse-repair-control-plane) [[ -x "$2/repair-control-plane.sh" ]] ;;
+    openhouse-inspect-control-plane) [[ -x "$2/inspect-control-plane.sh" ]] ;;
     *) return 1 ;;
   esac
 }
@@ -117,22 +150,27 @@ resource_required() {
 current_target() { readlink -f "$INSTALL_ROOT/$1/current" 2>/dev/null || true; }
 
 current_valid() {
-  local id="$1" version="$2" target receipt_version
+  local id="$1" version="$2" digest="$3" target schema receipt_version receipt_digest
   target="$(current_target "$id")"
   [[ -n "$target" && -d "$target" && "$target" == "$INSTALL_ROOT/$id/versions/"* ]] || return 1
   [[ -f "$RECEIPTS/$id.json" ]] || return 1
-  [[ "$(jq -r '.schema // 0' "$RECEIPTS/$id.json" 2>/dev/null || true)" == 3 ]] || return 1
+  schema="$(jq -r '.schema // 0' "$RECEIPTS/$id.json" 2>/dev/null || true)"
+  [[ "$schema" == 3 || "$schema" == 4 ]] || return 1
   receipt_version="$(jq -r '.version // empty' "$RECEIPTS/$id.json" 2>/dev/null || true)"
   [[ "$receipt_version" == "$version" ]] || return 1
+  if [[ "$schema" == 4 ]]; then
+    receipt_digest="$(jq -r '.archiveSha256 // empty' "$RECEIPTS/$id.json" 2>/dev/null || true)"
+    [[ "$receipt_digest" == "$digest" ]] || return 1
+  fi
   resource_required "$id" "$target"
 }
 
 write_receipt() {
-  local id="$1" version="$2" temporary
+  local id="$1" version="$2" digest="$3" size="$4" temporary
   temporary="$RECEIPTS/$id.json.tmp.$$"
-  jq -n --arg id "$id" --arg version "$version" \
+  jq -n --arg id "$id" --arg version "$version" --arg archiveSha256 "$digest" --argjson archiveSize "$size" \
     --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema:3,id:$id,version:$version,content:"installed",updatedAt:$updatedAt}' >"$temporary"
+    '{schema:4,id:$id,version:$version,archiveSha256:$archiveSha256,archiveSize:$archiveSize,content:"installed",updatedAt:$updatedAt}' >"$temporary"
   chmod 600 "$temporary"
   mv -f "$temporary" "$RECEIPTS/$id.json"
 }
@@ -140,18 +178,27 @@ write_receipt() {
 write_installed_set() {
   local set_file="$1" temporary
   temporary="$INSTALLED_SET.tmp.$$"
-  jq '{schema:3,id,version,sequence,abi,resources:[.resources[] | {id,version}]}' \
+  jq '{schema:4,id,version,sequence,abi,resources:[.resources[] | {id,version,size,sha256}]}' \
     "$set_file" >"$temporary"
   chmod 600 "$temporary"
   mv -f "$temporary" "$INSTALLED_SET"
 }
 
+refresh_receipts() {
+  local set_file="$1" id version archive size digest
+  while IFS=$'\t' read -r id version archive size digest; do
+    current_valid "$id" "$version" "$digest" \
+      || die "installed resource is invalid after content apply: $id@$version"
+    write_receipt "$id" "$version" "$digest" "$size"
+  done < <(resource_rows "$set_file")
+}
+
 build_plan() {
-  local set_file="$1" plan="$2" id version archive size source status
+  local set_file="$1" plan="$2" id version archive size digest source status
   : >"$plan"
-  while IFS=$'\t' read -r id version archive size; do
+  while IFS=$'\t' read -r id version archive size digest; do
     safe_value "$id"; safe_value "$version"; safe_value "$archive"
-    if [[ "$FORCE_RESOURCE" != all && "$FORCE_RESOURCE" != "$id" ]] && current_valid "$id" "$version"; then
+    if [[ "$FORCE_RESOURCE" != all && "$FORCE_RESOURCE" != "$id" ]] && current_valid "$id" "$version" "$digest"; then
       status=skip; source=-
     elif [[ "$COMMAND" == plan ]]; then
       source=-
@@ -161,25 +208,47 @@ build_plan() {
       [[ -n "$source" ]] || die "resource archive is missing: $id@$version ($archive)"
       status=apply
     fi
-    printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$version" "$archive" "$size" "$status" >>"$plan"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$version" "$archive" "$size" "$digest" "$status" >>"$plan"
   done < <(resource_rows "$set_file")
 }
 
 print_plan() {
-  local plan="$1" total changed bytes=0 id version archive size status
+  local plan="$1" total changed bytes=0 id version archive size digest status
   total="$(wc -l <"$plan" | tr -d ' ')"
-  changed="$(awk -F '\t' '$5 == "apply" {n++} END {print n+0}' "$plan")"
-  while IFS=$'\t' read -r id version archive size status; do
+  changed="$(awk -F '\t' '$6 == "apply" {n++} END {print n+0}' "$plan")"
+  while IFS=$'\t' read -r id version archive size digest status; do
     [[ "$status" == apply ]] || continue
     [[ "$size" =~ ^[0-9]+$ ]] || die "resource size is invalid: $id"
     bytes=$((bytes + size))
   done <"$plan"
   printf 'target_resources=%s\nchanged=%s\nunchanged=%s\nbytes=%s\n' \
     "$total" "$changed" "$((total - changed))" "$bytes"
-  while IFS=$'\t' read -r id version archive size status; do
+  while IFS=$'\t' read -r id version archive size digest status; do
     printf 'resource=%s version=%s action=%s archive=%s size=%s\n' \
       "$id" "$version" "$status" "$archive" "$size"
   done <"$plan"
+}
+
+install_script_resource() {
+  local id="$1" directory="$2" source target temporary
+  case "$id" in
+    openhouse-resource-manager) source="$directory/openhouse-resource-manager"; target="$PREFIX/bin/openhouse-resource-manager" ;;
+    openhouse-resource-import) source="$directory/openhouse-resource-import"; target="$PREFIX/bin/openhouse-resource-import" ;;
+    wuxianpi-setup) source="$directory/wuxianpi-setup"; target="$PREFIX/bin/wuxianpi-setup" ;;
+    openhouse-install-runtime-components) source="$directory/50-install-runtime-components.sh"; target="$PREFIX/libexec/openhouse/bootstrap/50-install-runtime-components.sh" ;;
+    openhouse-start-smallphone) source="$directory/60-start-smallphone.sh"; target="$PREFIX/libexec/openhouse/bootstrap/60-start-smallphone.sh" ;;
+    openhouse-register-component) source="$directory/register-openhouse-component.sh"; target="$PREFIX/libexec/openhouse/bootstrap/register-openhouse-component.sh" ;;
+    openhouse-control-plane-start) source="$directory/openhouse-control-plane-start"; target="$PREFIX/bin/openhouse-control-plane-start" ;;
+    openhouse-termux-services-env) source="$directory/_termux-services-env.sh"; target="$PREFIX/libexec/openhouse/_termux-services-env.sh" ;;
+    openhouse-start-service-manager) source="$directory/start-service-manager.sh"; target="$PREFIX/libexec/openhouse/start-service-manager.sh" ;;
+    openhouse-repair-control-plane) source="$directory/repair-control-plane.sh"; target="$PREFIX/libexec/openhouse/repair-control-plane.sh" ;;
+    openhouse-inspect-control-plane) source="$directory/inspect-control-plane.sh"; target="$PREFIX/libexec/openhouse/inspect-control-plane.sh" ;;
+    *) return 1 ;;
+  esac
+  mkdir -p "$(dirname "$target")"
+  temporary="$target.tmp.$$"
+  install -m 700 "$source" "$temporary"
+  mv -f "$temporary" "$target"
 }
 
 install_handler() {
@@ -215,6 +284,8 @@ SH
     openhouse-web)
       chmod 755 "$directory/scripts/"*.sh
       "$directory/scripts/install.sh" ;;
+    openhouse-resource-manager|openhouse-resource-import|wuxianpi-setup|openhouse-install-runtime-components|openhouse-start-smallphone|openhouse-register-component|openhouse-control-plane-start|openhouse-termux-services-env|openhouse-start-service-manager|openhouse-repair-control-plane|openhouse-inspect-control-plane)
+      install_script_resource "$id" "$directory" ;;
     *) die "resource is not allowlisted: $id" ;;
   esac
 }
@@ -273,11 +344,11 @@ rollback() {
 }
 
 apply_content() {
-  local set_file="$1" plan="$2" transaction="$3" id version archive size status source target current old backup staged
+  local set_file="$1" plan="$2" transaction="$3" write_set="${4:-1}" id version archive size digest status source target current old backup staged
   mkdir -p "$transaction/staged" "$transaction/receipts" "$transaction/backups"
   : >"$transaction/previous.tsv"
   [[ ! -f "$INSTALLED_SET" ]] || install -m 600 "$INSTALLED_SET" "$transaction/installed-set.json"
-  while IFS=$'\t' read -r id version archive size status; do
+  while IFS=$'\t' read -r id version archive size digest status; do
     [[ "$status" == apply ]] || continue
     source="$(archive_for "$id" "$archive")"
     validate_archive "$id" "$source" "$size"
@@ -287,7 +358,7 @@ apply_content() {
     validate_extracted_links "$staged"
     resource_required "$id" "$staged" || die "resource archive structure is invalid: $id"
   done <"$plan"
-  while IFS=$'\t' read -r id version archive size status; do
+  while IFS=$'\t' read -r id version archive size digest status; do
     [[ "$status" == apply ]] || continue
     target="$INSTALL_ROOT/$id/versions/$version"
     current="$INSTALL_ROOT/$id/current"
@@ -303,10 +374,13 @@ apply_content() {
     printf '%s\n' "$FAILED_STEP" >"$transaction/failed-step"
     install_handler "$id" "$target"
     verify_handler "$id" "$target"
-    write_receipt "$id" "$version"
+    write_receipt "$id" "$version" "$digest" "$size"
   done <"$plan"
-  [[ ! -f "$INSTALLED_SET" ]] || install -m 600 "$INSTALLED_SET" "$PREVIOUS_SET"
-  write_installed_set "$set_file"
+  if [[ "$write_set" == 1 ]]; then
+    [[ ! -f "$INSTALLED_SET" ]] || install -m 600 "$INSTALLED_SET" "$PREVIOUS_SET"
+    write_installed_set "$set_file"
+    refresh_receipts "$set_file"
+  fi
 }
 
 run_apply() {
@@ -343,15 +417,15 @@ run_apply() {
 
 verify_installed() {
   [[ -f "$INSTALLED_SET" ]] || die 'installed set is missing'
-  local failures=0 id version target
-  while IFS=$'\t' read -r id version; do
+  local failures=0 id version digest target
+  while IFS=$'\t' read -r id version digest; do
     target="$(current_target "$id")"
-    if [[ -n "$target" ]] && current_valid "$id" "$version" && verify_handler "$id" "$target"; then
+    if [[ -n "$target" ]] && current_valid "$id" "$version" "$digest" && verify_handler "$id" "$target"; then
       printf 'resource=%s status=ok version=%s\n' "$id" "$version"
     else
       printf 'resource=%s status=invalid version=%s\n' "$id" "$version" >&2; failures=$((failures + 1))
     fi
-  done < <(jq -r '.resources[] | [.id,.version] | @tsv' "$INSTALLED_SET")
+  done < <(jq -r '.resources[] | [.id,.version,.sha256] | @tsv' "$INSTALLED_SET")
   ((failures == 0))
 }
 
@@ -367,23 +441,107 @@ inspect_installed() {
 
 rollback_previous() {
   [[ -f "$PREVIOUS_SET" ]] || die 'previous set is unavailable'
-  local id version target current receipt
-  while IFS=$'\t' read -r id version; do
+  [[ "$(jq -r '.schema // 0' "$PREVIOUS_SET")" == 4 ]] \
+    || die 'legacy previous set cannot be rolled back automatically'
+  local id version digest size target current receipt
+  while IFS=$'\t' read -r id version digest size; do
     target="$INSTALL_ROOT/$id/versions/$version"
     [[ -d "$target" ]] || die "previous resource version is missing: $id@$version"
     resource_required "$id" "$target" || die "previous resource version is invalid: $id@$version"
-  done < <(jq -r '.resources[] | [.id,.version] | @tsv' "$PREVIOUS_SET")
-  while IFS=$'\t' read -r id version; do
+  done < <(jq -r '.resources[] | [.id,.version,.sha256,.size] | @tsv' "$PREVIOUS_SET")
+  while IFS=$'\t' read -r id version digest size; do
     target="$INSTALL_ROOT/$id/versions/$version"
     current="$INSTALL_ROOT/$id/current"
     ln -sfn "$target" "$current"
     install_handler "$id" "$target"
-    write_receipt "$id" "$version"
-  done < <(jq -r '.resources[] | [.id,.version] | @tsv' "$PREVIOUS_SET")
+    write_receipt "$id" "$version" "$digest" "$size"
+  done < <(jq -r '.resources[] | [.id,.version,.sha256,.size] | @tsv' "$PREVIOUS_SET")
   install -m 600 "$INSTALLED_SET" "$INSTALLED_SET.rollback.$$"
   install -m 600 "$PREVIOUS_SET" "$INSTALLED_SET"
   mv -f "$INSTALLED_SET.rollback.$$" "$PREVIOUS_SET"
   printf 'content=rolled-back\nsequence=%s\n' "$(jq -r '.sequence' "$INSTALLED_SET")"
+}
+
+fetch_market_resources() {
+  local set_file="$1" id version archive size digest destination temporary actual_size actual_digest
+  read_set "$set_file"
+  SOURCE_DIR="$MARKET_CACHE/$(jq -r '.id + "-" + (.sequence | tostring)' "$set_file")"
+  mkdir -p "$SOURCE_DIR"
+  chmod 700 "$SOURCE_DIR"
+  MARKET_ORIGIN="${MARKET_ORIGIN%/}"
+  [[ "$MARKET_ORIGIN" == "$OFFICIAL_MARKET_ORIGIN" ]] \
+    || die "unsupported market origin: $MARKET_ORIGIN"
+  while IFS=$'\t' read -r id version archive size digest; do
+    if current_valid "$id" "$version" "$digest"; then
+      continue
+    fi
+    destination="$SOURCE_DIR/$archive"
+    if [[ -f "$destination" ]]; then
+      actual_size="$(stat -c '%s' "$destination")"
+      actual_digest="$(sha256sum "$destination" | awk '{print $1}')"
+      if [[ "$actual_size" == "$size" && "$actual_digest" == "$digest" ]]; then
+        continue
+      fi
+    fi
+    temporary="$destination.part.$$"
+    curl -q -fL --connect-timeout 10 --max-time 600 \
+      "$MARKET_ORIGIN/resources-v2/$id/$version/$archive" -o "$temporary" \
+      || { rm -f "$temporary"; die "market resource download failed: $id@$version"; }
+    actual_size="$(stat -c '%s' "$temporary")"
+    actual_digest="$(sha256sum "$temporary" | awk '{print $1}')"
+    [[ "$actual_size" == "$size" && "$actual_digest" == "$digest" ]] \
+      || { rm -f "$temporary"; die "market resource size or SHA mismatch: $id@$version"; }
+    mv -f "$temporary" "$destination"
+  done < <(resource_rows "$set_file")
+}
+
+run_market() {
+  local workspace plan row_plan transaction id version archive size digest status code
+  require_market_tools
+  [[ -n "$SET_FILE" ]] || die 'market requires --set FILE'
+  read_set "$SET_FILE"
+  fetch_market_resources "$SET_FILE"
+  mkdir -p "${TMPDIR:-$PREFIX/tmp}"
+  workspace="$(mktemp -d "${TMPDIR:-$PREFIX/tmp}/openhouse-market-plan.XXXXXX")"
+  plan="$workspace/plan.tsv"
+  build_plan "$SET_FILE" "$plan"
+  print_plan "$plan"
+
+  while IFS=$'\t' read -r id version archive size digest status; do
+    [[ "$status" == apply ]] || continue
+    row_plan="$workspace/$id.tsv"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$id" "$version" "$archive" "$size" "$digest" "$status" >"$row_plan"
+    transaction="$TRANSACTIONS/market-$(date -u +%Y%m%dT%H%M%SZ)-$id-$$"
+    CURRENT_TRANSACTION="$transaction"
+    mkdir -p "$transaction"
+    cp "$SET_FILE" "$transaction/resource-set.json"
+    cp "$row_plan" "$transaction/plan.tsv"
+    set +e
+    ( set -e; apply_content "$SET_FILE" "$row_plan" "$transaction" 0 ) \
+      2>&1 | tee "$transaction/diagnostics.log"
+    code=${PIPESTATUS[0]}
+    set -e
+    if [[ "$code" -ne 0 ]]; then
+      rollback "$transaction" || true
+      mkdir -p "$FAILED/$(basename "$transaction")"
+      printf 'failedStep=%s\nexitCode=%s\n' \
+        "$(cat "$transaction/failed-step" 2>/dev/null || printf unknown)" "$code" \
+        >>"$transaction/diagnostics.log"
+      cp -a "$transaction/." "$FAILED/$(basename "$transaction")/"
+      rm -rf "$workspace" "$transaction"
+      die "market resource install failed: $id@$version; completed resources were retained"
+    fi
+    rm -rf "$transaction"
+    printf 'resource=%s version=%s status=installed\n' "$id" "$version"
+  done <"$plan"
+
+  [[ ! -f "$INSTALLED_SET" ]] || install -m 600 "$INSTALLED_SET" "$PREVIOUS_SET"
+  write_installed_set "$SET_FILE"
+  refresh_receipts "$SET_FILE"
+  rm -rf "$workspace"
+  printf 'content=installed\nresource_set=%s\nsequence=%s\n' \
+    "$(jq -r '.id + "@" + .version' "$SET_FILE")" "$(jq -r '.sequence' "$SET_FILE")"
 }
 
 main() {
@@ -392,6 +550,7 @@ main() {
     case "$1" in
       --set) SET_FILE="${2:-}"; shift 2 ;;
       --source) SOURCE_DIR="${2:-}"; shift 2 ;;
+      --market-origin) MARKET_ORIGIN="${2:-}"; shift 2 ;;
       --resource) FORCE_RESOURCE="${2:-}"; shift 2 ;;
       *) shift ;;
     esac
@@ -399,10 +558,11 @@ main() {
   exec 9>"$LOCK_FILE"; flock -n 9 || die 'another content transaction is running'
   case "$COMMAND" in
     inspect) inspect_installed ;;
+    market) run_market ;;
     plan|apply|force) [[ "$COMMAND" != force ]] || FORCE_RESOURCE="${FORCE_RESOURCE:-all}"; run_apply ;;
     verify) verify_installed ;;
     rollback) rollback_previous ;;
-    *) die 'usage: openhouse-resource-manager [inspect|plan|apply|force|verify|rollback] --set FILE --source DIR' ;;
+    *) die 'usage: openhouse-resource-manager [inspect|plan|apply|market|force|verify|rollback] --set FILE [--source DIR|--market-origin URL]' ;;
   esac
 }
 

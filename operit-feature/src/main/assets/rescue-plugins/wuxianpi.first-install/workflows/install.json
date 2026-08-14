@@ -44,63 +44,102 @@
     {
       "id": "verify-run-command",
       "kind": "tool",
-      "tool": "verify_termux_run_command",
+      "tool": "execute_termux_command",
       "when": "runtimeHost.externalTermux",
-      "description": "仅在用户确认执行三行命令后运行无副作用探针。探针失败时停止，不投递资源。"
+      "arguments": {
+        "command": "set -eu; printf %s wuxianpi-termux-ready",
+        "working_directory": "$HOME",
+        "yield_time_ms": 1000
+      },
+      "description": "仅在用户确认执行三行配置命令后运行无副作用探针；exitCode=0 且 stdout 去除首尾空白后等于 wuxianpi-termux-ready 才继续，不投递资源。"
     },
     {
       "id": "persistent-terminal",
       "kind": "tool",
-      "tool": "prepare_persistent_termux",
-      "description": "第一段基础环境：仅安装 tmux 和 libncursesw，创建并验证持久 tmux 会话。"
+      "tool": "execute_termux_command",
+      "arguments": {
+        "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; export PATH=\"$PREFIX/bin:/system/bin:/system/xbin${PATH:+:$PATH}\"; command -v tmux >/dev/null 2>&1 || { pkg update -y; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y tmux; }; tmux new-session -d -s wuxianpi-setup 'exec \"$PREFIX/bin/bash\" -l' 2>/dev/null || true; tmux has-session -t wuxianpi-setup",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-termux-pre-tmux",
+        "yield_time_ms": 1000
+      },
+      "description": "第一段基础环境：只按需安装 tmux，使用正确展开的 Termux PATH 创建并验证持久 tmux 会话。"
     },
     {
       "id": "initialize-termux-base",
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "set -eu; pkg update -y; pkg upgrade -y; pkg install -y bash jq curl tar gzip zstd coreutils findutils gawk util-linux procps tmux termux-services proot-distro nodejs ca-certificates; for command in jq curl tar gzip tmux sv service-daemon proot-distro node flock; do command -v \"$command\" >/dev/null || { printf 'missing Termux command: %s\\n' \"$command\" >&2; exit 1; }; done; mkdir -p \"$HOME/workspace\" \"$HOME/.local/share/openhouseai\" \"$HOME/.local/share/wuxianpi\"",
+        "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; export PATH=\"$PREFIX/bin:/system/bin:/system/xbin${PATH:+:$PATH}\"; updated=0; update_index() { if [ \"$updated\" -eq 0 ]; then pkg update -y; updated=1; fi; }; missing=0; for command in jq curl tar gzip zstd find awk flock pgrep sv service-daemon node npm; do command -v \"$command\" >/dev/null 2>&1 || missing=1; done; ca_status=\"$(dpkg-query -W -f='${Status}' ca-certificates 2>/dev/null || true)\"; if [ \"$missing\" -ne 0 ] || [ \"$ca_status\" != 'install ok installed' ]; then update_index; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y bash jq curl ca-certificates tar gzip zstd coreutils findutils gawk util-linux procps termux-services; fi; node_major=\"$(node -p 'process.versions.node.split(\".\")[0]' 2>/dev/null || printf 0)\"; case \"$node_major\" in ''|*[!0-9]*) node_major=0;; esac; if [ \"$node_major\" -lt 24 ] || ! command -v npm >/dev/null 2>&1; then update_index; if ! DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y nodejs-lts; then DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y nodejs; fi; fi; for command in jq curl tar gzip zstd tmux sv service-daemon node npm find awk flock pgrep; do command -v \"$command\" >/dev/null 2>&1 || { printf 'missing Termux command: %s\\n' \"$command\" >&2; exit 1; }; done; node_major=\"$(node -p 'process.versions.node.split(\".\")[0]')\"; [ \"$node_major\" -ge 24 ] || { printf 'Node.js >= 24 is required, got %s\\n' \"$(node -v)\" >&2; exit 1; }; mkdir -p \"$HOME/workspace\" \"$HOME/.local/share/openhouseai\" \"$HOME/.local/share/wuxianpi\" \"$PREFIX/var/service\" \"$PREFIX/var/log\" \"$PREFIX/tmp\"",
         "working_directory": "$HOME",
         "session_name": "wuxianpi-termux-base",
         "yield_time_ms": 1000
       },
-      "description": "第二段基础环境在 tmux 内完成。所有依赖和工作目录验证成功前，禁止获取 APK 资源。"
+      "description": "第二段基础环境在 tmux 内完成：只安装精确核心依赖、当前 Runtime 必需的 zstd 和 Node.js >=24，不执行 pkg upgrade，不安装 proot-distro。所有依赖和工作目录验证成功前，禁止获取资源。"
+    },
+    {
+      "id": "market-content",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "set -u; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; export PATH=\"$PREFIX/bin:/system/bin:/system/xbin${PATH:+:$PATH}\"; market='https://wuxianpirescue.webefficacy.com'; root=\"$HOME/.local/share/openhouseai/resource-manager\"; work=\"$root/first-install-market\"; state=\"$root/first-install-market.state\"; rm -rf \"$work\"; mkdir -p \"$work\"; market_install() ( set -eu; curl -q -fsS --connect-timeout 10 --max-time 30 \"$market/api/v2/resource-sets/openhouse-core-stack\" -o \"$work/catalog.json\"; latest=\"$(jq -r '.latestVersion // empty' \"$work/catalog.json\")\"; [ -n \"$latest\" ]; jq -e --arg version \"$latest\" '.versions[] | select(.version == $version)' \"$work/catalog.json\" >\"$work/resource-set.json\"; jq -e '.guide.title | strings | length > 0' \"$work/resource-set.json\" >/dev/null; jq -r '.guide.markdown' \"$work/resource-set.json\"; sequence=\"$(jq -r '.sequence' \"$work/resource-set.json\")\"; cache=\"$root/market-cache/openhouse-core-stack-$sequence\"; mkdir -p \"$cache\" \"$work/manager\"; id=openhouse-resource-manager; version=\"$(jq -r --arg id \"$id\" '.resources[] | select(.id == $id) | .version' \"$work/resource-set.json\")\"; archive=\"$(jq -r --arg id \"$id\" '.resources[] | select(.id == $id) | .archive' \"$work/resource-set.json\")\"; size=\"$(jq -r --arg id \"$id\" '.resources[] | select(.id == $id) | .size' \"$work/resource-set.json\")\"; digest=\"$(jq -r --arg id \"$id\" '.resources[] | select(.id == $id) | .sha256' \"$work/resource-set.json\")\"; [ \"$archive\" = openhouse-resource-manager.tgz ]; curl -q -fL --connect-timeout 10 --max-time 120 \"$market/resources-v2/$id/$version/$archive\" -o \"$cache/$archive.part\"; [ \"$(stat -c '%s' \"$cache/$archive.part\")\" = \"$size\" ]; [ \"$(sha256sum \"$cache/$archive.part\" | awk '{print $1}')\" = \"$digest\" ]; mv -f \"$cache/$archive.part\" \"$cache/$archive\"; [ \"$(tar -tzf \"$cache/$archive\" | sed 's#^./##' | sed '/^$/d')\" = openhouse-resource-manager ]; tar -xzf \"$cache/$archive\" -C \"$work/manager\" --no-same-owner; [ \"$(head -n 1 \"$work/manager/openhouse-resource-manager\")\" = '#!/data/data/com.termux/files/usr/bin/bash' ]; install -m 700 \"$work/manager/openhouse-resource-manager\" \"$PREFIX/bin/openhouse-resource-manager\"; \"$PREFIX/bin/openhouse-resource-manager\" market --set \"$work/resource-set.json\" --market-origin \"$market\" ); if market_install; then printf 'installed\\n' >\"$state\"; printf 'market_content=installed\\n'; else code=$?; printf 'fallback\\n' >\"$state\"; printf 'market_content=fallback market_exit=%s\\n' \"$code\"; fi",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-market-content",
+        "yield_time_ms": 1000
+      },
+      "description": "市场优先路径：读取 promoted 的 openhouse-core-stack 和组合指南，先安装最新版资源管理器，再逐资源下载并安装差异内容。失败时输出 market_content=fallback，由后续 APK 离线步骤接管。"
     },
     {
       "id": "stage-setup",
       "kind": "tool",
       "tool": "start_wuxianpi_setup",
-      "description": "基础环境完成后才开放 APK 的本机 HTTP 总包，并返回由 Termux 下载、发布 .ready 和导入五资源的命令。"
+      "when": "steps.market-content.market_content == 'fallback'",
+      "description": "仅当市场内容步骤失败时，开放 APK 的本机 HTTP 总包并返回 Termux 离线导入命令。"
     },
     {
       "id": "run-setup",
       "kind": "tool-from-result",
       "tool": "termux_exec_command",
       "sourceStep": "stage-setup",
-      "description": "Termux 下载单一 canonical TAR，安装五个核心资源。投递和运行激活是独立阶段。"
+      "when": "steps.market-content.market_content == 'fallback'",
+      "description": "仅在市场失败时下载 APK canonical TAR 并安装五个离线核心资源。投递和运行激活仍是独立阶段。"
+    },
+    {
+      "id": "verify-market-content",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "when": "steps.market-content.market_content == 'installed'",
+      "arguments": {
+        "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; installed=\"$HOME/.local/share/openhouseai/resource-manager/installed-set.json\"; test -s \"$installed\"; jq -e '.schema == 4 and .id == \"openhouse-core-stack\" and (.resources | length) == 15' \"$installed\" >/dev/null; for file in \"$PREFIX/bin/openhouse-resource-manager\" \"$PREFIX/bin/openhouse-resource-import\" \"$PREFIX/bin/wuxianpi-setup\" \"$PREFIX/bin/openhouse-control-plane-start\" \"$PREFIX/libexec/openhouse/_termux-services-env.sh\" \"$PREFIX/libexec/openhouse/start-service-manager.sh\"; do test -x \"$file\" || { printf 'missing installed script: %s\\n' \"$file\" >&2; exit 1; }; done; printf 'content=installed source=market resources=15\\n'",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-market-content-verify",
+        "yield_time_ms": 1000
+      },
+      "description": "市场路径只核验已安装集合和关键脚本存在，不执行安装目录逐文件 Hash，也不启动服务。"
     },
     {
       "id": "verify-content",
       "kind": "poll-tool",
       "tool": "get_wuxianpi_setup_status",
+      "when": "steps.market-content.market_content == 'fallback'",
       "retryPolicy": {
         "maxAttempts": 10,
         "delayMs": 3000,
         "retryWhen": ["资源导入仍在运行"]
       },
-      "description": "仅等待 delivery=ready 和 content=installed，不等待 Ubuntu，也不要求运行激活。"
+      "description": "APK 回退路径等待 delivery=ready 和 content=installed，不等待 Ubuntu，也不要求运行激活。"
     },
     {
       "id": "activate-runtime",
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "set -eu; \"$PREFIX/bin/wuxianpi-setup\" activate --request \"$HOME/.local/state/wuxianpi-setup/request.json\"",
+        "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; mkdir -p \"$PREFIX/var/service\" \"$PREFIX/var/log\" \"$PREFIX/var/lock\"; for file in \"$PREFIX/bin/openhouse-control-plane-start\" \"$PREFIX/libexec/openhouse/start-service-manager.sh\" \"$PREFIX/libexec/openhouse/_termux-services-env.sh\" \"$PREFIX/libexec/openhouse/bootstrap/50-install-runtime-components.sh\" \"$PREFIX/libexec/openhouse/bootstrap/60-start-smallphone.sh\"; do test -x \"$file\" || { printf 'missing activation script: %s\\n' \"$file\" >&2; exit 1; }; test \"$(head -n 1 \"$file\")\" = '#!/data/data/com.termux/files/usr/bin/bash' || { printf 'invalid Termux launcher shebang: %s\\n' \"$file\" >&2; exit 1; }; done; \"$PREFIX/bin/wuxianpi-setup\" activate",
         "working_directory": "$HOME",
         "session_name": "wuxianpi-runtime-activation",
         "yield_time_ms": 1000
       },
-      "description": "独立激活 service-manager 和 WuxianPi；必须验证带 Token 的服务列表。失败不回滚已安装资源。"
+      "description": "独立激活 service-manager 和 WuxianPi；激活前校验 env 脚本、50/60 脚本、固定入口和 Termux 绝对 shebang。必须验证带 Token 的服务列表、带 ai layer 的 registry/apply、registry/sync 和 20765。失败不回滚已安装资源。"
     },
     {
       "id": "verify-activation",
@@ -130,12 +169,12 @@
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "set -eu; \"$PREFIX/bin/wuxianpi-setup\" ubuntu --request \"$HOME/.local/state/wuxianpi-setup/request.json\"",
+        "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; if ! command -v proot-distro >/dev/null 2>&1; then pkg update -y; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y proot-distro; fi; \"$PREFIX/bin/wuxianpi-setup\" ubuntu",
         "working_directory": "$HOME",
         "session_name": "wuxianpi-ubuntu",
         "yield_time_ms": 1000
       },
-      "description": "最后安装 Ubuntu rootfs 和基础包。失败时保留全部核心运行环境，并提供单独重试。"
+      "description": "最后按需安装 proot-distro，再安装 Ubuntu rootfs 和基础包。失败时保留全部核心运行环境，并提供单独重试。"
     },
     {
       "id": "verify-ubuntu",

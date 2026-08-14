@@ -3,6 +3,7 @@ package com.ai.assistance.operit.host.setup
 import android.content.Context
 import com.ai.assistance.operit.host.OperitHostOperationResult
 import com.ai.assistance.operit.host.OperitHostOperations
+import org.json.JSONObject
 
 /** Routes high-level setup tools to the active host without owning installation state. */
 class WuxianPiSetupToolExecutor(
@@ -13,6 +14,7 @@ class WuxianPiSetupToolExecutor(
     suspend fun execute(
         toolName: String,
         context: Context,
+        args: JSONObject = JSONObject(),
     ): OperitHostOperationResult {
         val operations = operationsProvider()
         return when (toolName) {
@@ -33,6 +35,13 @@ class WuxianPiSetupToolExecutor(
             WuxianPiSetupContract.TOOL_SETUP_STATUS -> operations.wuxianPiSetupStatus()
             WuxianPiSetupContract.TOOL_STORE_SERVICE_MANAGER_CONNECTION ->
                 operations.storeServiceManagerConnection()
+            WuxianPiSetupContract.TOOL_ENSURE_OPENHOUSE_CONNECTION_BRIDGE ->
+                operations.ensureOpenHouseConnectionBridge()
+            WuxianPiSetupContract.TOOL_WRITE_SERVICE_MANAGER_CONNECTION ->
+                operations.writeServiceManagerConnection(
+                    args.getString("serviceManagerBaseUrl"),
+                    args.getString("token"),
+                )
             else -> error("Unknown WuxianPi setup tool: $toolName")
         }
     }

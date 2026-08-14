@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-install-runtime-components",
+  "version": "1.0.0",
+  "archive": "openhouse-install-runtime-components.tgz",
+  "size": 17998,
+  "sha256": "bb1d950ffc9971b3ed77019da298b9b8469b930ecb142d8e962c1335c1c77e07",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-install-runtime-components/1.0.0/openhouse-install-runtime-components.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

@@ -77,7 +77,22 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = WuxianPiSetupContract.TOOL_STORE_SERVICE_MANAGER_CONNECTION,
                     description =
-                        "Read the service-manager URL and token that Termux posted to the OpenHouse connection bridge. Return them to the current Rescue conversation and confirm Android-private storage is ready.",
+                        "Confirm the service-manager connection currently saved in Android-private storage. This does not wait for a Bridge HTTP write.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_ENSURE_OPENHOUSE_CONNECTION_BRIDGE,
+                    description =
+                        "Start and verify the loopback connection Bridge owned by the current Rescue process. It does not run Termux commands or change service-manager.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_WRITE_SERVICE_MANAGER_CONNECTION,
+                    description =
+                        "Save a loopback service-manager URL and token directly in Android-private storage. This does not depend on the Bridge HTTP server.",
+                    properties =
+                        JSONObject()
+                            .put("serviceManagerBaseUrl", JSONObject().put("type", "string").put("description", "Loopback service-manager base URL"))
+                            .put("token", JSONObject().put("type", "string").put("description", "service-manager token")),
+                    required = JSONArray().put("serviceManagerBaseUrl").put("token"),
                 ),
                 definition(
                     name = RescuePluginContract.TOOL_SEARCH,

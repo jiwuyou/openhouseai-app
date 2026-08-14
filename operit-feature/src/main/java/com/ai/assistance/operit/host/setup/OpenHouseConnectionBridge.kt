@@ -1,12 +1,16 @@
 package com.ai.assistance.operit.host.setup
 
-import android.app.Service
+import android.app.Activity
+import android.app.Application
 import android.content.Context
-import android.content.Intent
-import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
-import java.io.File
+import java.io.BufferedReader
+import java.io.FileReader
+import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -18,40 +22,89 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 /**
- * Small loopback bridge owned by the OpenHouse process.
- *
- * Termux uses it only to publish its service-manager connection after activation. OpenHouse and
- * Rescue read the same Android-private stores directly; they never use HTTP to read themselves.
+ * Process-local loopback bridge. Each UI process owns its own socket and identity; there is no
+ * Android Service and no cross-process lifecycle coordinator.
  */
-class OpenHouseConnectionBridgeService : Service() {
-    private lateinit var server: OpenHouseConnectionBridgeServer
+object OpenHouseConnectionBridge {
+    data class StartResult(
+        val identity: OpenHouseConnectionBridgeStore.Identity,
+        val port: Int,
+    )
 
-    override fun onCreate() {
-        super.onCreate()
-        server = OpenHouseConnectionBridgeServer(OpenHouseConnectionBridgeStore.get(this))
-        server.start()
-    }
+    private var server: OpenHouseConnectionBridgeServer? = null
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        server.start()
-        return START_NOT_STICKY
-    }
-
-    override fun onDestroy() {
-        server.close()
-        super.onDestroy()
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    companion object {
-        /** Starts the bridge in :openhouse and returns the stable identity Termux must match. */
-        fun ensureStarted(context: Context): OpenHouseConnectionBridgeStore.Identity {
-            val appContext = context.applicationContext
-            val identity = OpenHouseConnectionBridgeStore.get(appContext).identity()
-            appContext.startService(Intent(appContext, OpenHouseConnectionBridgeService::class.java))
-            return identity
+    @JvmStatic
+    @Synchronized
+    fun ensureStarted(context: Context, reason: String = "manual"): StartResult {
+        val appContext = context.applicationContext
+        val store = OpenHouseConnectionBridgeStore.get(appContext)
+        val active = server
+        if (active != null && active.isRunning()) {
+            return StartResult(store.identity(), active.port())
         }
+
+        val replacement = OpenHouseConnectionBridgeServer(store)
+        val port = replacement.start()
+        server = replacement
+        val identity = store.identity()
+        Log.i(
+            LOG_TAG,
+            "Bridge listening process=${identity.processName} reason=$reason " +
+                "bridgeId=${identity.bridgeId.take(8)} port=$port",
+        )
+        return StartResult(identity, port)
+    }
+
+    private const val LOG_TAG = "OpenHouseBridge"
+}
+
+/** Starts a local Bridge only while the current UI process has a foreground Activity. */
+object OpenHouseConnectionBridgeForegroundSupervisor {
+    private const val CHECK_INTERVAL_MS = 15_000L
+
+    @JvmStatic
+    fun install(application: Application, processName: String?) {
+        val packageName = application.packageName
+        if (processName !in setOf("$packageName:openhouse", "$packageName:rescue_ui")) return
+
+        val handler = Handler(Looper.getMainLooper())
+        var startedActivities = 0
+        val periodicCheck = object : Runnable {
+            override fun run() {
+                if (startedActivities <= 0) return
+                runCatching { OpenHouseConnectionBridge.ensureStarted(application, "foreground-periodic") }
+                    .onFailure { Log.w("OpenHouseBridge", "Foreground Bridge check failed", it) }
+                handler.postDelayed(this, CHECK_INTERVAL_MS)
+            }
+        }
+        fun ensure(reason: String) {
+            runCatching { OpenHouseConnectionBridge.ensureStarted(application, reason) }
+                .onFailure { Log.w("OpenHouseBridge", "Bridge start failed: $reason", it) }
+        }
+        application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: android.os.Bundle?) = Unit
+
+            override fun onActivityStarted(activity: Activity) {
+                if (startedActivities++ == 0) {
+                    ensure("foreground-started")
+                    handler.removeCallbacks(periodicCheck)
+                    handler.postDelayed(periodicCheck, CHECK_INTERVAL_MS)
+                }
+            }
+
+            override fun onActivityResumed(activity: Activity) = ensure("foreground-resumed")
+
+            override fun onActivityPaused(activity: Activity) = Unit
+
+            override fun onActivityStopped(activity: Activity) {
+                startedActivities = (startedActivities - 1).coerceAtLeast(0)
+                if (startedActivities == 0) handler.removeCallbacks(periodicCheck)
+            }
+
+            override fun onActivitySaveInstanceState(activity: Activity, outState: android.os.Bundle) = Unit
+
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
     }
 }
 
@@ -60,11 +113,16 @@ class OpenHouseConnectionBridgeStore private constructor(context: Context) {
     data class Identity(
         val bridgeId: String,
         val packageName: String,
+        val processName: String,
         val activePort: Int,
     )
 
     private val appContext = context.applicationContext
-    private val preferences = appContext.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
+    private val processName = currentProcessName(appContext)
+    private val preferences = appContext.getSharedPreferences(
+        "$FILE_NAME_PREFIX-${processName.substringAfter(':', "main").replace(Regex("[^A-Za-z0-9._-]"), "_")}",
+        Context.MODE_PRIVATE,
+    )
 
     fun identity(): Identity {
         val bridgeId = preferences.getString(KEY_BRIDGE_ID, null)
@@ -74,6 +132,7 @@ class OpenHouseConnectionBridgeStore private constructor(context: Context) {
         return Identity(
             bridgeId = bridgeId,
             packageName = appContext.packageName,
+            processName = processName,
             activePort = preferences.getInt(KEY_ACTIVE_PORT, 0),
         )
     }
@@ -126,7 +185,7 @@ class OpenHouseConnectionBridgeStore private constructor(context: Context) {
         const val SERVICE_MANAGER_CONNECTION_KEY = "service-manager.connection"
         const val SERVICE_MANAGER_PORT_KEY = "service-manager.port"
 
-        private const val FILE_NAME = "openhouse-connection-bridge"
+        private const val FILE_NAME_PREFIX = "openhouse-connection-bridge-v2"
         private const val KEY_BRIDGE_ID = "bridge_id"
         private const val KEY_MANAGEMENT_KEY = "management_key"
         private const val KEY_ACTIVE_PORT = "active_port"
@@ -135,6 +194,20 @@ class OpenHouseConnectionBridgeStore private constructor(context: Context) {
         private val KEY_PATTERN = Regex("[A-Za-z0-9._-]{1,128}")
 
         fun get(context: Context) = OpenHouseConnectionBridgeStore(context)
+
+        private fun currentProcessName(context: Context): String =
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                Application.getProcessName().takeIf { it.isNotBlank() } ?: context.packageName
+            } else {
+                try {
+                    BufferedReader(FileReader("/proc/self/cmdline")).use { reader ->
+                        reader.readLine()?.replace('\u0000', ' ')?.trim().takeUnless { it.isNullOrBlank() }
+                            ?: context.packageName
+                    }
+                } catch (_: IOException) {
+                    context.packageName
+                }
+            }
     }
 }
 
@@ -145,30 +218,52 @@ private class OpenHouseConnectionBridgeServer(
     @Volatile private var running = false
 
     @Synchronized
-    fun start() {
-        if (running) return
+    fun start(): Int {
+        if (running) return port()
         val previousPort = store.identity().activePort
         val candidates = listOf(previousPort) + PORT_CANDIDATES
-        val bound = candidates.distinct().firstNotNullOfOrNull(::bind) ?: return
+        val failures = mutableListOf<String>()
+        val bound = candidates.distinct().firstNotNullOfOrNull { candidate -> bind(candidate, failures) }
+            ?: throw IllegalStateException(
+                "Unable to bind OpenHouse Bridge ports ${PORT_CANDIDATES.first}-${PORT_CANDIDATES.last}: " +
+                    failures.joinToString("; "),
+            )
         socket = bound
         running = true
         store.markListening(bound.localPort)
         thread(name = "openhouse-connection-bridge", isDaemon = true) {
-            while (running) {
-                val client = runCatching { bound.accept() }.getOrNull() ?: break
-                runCatching { client.use(::handle) }
+            try {
+                while (running) {
+                    val client = try {
+                        bound.accept()
+                    } catch (error: IOException) {
+                        if (running) Log.w("OpenHouseBridge", "Bridge accept failed", error)
+                        break
+                    }
+                    runCatching { client.use(::handle) }
+                }
+            } finally {
+                running = false
+                socket = null
+                store.clearListening(bound.localPort)
             }
-            store.clearListening(bound.localPort)
         }
+        return bound.localPort
     }
 
-    private fun bind(port: Int): ServerSocket? {
+    fun isRunning(): Boolean = running && socket?.isClosed == false
+
+    fun port(): Int = socket?.localPort ?: 0
+
+    private fun bind(port: Int, failures: MutableList<String>): ServerSocket? {
         if (port !in 1..65535) return null
         return runCatching {
             ServerSocket().apply {
                 reuseAddress = true
                 bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port))
             }
+        }.onFailure { error ->
+            failures += "$port:${error.javaClass.simpleName}:${error.message.orEmpty()}"
         }.getOrNull()
     }
 
@@ -210,6 +305,7 @@ private class OpenHouseConnectionBridgeServer(
                     .put("ok", true)
                     .put("service", SERVICE_NAME)
                     .put("schema", 1)
+                    .put("processName", store.identity().processName)
                     .put("port", socket?.localPort ?: 0),
             )
         }
@@ -222,6 +318,7 @@ private class OpenHouseConnectionBridgeServer(
                     .put("service", SERVICE_NAME)
                     .put("schema", 1)
                     .put("packageName", identity.packageName)
+                    .put("processName", identity.processName)
                     .put("bridgeId", identity.bridgeId)
                     .put("port", socket?.localPort ?: identity.activePort),
             )

@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-start-smallphone",
+  "version": "1.0.0",
+  "archive": "openhouse-start-smallphone.tgz",
+  "size": 8273,
+  "sha256": "f92761f317c845a4639ecbe0d88642348dfe3e310b7cac39c7497bcc63467272",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-start-smallphone/1.0.0/openhouse-start-smallphone.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "wuxianpi.first-install",
-  "version": "1.0.16",
+  "version": "1.0.18",
   "name": "首次安装",
-  "description": "在 tmux 两段初始化后导入五个核心资源，独立激活运行中枢，最后安装 Ubuntu。",
+  "description": "在 tmux 两段初始化后优先从市场安装核心资源，独立激活运行中枢，最后安装 Ubuntu。",
   "category": "setup",
   "minHostVersion": 12,
   "requiredCapabilities": ["setup-tools", "termux", "persistent-terminal"],

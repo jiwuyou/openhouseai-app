@@ -8,8 +8,7 @@ import com.ai.assistance.operit.host.OperitHostOperationResult
 import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostOperations
 import com.ai.assistance.operit.host.setup.LoopbackInstallBundleServer
-import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeService
-import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeStore
+import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridge
 import com.ai.assistance.operit.host.setup.WuxianPiConnectionStore
 import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
@@ -262,12 +261,12 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
 
     override suspend fun startWuxianPiSetup(): OperitHostOperationResult = withContext(Dispatchers.IO) {
         runCatching {
-            val bridge = OpenHouseConnectionBridgeService.ensureStarted(appContext)
+            val bridge = OpenHouseConnectionBridge.ensureStarted(appContext, "setup")
             activeInstallBundleServer?.close()
             val staged = LoopbackInstallBundleServer.start(appContext).also {
                 activeInstallBundleServer = it
             }.offer
-            val command = buildSetupDownloadCommand(staged, bridge.bridgeId)
+            val command = buildSetupDownloadCommand(staged, bridge.identity.bridgeId)
             success(
                 "start_wuxianpi_setup",
                 JSONObject()
@@ -291,28 +290,50 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         setupCommand("wuxianpi_setup_status", "status", 15_000L)
 
     override suspend fun storeServiceManagerConnection(): OperitHostOperationResult = withContext(Dispatchers.IO) {
-        var saved = WuxianPiConnectionStore.get(appContext).load()
-        repeat(40) {
-            if (saved.isReady) return@repeat
-            Thread.sleep(250)
-            saved = WuxianPiConnectionStore.get(appContext).load()
-        }
+        val saved = WuxianPiConnectionStore.get(appContext).load()
         if (!saved.isReady) return@withContext failure(
             "store_service_manager_connection",
-            "Termux did not publish the service-manager connection to the OpenHouse bridge",
+            "No service-manager connection is saved in Android-private storage",
         )
-        val bridgeStore = OpenHouseConnectionBridgeStore.get(appContext)
-        val identity = bridgeStore.identity()
         success(
             "store_service_manager_connection",
             JSONObject()
                 .put("serviceManagerBaseUrl", saved.serviceManagerBaseUrl)
-                .put("token", saved.token)
                 .put("hasToken", true)
-                .put("bridgeId", identity.bridgeId)
-                .put("bridgePort", identity.activePort)
-                .put("bridgeManagementKey", bridgeStore.managementKey()),
+                .put("updatedAt", saved.updatedAt),
         )
+    }
+
+    override suspend fun ensureOpenHouseConnectionBridge(): OperitHostOperationResult =
+        runCatching {
+            val bridge = OpenHouseConnectionBridge.ensureStarted(appContext, "rescue-tool")
+            success(
+                "ensure_openhouse_connection_bridge",
+                JSONObject()
+                    .put("processName", bridge.identity.processName)
+                    .put("bridgeId", bridge.identity.bridgeId)
+                    .put("port", bridge.port)
+                    .put("listening", true),
+            )
+        }.getOrElse { failure("ensure_openhouse_connection_bridge", it.message ?: "Unable to start Bridge") }
+
+    override suspend fun writeServiceManagerConnection(
+        serviceManagerBaseUrl: String,
+        token: String,
+    ): OperitHostOperationResult = withContext(Dispatchers.IO) {
+        runCatching {
+            val store = WuxianPiConnectionStore.get(appContext)
+            store.save(serviceManagerBaseUrl, token)
+            val saved = store.load()
+            success(
+                "write_service_manager_connection",
+                JSONObject()
+                    .put("serviceManagerBaseUrl", saved.serviceManagerBaseUrl)
+                    .put("port", java.net.URI(saved.serviceManagerBaseUrl).port)
+                    .put("updatedAt", saved.updatedAt)
+                    .put("hasToken", saved.isReady),
+            )
+        }.getOrElse { failure("write_service_manager_connection", it.message ?: "Unable to save service-manager connection") }
     }
 
     private fun buildSetupDownloadCommand(

@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-web",
+  "version": "1.1.2",
+  "archive": "openhouse-web.tgz",
+  "size": 36123,
+  "sha256": "cd193bb28f40d6c0c7759a125a499aff6e2f1c45f6afa0c276e293eb5b925ad0",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-web/1.1.2/openhouse-web.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

@@ -792,7 +792,7 @@ register_installed_resources() {
             OPENHOUSE_AIONUI_ORIGIN:"http://127.0.0.1:25808/",
             WUXIANPI_WEB_ROOT:($home + "/.local/share/wuxianpi/web")
           },
-          runtime:{strategy:"termux-process",runtime:"termux",platform:"android-arm64"},
+          runtime:{strategy:"termux-process",runtime:"termux",home:$home},
           ports:[{name:"runtime",host:"127.0.0.1",preferred:20765,dynamic:true,pool:"local-web",protocol:"tcp",envVar:"OPENHOUSE_PI_PORT",endpoint:{scheme:"http",path:"/"}}],
           restart:{mode:"on-failure",max_retries:5},
           health:[{type:"http",url:"http://127.0.0.1:{{port:runtime}}/health",interval:"15s",timeout:"3s"}],
@@ -816,7 +816,7 @@ register_installed_resources() {
 }
 
 register_openhouse_component() {
-  local directory target temporary
+  local directory target temporary service_spec payload
   directory="$TERMUX_HOME/.config/openhouseai/components.d"
   target="$directory/yuanshengwuxianpi.json"
   mkdir -p "$directory"
@@ -848,16 +848,34 @@ register_openhouse_component() {
     "entry": {"type": "webview", "url": "http://127.0.0.1:20765/"},
     "controlEntry": {"type": "service-control", "serviceNames": ["yuanshengwuxianpi"], "serviceRefs": ["service-manager://services/yuanshengwuxianpi"]}
   },
-  "serviceManager": {"required": true, "services": [{"name": "yuanshengwuxianpi", "title": "WuxianPi AI", "role": "web", "port": 20765, "url": "http://127.0.0.1:20765/", "serviceRef": "service-manager://services/yuanshengwuxianpi", "health": {"type": "http", "url": "http://127.0.0.1:20765/health"}, "controls": ["status", "start", "stop", "restart", "logs"]}]}
+  "serviceManager": {"required": true, "services": [{"name": "yuanshengwuxianpi", "title": "WuxianPi AI", "role": "web", "port": 20765, "url": "http://127.0.0.1:20765/", "serviceRef": "service-manager://services/yuanshengwuxianpi", "health": {"type": "http", "url": "http://127.0.0.1:20765/health"}, "controls": ["status", "start", "stop", "restart", "logs"]}]},
+  "ai": {
+    "visible": true,
+    "summary": "WuxianPi 本地救援 AI Web UI，运行于 yuanshengwuxianpi。",
+    "intents": [
+      {"name": "open", "target": "smallphoneApp.entry"},
+      {"name": "control", "target": "smallphoneApp.controlEntry"}
+    ]
+  }
 }
 JSON
   chmod 600 "$temporary"
   mv -f "$temporary" "$target"
+  service_spec="$TERMUX_HOME/.config/openhouseai/service-manager/services.d/yuanshengwuxianpi.json"
+  [ -s "$service_spec" ] || return 1
+  payload="$directory/.yuanshengwuxianpi.apply.$$"
+  jq -n --slurpfile component "$target" --slurpfile service "$service_spec" \
+    '{component:$component[0],services:[{id:"yuanshengwuxianpi",service:$service[0]}]}' >"$payload"
+  authenticated_service_manager_request POST /api/v1/registry/apply "$payload" >/dev/null || {
+    rm -f "$payload"
+    return 1
+  }
+  rm -f "$payload"
   authenticated_service_manager_request POST /api/v1/registry/sync >/dev/null
 }
 
 authenticated_service_manager_request() {
-  local method="$1" path="$2" token auth_dir auth_file result
+  local method="$1" path="$2" body_file="${3:-}" token auth_dir auth_file result
   token="$(service-manager token show --config "$CANONICAL_SM_CONFIG" 2>/dev/null | head -n 1 | tr -d '\r\n')"
   [ -n "$token" ] || return 1
   auth_dir="$(mktemp -d "${TMPDIR:-$TERMUX_PREFIX/tmp}/wuxianpi-activation-auth.XXXXXX")"
@@ -866,8 +884,13 @@ authenticated_service_manager_request() {
   printf 'header = "Authorization: Bearer %s"\n' "$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')" >"$auth_file"
   chmod 600 "$auth_file"
   set +e
-  curl -q -fsS --connect-timeout 3 --max-time 15 --config "$auth_file" \
-    -X "$method" "$CANONICAL_SM_URL$path"
+  if [ -n "$body_file" ]; then
+    curl -q -fsS --connect-timeout 3 --max-time 15 --config "$auth_file" \
+      -H 'Content-Type: application/json' -X "$method" --data-binary "@$body_file" "$CANONICAL_SM_URL$path"
+  else
+    curl -q -fsS --connect-timeout 3 --max-time 15 --config "$auth_file" \
+      -X "$method" "$CANONICAL_SM_URL$path"
+  fi
   result=$?
   set -e
   rm -rf "$auth_dir"
@@ -1000,7 +1023,7 @@ repair() {
 
 usage() {
   cat <<'EOF'
-Usage: wuxianpi-setup <inspect|prepare-tmux|install|activate|ubuntu|connection-info|status|verify|repair> [options]
+Usage: wuxianpi-setup <inspect|prepare-tmux|install|activate|register-component|ubuntu|connection-info|status|verify|repair> [options]
 
 Options:
   --region auto|cn|global
@@ -1024,6 +1047,7 @@ case "$command" in
   prepare-tmux) apply_options "$@"; prepare_tmux ;;
   install) apply_options "$@"; start_install ;;
   activate) apply_options "$@"; activate_runtime ;;
+  register-component) apply_options "$@"; register_installed_resources; register_openhouse_component ;;
   ubuntu) apply_options "$@"; run_ubuntu_install ;;
   connection-info) connection_info ;;
   verify) verify_core; emit_status ;;

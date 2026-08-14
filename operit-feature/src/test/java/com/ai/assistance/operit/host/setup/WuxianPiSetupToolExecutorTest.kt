@@ -16,7 +16,15 @@ class WuxianPiSetupToolExecutorTest {
         val context = ContextWrapper(null)
 
         WuxianPiSetupContract.toolNames.forEach { toolName ->
-            val result = executor.execute(toolName, context)
+            val args =
+                if (toolName == WuxianPiSetupContract.TOOL_WRITE_SERVICE_MANAGER_CONNECTION) {
+                    JSONObject()
+                        .put("serviceManagerBaseUrl", "http://127.0.0.1:20087")
+                        .put("token", "test-token")
+                } else {
+                    JSONObject()
+                }
+            val result = executor.execute(toolName, context, args)
             assertEquals(toolName, result.details.getString("called"))
         }
         assertEquals(WuxianPiSetupContract.toolNames.toList(), host.calls)
@@ -50,6 +58,17 @@ class WuxianPiSetupToolExecutorTest {
 
         override suspend fun wuxianPiSetupStatus() =
             called(WuxianPiSetupContract.TOOL_SETUP_STATUS)
+
+        override suspend fun storeServiceManagerConnection() =
+            called(WuxianPiSetupContract.TOOL_STORE_SERVICE_MANAGER_CONNECTION)
+
+        override suspend fun ensureOpenHouseConnectionBridge() =
+            called(WuxianPiSetupContract.TOOL_ENSURE_OPENHOUSE_CONNECTION_BRIDGE)
+
+        override suspend fun writeServiceManagerConnection(
+            serviceManagerBaseUrl: String,
+            token: String,
+        ) = called(WuxianPiSetupContract.TOOL_WRITE_SERVICE_MANAGER_CONNECTION)
 
         private fun called(name: String): OperitHostOperationResult {
             calls += name

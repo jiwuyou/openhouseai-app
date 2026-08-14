@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,6 +7,7 @@ if [ -n "${PREFIX:-}" ] && [ -d "${PREFIX:-}/bin" ] && [ -d /data/data/com.termu
   && { [ ! -r /etc/os-release ] || ! grep -qi '^ID=ubuntu' /etc/os-release; }; then
   _termux_native_services=1
   for _termux_services_env in \
+    "${PREFIX:-/data/data/com.termux/files/usr}/libexec/openhouse/_termux-services-env.sh" \
     "${SMALLPHONEAI_MAINTAINER_DIR:-}/_termux-services-env.sh" \
     "${OPENHOUSEAI_MAINTAINER_DIR:-}/_termux-services-env.sh" \
     "$HOME/.smallphoneai-bootstrap/apk-assets/maintainer/_termux-services-env.sh" \

@@ -1,0 +1,101 @@
+{
+  "schema": 2,
+  "market": "rescue",
+  "resources": [
+    {
+      "id": "openhouse-resource-manager",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.0/openhouse-resource-manager.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-resource-import",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-resource-import/1.0.0/openhouse-resource-import.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-resource-import/1.0.0/metadata.json"
+    },
+    {
+      "id": "wuxianpi-setup",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.0/wuxianpi-setup.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-install-runtime-components",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-install-runtime-components/1.0.0/openhouse-install-runtime-components.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-install-runtime-components/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-start-smallphone",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-start-smallphone/1.0.0/openhouse-start-smallphone.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-start-smallphone/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-register-component",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-register-component/1.0.0/openhouse-register-component.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-register-component/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-control-plane-start",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-control-plane-start/1.0.0/openhouse-control-plane-start.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-control-plane-start/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-termux-services-env",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-termux-services-env/1.0.0/openhouse-termux-services-env.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-termux-services-env/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-start-service-manager",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-start-service-manager/1.0.0/openhouse-start-service-manager.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-start-service-manager/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-repair-control-plane",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-repair-control-plane/1.0.0/openhouse-repair-control-plane.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-repair-control-plane/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-inspect-control-plane",
+      "version": "1.0.0",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-inspect-control-plane/1.0.0/openhouse-inspect-control-plane.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-inspect-control-plane/1.0.0/metadata.json"
+    },
+    {
+      "id": "openhouse-runtime",
+      "version": "0.2.0+registry.1",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.0+registry.1/runtime-aarch64.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.0+registry.1/metadata.json"
+    },
+    {
+      "id": "service-manager",
+      "version": "0.3.4",
+      "archivePath": "app/src/main/assets/openhouse/product-payloads/service-manager.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/service-manager/0.3.4/metadata.json"
+    },
+    {
+      "id": "wuyou",
+      "version": "0.1.0",
+      "archivePath": "app/src/main/assets/openhouse/product-payloads/wuyou.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/wuyou/0.1.0/metadata.json"
+    },
+    {
+      "id": "openhouse-web",
+      "version": "1.1.2",
+      "archivePath": "app/src/main/assets/openhouse/product-payloads/openhouse-web.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-web/1.1.2/metadata.json"
+    }
+  ],
+  "resourceSet": {
+    "id": "openhouse-core-stack",
+    "version": "2026.08.14.1",
+    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.14.1/manifest.json"
+  }
+}

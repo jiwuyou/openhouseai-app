@@ -5,7 +5,7 @@ import android.content.Context;
 import android.os.Build;
 import android.webkit.WebView;
 
-import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeService;
+import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeForegroundSupervisor;
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost;
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHostProvider;
 import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore;
@@ -25,9 +25,7 @@ public final class NativeOpenHouseApplication extends Application implements Ope
 
     @Override public void onCreate() {
         super.onCreate();
-        if ((getPackageName() + ":openhouse").equals(currentProcessName())) {
-            OpenHouseConnectionBridgeService.Companion.ensureStarted(this);
-        }
+        OpenHouseConnectionBridgeForegroundSupervisor.install(this, currentProcessName());
         productHost = new NativeProductHost(this);
         productHost.install();
         ApkResourceOfferStore.recordCurrentApk(this);

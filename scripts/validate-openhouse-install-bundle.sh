@@ -91,10 +91,11 @@ with tarfile.open(bundle, "r:") as outer:
 
 manager = (repo / "app/src/main/assets/smallphoneai/bootstrap/scripts/openhouse-resource-manager").read_text()
 importer = (repo / "app/src/main/assets/smallphoneai/bootstrap/scripts/openhouse-resource-import").read_text()
-runtime_forbidden = ("sha256sum", "tree_sha", "installedManifestSha256", "archiveSha256", "offer.json")
-for token in runtime_forbidden:
-    if token in manager or token in importer: raise SystemExit(f"runtime checksum/offer logic remains: {token}")
-for token in ("curl", "/api/v1/", "service-daemon", "sv up", "token show", "registry/sync"):
+for token in ("sha256sum", "tree_sha", "installedManifestSha256", "archiveSha256", "offer.json"):
+    if token in importer: raise SystemExit(f"APK importer checksum/offer logic remains: {token}")
+if "fetch_market_resources()" not in manager or "sha256sum \"$temporary\"" not in manager:
+    raise SystemExit("resource manager is missing one-time market archive validation")
+for token in ("/api/v1/", "service-daemon", "sv up", "token show", "registry/sync"):
     if token in manager or token in importer: raise SystemExit(f"content layer owns activation/network logic: {token}")
 setup = (repo / "app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-setup").read_text()
 for token in ("activation.lock", "canonical_auth_failed", "registry_file_failed", "wuxianpi_endpoint_failed", "wuxianpi_health_failed"):

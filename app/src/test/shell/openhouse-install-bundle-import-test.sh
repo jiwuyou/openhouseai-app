@@ -86,17 +86,17 @@ receipt="$HOME/.local/share/openhouseai/resource-manager/receipts/apk-offers/$of
 [[ -f "$receipt" && ! -e "$inbox/offer.json" ]]
 [[ ! -e "$inbox/.imported" ]]
 jq -e '.schema == 3 and .delivery == "ready" and .content == "installed" and .activation == "pending"' "$receipt" >/dev/null
-jq -e '.schema == 3 and .sequence == 2026081201 and (.resources | length) == 5' \
+jq -e '.schema == 4 and .sequence == 2026081201 and (.resources | length) == 5' \
   "$HOME/.local/share/openhouseai/resource-manager/installed-set.json" >/dev/null
 for id in service-manager openhouse-control-plane openhouse-runtime wuyou openhouse-web; do
-  jq -e '.schema == 3 and .content == "installed"' \
+  jq -e '.schema == 4 and .content == "installed" and (.archiveSha256 | length) == 64' \
     "$HOME/.local/share/openhouseai/resource-manager/receipts/resources/$id.json" >/dev/null
   [[ -L "$HOME/.local/share/openhouseai/resources/$id/current" ]]
 done
 PATH="$fakebin" "$fakebin/bash" "$PREFIX/bin/openhouse-resource-import" "$inbox" >"$work/reimport.log"
 grep -Fq 'content already installed' "$work/reimport.log"
-if rg -n 'sha256sum|SHA256SUMS|offer\.json|tree_sha|installedManifestSha256|archiveSha256' \
-  "$PREFIX/bin/openhouse-resource-import" "$PREFIX/bin/openhouse-resource-manager"; then
-  printf 'Runtime checksum or external offer logic remains\n' >&2; exit 1
-fi
+! rg -n 'sha256sum|SHA256SUMS|offer\.json|tree_sha|installedManifestSha256|archiveSha256' \
+  "$PREFIX/bin/openhouse-resource-import"
+grep -Fq 'fetch_market_resources()' "$PREFIX/bin/openhouse-resource-manager"
+grep -Fq 'sha256sum "$temporary"' "$PREFIX/bin/openhouse-resource-manager"
 printf 'OpenHouse install bundle import contract passed\n'

@@ -7,6 +7,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 /** Small private cache of the canonical service-manager connection returned by Termux. */
@@ -63,6 +64,7 @@ public final class WuxianPiConnectionStore {
             || token == null || token.trim().isEmpty()) {
             throw new IllegalArgumentException("service-manager connection is incomplete");
         }
+        validateLoopbackUrl(serviceManagerBaseUrl.trim());
         FileOutputStream output = null;
         try {
             output = file.startWrite();
@@ -77,6 +79,21 @@ public final class WuxianPiConnectionStore {
                 file.failWrite(output);
             }
             throw new IllegalStateException("Unable to save service-manager connection", exception);
+        }
+    }
+
+    private static void validateLoopbackUrl(String value) {
+        try {
+            URI uri = new URI(value);
+            String host = uri.getHost();
+            if (!"http".equalsIgnoreCase(uri.getScheme()) || uri.getPort() < 1
+                || !("127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host) || "::1".equals(host))) {
+                throw new IllegalArgumentException("service-manager URL must use an explicit loopback http port");
+            }
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("service-manager URL is invalid", exception);
         }
     }
 }

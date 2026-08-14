@@ -29,6 +29,12 @@ class OperitHostOperationsSetupContractTest {
                     operations.preparePersistentTermux(),
                 WuxianPiSetupContract.OPERATION_START_SETUP to operations.startWuxianPiSetup(),
                 WuxianPiSetupContract.OPERATION_SETUP_STATUS to operations.wuxianPiSetupStatus(),
+                WuxianPiSetupContract.OPERATION_STORE_SERVICE_MANAGER_CONNECTION to
+                    operations.storeServiceManagerConnection(),
+                WuxianPiSetupContract.OPERATION_ENSURE_OPENHOUSE_CONNECTION_BRIDGE to
+                    operations.ensureOpenHouseConnectionBridge(),
+                WuxianPiSetupContract.OPERATION_WRITE_SERVICE_MANAGER_CONNECTION to
+                    operations.writeServiceManagerConnection("http://127.0.0.1:20087", "token"),
             )
 
         results.forEach { (operation, result) ->

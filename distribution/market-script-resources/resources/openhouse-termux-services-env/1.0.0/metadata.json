@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-termux-services-env",
+  "version": "1.0.0",
+  "archive": "openhouse-termux-services-env.tgz",
+  "size": 1458,
+  "sha256": "e9e74cfc258ba7e7b13a934dcd539aee1ab3c6695db1cadc653ba04d37f97faf",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-termux-services-env/1.0.0/openhouse-termux-services-env.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

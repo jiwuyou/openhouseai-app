@@ -114,6 +114,21 @@ interface OperitHostOperations {
         WuxianPiSetupContract.unsupported(
             WuxianPiSetupContract.OPERATION_STORE_SERVICE_MANAGER_CONNECTION
         )
+
+    /** Starts the Bridge owned by the current Android UI process, without touching Termux. */
+    suspend fun ensureOpenHouseConnectionBridge(): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(
+            WuxianPiSetupContract.OPERATION_ENSURE_OPENHOUSE_CONNECTION_BRIDGE
+        )
+
+    /** Saves a canonical service-manager connection directly in Android-private storage. */
+    suspend fun writeServiceManagerConnection(
+        serviceManagerBaseUrl: String,
+        token: String,
+    ): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(
+            WuxianPiSetupContract.OPERATION_WRITE_SERVICE_MANAGER_CONNECTION
+        )
 }
 
 data class OperitHostOperationResult(
