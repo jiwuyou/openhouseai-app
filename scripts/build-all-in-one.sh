@@ -11,7 +11,7 @@ for required in ./bin/wuxianpi-node ./bin/wuxianpi-node-start ./scripts/install-
     || { printf 'All-in-One runtime payload is missing %s\n' "$required" >&2; exit 1; }
 done
 for layer in base runtime web; do
-  tar -tzf "$runtime_payload" | grep -Eq "^\./layers/wuxianpi-${layer}-[^/]+\.tar\.zst$" \
+  tar -tzf "$runtime_payload" | grep -E "^\./layers/wuxianpi-${layer}-[^/]+\.tar\.zst$" >/dev/null \
     || { printf 'All-in-One runtime payload is missing the official %s layer\n' "$layer" >&2; exit 1; }
 done
 [[ ! -e "$repo_dir/app/src/main/assets/openhouse/product-payloads/pi-runtime.tar" ]] \

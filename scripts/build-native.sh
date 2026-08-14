@@ -12,7 +12,7 @@ for required in ./install.sh ./bin/wuxianpi ./bin/wuxianpi-node ./bin/wuxianpi-n
     || { printf 'Native runtime asset is missing %s\n' "$required" >&2; exit 1; }
 done
 for layer in base runtime web; do
-  tar -tzf "$asset" | grep -Eq "^\./layers/wuxianpi-${layer}-[^/]+\.tar\.zst$" \
+  tar -tzf "$asset" | grep -E "^\./layers/wuxianpi-${layer}-[^/]+\.tar\.zst$" >/dev/null \
     || { printf 'Native runtime asset is missing the official %s layer\n' "$layer" >&2; exit 1; }
 done
 "$repo_dir/scripts/validate-openhouse-payloads.sh"
