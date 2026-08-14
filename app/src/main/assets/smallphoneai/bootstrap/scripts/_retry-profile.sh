@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 
 _smallphoneai_retry_profile_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$_smallphoneai_retry_profile_dir/_ubuntu-mirror-policy.sh" ]; then

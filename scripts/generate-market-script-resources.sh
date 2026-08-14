@@ -4,16 +4,20 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 payload_dir="$repo_dir/app/src/main/assets/openhouse/product-payloads"
 maintainer_dir="$repo_dir/app/src/main/assets/maintainer"
-bootstrap_dir="$repo_dir/app/src/main/assets/smallphoneai/bootstrap/scripts"
+bootstrap_root="$repo_dir/app/src/main/assets/smallphoneai/bootstrap"
+bootstrap_dir="$bootstrap_root/scripts"
 runtime_register_source="$repo_dir/resources/market-sources/openhouse-runtime-register-service.sh"
 output_dir="$repo_dir/distribution/market-script-resources"
 guide_path="$repo_dir/docs/resource-sets/openhouse-core-stack-2026.08.14.1.md"
 mode="${1:-generate}"
 
 set_id="${OPENHOUSE_MARKET_RESOURCE_SET_ID:-openhouse-core-stack}"
-set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.14.2}"
-set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081402}"
+set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.14.3}"
+set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081403}"
 script_version="${OPENHOUSE_MARKET_SCRIPT_VERSION:-1.0.1}"
+manager_version="${OPENHOUSE_MARKET_RESOURCE_MANAGER_VERSION:-1.0.2}"
+setup_version="${OPENHOUSE_MARKET_SETUP_VERSION:-1.0.2}"
+ubuntu_bootstrap_version="${OPENHOUSE_MARKET_UBUNTU_BOOTSTRAP_VERSION:-1.0.1}"
 runtime_version="${OPENHOUSE_MARKET_RUNTIME_VERSION:-0.2.0+registry.1}"
 min_apk_version_code="${OPENHOUSE_RESOURCE_MIN_APK_VERSION_CODE:-126}"
 
@@ -66,46 +70,61 @@ termux_repair_source() {
 termux_bash_source "$maintainer_dir/_termux-services-env.sh" "$fixed_sources/_termux-services-env.sh"
 termux_bash_source "$maintainer_dir/inspect-control-plane-termux-native.sh" "$fixed_sources/inspect-control-plane.sh"
 termux_repair_source "$maintainer_dir/repair-control-plane-termux-native.sh" "$fixed_sources/repair-control-plane.sh"
+termux_bash_source "$bootstrap_root/bootstrap.sh" "$fixed_sources/bootstrap.sh"
+termux_bash_source "$bootstrap_dir/20-install-ubuntu.sh" "$fixed_sources/20-install-ubuntu.sh"
+termux_bash_source "$bootstrap_dir/30-update-ubuntu-packages.sh" "$fixed_sources/30-update-ubuntu-packages.sh"
+termux_bash_source "$bootstrap_dir/_ubuntu-mirror-policy.sh" "$fixed_sources/_ubuntu-mirror-policy.sh"
+termux_bash_source "$bootstrap_dir/_retry-profile.sh" "$fixed_sources/_retry-profile.sh"
 
 add_script_resource() {
-  local id="$1" archive="$2" member="$3" source="$4" stage target
+  local id="$1" version="$2" archive="$3" member="$4" source="$5" stage target
   [[ -s "$source" ]] || { printf 'Missing script resource source: %s\n' "$source" >&2; exit 1; }
   [[ "$(head -n 1 "$source")" == '#!/data/data/com.termux/files/usr/bin/bash' ]] || {
     printf 'Termux script must use the absolute Bash shebang: %s\n' "$source" >&2
     exit 1
   }
   stage="$work_dir/stage-$id"
-  target="$generated/resources/$id/$script_version/$archive"
+  target="$generated/resources/$id/$version/$archive"
   mkdir -p "$stage" "$(dirname "$target")"
   install -m 0755 "$source" "$stage/$member"
   tar --format=ustar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
     -C "$stage" -cf - "$member" | gzip -n >"$target"
   printf '%s\t%s\t%s\t%s\t%s\n' \
-    "$id" "$script_version" "$archive" "$target" \
-    "distribution/market-script-resources/resources/$id/$script_version/$archive" >>"$specs"
+    "$id" "$version" "$archive" "$target" \
+    "distribution/market-script-resources/resources/$id/$version/$archive" >>"$specs"
 }
 
-add_script_resource openhouse-resource-manager openhouse-resource-manager.tgz \
+add_script_resource openhouse-resource-manager "$manager_version" openhouse-resource-manager.tgz \
   openhouse-resource-manager "$bootstrap_dir/openhouse-resource-manager"
-add_script_resource openhouse-resource-import openhouse-resource-import.tgz \
+add_script_resource openhouse-resource-import "$script_version" openhouse-resource-import.tgz \
   openhouse-resource-import "$bootstrap_dir/openhouse-resource-import"
-add_script_resource wuxianpi-setup wuxianpi-setup.tgz \
+add_script_resource wuxianpi-setup "$setup_version" wuxianpi-setup.tgz \
   wuxianpi-setup "$bootstrap_dir/wuxianpi-setup"
-add_script_resource openhouse-install-runtime-components openhouse-install-runtime-components.tgz \
+add_script_resource openhouse-bootstrap "$ubuntu_bootstrap_version" openhouse-bootstrap.tgz \
+  bootstrap.sh "$fixed_sources/bootstrap.sh"
+add_script_resource openhouse-install-ubuntu "$ubuntu_bootstrap_version" openhouse-install-ubuntu.tgz \
+  20-install-ubuntu.sh "$fixed_sources/20-install-ubuntu.sh"
+add_script_resource openhouse-update-ubuntu-packages "$ubuntu_bootstrap_version" openhouse-update-ubuntu-packages.tgz \
+  30-update-ubuntu-packages.sh "$fixed_sources/30-update-ubuntu-packages.sh"
+add_script_resource openhouse-ubuntu-mirror-policy "$ubuntu_bootstrap_version" openhouse-ubuntu-mirror-policy.tgz \
+  _ubuntu-mirror-policy.sh "$fixed_sources/_ubuntu-mirror-policy.sh"
+add_script_resource openhouse-retry-profile "$ubuntu_bootstrap_version" openhouse-retry-profile.tgz \
+  _retry-profile.sh "$fixed_sources/_retry-profile.sh"
+add_script_resource openhouse-install-runtime-components "$script_version" openhouse-install-runtime-components.tgz \
   50-install-runtime-components.sh "$bootstrap_dir/50-install-runtime-components.sh"
-add_script_resource openhouse-start-smallphone openhouse-start-smallphone.tgz \
+add_script_resource openhouse-start-smallphone "$script_version" openhouse-start-smallphone.tgz \
   60-start-smallphone.sh "$bootstrap_dir/60-start-smallphone.sh"
-add_script_resource openhouse-register-component openhouse-register-component.tgz \
+add_script_resource openhouse-register-component "$script_version" openhouse-register-component.tgz \
   register-openhouse-component.sh "$bootstrap_dir/register-openhouse-component.sh"
-add_script_resource openhouse-control-plane-start openhouse-control-plane-start.tgz \
+add_script_resource openhouse-control-plane-start "$script_version" openhouse-control-plane-start.tgz \
   openhouse-control-plane-start "$maintainer_dir/openhouse-control-plane-start"
-add_script_resource openhouse-termux-services-env openhouse-termux-services-env.tgz \
+add_script_resource openhouse-termux-services-env "$script_version" openhouse-termux-services-env.tgz \
   _termux-services-env.sh "$fixed_sources/_termux-services-env.sh"
-add_script_resource openhouse-start-service-manager openhouse-start-service-manager.tgz \
+add_script_resource openhouse-start-service-manager "$script_version" openhouse-start-service-manager.tgz \
   start-service-manager.sh "$maintainer_dir/start-service-manager.sh"
-add_script_resource openhouse-repair-control-plane openhouse-repair-control-plane.tgz \
+add_script_resource openhouse-repair-control-plane "$script_version" openhouse-repair-control-plane.tgz \
   repair-control-plane.sh "$fixed_sources/repair-control-plane.sh"
-add_script_resource openhouse-inspect-control-plane openhouse-inspect-control-plane.tgz \
+add_script_resource openhouse-inspect-control-plane "$script_version" openhouse-inspect-control-plane.tgz \
   inspect-control-plane.sh "$fixed_sources/inspect-control-plane.sh"
 
 runtime_stage="$work_dir/runtime"

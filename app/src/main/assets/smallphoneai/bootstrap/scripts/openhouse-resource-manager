@@ -82,7 +82,8 @@ read_set() {
     (.version | type == "string" and length > 0) and
     (.sequence | type == "number" and . > 0) and .abi == "arm64-v8a" and
     (([.resources[].id] | sort) == ["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"] or
-     ([.resources[].id] | sort) == ["openhouse-control-plane-start","openhouse-inspect-control-plane","openhouse-install-runtime-components","openhouse-register-component","openhouse-repair-control-plane","openhouse-resource-import","openhouse-resource-manager","openhouse-runtime","openhouse-start-service-manager","openhouse-start-smallphone","openhouse-termux-services-env","openhouse-web","service-manager","wuxianpi-setup","wuyou"]) and
+     ([.resources[].id] | sort) == ["openhouse-control-plane-start","openhouse-inspect-control-plane","openhouse-install-runtime-components","openhouse-register-component","openhouse-repair-control-plane","openhouse-resource-import","openhouse-resource-manager","openhouse-runtime","openhouse-start-service-manager","openhouse-start-smallphone","openhouse-termux-services-env","openhouse-web","service-manager","wuxianpi-setup","wuyou"] or
+     ([.resources[].id] | sort) == ["openhouse-bootstrap","openhouse-control-plane-start","openhouse-inspect-control-plane","openhouse-install-runtime-components","openhouse-install-ubuntu","openhouse-register-component","openhouse-repair-control-plane","openhouse-resource-import","openhouse-resource-manager","openhouse-retry-profile","openhouse-runtime","openhouse-start-service-manager","openhouse-start-smallphone","openhouse-termux-services-env","openhouse-update-ubuntu-packages","openhouse-ubuntu-mirror-policy","openhouse-web","service-manager","wuxianpi-setup","wuyou"]) and
     ([.resources[].id] | length) == ([.resources[].id] | unique | length)
   ' "$file" >/dev/null || die "resource set structure is invalid"
   jq -e '
@@ -94,7 +95,12 @@ read_set() {
       "openhouse-resource-manager":"openhouse-resource-manager.tgz",
       "openhouse-resource-import":"openhouse-resource-import.tgz",
       "wuxianpi-setup":"wuxianpi-setup.tgz",
+      "openhouse-bootstrap":"openhouse-bootstrap.tgz",
       "openhouse-install-runtime-components":"openhouse-install-runtime-components.tgz",
+      "openhouse-install-ubuntu":"openhouse-install-ubuntu.tgz",
+      "openhouse-update-ubuntu-packages":"openhouse-update-ubuntu-packages.tgz",
+      "openhouse-ubuntu-mirror-policy":"openhouse-ubuntu-mirror-policy.tgz",
+      "openhouse-retry-profile":"openhouse-retry-profile.tgz",
       "openhouse-start-smallphone":"openhouse-start-smallphone.tgz",
       "openhouse-register-component":"openhouse-register-component.tgz",
       "openhouse-control-plane-start":"openhouse-control-plane-start.tgz",
@@ -135,7 +141,12 @@ resource_required() {
     openhouse-resource-manager) [[ -x "$2/openhouse-resource-manager" ]] ;;
     openhouse-resource-import) [[ -x "$2/openhouse-resource-import" ]] ;;
     wuxianpi-setup) [[ -x "$2/wuxianpi-setup" ]] ;;
+    openhouse-bootstrap) [[ -x "$2/bootstrap.sh" ]] ;;
     openhouse-install-runtime-components) [[ -x "$2/50-install-runtime-components.sh" ]] ;;
+    openhouse-install-ubuntu) [[ -x "$2/20-install-ubuntu.sh" ]] ;;
+    openhouse-update-ubuntu-packages) [[ -x "$2/30-update-ubuntu-packages.sh" ]] ;;
+    openhouse-ubuntu-mirror-policy) [[ -x "$2/_ubuntu-mirror-policy.sh" ]] ;;
+    openhouse-retry-profile) [[ -x "$2/_retry-profile.sh" ]] ;;
     openhouse-start-smallphone) [[ -x "$2/60-start-smallphone.sh" ]] ;;
     openhouse-register-component) [[ -x "$2/register-openhouse-component.sh" ]] ;;
     openhouse-control-plane-start) [[ -x "$2/openhouse-control-plane-start" ]] ;;
@@ -235,7 +246,12 @@ install_script_resource() {
     openhouse-resource-manager) source="$directory/openhouse-resource-manager"; target="$PREFIX/bin/openhouse-resource-manager" ;;
     openhouse-resource-import) source="$directory/openhouse-resource-import"; target="$PREFIX/bin/openhouse-resource-import" ;;
     wuxianpi-setup) source="$directory/wuxianpi-setup"; target="$PREFIX/bin/wuxianpi-setup" ;;
+    openhouse-bootstrap) source="$directory/bootstrap.sh"; target="$PREFIX/libexec/openhouse/bootstrap/bootstrap.sh" ;;
     openhouse-install-runtime-components) source="$directory/50-install-runtime-components.sh"; target="$PREFIX/libexec/openhouse/bootstrap/50-install-runtime-components.sh" ;;
+    openhouse-install-ubuntu) source="$directory/20-install-ubuntu.sh"; target="$PREFIX/libexec/openhouse/bootstrap/scripts/20-install-ubuntu.sh" ;;
+    openhouse-update-ubuntu-packages) source="$directory/30-update-ubuntu-packages.sh"; target="$PREFIX/libexec/openhouse/bootstrap/scripts/30-update-ubuntu-packages.sh" ;;
+    openhouse-ubuntu-mirror-policy) source="$directory/_ubuntu-mirror-policy.sh"; target="$PREFIX/libexec/openhouse/bootstrap/scripts/_ubuntu-mirror-policy.sh" ;;
+    openhouse-retry-profile) source="$directory/_retry-profile.sh"; target="$PREFIX/libexec/openhouse/bootstrap/scripts/_retry-profile.sh" ;;
     openhouse-start-smallphone) source="$directory/60-start-smallphone.sh"; target="$PREFIX/libexec/openhouse/bootstrap/60-start-smallphone.sh" ;;
     openhouse-register-component) source="$directory/register-openhouse-component.sh"; target="$PREFIX/libexec/openhouse/bootstrap/register-openhouse-component.sh" ;;
     openhouse-control-plane-start) source="$directory/openhouse-control-plane-start"; target="$PREFIX/bin/openhouse-control-plane-start" ;;
@@ -284,7 +300,7 @@ SH
     openhouse-web)
       chmod 755 "$directory/scripts/"*.sh
       "$directory/scripts/install.sh" ;;
-    openhouse-resource-manager|openhouse-resource-import|wuxianpi-setup|openhouse-install-runtime-components|openhouse-start-smallphone|openhouse-register-component|openhouse-control-plane-start|openhouse-termux-services-env|openhouse-start-service-manager|openhouse-repair-control-plane|openhouse-inspect-control-plane)
+    openhouse-resource-manager|openhouse-resource-import|wuxianpi-setup|openhouse-bootstrap|openhouse-install-runtime-components|openhouse-install-ubuntu|openhouse-update-ubuntu-packages|openhouse-ubuntu-mirror-policy|openhouse-retry-profile|openhouse-start-smallphone|openhouse-register-component|openhouse-control-plane-start|openhouse-termux-services-env|openhouse-start-service-manager|openhouse-repair-control-plane|openhouse-inspect-control-plane)
       install_script_resource "$id" "$directory" ;;
     *) die "resource is not allowlisted: $id" ;;
   esac

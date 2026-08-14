@@ -4,9 +4,9 @@
   "resources": [
     {
       "id": "openhouse-resource-manager",
-      "version": "1.0.1",
-      "archivePath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.1/openhouse-resource-manager.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.1/metadata.json"
+      "version": "1.0.2",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.2/openhouse-resource-manager.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.2/metadata.json"
     },
     {
       "id": "openhouse-resource-import",
@@ -16,9 +16,39 @@
     },
     {
       "id": "wuxianpi-setup",
+      "version": "1.0.2",
+      "archivePath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.2/wuxianpi-setup.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.2/metadata.json"
+    },
+    {
+      "id": "openhouse-bootstrap",
       "version": "1.0.1",
-      "archivePath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.1/wuxianpi-setup.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.1/metadata.json"
+      "archivePath": "distribution/market-script-resources/resources/openhouse-bootstrap/1.0.1/openhouse-bootstrap.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-bootstrap/1.0.1/metadata.json"
+    },
+    {
+      "id": "openhouse-install-ubuntu",
+      "version": "1.0.1",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-install-ubuntu/1.0.1/openhouse-install-ubuntu.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-install-ubuntu/1.0.1/metadata.json"
+    },
+    {
+      "id": "openhouse-update-ubuntu-packages",
+      "version": "1.0.1",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-update-ubuntu-packages/1.0.1/openhouse-update-ubuntu-packages.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-update-ubuntu-packages/1.0.1/metadata.json"
+    },
+    {
+      "id": "openhouse-ubuntu-mirror-policy",
+      "version": "1.0.1",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-ubuntu-mirror-policy/1.0.1/openhouse-ubuntu-mirror-policy.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-ubuntu-mirror-policy/1.0.1/metadata.json"
+    },
+    {
+      "id": "openhouse-retry-profile",
+      "version": "1.0.1",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-retry-profile/1.0.1/openhouse-retry-profile.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-retry-profile/1.0.1/metadata.json"
     },
     {
       "id": "openhouse-install-runtime-components",
@@ -95,7 +125,7 @@
   ],
   "resourceSet": {
     "id": "openhouse-core-stack",
-    "version": "2026.08.14.2",
-    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.14.2/manifest.json"
+    "version": "2026.08.14.3",
+    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.14.3/manifest.json"
   }
 }

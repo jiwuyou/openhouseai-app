@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-retry-profile",
+  "version": "1.0.1",
+  "archive": "openhouse-retry-profile.tgz",
+  "size": 1658,
+  "sha256": "427f488e7f06357bc22dc6b6b096ba9ae4a4f4d6f87104c02ca9e029596d2fa2",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-retry-profile/1.0.1/openhouse-retry-profile.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

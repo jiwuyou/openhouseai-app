@@ -107,8 +107,22 @@ resource_dir() {
   current_resource_dir
 }
 
+market_bootstrap_file() {
+  local root="$TERMUX_PREFIX/libexec/openhouse/bootstrap" required
+  for required in \
+    bootstrap.sh \
+    scripts/20-install-ubuntu.sh \
+    scripts/30-update-ubuntu-packages.sh \
+    scripts/_ubuntu-mirror-policy.sh \
+    scripts/_retry-profile.sh; do
+    [[ -x "$root/$required" ]] || return 1
+  done
+  printf '%s/bootstrap.sh\n' "$root"
+}
+
 bootstrap_file() {
   local root
+  market_bootstrap_file && return
   root="$(resource_dir)"
   [ -n "$root" ] || return 1
   printf '%s/bootstrap/bootstrap.sh\n' "$root"
@@ -193,11 +207,11 @@ run_bootstrap() {
   shift || true
   local bootstrap payload root
   bootstrap="$(bootstrap_file)" || {
-    log '未找到完整的 APK 版本化资源目录。'
+    log '未找到市场 Ubuntu bootstrap 或完整的 APK 版本化资源目录。'
     return 1
   }
   root="$(dirname "$(dirname "$bootstrap")")"
-  payload="$(payload_dir)"
+  payload="$(payload_dir || true)"
   env \
     HOME="$TERMUX_HOME" \
     PREFIX="$TERMUX_PREFIX" \

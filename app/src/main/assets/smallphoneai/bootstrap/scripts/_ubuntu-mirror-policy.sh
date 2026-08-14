@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 
 if [ "${SMALLPHONEAI_UBUNTU_MIRROR_POLICY_LOADED:-0}" = "1" ] \
   && declare -F smallphoneai_resolve_ubuntu_rootfs_url >/dev/null 2>&1; then

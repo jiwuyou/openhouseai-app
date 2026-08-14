@@ -4,27 +4,32 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 generator="$repo_dir/scripts/generate-market-script-resources.sh"
 root="$repo_dir/distribution/market-script-resources"
-set_file="$root/resource-sets/openhouse-core-stack/2026.08.14.2/manifest.json"
+set_file="$root/resource-sets/openhouse-core-stack/2026.08.14.3/manifest.json"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 "$generator" --check
 jq -e '
   .schema == 2 and .id == "openhouse-core-stack" and
-  .version == "2026.08.14.2" and .sequence == 2026081402 and
+  .version == "2026.08.14.3" and .sequence == 2026081403 and
   (.guide.title | length) > 0 and (.guide.markdown | contains("市场不可用")) and
   ([.resources[].id] | sort) == [
+    "openhouse-bootstrap",
     "openhouse-control-plane-start",
     "openhouse-inspect-control-plane",
     "openhouse-install-runtime-components",
+    "openhouse-install-ubuntu",
     "openhouse-register-component",
     "openhouse-repair-control-plane",
     "openhouse-resource-import",
     "openhouse-resource-manager",
+    "openhouse-retry-profile",
     "openhouse-runtime",
     "openhouse-start-service-manager",
     "openhouse-start-smallphone",
     "openhouse-termux-services-env",
+    "openhouse-update-ubuntu-packages",
+    "openhouse-ubuntu-mirror-policy",
     "openhouse-web",
     "service-manager",
     "wuxianpi-setup",
@@ -44,9 +49,14 @@ while IFS=$'\t' read -r id version archive member; do
     || fail "$id has a non-Termux Bash shebang: $first"
   bash -n <(tar -xOzf "$path" "$member")
 done <<'EOF'
-openhouse-resource-manager	1.0.1	openhouse-resource-manager.tgz	openhouse-resource-manager
+openhouse-resource-manager	1.0.2	openhouse-resource-manager.tgz	openhouse-resource-manager
 openhouse-resource-import	1.0.1	openhouse-resource-import.tgz	openhouse-resource-import
-wuxianpi-setup	1.0.1	wuxianpi-setup.tgz	wuxianpi-setup
+wuxianpi-setup	1.0.2	wuxianpi-setup.tgz	wuxianpi-setup
+openhouse-bootstrap	1.0.1	openhouse-bootstrap.tgz	bootstrap.sh
+openhouse-install-ubuntu	1.0.1	openhouse-install-ubuntu.tgz	20-install-ubuntu.sh
+openhouse-update-ubuntu-packages	1.0.1	openhouse-update-ubuntu-packages.tgz	30-update-ubuntu-packages.sh
+openhouse-ubuntu-mirror-policy	1.0.1	openhouse-ubuntu-mirror-policy.tgz	_ubuntu-mirror-policy.sh
+openhouse-retry-profile	1.0.1	openhouse-retry-profile.tgz	_retry-profile.sh
 openhouse-install-runtime-components	1.0.1	openhouse-install-runtime-components.tgz	50-install-runtime-components.sh
 openhouse-start-smallphone	1.0.1	openhouse-start-smallphone.tgz	60-start-smallphone.sh
 openhouse-register-component	1.0.1	openhouse-register-component.tgz	register-openhouse-component.sh
@@ -92,5 +102,43 @@ grep -Fq '{component:$component[0],services:[{id:"yuanshengwuxianpi",service:$se
   || fail 'registry/apply payload does not wrap the service'
 grep -Fq 'POST /api/v1/registry/apply' "$setup" \
   || fail 'activation does not call registry/apply'
+grep -Fq 'market_bootstrap_file()' "$setup" \
+  || fail 'setup does not resolve the market Ubuntu bootstrap'
+grep -Fq 'libexec/openhouse/bootstrap' "$setup" \
+  || fail 'setup does not use the fixed market Bootstrap location'
+for mapping in \
+  'openhouse-bootstrap) source="$directory/bootstrap.sh"; target="$PREFIX/libexec/openhouse/bootstrap/bootstrap.sh"' \
+  'openhouse-install-ubuntu) source="$directory/20-install-ubuntu.sh"; target="$PREFIX/libexec/openhouse/bootstrap/scripts/20-install-ubuntu.sh"' \
+  'openhouse-update-ubuntu-packages) source="$directory/30-update-ubuntu-packages.sh"; target="$PREFIX/libexec/openhouse/bootstrap/scripts/30-update-ubuntu-packages.sh"' \
+  'openhouse-ubuntu-mirror-policy) source="$directory/_ubuntu-mirror-policy.sh"; target="$PREFIX/libexec/openhouse/bootstrap/scripts/_ubuntu-mirror-policy.sh"' \
+  'openhouse-retry-profile) source="$directory/_retry-profile.sh"; target="$PREFIX/libexec/openhouse/bootstrap/scripts/_retry-profile.sh"'; do
+  grep -Fq "$mapping" "$manager" || fail "missing fixed Ubuntu bootstrap mapping: $mapping"
+done
+
+# A market-only installation has no legacy APK resource directory. The setup
+# command must still dispatch both Ubuntu stages through the fixed layout.
+test_root="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-market-bootstrap.XXXXXX")"
+trap 'rm -rf "$test_root"' EXIT
+prefix="$test_root/prefix"
+home="$test_root/home"
+mkdir -p "$prefix/bin" "$prefix/libexec/openhouse/bootstrap/scripts" "$home"
+ln -s "$(command -v bash)" "$prefix/bin/bash"
+install -m 700 "$setup" "$prefix/bin/wuxianpi-setup"
+for script in \
+  "$prefix/libexec/openhouse/bootstrap/scripts/20-install-ubuntu.sh" \
+  "$prefix/libexec/openhouse/bootstrap/scripts/30-update-ubuntu-packages.sh" \
+  "$prefix/libexec/openhouse/bootstrap/scripts/_ubuntu-mirror-policy.sh" \
+  "$prefix/libexec/openhouse/bootstrap/scripts/_retry-profile.sh"; do
+  printf '%s\n' '#!/data/data/com.termux/files/usr/bin/bash' 'exit 0' >"$script"
+  chmod 700 "$script"
+done
+cat >"$prefix/libexec/openhouse/bootstrap/bootstrap.sh" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+printf '%s\n' "$*" >> "$HOME/bootstrap.calls"
+EOF
+chmod 700 "$prefix/libexec/openhouse/bootstrap/bootstrap.sh"
+HOME="$home" PREFIX="$prefix" bash "$prefix/bin/wuxianpi-setup" ubuntu
+[[ "$(cat "$home/bootstrap.calls")" == $'ubuntu\nubuntu-packages' ]] \
+  || fail 'market Bootstrap did not run both Ubuntu stages'
 
 printf 'Market script resource contract passed\n'

@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-bootstrap",
+  "version": "1.0.1",
+  "archive": "openhouse-bootstrap.tgz",
+  "size": 6486,
+  "sha256": "f8a20d9b68a20c901db3475d24ce9ca7a3ac871a13037addb95b94f18ce013b9",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-bootstrap/1.0.1/openhouse-bootstrap.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}
