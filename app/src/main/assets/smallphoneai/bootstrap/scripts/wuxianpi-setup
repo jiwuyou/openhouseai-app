@@ -22,6 +22,7 @@ SETUP_RUNTIME_ARCHIVE=""
 SETUP_RUNTIME_ARCHIVE_EXPLICIT=0
 SETUP_RESOURCE_INBOX=""
 SETUP_OFFER_ID=""
+SETUP_CONNECTION_BRIDGE_ID=""
 SETUP_APK_VERSION_CODE="${OPENHOUSEAI_APK_VERSION_CODE:-}"
 RESOURCE_MANAGER_ROOT="$TERMUX_HOME/.local/share/openhouseai/resource-manager"
 RESOURCE_INSTALL_ROOT="$TERMUX_HOME/.local/share/openhouseai/resources"
@@ -429,10 +430,6 @@ run_core_install() {
   rotate_log
   exec >> "$LOG_FILE" 2>&1
   set -x
-  write_state running post-tmux-packages '正在安装 Termux 后置基础包'
-  run_bootstrap termux-packages
-  run_bootstrap termux-node
-
   local resource_import="$TERMUX_PREFIX/bin/openhouse-resource-import"
   [ -x "$resource_import" ] || {
     log "缺少 APK 离线资源导入器：$resource_import"
@@ -444,16 +441,18 @@ run_core_install() {
   }
   write_state running resource-set '正在收敛 OpenHouse 五个核心资源'
   "$resource_import" "$SETUP_RESOURCE_INBOX"
+  write_state completed content-installed 'WuxianPi 五个核心资源已安装；运行激活待单独执行'
+}
 
+run_ubuntu_install() {
+  rotate_log
+  exec >> "$LOG_FILE" 2>&1
+  set -x
   write_state running ubuntu '正在安装 Ubuntu'
   run_bootstrap ubuntu
-
   write_state running ubuntu-packages '正在配置 Ubuntu 软件源和基础包'
   run_bootstrap ubuntu-packages
-
-  write_state running verify-content '正在检查已安装的静态资源内容'
-  "$TERMUX_PREFIX/bin/openhouse-resource-manager" verify
-  write_state completed content-installed 'WuxianPi 资源内容和 Ubuntu 已安装；运行激活待单独执行'
+  write_state completed ubuntu-installed 'Ubuntu 环境已安装'
 }
 
 run_install_job() {
@@ -495,7 +494,7 @@ resolve_apk_version_code() {
 
 write_request() {
   ensure_state_dir
-  printf '{"region":"%s","termuxRepo":"%s","ubuntuRootfsMirror":"%s","ubuntuAptMirror":"%s","nodeDistMirror":"%s","npmRegistry":"%s","runtimeArchive":"%s","resourceInbox":"%s","apkVersionCode":%s,"updatedAt":%s}\n' \
+  printf '{"region":"%s","termuxRepo":"%s","ubuntuRootfsMirror":"%s","ubuntuAptMirror":"%s","nodeDistMirror":"%s","npmRegistry":"%s","runtimeArchive":"%s","resourceInbox":"%s","connectionBridgeId":"%s","apkVersionCode":%s,"updatedAt":%s}\n' \
     "$(json_escape "$SETUP_REGION")" \
     "$(json_escape "$SETUP_TERMUX_REPO")" \
     "$(json_escape "$SETUP_UBUNTU_ROOTFS_MIRROR")" \
@@ -504,6 +503,7 @@ write_request() {
     "$(json_escape "$SETUP_NPM_REGISTRY")" \
     "$(json_escape "$SETUP_RUNTIME_ARCHIVE")" \
     "$(json_escape "$SETUP_RESOURCE_INBOX")" \
+    "$(json_escape "$SETUP_CONNECTION_BRIDGE_ID")" \
     "$(resolve_apk_version_code)" \
     "$(date +%s)" > "$REQUEST_FILE.tmp"
   mv "$REQUEST_FILE.tmp" "$REQUEST_FILE"
@@ -534,6 +534,8 @@ load_request() {
   fi
   value="$(request_json_value "$file" resourceInbox)"
   [ -z "$value" ] || SETUP_RESOURCE_INBOX="$value"
+  value="$(request_json_value "$file" connectionBridgeId)"
+  [ -z "$value" ] || SETUP_CONNECTION_BRIDGE_ID="$value"
   value="$(request_json_number "$file" apkVersionCode)"
   [ -z "$value" ] || SETUP_APK_VERSION_CODE="$value"
 }
@@ -562,6 +564,11 @@ apply_options() {
       --offer-id)
         [ -n "${2:-}" ] || { log '缺少 --offer-id。'; return 2; }
         SETUP_OFFER_ID="${2:-}"
+        shift 2
+        ;;
+      --connection-bridge-id)
+        [ -n "${2:-}" ] || { log '缺少 --connection-bridge-id。'; return 2; }
+        SETUP_CONNECTION_BRIDGE_ID="${2:-}"
         shift 2
         ;;
       *) log "未知安装参数：$1"; return 2 ;;
@@ -625,8 +632,6 @@ verify_core() {
   local failed=0
   termux_ready || { log 'FAIL termux'; failed=1; }
   tmux_ready || { log 'FAIL tmux'; failed=1; }
-  "$TERMUX_PREFIX/bin/openhouse-resource-manager" verify >/dev/null 2>&1 \
-    || { log 'FAIL static content'; failed=1; }
   [ "$(jq -r '.status // empty' "$ACTIVATION_ROOT/status.json" 2>/dev/null || true)" = ready ] \
     || { log 'FAIL activation'; failed=1; }
   # Recompute live activation facts instead of trusting the compact activation
@@ -638,9 +643,8 @@ verify_core() {
     || { log 'FAIL registry api'; failed=1; }
   pi_ready \
     || { log 'FAIL yuanshengwuxianpi health'; failed=1; }
-  ubuntu_ready || { log 'FAIL ubuntu'; failed=1; }
   [ "$failed" -eq 0 ] || return 1
-  log 'Termux、tmux、service-manager、WuxianPi 和 Ubuntu 均已就绪。'
+  log 'Termux、tmux、service-manager 和 WuxianPi 均已就绪。'
 }
 
 activation_process_count() {
@@ -811,6 +815,47 @@ register_installed_resources() {
   done
 }
 
+register_openhouse_component() {
+  local directory target temporary
+  directory="$TERMUX_HOME/.config/openhouseai/components.d"
+  target="$directory/yuanshengwuxianpi.json"
+  mkdir -p "$directory"
+  chmod 700 "$directory"
+  temporary="$target.tmp.$$"
+  cat >"$temporary" <<'JSON'
+{
+  "schemaVersion": 1,
+  "id": "yuanshengwuxianpi",
+  "title": "WuxianPi AI",
+  "description": "WuxianPi 本地救援 AI",
+  "kind": "app",
+  "enabled": true,
+  "shellMenu": {
+    "visible": true,
+    "section": "ai",
+    "order": 80,
+    "title": "WuxianPi AI",
+    "subtitle": "本地救援 AI",
+    "entry": {"type": "webview", "url": "http://127.0.0.1:20765/"},
+    "controlEntry": {"type": "service-control", "serviceNames": ["yuanshengwuxianpi"], "serviceRefs": ["service-manager://services/yuanshengwuxianpi"]},
+    "desktop": {"visible": true, "pinned": true, "order": 80, "icon": "brain"}
+  },
+  "smallphoneApp": {
+    "visible": true,
+    "section": "ai",
+    "order": 80,
+    "icon": "brain",
+    "entry": {"type": "webview", "url": "http://127.0.0.1:20765/"},
+    "controlEntry": {"type": "service-control", "serviceNames": ["yuanshengwuxianpi"], "serviceRefs": ["service-manager://services/yuanshengwuxianpi"]}
+  },
+  "serviceManager": {"required": true, "services": [{"name": "yuanshengwuxianpi", "title": "WuxianPi AI", "role": "web", "port": 20765, "url": "http://127.0.0.1:20765/", "serviceRef": "service-manager://services/yuanshengwuxianpi", "health": {"type": "http", "url": "http://127.0.0.1:20765/health"}, "controls": ["status", "start", "stop", "restart", "logs"]}]}
+}
+JSON
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$target"
+  authenticated_service_manager_request POST /api/v1/registry/sync >/dev/null
+}
+
 authenticated_service_manager_request() {
   local method="$1" path="$2" token auth_dir auth_file result
   token="$(service-manager token show --config "$CANONICAL_SM_CONFIG" 2>/dev/null | head -n 1 | tr -d '\r\n')"
@@ -844,7 +889,7 @@ wait_wuxianpi_health() {
 }
 
 activate_runtime() {
-  local control_script services offer_id component_registration token
+  local control_script services offer_id token
   mkdir -p "$ACTIVATION_ROOT"
   chmod 700 "$ACTIVATION_ROOT"
   exec 8>"$ACTIVATION_ROOT/activation.lock"
@@ -853,8 +898,6 @@ activate_runtime() {
   activation_json running '' "$offer_id"
   update_offer_activation pending ''
 
-  "$TERMUX_PREFIX/bin/openhouse-resource-manager" verify \
-    || activation_fail content_invalid
   command -v service-manager >/dev/null 2>&1 \
     || activation_fail service_manager_binary_missing
   ensure_canonical_service_manager_config \
@@ -873,16 +916,9 @@ activate_runtime() {
   [ -n "$services" ] || activation_fail service_list_empty
 
   register_installed_resources || activation_fail registry_file_failed
-  component_registration="$TERMUX_HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh"
-  [ -x "$component_registration" ] || activation_fail component_registration_script_missing
   token="$(service-manager token show --config "$CANONICAL_SM_CONFIG" 2>/dev/null | head -n 1 | tr -d '\r\n')"
-  SERVICE_MANAGER_TOKEN="$token" \
-    SERVICE_MANAGER_URL="$CANONICAL_SM_URL" \
-    SERVICE_MANAGER_CONFIG_PATH="$CANONICAL_SM_CONFIG" \
-    "$component_registration" register \
-    || activation_fail component_registration_failed
-  authenticated_service_manager_request POST /api/v1/registry/sync >/dev/null \
-    || activation_fail registry_sync_failed
+  [ -n "$token" ] || activation_fail canonical_auth_failed
+  register_openhouse_component || activation_fail component_registration_failed
   services="$(authenticated_service_manager_request GET /api/v1/services)" \
     || activation_fail service_list_after_registry_failed
   printf '%s' "$services" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"yuanshengwuxianpi"' \
@@ -894,9 +930,67 @@ activate_runtime() {
   wuxianpi_runtime_endpoint_ready || activation_fail wuxianpi_endpoint_failed
   wait_wuxianpi_health || activation_fail wuxianpi_health_failed
 
+  if publish_android_connection; then
+    log 'connection=saved bridge=openhouse-host-bridge'
+  else
+    log 'connection=failed；核心运行环境已经激活，可单独重试连接上报。'
+  fi
   activation_json ready '' "$offer_id"
   update_offer_activation ready ''
   log 'activation=ready health20087=ok canonicalAuth=ok runit=ok instance=unique registry=ok wuxianpiHealth=ok'
+}
+
+connection_info() {
+  local token listen url
+  [ -s "$CANONICAL_SM_CONFIG" ] || { printf 'canonical service-manager config is missing\n' >&2; return 1; }
+  token="$(service-manager token show --config "$CANONICAL_SM_CONFIG" 2>/dev/null | head -n 1 | tr -d '\r\n')"
+  [ -n "$token" ] || { printf 'canonical service-manager token is missing\n' >&2; return 1; }
+  listen="$(jq -r '.listen_addr // .listenAddr // .bind // "127.0.0.1:20087"' "$CANONICAL_SM_CONFIG")"
+  case "$listen" in
+    http://*|https://*) url="${listen%/}" ;;
+    0.0.0.0:*) url="http://127.0.0.1:${listen#0.0.0.0:}" ;;
+    :*) url="http://127.0.0.1$listen" ;;
+    *) url="http://$listen" ;;
+  esac
+  jq -cn --arg serviceManagerBaseUrl "$url" --arg token "$token" \
+    --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:1,serviceManagerBaseUrl:$serviceManagerBaseUrl,token:$token,updatedAt:$updatedAt}'
+}
+
+publish_android_connection() {
+  local candidate health identity connection port port_json
+  [ -n "$SETUP_CONNECTION_BRIDGE_ID" ] || {
+    log '未提供 OpenHouse connection bridge 标识，跳过 Android 连接上报。'
+    return 1
+  }
+  connection="$(connection_info)" || return 1
+  port="$(printf '%s' "$connection" | jq -r '.serviceManagerBaseUrl | capture(":(?<port>[0-9]+)$").port // empty' 2>/dev/null || true)"
+  [ -n "$port" ] || return 1
+  port_json="$(jq -cn --argjson port "$port" '{port:$port}')"
+  for candidate in \
+    http://127.0.0.1:20771 \
+    http://127.0.0.1:20772 \
+    http://127.0.0.1:20773 \
+    http://127.0.0.1:20774 \
+    http://127.0.0.1:20775; do
+    health="$(curl -q -fsS --connect-timeout 1 --max-time 2 "$candidate/v1/health" 2>/dev/null || true)"
+    printf '%s' "$health" | jq -e '.ok == true and .service == "openhouse-host-bridge"' >/dev/null 2>&1 \
+      || continue
+    identity="$(curl -q -fsS --connect-timeout 1 --max-time 2 "$candidate/v1/identity" 2>/dev/null || true)"
+    printf '%s' "$identity" | jq -e --arg bridgeId "$SETUP_CONNECTION_BRIDGE_ID" \
+      '.service == "openhouse-host-bridge" and .bridgeId == $bridgeId' >/dev/null 2>&1 \
+      || continue
+    curl -q -fsS --connect-timeout 2 --max-time 5 \
+      -X PUT -H 'Content-Type: application/json' --data-binary "$connection" \
+      "$candidate/v1/write/private/service-manager.connection" >/dev/null \
+      || continue
+    curl -q -fsS --connect-timeout 2 --max-time 5 \
+      -X PUT -H 'Content-Type: application/json' --data-binary "$port_json" \
+      "$candidate/v1/write/public/service-manager.port" >/dev/null \
+      || true
+    return 0
+  done
+  return 1
 }
 
 repair() {
@@ -906,7 +1000,7 @@ repair() {
 
 usage() {
   cat <<'EOF'
-Usage: wuxianpi-setup <inspect|prepare-tmux|install|activate|status|verify|repair> [options]
+Usage: wuxianpi-setup <inspect|prepare-tmux|install|activate|ubuntu|connection-info|status|verify|repair> [options]
 
 Options:
   --region auto|cn|global
@@ -919,6 +1013,7 @@ Options:
   --runtime-archive FILE
   --resource-inbox DIRECTORY
   --offer-id ID
+  --connection-bridge-id ID
 EOF
 }
 
@@ -929,6 +1024,8 @@ case "$command" in
   prepare-tmux) apply_options "$@"; prepare_tmux ;;
   install) apply_options "$@"; start_install ;;
   activate) apply_options "$@"; activate_runtime ;;
+  ubuntu) apply_options "$@"; run_ubuntu_install ;;
+  connection-info) connection_info ;;
   verify) verify_core; emit_status ;;
   repair) apply_options "$@"; repair ;;
   *) usage; exit 2 ;;

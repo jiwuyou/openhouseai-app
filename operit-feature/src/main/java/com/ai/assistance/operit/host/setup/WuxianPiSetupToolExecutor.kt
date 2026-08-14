@@ -31,6 +31,8 @@ class WuxianPiSetupToolExecutor(
                 operations.preparePersistentTermux()
             WuxianPiSetupContract.TOOL_START_SETUP -> operations.startWuxianPiSetup()
             WuxianPiSetupContract.TOOL_SETUP_STATUS -> operations.wuxianPiSetupStatus()
+            WuxianPiSetupContract.TOOL_STORE_SERVICE_MANAGER_CONNECTION ->
+                operations.storeServiceManagerConnection()
             else -> error("Unknown WuxianPi setup tool: $toolName")
         }
     }

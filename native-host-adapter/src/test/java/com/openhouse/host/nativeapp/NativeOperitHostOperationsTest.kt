@@ -338,6 +338,30 @@ class NativeOperitHostOperationsTest {
     }
 
     @Test
+    fun loopbackBundleCommandCarriesOnlyTheConnectionBridgeIdentity() {
+        val command = buildWuxianPiSetupDownloadCommand(
+            prefix = "/data/data/com.termux/files/usr",
+            home = "/data/data/com.termux/files/home",
+            offer = com.ai.assistance.operit.host.setup.LoopbackInstallBundleServer.Offer(
+                offerId = "com.wuxianpi-126-2026081302",
+                apkVersionCode = 126L,
+                resourceSetVersion = "2026.08.13.2",
+                resourceSetSequence = 2026081302L,
+                bundleSize = 1024L,
+                url = "http://127.0.0.1:32123/wuxianpi-install/example",
+            ),
+            connectionBridgeId = "bridge-test-id",
+        )
+
+        assertTrue(command.contains("openhouse-install-bundle.tar.incoming"))
+        assertTrue(command.contains("http://127.0.0.1:32123/wuxianpi-install/example"))
+        assertTrue(command.contains("--connection-bridge-id 'bridge-test-id'"))
+        assertTrue(command.contains(": > \"\$inbox/.ready\""))
+        assertFalse(command.contains("sha256sum"))
+        assertFalse(command.contains("service-manager.connection"))
+    }
+
+    @Test
     fun termuxHomeWorkspaceRequiresBookmarkAndReadWriteProbe() {
         assertFalse(
             isTermuxHomeWorkspaceReady(

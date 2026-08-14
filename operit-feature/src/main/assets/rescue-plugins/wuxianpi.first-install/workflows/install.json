@@ -13,7 +13,7 @@
       "id": "inspect",
       "kind": "tool",
       "tool": "inspect_wuxianpi_setup",
-      "description": "检查宿主类型、Termux、权限、APK 离线资源和现有资源集合状态。"
+      "description": "检查宿主、Termux、命令权限和核心安装状态。SAF 不属于首次安装前置。"
     },
     {
       "id": "prepare-host",
@@ -22,146 +22,62 @@
       "description": "准备 Termux bootstrap 和宿主命令通道；已完成时跳过。"
     },
     {
-      "id": "termux-home",
-      "kind": "tool",
-      "tool": "request_termux_home_access",
-      "when": "runtimeHost.externalTermux && !permissions.termuxHomeWorkspace",
-      "description": "仅检查 Termux Home SAF 状态，不得自动跳转。未授权、用户取消或旧授权失效时显示延迟卡片并立即暂停；只有用户点击卡片后才打开目录选择器。用户返回后必须重新调用本工具，确认 repo:termux-home 可读写后才能继续。"
-    },
-    {
       "id": "run-command",
       "kind": "tool",
       "tool": "request_termux_run_command_permission",
       "when": "runtimeHost.externalTermux",
-      "description": "仅检查外部 Termux RUN_COMMAND Android 权限，不得自动弹出权限页，也不得执行命令探针。未授权时显示延迟卡片并立即暂停；只有用户点击卡片后才申请权限。用户返回后必须重新调用本工具确认真实权限状态。"
+      "description": "仅检查 RUN_COMMAND Android 权限。未授权时显示延迟卡片并暂停；只有用户点击后才可打开权限页。"
     },
     {
       "id": "configure-external-apps",
       "kind": "tool",
       "tool": "configure_termux_external_apps",
       "when": "runtimeHost.externalTermux",
-      "description": "两个授权检查都成功后，通过 SAF 规范 $HOME/.termux/termux.properties，使其仅保留 allow-external-apps = true，并重新读取验证。成功后展示 reload 延迟卡片并立即暂停，不得继续调用后续工具。"
+      "description": "显示三行 Termux 命令卡片。用户必须在 Termux 执行 mkdir、allow-external-apps 和 termux-reload-settings 后返回。不得使用 SAF 写配置。"
     },
     {
       "id": "reload-termux-settings",
       "kind": "user-action",
       "when": "runtimeHost.externalTermux",
-      "description": "等待用户点击卡片打开 Termux，并在终端手工执行 termux-reload-settings。打开 Termux 不等于已经执行成功；用户明确表示完成并返回维修助手后才能继续。"
+      "description": "等待用户明确在 Termux 中执行完三行配置命令（包括 termux-reload-settings）并返回。打开 Termux 不等于配置已生效。"
     },
     {
       "id": "verify-run-command",
       "kind": "tool",
       "tool": "verify_termux_run_command",
       "when": "runtimeHost.externalTermux",
-      "description": "仅在用户明确确认已经手工执行 termux-reload-settings 后，检查配置并执行无副作用 RUN_COMMAND 探针；不得因卡片已点击或系统页面已打开而提前执行。"
+      "description": "仅在用户确认执行三行命令后运行无副作用探针。探针失败时停止，不投递资源。"
     },
     {
       "id": "persistent-terminal",
       "kind": "tool",
       "tool": "prepare_persistent_termux",
-      "description": "安装 tmux、curl、jq、tar、gzip、zstd 和 flock 所需的最小 Termux 基础能力。"
+      "description": "第一段基础环境：仅安装 tmux 和 libncursesw，创建并验证持久 tmux 会话。"
     },
     {
-      "id": "update-termux-base-packages",
+      "id": "initialize-termux-base",
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "set -eu; pkg update -y; pkg upgrade -y; pkg install -y bash jq curl tar gzip zstd coreutils findutils procps tmux termux-services; for command in jq curl tar gzip zstd tmux sv service-daemon; do command -v \"$command\" >/dev/null || { printf 'missing Termux command: %s\\n' \"$command\" >&2; exit 1; }; done",
+        "command": "set -eu; pkg update -y; pkg upgrade -y; pkg install -y bash jq curl tar gzip zstd coreutils findutils gawk util-linux procps tmux termux-services proot-distro nodejs ca-certificates; for command in jq curl tar gzip tmux sv service-daemon proot-distro node flock; do command -v \"$command\" >/dev/null || { printf 'missing Termux command: %s\\n' \"$command\" >&2; exit 1; }; done; mkdir -p \"$HOME/workspace\" \"$HOME/.local/share/openhouseai\" \"$HOME/.local/share/wuxianpi\"",
         "working_directory": "$HOME",
-        "session_name": "wuxianpi-termux-base-packages",
+        "session_name": "wuxianpi-termux-base",
         "yield_time_ms": 1000
       },
-      "description": "tmux 准备完成后更新 Termux 基础环境并确认资源安装和服务启动所需命令；失败时停止后续步骤。"
-    },
-    {
-      "id": "read-control-plane-entry",
-      "kind": "tool",
-      "tool": "read_rescue_plugin_document",
-      "arguments": {
-        "pluginId": "wuxianpi.first-install",
-        "path": "scripts/openhouse-control-plane-start"
-      },
-      "description": "读取 Android 与 Termux 之间唯一稳定的运行中枢入口。"
-    },
-    {
-      "id": "read-service-manager-start",
-      "kind": "tool",
-      "tool": "read_rescue_plugin_document",
-      "arguments": {
-        "pluginId": "wuxianpi.first-install",
-        "path": "scripts/start-service-manager.sh"
-      },
-      "description": "读取独立的 Termux service-manager 启动实现。"
-    },
-    {
-      "id": "prepare-control-plane-script-stage",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "mkdir -p \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/control-plane\"",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-control-plane-entry",
-        "yield_time_ms": 1000
-      },
-      "description": "准备固定启动脚本的写入暂存目录。"
-    },
-    {
-      "id": "write-control-plane-entry",
-      "kind": "tool-from-result",
-      "tool": "write_file",
-      "sourceStep": "read-control-plane-entry",
-      "arguments": {
-        "environment": "repo:termux-home",
-        "path": ".local/share/wuxianpi/plugins/wuxianpi.first-install/control-plane/openhouse-control-plane-start",
-        "content": "{{steps.read-control-plane-entry.content}}"
-      },
-      "description": "暂存固定入口。"
-    },
-    {
-      "id": "write-service-manager-start",
-      "kind": "tool-from-result",
-      "tool": "write_file",
-      "sourceStep": "read-service-manager-start",
-      "arguments": {
-        "environment": "repo:termux-home",
-        "path": ".local/share/wuxianpi/plugins/wuxianpi.first-install/control-plane/start-service-manager.sh",
-        "content": "{{steps.read-service-manager-start.content}}"
-      },
-      "description": "暂存 Termux 启动实现。"
-    },
-    {
-      "id": "install-control-plane-entry",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "set -eu; stage=\"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/control-plane\"; install -d \"$PREFIX/bin\" \"$PREFIX/libexec/openhouse\"; install -m 700 \"$stage/openhouse-control-plane-start\" \"$PREFIX/bin/openhouse-control-plane-start\"; install -m 700 \"$stage/start-service-manager.sh\" \"$PREFIX/libexec/openhouse/start-service-manager.sh\"",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-control-plane-entry",
-        "yield_time_ms": 1000
-      },
-      "description": "原子替换两个固定脚本；此步骤不读取资源集合、token 或 service-manager 配置。"
+      "description": "第二段基础环境在 tmux 内完成。所有依赖和工作目录验证成功前，禁止获取 APK 资源。"
     },
     {
       "id": "stage-setup",
       "kind": "tool",
       "tool": "start_wuxianpi_setup",
-      "description": "将 APK 单一离线 TAR 发布到 Termux Inbox，并返回执行本地导入、五资源事务安装和 Ubuntu 安装的命令。"
+      "description": "基础环境完成后才开放 APK 的本机 HTTP 总包，并返回由 Termux 下载、发布 .ready 和导入五资源的命令。"
     },
     {
-      "id": "run-setup-native",
+      "id": "run-setup",
       "kind": "tool-from-result",
       "tool": "termux_exec_command",
       "sourceStep": "stage-setup",
-      "when": "runtimeHost.externalTermux",
-      "description": "Native 使用 stage-setup 返回的原始命令导入 APK 离线总包；全程不依赖 SAF rename 或在线资源插件。"
-    },
-    {
-      "id": "run-setup-embedded",
-      "kind": "tool-from-result",
-      "tool": "termux_exec_command",
-      "sourceStep": "stage-setup",
-      "when": "!runtimeHost.externalTermux",
-      "description": "All-in-One 使用 stage-setup 返回的命令导入同一份 canonical TAR。"
+      "description": "Termux 下载单一 canonical TAR，安装五个核心资源。投递和运行激活是独立阶段。"
     },
     {
       "id": "verify-content",
@@ -170,138 +86,21 @@
       "retryPolicy": {
         "maxAttempts": 10,
         "delayMs": 3000,
-        "retryWhen": [
-          "资源导入仍在运行",
-          "Ubuntu 安装仍在运行"
-        ]
+        "retryWhen": ["资源导入仍在运行"]
       },
-      "description": "仅等待 delivery=ready、content=installed 和 Ubuntu 就绪；运行激活尚未开始。"
-    },
-    {
-      "id": "read-openhouse-registration-script",
-      "kind": "tool",
-      "tool": "read_rescue_plugin_document",
-      "arguments": {
-        "pluginId": "wuxianpi.first-install",
-        "path": "scripts/register-openhouse-component.sh"
-      },
-      "description": "读取 yuanshengwuxianpi 桌面组件注册脚本。"
-    },
-    {
-      "id": "prepare-openhouse-registration-directory",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "mkdir -p \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install\"",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-openhouse-registration-prepare",
-        "yield_time_ms": 1000
-      },
-      "description": "准备首次安装插件持久目录。"
-    },
-    {
-      "id": "write-openhouse-registration-script",
-      "kind": "tool-from-result",
-      "tool": "write_file",
-      "sourceStep": "read-openhouse-registration-script",
-      "arguments": {
-        "environment": "repo:termux-home",
-        "path": ".local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh",
-        "content": "{{steps.read-openhouse-registration-script.content}}"
-      },
-      "description": "写入当前版本的桌面组件注册脚本。"
-    },
-    {
-      "id": "make-openhouse-registration-executable",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "chmod 700 \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\" && test -x \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.first-install/register-openhouse-component.sh\"",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-openhouse-registration-prepare",
-        "yield_time_ms": 1000
-      },
-      "description": "SAF 写入后显式恢复执行位，避免 activate 因脚本不可执行而失败。"
-    },
-    {
-      "id": "install-resource-updater",
-      "kind": "tool",
-      "tool": "install_rescue_plugin",
-      "arguments": {
-        "pluginId": "wuxianpi.resource-update",
-        "version": "3.0.0"
-      },
-      "description": "安装或确认资源更新插件 3.0.0。市场不可用时不得阻塞离线首次安装，应跳过在线收敛并继续使用已导入的 APK 集合。"
-    },
-    {
-      "id": "read-resource-updater",
-      "kind": "tool",
-      "tool": "read_rescue_plugin_document",
-      "arguments": {
-        "pluginId": "wuxianpi.resource-update",
-        "path": "scripts/update-resources.sh"
-      },
-      "description": "读取已安装的资源更新插件脚本；上一步因离线跳过时，本步及其 plan/apply 一并跳过。"
-    },
-    {
-      "id": "prepare-resource-updater-directory",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "mkdir -p \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update\"",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-resource-update-stage",
-        "yield_time_ms": 1000
-      },
-      "description": "准备资源更新脚本目录。"
-    },
-    {
-      "id": "write-resource-updater",
-      "kind": "tool-from-result",
-      "tool": "write_file",
-      "sourceStep": "read-resource-updater",
-      "arguments": {
-        "environment": "repo:termux-home",
-        "path": ".local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh",
-        "content": "{{steps.read-resource-updater.content}}"
-      },
-      "description": "复用资源更新插件的唯一差异收敛实现。"
-    },
-    {
-      "id": "plan-resource-update",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "chmod 700 \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" && \"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" plan",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-resource-update-stage",
-        "yield_time_ms": 1000
-      },
-      "description": "比较 APK、缓存、市场和本机集合，仅计划真正变化的资源。若市场不可用，使用已导入的 APK 集合。"
-    },
-    {
-      "id": "apply-resource-update",
-      "kind": "tool",
-      "tool": "termux_exec_command",
-      "arguments": {
-        "command": "\"$HOME/.local/share/wuxianpi/plugins/wuxianpi.resource-update/update-resources.sh\" apply",
-        "working_directory": "$HOME",
-        "session_name": "wuxianpi-resource-update",
-        "yield_time_ms": 1000
-      },
-      "description": "调用现有资源管理器安装差异资源并执行独立激活；激活失败不回滚已安装内容。若 read-resource-updater 失败，跳过本步并直接执行后续首次激活。"
+      "description": "仅等待 delivery=ready 和 content=installed，不等待 Ubuntu，也不要求运行激活。"
     },
     {
       "id": "activate-runtime",
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "set -eu; status=\"$($PREFIX/bin/wuxianpi-setup status)\"; if ! jq -e '.activation == \"ready\"' >/dev/null <<<\"$status\"; then \"$PREFIX/bin/wuxianpi-setup\" activate --request \"$HOME/.local/state/wuxianpi-setup/request.json\" --offer-id \"$(basename \"$(jq -r '.resourceInbox' \"$HOME/.local/state/wuxianpi-setup/request.json\")\")\"; else printf 'activation already ready; skipping duplicate activation\\n'; fi",
+        "command": "set -eu; \"$PREFIX/bin/wuxianpi-setup\" activate --request \"$HOME/.local/state/wuxianpi-setup/request.json\"",
         "working_directory": "$HOME",
         "session_name": "wuxianpi-runtime-activation",
         "yield_time_ms": 1000
       },
-      "description": "独立、可重试地创建 canonical 配置、安装 runit、启动 service-manager、注册资源、验证带 token 服务列表和 WuxianPi health；失败绝不回滚 content。"
+      "description": "独立激活 service-manager 和 WuxianPi；必须验证带 Token 的服务列表。失败不回滚已安装资源。"
     },
     {
       "id": "verify-activation",
@@ -310,19 +109,44 @@
       "retryPolicy": {
         "maxAttempts": 10,
         "delayMs": 3000,
-        "retryWhen": [
-          "activation=pending",
-          "service-manager 20087 暂不可达",
-          "registry 同步仍在进行"
-        ]
+        "retryWhen": ["activation=pending", "service-manager 20087 暂不可达", "registry 同步仍在进行"]
       },
       "description": "要求 activation=ready、canonicalAuthReady、serviceListReady、registryFileReady、registryApiReady 和 wuxianPiHealth 全部为 true。"
+    },
+    {
+      "id": "store-service-manager-connection",
+      "kind": "tool",
+      "tool": "store_service_manager_connection",
+      "description": "读取 canonical 端口和 Token，保存到 Android 私有存储，并把连接信息交给当前维修对话。"
     },
     {
       "id": "complete-resource-offer",
       "kind": "tool",
       "tool": "complete_apk_resource_offer",
-      "description": "仅在宿主重新核验 offerId/sequence、activation=ready、canonical auth、服务列表、registry 和 WuxianPi health 后，将 APK offer 标记 satisfied。"
+      "description": "核心资源和运行激活均通过后，标记当前 APK offer 已完成；Ubuntu 不参与该标记。"
+    },
+    {
+      "id": "install-ubuntu",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "arguments": {
+        "command": "set -eu; \"$PREFIX/bin/wuxianpi-setup\" ubuntu --request \"$HOME/.local/state/wuxianpi-setup/request.json\"",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-ubuntu",
+        "yield_time_ms": 1000
+      },
+      "description": "最后安装 Ubuntu rootfs 和基础包。失败时保留全部核心运行环境，并提供单独重试。"
+    },
+    {
+      "id": "verify-ubuntu",
+      "kind": "poll-tool",
+      "tool": "get_wuxianpi_setup_status",
+      "retryPolicy": {
+        "maxAttempts": 10,
+        "delayMs": 3000,
+        "retryWhen": ["Ubuntu 安装仍在运行"]
+      },
+      "description": "汇总 Ubuntu 后置阶段；Ubuntu 失败不得将已经完成的核心安装改写为失败。"
     }
   ]
 }

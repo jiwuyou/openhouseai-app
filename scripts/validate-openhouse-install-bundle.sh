@@ -25,8 +25,15 @@ archives = {
     "openhouse-web": "openhouse-web.tgz",
 }
 index = json.loads(index_path.read_text())
+canonical_version_code = int(next(
+    line.split("=", 1)[1]
+    for line in (repo / "gradle.properties").read_text().splitlines()
+    if line.startswith("openhouseVersionCode=")
+))
 if index.get("schema") != 2 or index.get("bundleAsset") != "wuxianpi-install/openhouse-install-bundle.tar":
     raise SystemExit("bundle index contract is invalid")
+if index.get("apkVersionCode") != canonical_version_code:
+    raise SystemExit("bundle APK version does not match canonical versionCode")
 if index.get("bundleSize") != bundle.stat().st_size:
     raise SystemExit("bundle index size mismatch")
 required = {
@@ -90,10 +97,10 @@ for token in runtime_forbidden:
 for token in ("curl", "/api/v1/", "service-daemon", "sv up", "token show", "registry/sync"):
     if token in manager or token in importer: raise SystemExit(f"content layer owns activation/network logic: {token}")
 setup = (repo / "app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-setup").read_text()
-for token in ("activation.lock", "canonical_auth_failed", "registry_sync_failed", "wuxianpi_endpoint_failed", "wuxianpi_health_failed"):
+for token in ("activation.lock", "canonical_auth_failed", "registry_file_failed", "wuxianpi_endpoint_failed", "wuxianpi_health_failed"):
     if token not in setup: raise SystemExit(f"activation contract is missing: {token}")
 manifest = json.loads((repo / "operit-feature/src/main/assets/rescue-plugins/wuxianpi.first-install/manifest.json").read_text())
-if manifest.get("version") != "1.0.15": raise SystemExit("bundled first-install version must be 1.0.15")
+if manifest.get("version") != "1.0.16": raise SystemExit("bundled first-install version must be 1.0.16")
 print(f"Install bundle validated: sha256={hashlib.sha256(bundle.read_bytes()).hexdigest()} size={bundle.stat().st_size}")
 PY
 

@@ -108,6 +108,12 @@ interface OperitHostOperations {
 
     suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
         WuxianPiSetupContract.unsupported(WuxianPiSetupContract.OPERATION_SETUP_STATUS)
+
+    /** Reads the canonical Termux connection once and stores it in the host's private Android data. */
+    suspend fun storeServiceManagerConnection(): OperitHostOperationResult =
+        WuxianPiSetupContract.unsupported(
+            WuxianPiSetupContract.OPERATION_STORE_SERVICE_MANAGER_CONNECTION
+        )
 }
 
 data class OperitHostOperationResult(

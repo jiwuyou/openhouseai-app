@@ -12,16 +12,11 @@ class RescuePiChatEngineSetupPromptTest {
         val prompt = RescuePiChatEngine.RESCUE_SYSTEM_PROMPT
         val orderedTools =
             listOf(
-                "inspect_wuxianpi_setup",
-                "prepare_runtime_host",
-                "request_termux_home_access",
                 "request_termux_run_command_permission",
                 "configure_termux_external_apps",
-                "termux-reload-settings",
-                "verify_termux_run_command",
                 "prepare_persistent_termux",
                 "start_wuxianpi_setup",
-                "get_wuxianpi_setup_status",
+                "store_service_manager_connection",
             )
 
         var previousIndex = -1
@@ -33,11 +28,11 @@ class RescuePiChatEngineSetupPromptTest {
         assertTrue(prompt.contains("Android"))
         assertTrue(prompt.contains("Termux"))
         assertTrue(prompt.contains("Ubuntu"))
-        assertTrue(prompt.contains("not Rescue AI process memory"))
-        assertTrue(prompt.contains("termuxHomeEnvironment=repo:termux-home"))
-        assertTrue(prompt.contains("All-in-One host keeps its direct file behavior"))
-        assertTrue(prompt.contains("Never call verify_termux_run_command before"))
-        assertTrue(prompt.contains("default every Termux command, short or long, to termux_exec_command"))
+        assertTrue(prompt.contains("SAF is not part of first installation"))
+        assertTrue(prompt.contains("side-effect-free command"))
+        assertTrue(prompt.contains("short-lived APK bundle download"))
+        assertTrue(prompt.contains("OpenHouse loopback bridge"))
+        assertTrue(prompt.contains("Ubuntu as the final independent phase"))
     }
 
     @Test

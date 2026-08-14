@@ -52,13 +52,26 @@ grep -Fq 'delivery:$delivery,content:$content,activation:$activation,status:"pen
 for required in \
   'activate_runtime()' \
   'activation_fail()' \
+  'publish_android_connection()' \
+  '/v1/health' \
+  '/v1/identity' \
+  '/v1/write/private/service-manager.connection' \
+  '/v1/write/public/service-manager.port' \
   'canonical_auth_failed' \
-  'registry_sync_failed' \
+  'registry_file_failed' \
   'wuxianpi_health_failed' \
   'service-manager token rotate --config "$CANONICAL_SM_CONFIG"' \
   'POST /api/v1/registry/sync'; do
   grep -Fq "$required" "$setup" || fail "setup activation is missing: $required"
 done
+
+run_core_body="$(sed -n '/^run_core_install()/,/^}/p' "$setup")"
+! grep -Fq 'run_ubuntu_install' <<<"$run_core_body" \
+  || fail 'core content installation still invokes Ubuntu'
+! grep -Fq 'openhouse-resource-manager" verify' "$setup" \
+  || fail 'first installation still performs a full installed-resource verification'
+! grep -Fq 'wuxianpi.resource-update' "$setup" \
+  || fail 'first installation still depends on the resource updater'
 
 grep -Fq 'diagnostic canonicalAuth' "$start" \
   || grep -Fq 'diagnostic_result canonicalAuth' "$start" \

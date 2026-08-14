@@ -52,7 +52,7 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = WuxianPiSetupContract.TOOL_CONFIGURE_TERMUX_EXTERNAL_APPS,
                     description =
-                        "Using only the authorized Termux Home SAF repository, normalize ${'$'}HOME/.termux/termux.properties to one active allow-external-apps = true setting while preserving unrelated content. It then returns a deferred card; stop and wait for the user to open Termux and run termux-reload-settings.",
+                        "Show the fixed three-line Termux configuration card for allow-external-apps. This tool does not use SAF or modify Termux files; stop and wait for the user to run all three commands.",
                 ),
                 definition(
                     name = WuxianPiSetupContract.TOOL_VERIFY_TERMUX_RUN_COMMAND,
@@ -67,12 +67,17 @@ class RescueToolCatalog private constructor(
                 definition(
                     name = WuxianPiSetupContract.TOOL_START_SETUP,
                     description =
-                        "Stage bundled setup resources for service-manager, WuxianPi, and Ubuntu, then return the foreground install command. Launch that command with termux_exec_command using the returned session_name and yield_time_ms.",
+                        "After the tmux-hosted Termux base is ready, open the short-lived APK bundle download and return the foreground command that imports the five core resources. Ubuntu is not part of this command.",
                 ),
                 definition(
                     name = WuxianPiSetupContract.TOOL_SETUP_STATUS,
                     description =
                         "Read durable WuxianPi setup status from the active host and persistent Termux state. Use it after starting setup and after Rescue AI restarts.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_STORE_SERVICE_MANAGER_CONNECTION,
+                    description =
+                        "Read the service-manager URL and token that Termux posted to the OpenHouse connection bridge. Return them to the current Rescue conversation and confirm Android-private storage is ready.",
                 ),
                 definition(
                     name = RescuePluginContract.TOOL_SEARCH,

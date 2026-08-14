@@ -37,6 +37,7 @@ tasks.register("generateOpenHouseInstallBundle", Exec) {
     description = "Generate the canonical single-file offline install bundle for every APK host."
     def generator = file("scripts/generate-native-install-resources.sh")
     inputs.file(generator)
+    inputs.property("openhouseVersionCode", providers.gradleProperty("openhouseVersionCode"))
     inputs.dir(file("app/src/main/assets/smallphoneai/bootstrap"))
     inputs.dir(file("app/src/main/assets/openhouse/product-payloads"))
     outputs.files(

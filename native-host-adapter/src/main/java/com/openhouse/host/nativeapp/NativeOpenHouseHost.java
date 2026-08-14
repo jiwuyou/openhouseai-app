@@ -8,6 +8,7 @@ import android.net.Uri;
 
 import androidx.documentfile.provider.DocumentFile;
 
+import com.ai.assistance.operit.host.setup.WuxianPiConnectionStore;
 import com.wuxianpi.openhouse.core.ControlPlaneResult;
 import com.wuxianpi.openhouse.core.ControlPlaneStarter;
 import com.wuxianpi.openhouse.core.ControlPlaneBridge;
@@ -87,9 +88,9 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
             return new SetupState(SetupState.Status.NOT_CONFIGURED, 0,
                 "Termux package com.termux is not installed");
         }
-        if (findInTermuxHome(".config/openhouseai/service-manager/config.json") == null) {
+        if (!WuxianPiConnectionStore.get(appContext).load().isReady()) {
             return new SetupState(SetupState.Status.NOT_CONFIGURED, 50,
-                "OpenHouse setup or Termux Home access is required");
+                "OpenHouse setup is required");
         }
         return SetupState.ready();
     }
@@ -105,19 +106,18 @@ public final class NativeOpenHouseHost implements OpenHouseHost {
             opened.isSuccess() ? SetupResult.Status.USER_ACTION_REQUIRED : SetupResult.Status.FAILED,
             state,
             opened.isSuccess()
-                ? "Termux opened; finish OpenHouse setup and grant Termux Home access"
+                ? "Termux opened; finish OpenHouse setup"
                 : opened.message
         );
     }
 
     @Override public RuntimeConnection runtimeConnection() {
-        JSONObject config = readJson(findInTermuxHome(".config/openhouseai/service-manager/config.json"));
-        String serviceManagerUrl = normalizeServiceManagerUrl(firstNonBlank(
-            config.optString("baseUrl"), config.optString("base_url"),
-            config.optString("listenAddr"), config.optString("listen_addr"),
-            config.optString("bind"), "127.0.0.1:20087"));
-        String token = firstNonBlank(config.optString("authToken"), config.optString("auth_token"));
-        return new RuntimeConnection(serviceManagerUrl, token, DEFAULT_PI_RUNTIME_URL);
+        WuxianPiConnectionStore.Connection saved = WuxianPiConnectionStore.get(appContext).load();
+        if (saved.isReady()) {
+            return new RuntimeConnection(
+                normalizeServiceManagerUrl(saved.serviceManagerBaseUrl), saved.token, DEFAULT_PI_RUNTIME_URL);
+        }
+        return new RuntimeConnection("http://127.0.0.1:20087", "", DEFAULT_PI_RUNTIME_URL);
     }
 
     @Override public ControlPlaneStarter controlPlaneStarter() {

@@ -19,6 +19,7 @@ import com.termux.shared.termux.shell.am.TermuxAmSocketServer;
 import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore;
+import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeService;
 import com.termux.app.operit.init.OperitHostBootstrap;
 import com.openhouse.host.termux.TermuxProductHost;
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost;
@@ -39,6 +40,9 @@ public class TermuxApplication extends Application implements OpenHouseFeatureHo
         Context context = getApplicationContext();
 
         configureProcessScopedWebViewDataDirectory(context);
+        if ((context.getPackageName() + ":openhouse").equals(getCurrentProcessName())) {
+            OpenHouseConnectionBridgeService.Companion.ensureStarted(context);
+        }
         productHost = new TermuxProductHost(context);
         productHost.install();
         OperitHostBootstrap.installHostBridge(context);

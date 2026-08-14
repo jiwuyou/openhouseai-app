@@ -78,6 +78,13 @@
             android:theme="@style/Theme.Operit"
             android:windowSoftInputMode="adjustPan" />
 
+        <!-- Termux posts its activated service-manager connection to this OpenHouse-process bridge. -->
+        <service
+            android:name=".host.setup.OpenHouseConnectionBridgeService"
+            android:enabled="true"
+            android:exported="false"
+            android:process=":openhouse" />
+
         <activity
             android:name=".rescue.ui.plugins.RescuePluginMarketActivity"
             android:excludeFromRecents="true"

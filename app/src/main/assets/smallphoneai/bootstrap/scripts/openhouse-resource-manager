@@ -193,7 +193,17 @@ install_handler() {
     openhouse-control-plane)
       chmod 700 "$directory/"*.sh
       mkdir -p "$HOME/.local/share/openhouseai/control-plane"
-      ln -sfn "$directory" "$HOME/.local/share/openhouseai/control-plane/current" ;;
+      ln -sfn "$directory" "$HOME/.local/share/openhouseai/control-plane/current"
+      install -d "$PREFIX/bin" "$PREFIX/libexec/openhouse"
+      install -m 700 "$directory/start-control-plane-termux-native.sh" \
+        "$PREFIX/libexec/openhouse/start-service-manager.sh"
+      cat >"$PREFIX/bin/openhouse-control-plane-start.tmp.$$" <<'SH'
+#!/data/data/com.termux/files/usr/bin/bash
+exec "${PREFIX:-/data/data/com.termux/files/usr}/libexec/openhouse/start-service-manager.sh" "$@"
+SH
+      chmod 700 "$PREFIX/bin/openhouse-control-plane-start.tmp.$$"
+      mv -f "$PREFIX/bin/openhouse-control-plane-start.tmp.$$" \
+        "$PREFIX/bin/openhouse-control-plane-start" ;;
     openhouse-runtime)
       chmod 755 "$directory/install.sh" "$directory/scripts/"*.sh "$directory/bin/"*
       # The archive root installer also registers a live service. Content

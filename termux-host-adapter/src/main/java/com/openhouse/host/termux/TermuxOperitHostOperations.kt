@@ -7,6 +7,10 @@ import android.os.Build
 import com.ai.assistance.operit.host.OperitHostOperationResult
 import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostOperations
+import com.ai.assistance.operit.host.setup.LoopbackInstallBundleServer
+import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeService
+import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeStore
+import com.ai.assistance.operit.host.setup.WuxianPiConnectionStore
 import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.ai.assistance.operit.host.terminal.tmux.TmuxHostTerminalBackend
@@ -44,6 +48,7 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
         runtimeLayout,
         host.runtimeConnection().serviceManagerBaseUrl,
     )
+    @Volatile private var activeInstallBundleServer: LoopbackInstallBundleServer? = null
     override val terminalSessionBackend: HostTerminalSessionBackend =
         TmuxHostTerminalBackend(EmbeddedTermuxSessionTransport(runtimeLayout))
 
@@ -95,11 +100,18 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
 
     override suspend fun stageApkInstallBundle(): OperitHostOperationResult = withContext(Dispatchers.IO) {
         runCatching {
-            val staged = stageInstallBundle()
+            activeInstallBundleServer?.close()
+            val staged = LoopbackInstallBundleServer.start(appContext).also {
+                activeInstallBundleServer = it
+            }.offer
             OperitHostOperationResult(
                 success = true,
-                details = JSONObject(staged.toString()).put("operation", "stage_apk_install_bundle"),
-                message = "APK install bundle staged",
+                details = JSONObject()
+                    .put("operation", "stage_apk_install_bundle")
+                    .put("offerId", staged.offerId)
+                    .put("bundleUrl", staged.url)
+                    .put("bundleSize", staged.bundleSize),
+                message = "APK install bundle is available on localhost",
             )
         }.getOrElse {
             OperitHostOperationResult(
@@ -237,29 +249,33 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
 
     override suspend fun preparePersistentTermux(): OperitHostOperationResult = withContext(Dispatchers.IO) {
         runCatching {
-            val staged = stageInstallBundle()
-            val root = File(runtimeLayout.home, ".local/share/wuxianpi/install-resources/current")
-            val bootstrapCommand =
-                "set -e; rm -rf '${root.absolutePath}'; mkdir -p '${root.absolutePath}'; " +
-                    "'${runtimeLayout.prefix}/bin/tar' -xf '${staged.getString("bundlePath")}' -C '${root.absolutePath}'; " +
-                    "install -m 700 '${root.absolutePath}/bootstrap/scripts/wuxianpi-setup' '$SETUP_COMMAND'; " +
-                    "install -m 700 '${root.absolutePath}/bootstrap/scripts/wuxianpi-pre-tmux.sh' '${runtimeLayout.prefix}/bin/wuxianpi-pre-tmux.sh'"
-            val bootstrap = commandExecutor.execute(bootstrapCommand, HostTerminalTarget.TERMUX, 120_000L)
-            check(bootstrap.isSuccess) { bootstrap.stderr.ifBlank { bootstrap.stdout.ifBlank { "Unable to install setup bootstrap" } } }
-            setupCommand("prepare_persistent_termux", "prepare-tmux", 30 * 60_000L)
+            val command =
+                "set -eu; export PREFIX='${runtimeLayout.prefix}'; export PATH=\"\$PREFIX/bin:/system/bin\"; " +
+                    "pkg update -y; pkg install -y tmux libncursesw; " +
+                    "tmux new-session -d -s wuxianpi-setup 'exec \$PREFIX/bin/bash -l' 2>/dev/null || true; " +
+                    "tmux has-session -t wuxianpi-setup"
+            val result = commandExecutor.execute(command, HostTerminalTarget.TERMUX, 30 * 60_000L)
+            check(result.isSuccess) { result.stderr.ifBlank { result.stdout.ifBlank { "Unable to prepare tmux" } } }
+            success("prepare_persistent_termux", JSONObject().put("phase", "pre-tmux"))
         }.getOrElse { failure("prepare_persistent_termux", it.message ?: "Unable to prepare persistent Termux") }
     }
 
     override suspend fun startWuxianPiSetup(): OperitHostOperationResult = withContext(Dispatchers.IO) {
         runCatching {
-            val staged = stageInstallBundle()
-            val inbox = staged.getString("inboxDirectory")
-            val command =
-                "OPENHOUSEAI_APK_VERSION_CODE='${staged.getLong("apkVersionCode")}' " +
-                    "'$SETUP_COMMAND' install --resource-inbox '$inbox'"
+            val bridge = OpenHouseConnectionBridgeService.ensureStarted(appContext)
+            activeInstallBundleServer?.close()
+            val staged = LoopbackInstallBundleServer.start(appContext).also {
+                activeInstallBundleServer = it
+            }.offer
+            val command = buildSetupDownloadCommand(staged, bridge.bridgeId)
             success(
                 "start_wuxianpi_setup",
-                JSONObject(staged.toString())
+                JSONObject()
+                    .put("offerId", staged.offerId)
+                    .put("resourceSetVersion", staged.resourceSetVersion)
+                    .put("resourceSetSequence", staged.resourceSetSequence)
+                    .put("bundleSize", staged.bundleSize)
+                    .put("bundleUrl", staged.url)
                     .put("command", command)
                     .put("working_directory", runtimeLayout.home.absolutePath)
                     .put("session_name", "wuxianpi-setup")
@@ -268,11 +284,54 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
                     .put("persistent", true)
                     .put("launchRequired", true),
             )
-        }.getOrElse { failure("start_wuxianpi_setup", it.message ?: "Unable to stage APK install bundle") }
+        }.getOrElse { failure("start_wuxianpi_setup", it.message ?: "Unable to open APK install bundle") }
     }
 
     override suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
         setupCommand("wuxianpi_setup_status", "status", 15_000L)
+
+    override suspend fun storeServiceManagerConnection(): OperitHostOperationResult = withContext(Dispatchers.IO) {
+        var saved = WuxianPiConnectionStore.get(appContext).load()
+        repeat(40) {
+            if (saved.isReady) return@repeat
+            Thread.sleep(250)
+            saved = WuxianPiConnectionStore.get(appContext).load()
+        }
+        if (!saved.isReady) return@withContext failure(
+            "store_service_manager_connection",
+            "Termux did not publish the service-manager connection to the OpenHouse bridge",
+        )
+        val bridgeStore = OpenHouseConnectionBridgeStore.get(appContext)
+        val identity = bridgeStore.identity()
+        success(
+            "store_service_manager_connection",
+            JSONObject()
+                .put("serviceManagerBaseUrl", saved.serviceManagerBaseUrl)
+                .put("token", saved.token)
+                .put("hasToken", true)
+                .put("bridgeId", identity.bridgeId)
+                .put("bridgePort", identity.activePort)
+                .put("bridgeManagementKey", bridgeStore.managementKey()),
+        )
+    }
+
+    private fun buildSetupDownloadCommand(
+        offer: LoopbackInstallBundleServer.Offer,
+        connectionBridgeId: String,
+    ): String {
+        val inbox = "${runtimeLayout.home.absolutePath}/.local/share/openhouseai/apk-resource-inbox/${offer.offerId}"
+        return "set -eu; inbox='$inbox'; bundle=\"\$inbox/openhouse-install-bundle.tar\"; " +
+            "temporary=\"\$bundle.incoming\"; root='${runtimeLayout.home.absolutePath}/.local/share/wuxianpi/install-resources/current'; " +
+            "mkdir -p \"\$inbox\"; rm -f \"\$temporary\"; " +
+            "'${runtimeLayout.prefix}/bin/curl' -fL --retry 2 --connect-timeout 10 --max-time 900 '${offer.url}' -o \"\$temporary\"; " +
+            "[ -s \"\$temporary\" ]; mv -f \"\$temporary\" \"\$bundle\"; : > \"\$inbox/.ready\"; " +
+            "rm -rf \"\$root\"; mkdir -p \"\$root\"; '${runtimeLayout.prefix}/bin/tar' -xf \"\$bundle\" -C \"\$root\"; " +
+            "install -m 700 \"\$root/bootstrap/scripts/openhouse-resource-import\" '$SETUP_COMMAND'; " +
+            "install -m 700 \"\$root/bootstrap/scripts/openhouse-resource-manager\" '${runtimeLayout.prefix}/bin/openhouse-resource-manager'; " +
+            "OPENHOUSEAI_APK_VERSION_CODE='${offer.apkVersionCode}' '${runtimeLayout.prefix}/bin/bash' \"\$root/bootstrap/scripts/wuxianpi-setup\" install " +
+            "--resource-inbox \"\$inbox\" --offer-id '${offer.offerId}' " +
+            "--connection-bridge-id '$connectionBridgeId'"
+    }
 
     private suspend fun setupCommand(
         operation: String,

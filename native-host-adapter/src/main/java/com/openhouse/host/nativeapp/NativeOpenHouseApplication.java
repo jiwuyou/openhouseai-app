@@ -5,9 +5,14 @@ import android.content.Context;
 import android.os.Build;
 import android.webkit.WebView;
 
+import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeService;
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost;
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHostProvider;
 import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 
 /** Native APK application entry; Android creates one instance for every declared UI process. */
 public final class NativeOpenHouseApplication extends Application implements OpenHouseFeatureHostProvider {
@@ -20,6 +25,9 @@ public final class NativeOpenHouseApplication extends Application implements Ope
 
     @Override public void onCreate() {
         super.onCreate();
+        if ((getPackageName() + ":openhouse").equals(currentProcessName())) {
+            OpenHouseConnectionBridgeService.Companion.ensureStarted(this);
+        }
         productHost = new NativeProductHost(this);
         productHost.install();
         ApkResourceOfferStore.recordCurrentApk(this);
@@ -36,6 +44,18 @@ public final class NativeOpenHouseApplication extends Application implements Ope
         String suffix = separator >= 0 ? processName.substring(separator + 1) : processName;
         suffix = suffix.replaceAll("[^A-Za-z0-9._-]", "_");
         if (!suffix.isEmpty()) WebView.setDataDirectorySuffix(suffix);
+    }
+
+    private static String currentProcessName() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return Application.getProcessName();
+        }
+        try (BufferedReader reader = new BufferedReader(new FileReader("/proc/self/cmdline"))) {
+            String value = reader.readLine();
+            return value == null ? "" : value.replace('\0', ' ').trim();
+        } catch (IOException ignored) {
+            return "";
+        }
     }
 
     @Override public OpenHouseFeatureHost openHouseFeatureHost() {

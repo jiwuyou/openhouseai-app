@@ -18,6 +18,7 @@ object WuxianPiSetupContract {
     const val TOOL_PREPARE_PERSISTENT_TERMUX = "prepare_persistent_termux"
     const val TOOL_START_SETUP = "start_wuxianpi_setup"
     const val TOOL_SETUP_STATUS = "get_wuxianpi_setup_status"
+    const val TOOL_STORE_SERVICE_MANAGER_CONNECTION = "store_service_manager_connection"
 
     const val OPERATION_INSPECT = "inspect_wuxianpi_setup"
     const val OPERATION_PREPARE_RUNTIME_HOST = "prepare_runtime_host"
@@ -29,6 +30,7 @@ object WuxianPiSetupContract {
     const val OPERATION_PREPARE_PERSISTENT_TERMUX = "prepare_persistent_termux"
     const val OPERATION_START_SETUP = "start_wuxianpi_setup"
     const val OPERATION_SETUP_STATUS = "wuxianpi_setup_status"
+    const val OPERATION_STORE_SERVICE_MANAGER_CONNECTION = "store_service_manager_connection"
 
     const val DETAIL_OPERATION = "operation"
     const val DETAIL_SUPPORTED = "supported"
@@ -52,6 +54,7 @@ object WuxianPiSetupContract {
             TOOL_PREPARE_PERSISTENT_TERMUX,
             TOOL_START_SETUP,
             TOOL_SETUP_STATUS,
+            TOOL_STORE_SERVICE_MANAGER_CONNECTION,
         )
 
     fun unsupported(operation: String): OperitHostOperationResult =

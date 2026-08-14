@@ -76,7 +76,7 @@ grep -Fq 'not ready' "$work/not-ready.log"
 
 fakebin="$work/no-sha-bin"
 mkdir -p "$fakebin"
-for command in bash sh jq tar gzip find awk readlink stat flock sort sed install mv cp mkdir chmod date basename dirname tee wc tr tac ln npm node uname head mktemp rm; do
+for command in bash sh jq tar gzip find awk readlink stat flock sort sed install mv cp mkdir chmod date basename dirname cat tee wc tr tac ln npm node uname head mktemp rm; do
   path="$(command -v "$command" 2>/dev/null || true)"
   [[ -z "$path" ]] || ln -s "$path" "$fakebin/$command"
 done

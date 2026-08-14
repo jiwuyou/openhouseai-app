@@ -41,6 +41,10 @@ class RescueToolCatalogTest {
         assertTrue("prepare_persistent_termux missing", "prepare_persistent_termux" in names)
         assertTrue("start_wuxianpi_setup missing", "start_wuxianpi_setup" in names)
         assertTrue("get_wuxianpi_setup_status missing", "get_wuxianpi_setup_status" in names)
+        assertTrue(
+            "store_service_manager_connection missing",
+            "store_service_manager_connection" in names,
+        )
         RescuePluginContract.toolNames.forEach { name ->
             assertTrue("$name missing", name in names)
         }
@@ -92,6 +96,7 @@ class RescueToolCatalogTest {
                 "prepare_persistent_termux",
                 "start_wuxianpi_setup",
                 "get_wuxianpi_setup_status",
+                "store_service_manager_connection",
             )
 
         setupNames.forEach { name ->
@@ -100,12 +105,13 @@ class RescueToolCatalogTest {
             assertEquals(0, parameters.getJSONArray("required").length())
         }
         assertTrue(requireNotNull(byName["prepare_persistent_termux"]).getString("description").contains("tmux"))
-        assertTrue(requireNotNull(byName["start_wuxianpi_setup"]).getString("description").contains("Ubuntu"))
+        assertTrue(requireNotNull(byName["start_wuxianpi_setup"]).getString("description").contains("five core resources"))
+        assertTrue(requireNotNull(byName["start_wuxianpi_setup"]).getString("description").contains("Ubuntu is not part"))
         assertTrue(requireNotNull(byName["get_wuxianpi_setup_status"]).getString("description").contains("durable"))
         assertTrue(
-            requireNotNull(byName["start_wuxianpi_setup"])
+            requireNotNull(byName["store_service_manager_connection"])
                 .getString("description")
-                .contains("termux_exec_command"),
+                .contains("connection bridge"),
         )
         val fileEnvironment = requireNotNull(byName["read_file"])
             .getJSONObject("parameters")

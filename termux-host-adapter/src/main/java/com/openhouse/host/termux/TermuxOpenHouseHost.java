@@ -4,6 +4,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 
+import com.ai.assistance.operit.host.setup.WuxianPiConnectionStore;
 import com.wuxianpi.openhouse.core.ControlPlaneResult;
 import com.wuxianpi.openhouse.core.ControlPlaneStarter;
 import com.wuxianpi.openhouse.core.ControlPlaneBridge;
@@ -72,7 +73,7 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
         if (!new File(TERMUX_PREFIX + "/bin/bash").isFile()) {
             return new SetupState(SetupState.Status.NOT_CONFIGURED, 0, "Termux bootstrap is not installed");
         }
-        if (!SERVICE_MANAGER_CONFIG.isFile()) {
+        if (!WuxianPiConnectionStore.get(appContext).load().isReady() && !SERVICE_MANAGER_CONFIG.isFile()) {
             return new SetupState(SetupState.Status.NOT_CONFIGURED, 50, "OpenHouse product setup is required");
         }
         return SetupState.ready();
@@ -93,6 +94,11 @@ public final class TermuxOpenHouseHost implements OpenHouseHost {
     }
 
     @Override public RuntimeConnection runtimeConnection() {
+        WuxianPiConnectionStore.Connection saved = WuxianPiConnectionStore.get(appContext).load();
+        if (saved.isReady()) {
+            return new RuntimeConnection(
+                normalizeServiceManagerUrl(saved.serviceManagerBaseUrl), saved.token, DEFAULT_PI_RUNTIME_URL);
+        }
         JSONObject config = readObject(SERVICE_MANAGER_CONFIG);
         String endpoint = normalizeServiceManagerUrl(firstNonBlank(
             config.optString("baseUrl"), config.optString("base_url"),

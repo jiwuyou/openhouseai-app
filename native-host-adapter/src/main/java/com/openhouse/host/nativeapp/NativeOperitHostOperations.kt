@@ -7,7 +7,11 @@ import android.net.Uri
 import com.ai.assistance.operit.host.OperitHostOperationResult
 import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostOperations
+import com.ai.assistance.operit.host.setup.LoopbackInstallBundleServer
+import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeService
+import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridgeStore
 import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
+import com.ai.assistance.operit.host.setup.WuxianPiConnectionStore
 import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
 import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.ai.assistance.operit.host.terminal.tmux.TmuxHostTerminalBackend
@@ -42,6 +46,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
         runCommandTransport,
     )
     private val termuxHomeRepository = NativeTermuxHomeRepository(appContext)
+    @Volatile private var activeInstallBundleServer: LoopbackInstallBundleServer? = null
     override val terminalSessionBackend: HostTerminalSessionBackend =
         TmuxHostTerminalBackend(NativeTermuxSessionTransport(runCommandTransport))
 
@@ -85,12 +90,7 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
                 appContext.checkSelfPermission(NativeTermuxRunCommandPermissionActivity.RUN_COMMAND_PERMISSION) ==
                     PackageManager.PERMISSION_GRANTED,
             )
-        termuxHomeRepository.persistedTreeUri()?.let {
-            runCatching {
-                val readiness = termuxHomeRepository.registerAndProbe(it)
-                mergeDetails(readiness, termuxHomeRepository.inspectExternalAppsConfiguration())
-            }.getOrNull()?.let { readiness -> mergeDetails(details, readiness) }
-        } ?: details.put("termuxHomeAccess", false)
+        details.put("termuxHomeAccess", false).put("termuxHomeRequired", false)
         return success(
             "inspect_wuxianpi_setup",
             details
@@ -202,21 +202,20 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             JSONObject(),
         )
 
-    override suspend fun configureTermuxExternalApps(): OperitHostOperationResult = runCatching {
-        val details = termuxHomeRepository.configureExternalApps()
-        deferredAction(
+    override suspend fun configureTermuxExternalApps(): OperitHostOperationResult {
+        val details = JSONObject()
+            .put("propertiesPath", "\$HOME/.termux/termux.properties")
+            .put("commands", org.json.JSONArray().put("mkdir -p ~/.termux")
+                .put("echo 'allow-external-apps = true' >> ~/.termux/termux.properties")
+                .put("termux-reload-settings"))
+        return deferredAction(
             operation = "configure_termux_external_apps",
             action = "reload_termux_settings",
             details = details,
             stage = "termux_reload",
-            title = "让 Termux 配置生效",
-            description = "配置已经写入 Termux，请打开 Termux 执行 termux-reload-settings，然后返回维修助手。",
+            title = "在 Termux 启用外部命令",
+            description = "请打开 Termux，依次执行卡片中的三行命令；完成后返回维修助手进行实际命令探针。",
             button = "打开 Termux",
-        )
-    }.getOrElse {
-        failure(
-            "configure_termux_external_apps",
-            it.message ?: "Unable to configure Termux external app access through SAF",
         )
     }
 
@@ -232,16 +231,6 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             )
         }
         return runCatching {
-            val configuration = termuxHomeRepository.inspectExternalAppsConfiguration()
-            mergeDetails(details, configuration)
-            require(
-                configuration.optBoolean("propertiesReadable", false) &&
-                    configuration.optBoolean("parentWritable", false) &&
-                    configuration.optBoolean("allowExternalApps", false) &&
-                    configuration.optInt("duplicateCount", -1) == 0
-            ) {
-                "Termux external-app configuration must be normalized through SAF before verification"
-            }
             val startedAt = System.currentTimeMillis()
             val response = runCommandTransport.execute(buildTermuxRunCommandProbe(), 15_000L)
             details.put("permissionGranted", true)
@@ -273,47 +262,69 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     }
 
     override suspend fun preparePersistentTermux(): OperitHostOperationResult = runCatching {
-        val bytes = termuxHomeRepository.stageAsset(PRE_TMUX_ASSET, PRE_TMUX_HOME_PATH)
         commandResult(
             operation = "prepare_persistent_termux",
-            command = "$TERMUX_PREFIX/bin/bash '$TERMUX_HOME/$PRE_TMUX_HOME_PATH' --region auto",
-            timeoutMs = 10 * 60_000L,
-            details = JSONObject().put("asset", PRE_TMUX_ASSET).put("stagedBytes", bytes),
+            command = "set -eu; export PREFIX='$TERMUX_PREFIX'; export PATH='\$PREFIX/bin:/system/bin'; " +
+                "pkg update -y; pkg install -y tmux libncursesw; " +
+                "tmux new-session -d -s wuxianpi-setup 'exec \$PREFIX/bin/bash -l' 2>/dev/null || true; " +
+                "tmux has-session -t wuxianpi-setup",
+            timeoutMs = 30 * 60_000L,
+            details = JSONObject().put("phase", "pre-tmux").put("termuxHomeRequired", false),
         )
-    }.getOrElse { failure("prepare_persistent_termux", it.message ?: "Unable to stage pre-tmux setup") }
+    }.getOrElse { failure("prepare_persistent_termux", it.message ?: "Unable to prepare tmux") }
 
     override suspend fun startWuxianPiSetup(): OperitHostOperationResult = runCatching {
-        val bundle = termuxHomeRepository.stageInstallBundle()
-        val request = JSONObject()
-            .put("version", 1)
-            .put("region", "auto")
-            .put("apkVersionCode", bundle.apkVersionCode)
-            .put("resourceInbox", bundle.inboxDirectory)
-            .put("resourcesArchive", bundle.bundlePath)
-        termuxHomeRepository.writeText(SETUP_REQUEST_HOME_PATH, request.toString(2))
-        val command = buildWuxianPiSetupLaunchCommand(
+        val bridge = OpenHouseConnectionBridgeService.ensureStarted(appContext)
+        activeInstallBundleServer?.close()
+        val server = LoopbackInstallBundleServer.start(appContext)
+        activeInstallBundleServer = server
+        val bundle = server.offer
+        val command = buildWuxianPiSetupDownloadCommand(
             TERMUX_PREFIX,
             TERMUX_HOME,
-            bundle.inboxDirectory,
-            bundle.bundlePath,
-            bundle.apkVersionCode,
+            bundle,
+            bridge.bridgeId,
         )
         setupLaunchDetails(command)
                 .put("asset", INSTALL_BUNDLE_ASSET)
                 .put("offerId", bundle.offerId)
                 .put("resourceSetVersion", bundle.resourceSetVersion)
                 .put("resourceSetSequence", bundle.resourceSetSequence)
-                .put("resourceInbox", bundle.inboxDirectory)
                 .put("bundleSize", bundle.bundleSize)
-                .put("stagedBytes", bundle.copiedBytes)
-                .put("request", "$TERMUX_HOME/$SETUP_REQUEST_HOME_PATH")
+                .put("bundleUrl", bundle.url)
+                .put("termuxHomeRequired", false)
                 .let { details ->
                     success("start_wuxianpi_setup", details)
                 }
-    }.getOrElse { failure("start_wuxianpi_setup", it.message ?: "Unable to stage WuxianPi setup resources") }
+    }.getOrElse { failure("start_wuxianpi_setup", it.message ?: "Unable to open WuxianPi setup bundle") }
 
     override suspend fun wuxianPiSetupStatus(): OperitHostOperationResult =
         setupCommand("status", "wuxianpi_setup_status", 20_000L)
+
+    override suspend fun storeServiceManagerConnection(): OperitHostOperationResult = withContext(Dispatchers.IO) {
+        var saved = WuxianPiConnectionStore.get(appContext).load()
+        repeat(40) {
+            if (saved.isReady) return@repeat
+            Thread.sleep(250)
+            saved = WuxianPiConnectionStore.get(appContext).load()
+        }
+        if (!saved.isReady) return@withContext failure(
+            "store_service_manager_connection",
+            "Termux did not publish the service-manager connection to the OpenHouse bridge",
+        )
+        val bridgeStore = OpenHouseConnectionBridgeStore.get(appContext)
+        val identity = bridgeStore.identity()
+        success(
+            "store_service_manager_connection",
+            JSONObject()
+                .put("serviceManagerBaseUrl", saved.serviceManagerBaseUrl)
+                .put("token", saved.token)
+                .put("hasToken", true)
+                .put("bridgeId", identity.bridgeId)
+                .put("bridgePort", identity.activePort)
+                .put("bridgeManagementKey", bridgeStore.managementKey()),
+        )
+    }
 
     override fun pairingInstallerScript(baseUrl: String, token: String): String =
         pairingScript(baseUrl, token)
@@ -339,20 +350,19 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
     )
 
     override suspend fun stageApkInstallBundle(): OperitHostOperationResult = runCatching {
-        val staged = termuxHomeRepository.stageInstallBundle()
+        activeInstallBundleServer?.close()
+        val staged = LoopbackInstallBundleServer.start(appContext).also { activeInstallBundleServer = it }.offer
         success(
             "stage_apk_install_bundle",
             JSONObject()
                 .put("offerId", staged.offerId)
-                .put("inboxDirectory", staged.inboxDirectory)
-                .put("bundlePath", staged.bundlePath)
                 .put("bundleSize", staged.bundleSize)
-                .put("stagedBytes", staged.copiedBytes),
+                .put("bundleUrl", staged.url),
         )
     }.getOrElse {
         failure(
             "stage_apk_install_bundle",
-            it.message ?: "Unable to stage APK install bundle through Termux Home SAF",
+            it.message ?: "Unable to open APK install bundle",
         )
     }
 
@@ -557,6 +567,27 @@ internal fun buildWuxianPiSetupLaunchCommand(
         "OPENHOUSEAI_APK_VERSION_CODE='$apkVersionCode' '$prefix/bin/bash' \"\$root/bootstrap/scripts/wuxianpi-setup\" install " +
         "--request '$home/$SETUP_REQUEST_HOME_PATH' " +
         "--resource-inbox \"\$inbox\""
+
+/** Downloads the canonical TAR through localhost; Termux owns Inbox publication and import. */
+internal fun buildWuxianPiSetupDownloadCommand(
+    prefix: String,
+    home: String,
+    offer: LoopbackInstallBundleServer.Offer,
+    connectionBridgeId: String,
+): String {
+    val inbox = "$home/.local/share/openhouseai/apk-resource-inbox/${offer.offerId}"
+    return "set -eu; inbox='$inbox'; bundle=\"\$inbox/openhouse-install-bundle.tar\"; " +
+        "temporary=\"\$inbox/openhouse-install-bundle.tar.incoming\"; root='$home/.local/share/wuxianpi/install-resources/current'; " +
+        "mkdir -p \"\$inbox\"; rm -f \"\$temporary\"; " +
+        "'$prefix/bin/curl' -fL --retry 2 --connect-timeout 10 --max-time 900 '${offer.url}' -o \"\$temporary\"; " +
+        "[ -s \"\$temporary\" ]; mv -f \"\$temporary\" \"\$bundle\"; : > \"\$inbox/.ready\"; " +
+        "rm -rf \"\$root\"; mkdir -p \"\$root\"; '$prefix/bin/tar' -xf \"\$bundle\" -C \"\$root\"; " +
+        "install -m 700 \"\$root/bootstrap/scripts/openhouse-resource-import\" '$prefix/bin/openhouse-resource-import'; " +
+        "install -m 700 \"\$root/bootstrap/scripts/openhouse-resource-manager\" '$prefix/bin/openhouse-resource-manager'; " +
+        "OPENHOUSEAI_APK_VERSION_CODE='${offer.apkVersionCode}' '$prefix/bin/bash' \"\$root/bootstrap/scripts/wuxianpi-setup\" install " +
+        "--resource-inbox \"\$inbox\" --offer-id '${offer.offerId}' " +
+        "--connection-bridge-id '$connectionBridgeId'"
+}
 
 internal fun setupLaunchDetails(command: String): JSONObject =
     JSONObject()
