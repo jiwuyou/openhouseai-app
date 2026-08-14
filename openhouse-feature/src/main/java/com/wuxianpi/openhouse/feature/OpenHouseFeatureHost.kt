@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import com.wuxianpi.openhouse.core.HostCapabilities
+import com.wuxianpi.openhouse.core.HostEdition
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
@@ -14,6 +15,8 @@ import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
 
 /** Host integration boundary for the shared OpenHouse display layer. */
 interface OpenHouseFeatureHost {
+    fun edition(): HostEdition = HostEdition.NATIVE_ANDROID
+
     fun capabilities(): HostCapabilities = HostCapabilities.full()
 
     fun desktopComponents(): List<OpenHouseComponent> = emptyList()

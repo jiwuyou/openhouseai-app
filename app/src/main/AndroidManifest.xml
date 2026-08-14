@@ -48,7 +48,7 @@
         android:banner="@drawable/banner"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/application_name"
+        android:label="@string/oh_app_name"
         android:requestLegacyExternalStorage="true"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="false"
@@ -105,7 +105,7 @@
         <activity
             android:name="com.wuxianpi.openhouse.feature.OpenHouseActivity"
             android:exported="true"
-            android:label="@string/application_name"
+            android:label="@string/oh_app_name"
             android:launchMode="singleTask"
             android:process=":openhouse"
             android:resizeableActivity="true"

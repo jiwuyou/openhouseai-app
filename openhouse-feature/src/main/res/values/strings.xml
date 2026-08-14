@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="oh_app_name">OpenHouse</string>
+    <string name="oh_app_name" translatable="false">OpenHouse</string>
+    <string name="oh_edition_all_in_one">AIO · 内置 Termux</string>
+    <string name="oh_edition_native">Native · 连接外部 Termux</string>
     <string name="oh_menu">菜单</string>
     <string name="oh_sidebar">侧栏</string>
     <string name="oh_close">关闭</string>
@@ -27,8 +29,14 @@
     <string name="oh_back">返回</string>
     <string name="oh_retry">重试</string>
     <string name="oh_open_host_settings">打开宿主设置</string>
-    <string name="oh_about_product_name">WuxianPi</string>
+    <string name="oh_about_product_name">OpenHouse</string>
     <string name="oh_about_description">面向 Android 与 Termux 的本地 AI 工作台，连接原生宿主、WuxianPi Runtime 与维修能力。</string>
+    <string name="oh_about_edition">版本形态：%1$s</string>
+    <string name="oh_about_environment">运行环境：%1$s</string>
+    <string name="oh_about_edition_all_in_one">All-in-One</string>
+    <string name="oh_about_edition_native">Native</string>
+    <string name="oh_about_environment_embedded">内置 Termux</string>
+    <string name="oh_about_environment_external">连接外部 Termux</string>
     <string name="oh_about_version">当前 APK 版本：%1$s</string>
     <string name="oh_about_version_unknown">未知</string>
     <string name="oh_about_repositories">主要仓库</string>

@@ -18,6 +18,7 @@ import com.ai.assistance.operit.workspace.OperitWorkspaceContentFactory
 import com.ai.assistance.operit.workspace.OperitWorkspaceSpec
 import com.wuxianpi.openhouse.core.HostActionResult
 import com.wuxianpi.openhouse.core.HostCapabilities
+import com.wuxianpi.openhouse.core.HostEdition
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.core.registry.OpenHouseBuiltins
@@ -72,6 +73,8 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         OperitHostProvider.installOperations(operations)
         ServiceControlFeature.install { serviceControlDependencies() }
     }
+
+    override fun edition(): HostEdition = host.edition()
 
     override fun capabilities(): HostCapabilities = host.capabilities()
 

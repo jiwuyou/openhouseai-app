@@ -31,6 +31,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.Lifecycle
+import com.wuxianpi.openhouse.core.HostEdition
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.StartupTarget
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
@@ -220,6 +221,7 @@ class OpenHouseActivity : AppCompatActivity() {
         refreshWeb = findViewById(R.id.oh_top_refresh)
         collapseWebToolbar = findViewById(R.id.oh_top_collapse)
         controlWeb = findViewById(R.id.oh_top_control)
+        findViewById<TextView>(R.id.oh_edition).setText(editionLabel(host.edition()))
         workspaceSidebar = WorkspaceSidebar(
             context = this,
             container = findViewById(R.id.oh_workspace_apps),
@@ -860,6 +862,8 @@ class OpenHouseActivity : AppCompatActivity() {
         scroll.addView(panel, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         panel.addView(heading(getString(R.string.oh_about_product_name)))
         panel.addView(body(getString(R.string.oh_about_description)))
+        panel.addView(body(getString(R.string.oh_about_edition, editionName(host.edition()))))
+        panel.addView(body(getString(R.string.oh_about_environment, editionEnvironment(host.edition()))))
         panel.addView(body(getString(R.string.oh_about_version, appVersion())))
 
         panel.addView(heading(getString(R.string.oh_about_repositories)).apply {
@@ -880,6 +884,25 @@ class OpenHouseActivity : AppCompatActivity() {
     private fun appVersion(): String = runCatching {
         packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
     }.getOrDefault("").ifBlank { getString(R.string.oh_about_version_unknown) }
+
+    private fun editionLabel(edition: HostEdition): Int = when (edition) {
+        HostEdition.TERMUX_EMBEDDED -> R.string.oh_edition_all_in_one
+        HostEdition.NATIVE_ANDROID -> R.string.oh_edition_native
+    }
+
+    private fun editionName(edition: HostEdition): String = getString(
+        when (edition) {
+            HostEdition.TERMUX_EMBEDDED -> R.string.oh_about_edition_all_in_one
+            HostEdition.NATIVE_ANDROID -> R.string.oh_about_edition_native
+        },
+    )
+
+    private fun editionEnvironment(edition: HostEdition): String = getString(
+        when (edition) {
+            HostEdition.TERMUX_EMBEDDED -> R.string.oh_about_environment_embedded
+            HostEdition.NATIVE_ANDROID -> R.string.oh_about_environment_external
+        },
+    )
 
     private fun productRepositories(): List<Pair<String, String>> = listOf(
         "Android Host" to "https://github.com/jiwuyou/openhouseai-app",
