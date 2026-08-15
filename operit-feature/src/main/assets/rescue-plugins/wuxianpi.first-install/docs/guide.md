@@ -1,6 +1,6 @@
 # WuxianPi 首次安装
 
-`wuxianpi.first-install 1.0.18` 将权限准备、市场静态资源安装、运行激活和 Ubuntu 安装拆成独立阶段。后续阶段失败不会删除已经完成的前序阶段。
+`wuxianpi.first-install 1.0.21` 将权限准备、市场静态资源安装、运行激活和 Ubuntu 安装拆成独立阶段。后续阶段失败不会删除已经完成的前序阶段。
 
 第一段只按需安装 `tmux`，由 Termux 自动解析当前 `ncurses` 依赖。tmux 就绪后，第二段在持久会话内只安装并验证核心 Termux 基础环境和 Node.js 24，不执行 `pkg upgrade`。只有第二段成功，才查询市场 promoted 的 `openhouse-core-stack`，显示集合内嵌指南，并获取差异资源。市场不可用时才开放 APK 的短生命周期 HTTP 下载，导入五个离线核心资源。首次安装不依赖资源更新插件。
 
@@ -34,7 +34,7 @@ Termux 运行中枢入口固定为 `$PREFIX/bin/openhouse-control-plane-start`�
 
 ## 市场优先与离线回退
 
-联网时资源集合包含 `service-manager`、`openhouse-runtime`、`wuyou`、`openhouse-web` 和 11 个单脚本资源。每个脚本归档只含一个可执行文件，安装位置由资源管理器内置允许列表决定。`_termux-services-env.sh`、50/60 脚本、固定启动入口、注册脚本和诊断脚本因此可以独立更新，不需要发布 APK。
+联网时资源集合包含 `service-manager`、`openhouse-runtime`、`wuyou`、`openhouse-web` 和 16 个单脚本资源。每个脚本归档只含一个可执行文件，安装位置由资源管理器内置允许列表决定。`_termux-services-env.sh`、50/60 脚本、Ubuntu bootstrap、固定启动入口、注册脚本和诊断脚本因此可以独立更新，不需要发布 APK。
 
 市场步骤先下载 `openhouse-resource-manager.tgz`，校验大小和 SHA-256 后安装资源管理器；资源管理器先下载全部差异归档，再逐个安装并写 receipt。某个资源失败时保留已经成功的资源和失败证据，下次运行只继续未完成项。安装目录不做逐文件 Hash。
 
@@ -55,7 +55,7 @@ service-manager
 openhouse-runtime
 wuyou
 openhouse-web
-11 个固定安装位置的脚本资源（仅市场）
+16 个固定安装位置的脚本资源（仅市场）
 ```
 
 Content 管理器不得访问 20087/20765，不得执行 `service-daemon`、`sv up` 或 registry API。service-manager 安装必须显式使用：
@@ -83,7 +83,9 @@ APK content 事务失败时回滚 `current`。市场资源逐个提交，失败�
 
 激活前会创建 `$PREFIX/var/service`、`$PREFIX/var/log` 和 `$PREFIX/var/lock`，检查 `_termux-services-env.sh`、50/60 脚本、`$PREFIX/bin/openhouse-control-plane-start` 与 `$PREFIX/libexec/openhouse/start-service-manager.sh` 可执行，并确认它们使用 Termux Bash 绝对 shebang。组件注册必须通过 `registry/apply` 同时提交含 `ai` layer 的组件和 `yuanshengwuxianpi` 服务，再执行 `registry/sync`；只写入 `services.d` 不视为注册成功。
 
-失败写入具体 `activationFailure`，例如 `canonical_auth_failed`、`registry_sync_failed` 或 `wuxianpi_health_failed`。成功后 Termux 通过 OpenHouse connection bridge 上报 service-manager URL 和 Token；OpenHouse 自身直接读取 Android 私有存储，不通过该 HTTP 端口。
+失败写入具体 `activationFailure`，例如 `canonical_auth_failed`、`registry_sync_failed` 或 `wuxianpi_health_failed`。激活前，维修助手在工具可用时调用 `ensure_openhouse_connection_bridge`，并把返回的 `bridgeId` 传给 `wuxianpi-setup activate --connection-bridge-id`。成功后 Termux 通过匹配的 OpenHouse connection bridge 上报 service-manager URL 和 Token；OpenHouse 自身直接读取 Android 私有存储，不通过该 HTTP 端口。
+
+Bridge 工具不受支持或端口无法监听时不阻塞核心激活。维修助手必须执行 `wuxianpi-setup connection-info`，然后把返回的 `serviceManagerBaseUrl` 和 `token` 传给 `write_service_manager_connection`，直接保存到 Android 私有存储；该恢复路径完全不经过 Bridge HTTP。无论走哪条路径，最终都必须由 `store_service_manager_connection` 确认 `hasToken=true`。连接未保存时不得进入 Ubuntu。
 
 ## APK offer 完成
 
@@ -98,4 +100,4 @@ status=pending
 
 只有 `get_wuxianpi_setup_status` 返回匹配的 `offerId`、`resourceSetSequence`，且 canonical auth、服务列表、runit、registry 和 WuxianPi health 全部通过后，才调用 `complete_apk_resource_offer` 标记 `satisfied`。失败或忽略不能伪造完成。
 
-All-in-One 与 Native 的离线回退使用同一份 TAR。市场集合 sequence 更高时，APK offer 可以按宿主规则标记为已被更高集合取代。Ubuntu 在核心资源和激活完成后单独安装，失败时只保留为待重试状态。运行中枢固定启动链路和首次安装均不依赖资源更新插件。长任务应保留 `session_id`；需要读取末尾日志时使用 `tmux capture-pane -p -S -2000`，不能依赖普通输出缓冲区的完整回放。
+All-in-One 与 Native 的离线回退使用同一份 TAR。市场集合 sequence 更高时，APK offer 可以按宿主规则标记为已被更高集合取代。Ubuntu 仅在核心资源、激活和 Android 私有连接确认都完成后单独安装；它使用市场安装的 `bootstrap.sh`、20/30 阶段脚本与镜像/重试策略，不依赖 APK 旧资源目录。失败时只保留为待重试状态。运行中枢固定启动链路和首次安装均不依赖资源更新插件。长任务应保留 `session_id`；需要读取末尾日志时使用 `tmux capture-pane -p -S -2000`，不能依赖普通输出缓冲区的完整回放。

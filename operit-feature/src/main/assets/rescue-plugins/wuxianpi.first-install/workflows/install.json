@@ -130,16 +130,22 @@
       "description": "APK 回退路径等待 delivery=ready 和 content=installed，不等待 Ubuntu，也不要求运行激活。"
     },
     {
+      "id": "ensure-connection-bridge",
+      "kind": "tool",
+      "tool": "ensure_openhouse_connection_bridge",
+      "description": "宿主支持时，在当前维修助手进程启动并验证本地 Bridge，记录 bridgeId；它只绑定 Android 回环端口，不执行 Termux 命令。工具不受支持或端口无法绑定时，继续核心激活，并在后续 direct-connection 步骤直写 Android 私有存储。"
+    },
+    {
       "id": "activate-runtime",
       "kind": "tool",
       "tool": "termux_exec_command",
       "arguments": {
-        "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; mkdir -p \"$PREFIX/var/service\" \"$PREFIX/var/log\" \"$PREFIX/var/lock\"; for file in \"$PREFIX/bin/openhouse-control-plane-start\" \"$PREFIX/libexec/openhouse/start-service-manager.sh\" \"$PREFIX/libexec/openhouse/_termux-services-env.sh\" \"$PREFIX/libexec/openhouse/bootstrap/50-install-runtime-components.sh\" \"$PREFIX/libexec/openhouse/bootstrap/60-start-smallphone.sh\"; do test -x \"$file\" || { printf 'missing activation script: %s\\n' \"$file\" >&2; exit 1; }; test \"$(head -n 1 \"$file\")\" = '#!/data/data/com.termux/files/usr/bin/bash' || { printf 'invalid Termux launcher shebang: %s\\n' \"$file\" >&2; exit 1; }; done; \"$PREFIX/bin/wuxianpi-setup\" activate",
+        "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; mkdir -p \"$PREFIX/var/service\" \"$PREFIX/var/log\" \"$PREFIX/var/lock\"; for file in \"$PREFIX/bin/openhouse-control-plane-start\" \"$PREFIX/libexec/openhouse/start-service-manager.sh\" \"$PREFIX/libexec/openhouse/_termux-services-env.sh\" \"$PREFIX/libexec/openhouse/bootstrap/50-install-runtime-components.sh\" \"$PREFIX/libexec/openhouse/bootstrap/60-start-smallphone.sh\"; do test -x \"$file\" || { printf 'missing activation script: %s\\n' \"$file\" >&2; exit 1; }; test \"$(head -n 1 \"$file\")\" = '#!/data/data/com.termux/files/usr/bin/bash' || { printf 'invalid Termux launcher shebang: %s\\n' \"$file\" >&2; exit 1; }; done; bridge_id=\"{{steps.ensure-connection-bridge.bridgeId}}\"; case \"$bridge_id\" in ''|null|*'{{'* ) \"$PREFIX/bin/wuxianpi-setup\" activate ;; *) \"$PREFIX/bin/wuxianpi-setup\" activate --connection-bridge-id \"$bridge_id\" ;; esac",
         "working_directory": "$HOME",
         "session_name": "wuxianpi-runtime-activation",
         "yield_time_ms": 1000
       },
-      "description": "独立激活 service-manager 和 WuxianPi；激活前校验 env 脚本、50/60 脚本、固定入口和 Termux 绝对 shebang。必须验证带 Token 的服务列表、带 ai layer 的 registry/apply、registry/sync 和 20765。失败不回滚已安装资源。"
+      "description": "独立激活 service-manager 和 WuxianPi；有 bridgeId 时上报 canonical 连接，无 bridgeId 时不得因此失败。激活前校验 env 脚本、50/60 脚本、固定入口和 Termux 绝对 shebang。必须验证带 Token 的服务列表、带 ai layer 的 registry/apply、registry/sync 和 20765。失败不回滚已安装资源。"
     },
     {
       "id": "verify-activation",
@@ -156,25 +162,57 @@
       "id": "store-service-manager-connection",
       "kind": "tool",
       "tool": "store_service_manager_connection",
-      "description": "读取 canonical 端口和 Token，保存到 Android 私有存储，并把连接信息交给当前维修对话。"
+      "description": "确认 Termux 已通过 Bridge 写入的 canonical 连接。hasToken=true 才可继续完成 offer 或安装 Ubuntu；否则必须执行后续 direct-connection 恢复步骤。"
+    },
+    {
+      "id": "read-service-manager-connection",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "when": "steps.store-service-manager-connection.hasToken != true",
+      "arguments": {
+        "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; \"$PREFIX/bin/wuxianpi-setup\" connection-info",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-connection-info",
+        "yield_time_ms": 1000
+      },
+      "description": "仅在 Bridge 上报未保存连接时读取 canonical JSON。只将其 serviceManagerBaseUrl 和 token 用于下一步 Android 私有存储写入，不输出到会话正文或日志。"
+    },
+    {
+      "id": "write-service-manager-connection",
+      "kind": "tool",
+      "tool": "write_service_manager_connection",
+      "when": "steps.store-service-manager-connection.hasToken != true",
+      "arguments": {
+        "serviceManagerBaseUrl": "{{steps.read-service-manager-connection.serviceManagerBaseUrl}}",
+        "token": "{{steps.read-service-manager-connection.token}}"
+      },
+      "description": "将上一步 connection-info JSON 中的 serviceManagerBaseUrl 与 token 直接写入 Android 私有存储；不经过 Bridge HTTP。解析或写入失败时停止，不得进入 Ubuntu。"
+    },
+    {
+      "id": "confirm-service-manager-connection",
+      "kind": "tool",
+      "tool": "store_service_manager_connection",
+      "description": "最终确认 Android 私有连接存在且 hasToken=true。失败表示核心运行可用但连接尚未保存，必须停止，不能进入 Ubuntu。"
     },
     {
       "id": "complete-resource-offer",
       "kind": "tool",
       "tool": "complete_apk_resource_offer",
+      "when": "steps.confirm-service-manager-connection.hasToken == true",
       "description": "核心资源和运行激活均通过后，标记当前 APK offer 已完成；Ubuntu 不参与该标记。"
     },
     {
       "id": "install-ubuntu",
       "kind": "tool",
       "tool": "termux_exec_command",
+      "when": "steps.confirm-service-manager-connection.hasToken == true",
       "arguments": {
         "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; if ! command -v proot-distro >/dev/null 2>&1; then pkg update -y; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y proot-distro; fi; \"$PREFIX/bin/wuxianpi-setup\" ubuntu",
         "working_directory": "$HOME",
         "session_name": "wuxianpi-ubuntu",
         "yield_time_ms": 1000
       },
-      "description": "最后按需安装 proot-distro，再安装 Ubuntu rootfs 和基础包。失败时保留全部核心运行环境，并提供单独重试。"
+      "description": "只有 Android 私有连接已确认后，最后按需安装 proot-distro，再从市场 bootstrap 安装 Ubuntu rootfs 和基础包。失败时保留全部核心运行环境，并提供单独重试。"
     },
     {
       "id": "verify-ubuntu",
