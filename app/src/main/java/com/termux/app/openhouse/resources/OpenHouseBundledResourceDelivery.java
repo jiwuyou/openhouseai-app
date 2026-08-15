@@ -74,12 +74,7 @@ public final class OpenHouseBundledResourceDelivery {
         "maintainer/control-plane-manifest.json",
         "product-payloads/manifest.json",
         "product-payloads/payload-manifest.json",
-        "product-payloads/resource-set.json",
-        "product-payloads/service-manager.tgz",
-        "product-payloads/openhouse-control-plane.tgz",
-        "product-payloads/runtime-aarch64.tgz",
-        "product-payloads/wuyou.tgz",
-        "product-payloads/openhouse-web.tgz"
+        "product-payloads/resource-set.json"
     };
     private static final String[] INTEGRITY_ROOTS = {
         "bootstrap", "maintainer", "scripts-public"
@@ -460,34 +455,36 @@ public final class OpenHouseBundledResourceDelivery {
                 || resourceSet.optLong("minApkVersionCode", Long.MAX_VALUE) > expectedVersionCode) {
                 return false;
             }
-            Map<String, String> archives = new LinkedHashMap<>();
-            archives.put("service-manager", "service-manager.tgz");
-            archives.put("openhouse-control-plane", "openhouse-control-plane.tgz");
-            archives.put("openhouse-runtime", "runtime-aarch64.tgz");
-            archives.put("wuyou", "wuyou.tgz");
-            archives.put("openhouse-web", "openhouse-web.tgz");
             JSONArray resources = resourceSet.optJSONArray("resources");
-            if (resources == null || resources.length() != archives.size()) {
+            if (resources == null) {
                 return false;
             }
-            Map<String, String> actual = new LinkedHashMap<>();
+            Map<String, String> ids = new LinkedHashMap<>();
+            Map<String, String> archives = new LinkedHashMap<>();
             for (int index = 0; index < resources.length(); index++) {
                 JSONObject resource = resources.optJSONObject(index);
                 if (resource == null) return false;
                 String id = resource.optString("id", "");
+                String archive = resource.optString("archive", "");
                 String expectedSha256 = resource.optString("sha256", "");
-                String archive = archives.get(id);
-                if (archive == null || expectedSha256.length() != 64 || actual.containsKey(id)) {
+                if (id.isEmpty() || !archive.matches("[A-Za-z0-9._-]+\\.tgz")
+                    || expectedSha256.length() != 64 || ids.containsKey(id)
+                    || archives.containsKey(archive)) {
                     return false;
                 }
+                ids.put(id, archive);
+                archives.put(archive, id);
+                File bundledArchive = new File(target, "product-payloads/" + archive);
+                if (!bundledArchive.exists()) {
+                    continue;
+                }
                 IntegrityEntry entry = digestIntegrityEntry(
-                    new File(target, "product-payloads/" + archive), archive);
+                    bundledArchive, archive);
                 if (!expectedSha256.equals(entry.sha256)) {
                     return false;
                 }
-                actual.put(id, expectedSha256);
             }
-            return actual.keySet().equals(archives.keySet());
+            return true;
         } catch (Exception ignored) {
             return false;
         }

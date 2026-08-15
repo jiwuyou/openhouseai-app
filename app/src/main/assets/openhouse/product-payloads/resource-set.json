@@ -1,28 +1,28 @@
 {
   "schema": 2,
   "id": "openhouse-core-stack",
-  "version": "2026.08.15.2",
-  "sequence": 2026081502,
+  "version": "2026.08.15.3",
+  "sequence": 2026081503,
   "abi": "arm64-v8a",
   "minApkVersionCode": 126,
   "guide": {
     "title": "OpenHouse Core Stack 使用指南",
-    "markdown": "# OpenHouse Core Stack 使用指南\n\n本组合用于联网首次安装。先完成 Termux 的两段基础环境初始化，再安装本组合中的资源。\n\n安装顺序：\n\n1. 获取并安装最新 `openhouse-resource-manager`。\n2. 下载本机缺失或版本不同的资源；每个归档只在下载后校验一次大小和 SHA-256。\n3. 安装静态内容和固定脚本，不在此阶段启动或验证服务。\n4. 内容安装完成后，单独执行 `wuxianpi-setup activate`。\n5. 激活阶段必须通过带 Token 的服务列表、registry 和 WuxianPi 健康检查。\n6. 确认 Android 私有存储已有 service-manager 连接后，最后单独安装 Ubuntu；Ubuntu 使用市场发布的 bootstrap、20/30 阶段与镜像/重试脚本，不依赖 APK 旧资源目录，失败不影响已经完成的核心环境。\n\n市场不可用时，首次安装插件可以回退到 APK 内置离线总包。回退只用于离线安装，不会替换市场中的独立资源版本。\n"
+    "markdown": "# OpenHouse Core Stack 使用指南\n\n本组合用于首次安装和在线补齐。先完成 Termux 的两段基础环境初始化，再由 Android 投递 APK 内置单包。\n\n安装顺序：\n\n1. 导入 Android 已投递 TAR 中实际可用的资源，不按资源数量拒绝。\n2. 读取生产市场集合，下载本机缺失、版本不同或 SHA 不同的资源；每个市场归档只在下载后校验一次大小和 SHA-256。\n3. 安装静态内容和固定脚本，不在此阶段启动或验证服务。\n4. 内容安装完成后，单独执行 `wuxianpi-setup activate`。\n5. 激活阶段必须通过带 Token 的服务列表、registry 和 WuxianPi 健康检查。\n6. 确认 Android 私有存储已有 service-manager 连接后，最后单独安装 Ubuntu；Ubuntu 使用市场发布的 bootstrap、20/30 阶段与镜像/重试脚本，不依赖 APK 旧资源目录，失败不影响已经完成的核心环境。\n\n市场不可用时继续使用 APK 已投递资源。完整 APK 可以离线安装；不完整 APK 保留已导入内容并明确报告缺失资源。\n"
   },
   "resources": [
     {
       "id": "openhouse-resource-manager",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "archive": "openhouse-resource-manager.tgz",
-      "size": 6544,
-      "sha256": "56ae9002f7589ad18030b83ffb9326060f6655e9cbe0a9806985a3b253c43fa2"
+      "size": 6690,
+      "sha256": "9319f91a70f042165b1ad67c2062d41ad248c763fa44bbc64e80393000eab0be"
     },
     {
       "id": "openhouse-resource-import",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "archive": "openhouse-resource-import.tgz",
-      "size": 2771,
-      "sha256": "f95d35fc2719bb2e2672ef6beb537abfdc520afb25af5cb891b214843ddc2d5b"
+      "size": 3237,
+      "sha256": "902f4ee62423300d45446bd0214e1ec3829d762da86480f37274d7f13e6c54a2"
     },
     {
       "id": "wuxianpi-setup",

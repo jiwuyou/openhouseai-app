@@ -55,7 +55,8 @@ jq -n \
     {id:"openhouse-control-plane",version:"test.1",archive:"openhouse-control-plane.tgz",size:$control,sha256:("0"*64)},
     {id:"openhouse-runtime",version:"test.1",archive:"runtime-aarch64.tgz",size:$runtime,sha256:("0"*64)},
     {id:"wuyou",version:"test.1",archive:"wuyou.tgz",size:$wuyou,sha256:("0"*64)},
-    {id:"openhouse-web",version:"test.1",archive:"openhouse-web.tgz",size:$web,sha256:("0"*64)}]}' \
+    {id:"openhouse-web",version:"test.1",archive:"openhouse-web.tgz",size:$web,sha256:("0"*64)},
+    {id:"openhouse-resource-manager",version:"test.1",archive:"openhouse-resource-manager.tgz",size:123,sha256:("1"*64)}]}' \
   >"$work/bundle/resources/resource-set.json"
 jq -n --slurpfile set "$work/bundle/resources/resource-set.json" \
   '{schema:2,id:"openhouse-install-bundle",bundleId:"openhouse-core-stack-2026081201",apkVersionCode:126,format:"uncompressed-tar",resourceSet:$set[0]}' \
@@ -81,6 +82,7 @@ for command in bash sh jq tar gzip find awk readlink stat flock sort sed install
   [[ -z "$path" ]] || ln -s "$path" "$fakebin/$command"
 done
 PATH="$fakebin" "$fakebin/bash" "$importer" "$inbox" >"$work/import.log"
+grep -Fq 'local delivery resources available: 5/6' "$work/import.log"
 
 receipt="$HOME/.local/share/openhouseai/resource-manager/receipts/apk-offers/$offer_id.json"
 [[ -f "$receipt" && ! -e "$inbox/offer.json" ]]
@@ -88,11 +90,23 @@ receipt="$HOME/.local/share/openhouseai/resource-manager/receipts/apk-offers/$of
 jq -e '.schema == 3 and .delivery == "ready" and .content == "installed" and .activation == "pending"' "$receipt" >/dev/null
 jq -e '.schema == 4 and .sequence == 2026081201 and (.resources | length) == 5' \
   "$HOME/.local/share/openhouseai/resource-manager/installed-set.json" >/dev/null
+jq -e 'all(.resources[]; .id != "openhouse-resource-manager")' \
+  "$HOME/.local/share/openhouseai/resource-manager/installed-set.json" >/dev/null
 for id in service-manager openhouse-control-plane openhouse-runtime wuyou openhouse-web; do
   jq -e '.schema == 4 and .content == "installed" and (.archiveSha256 | length) == 64' \
     "$HOME/.local/share/openhouseai/resource-manager/receipts/resources/$id.json" >/dev/null
   [[ -L "$HOME/.local/share/openhouseai/resources/$id/current" ]]
 done
+jq '.version = "test.partial" | .sequence = 2026081202 |
+    .resources |= map(select(.id == "service-manager"))' \
+  "$work/bundle/resources/resource-set.json" >"$work/partial-set.json"
+PATH="$fakebin" \
+OPENHOUSEAI_RESOURCE_SET_FILE="$work/partial-set.json" \
+OPENHOUSEAI_RESOURCE_SOURCE_DIR="$work/bundle/resources" \
+  "$fakebin/bash" "$PREFIX/bin/openhouse-resource-manager" apply >"$work/partial-apply.log"
+jq -e '.schema == 4 and .sequence == 2026081202 and (.resources | length) == 5 and
+  any(.resources[]; .id == "openhouse-web")' \
+  "$HOME/.local/share/openhouseai/resource-manager/installed-set.json" >/dev/null
 PATH="$fakebin" "$fakebin/bash" "$PREFIX/bin/openhouse-resource-import" "$inbox" >"$work/reimport.log"
 grep -Fq 'content already installed' "$work/reimport.log"
 ! rg -n 'sha256sum|SHA256SUMS|offer\.json|tree_sha|installedManifestSha256|archiveSha256' \

@@ -1,8 +1,8 @@
 # WuxianPi 首次安装
 
-`wuxianpi.first-install 1.0.21` 将权限准备、市场静态资源安装、运行激活和 Ubuntu 安装拆成独立阶段。后续阶段失败不会删除已经完成的前序阶段。
+`wuxianpi.first-install 1.0.22` 将权限准备、Android 资源投递、市场差异补齐、运行激活和 Ubuntu 安装拆成独立阶段。后续阶段失败不会删除已经完成的前序阶段。
 
-第一段只按需安装 `tmux`，由 Termux 自动解析当前 `ncurses` 依赖。tmux 就绪后，第二段在持久会话内只安装并验证核心 Termux 基础环境和 Node.js 24，不执行 `pkg upgrade`。只有第二段成功，才查询市场 promoted 的 `openhouse-core-stack`，显示集合内嵌指南，并获取差异资源。市场不可用时才开放 APK 的短生命周期 HTTP 下载，导入五个离线核心资源。首次安装不依赖资源更新插件。
+第一段只按需安装 `tmux`，由 Termux 自动解析当前 `ncurses` 依赖。tmux 就绪后，第二段在持久会话内只安装并验证核心 Termux 基础环境和 Node.js 24，不执行 `pkg upgrade`。只有第二段成功，Android 宿主才从 APK Asset 读取 canonical TAR，通过短生命周期本机 HTTP 投递到 Termux Inbox。Termux 只解包已投递的 TAR，不读取 APK。随后查询市场 promoted 的 `openhouse-core-stack`，只获取缺失、版本变化或 SHA 变化的资源。首次安装不依赖资源更新插件。
 
 第二段核心包为：
 
@@ -32,30 +32,28 @@ Termux 运行中枢入口固定为 `$PREFIX/bin/openhouse-control-plane-start`�
 
 不请求 SAF，也不通过 SAF 读取或修改 Termux Home。卡片出现时工作流必须暂停；“系统页面已打开”不代表权限、重载或探针已经成功。
 
-## 市场优先与离线回退
+## 本地投递与市场补齐
 
 联网时资源集合包含 `service-manager`、`openhouse-runtime`、`wuyou`、`openhouse-web` 和 16 个单脚本资源。每个脚本归档只含一个可执行文件，安装位置由资源管理器内置允许列表决定。`_termux-services-env.sh`、50/60 脚本、Ubuntu bootstrap、固定启动入口、注册脚本和诊断脚本因此可以独立更新，不需要发布 APK。
 
-市场步骤先下载 `openhouse-resource-manager.tgz`，校验大小和 SHA-256 后安装资源管理器；资源管理器先下载全部差异归档，再逐个安装并写 receipt。某个资源失败时保留已经成功的资源和失败证据，下次运行只继续未完成项。安装目录不做逐文件 Hash。
+APK 新制品应携带当前 canonical 集合的全部资源，但运行时不按资源数量判定投递是否成功。导入器只安装 TAR 中实际存在且结构有效的资源；缺失或损坏的本地归档交给市场补齐。资源管理器按资源 ID、版本和 SHA 比较，只下载差异归档并逐个写 receipt。某个资源失败时保留已经成功的资源和失败证据，下次运行只继续未完成项。安装目录不做逐文件 Hash。
 
-只有市场获取或静态安装失败时才使用 APK 内的 `openhouse-install-bundle.tar`。APK 总包维持原来的五资源离线兜底，不要求与更高 sequence 的市场集合相同。
+市场不可用时保留 Android 已投递并导入的内容。完整 APK 可以继续离线安装；不完整 APK 会明确报告缺失的必要资源，不回滚已经导入的内容，也不伪造 ready。
 
 ## 三个独立阶段
 
 ### 1. Delivery
 
-市场路径直接下载版本化 TGZ；离线回退时 Android 临时开放 canonical `openhouse-install-bundle.tar`，Termux 下载到 Inbox 并创建 `.ready`。这一阶段不启动服务、不读取 token，也不注册组件。
+Android 临时开放 canonical `openhouse-install-bundle.tar`，Termux 下载到 Inbox 并创建 `.ready`。市场只在本地导入后提供差异 TGZ。这一阶段不启动服务、不读取 token，也不注册组件。
 
 ### 2. Content
 
-市场路径由 `openhouse-resource-manager market` 安装完整集合；APK 回退路径由 `openhouse-resource-import` 检查 TAR 路径安全后安装五个离线资源。两条路径最终使用同一个本地资源目录和 receipt：
+`openhouse-resource-import` 检查已投递 TAR 的路径安全后安装实际可用资源，随后 `openhouse-resource-manager market` 补齐市场差异。两条路径使用同一个本地资源目录、receipt 和合并后的 `installed-set.json`：
 
 ```text
-service-manager
-openhouse-runtime
-wuyou
-openhouse-web
-16 个固定安装位置的脚本资源（仅市场）
+核心程序资源
+固定安装位置的脚本资源
+Ubuntu 后置阶段脚本资源
 ```
 
 Content 管理器不得访问 20087/20765，不得执行 `service-daemon`、`sv up` 或 registry API。service-manager 安装必须显式使用：
@@ -100,4 +98,4 @@ status=pending
 
 只有 `get_wuxianpi_setup_status` 返回匹配的 `offerId`、`resourceSetSequence`，且 canonical auth、服务列表、runit、registry 和 WuxianPi health 全部通过后，才调用 `complete_apk_resource_offer` 标记 `satisfied`。失败或忽略不能伪造完成。
 
-All-in-One 与 Native 的离线回退使用同一份 TAR。市场集合 sequence 更高时，APK offer 可以按宿主规则标记为已被更高集合取代。Ubuntu 仅在核心资源、激活和 Android 私有连接确认都完成后单独安装；它使用市场安装的 `bootstrap.sh`、20/30 阶段脚本与镜像/重试策略，不依赖 APK 旧资源目录。失败时只保留为待重试状态。运行中枢固定启动链路和首次安装均不依赖资源更新插件。长任务应保留 `session_id`；需要读取末尾日志时使用 `tmux capture-pane -p -S -2000`，不能依赖普通输出缓冲区的完整回放。
+All-in-One 与 Native 使用同一份 Android 投递 TAR。市场集合 sequence 更高时，APK offer 可以按宿主规则标记为已被更高集合取代。Ubuntu 仅在核心资源、激活和 Android 私有连接确认都完成后单独安装；它使用市场安装的 `bootstrap.sh`、20/30 阶段脚本与镜像/重试策略，不依赖 APK 旧资源目录。失败时只保留为待重试状态。运行中枢固定启动链路和首次安装均不依赖资源更新插件。长任务应保留 `session_id`；需要读取末尾日志时使用 `tmux capture-pane -p -S -2000`，不能依赖普通输出缓冲区的完整回放。

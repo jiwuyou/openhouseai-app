@@ -40,6 +40,7 @@ tasks.register("generateOpenHouseInstallBundle", Exec) {
     inputs.property("openhouseVersionCode", providers.gradleProperty("openhouseVersionCode"))
     inputs.dir(file("app/src/main/assets/smallphoneai/bootstrap"))
     inputs.dir(file("app/src/main/assets/openhouse/product-payloads"))
+    inputs.dir(file("distribution/market-script-resources"))
     outputs.files(
         file("app/src/main/assets/wuxianpi-install/openhouse-install-bundle.tar"),
         file("app/src/main/assets/wuxianpi-install/bundle-index.json"),

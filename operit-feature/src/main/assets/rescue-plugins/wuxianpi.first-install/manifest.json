@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "wuxianpi.first-install",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "name": "首次安装",
-  "description": "在 tmux 两段初始化后优先从市场安装核心资源，确认 Android 私有连接已保存后，再独立安装 Ubuntu。",
+  "description": "在 tmux 两段初始化后先导入 Android 投递资源，再从市场补齐差异；连接保存后最后安装 Ubuntu。",
   "category": "setup",
   "minHostVersion": 12,
   "requiredCapabilities": ["setup-tools", "termux", "persistent-terminal"],

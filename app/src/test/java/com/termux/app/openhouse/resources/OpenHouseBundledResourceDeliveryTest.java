@@ -141,6 +141,22 @@ public class OpenHouseBundledResourceDeliveryTest {
     }
 
     @Test
+    public void manifestResourceMissingFromApkAssetsDoesNotBlockDelivery() throws Exception {
+        File home = readyHome();
+        FakeAssets incomplete = completeAssets();
+        incomplete.files.remove("openhouse/product-payloads/openhouse-web.tgz");
+
+        OpenHouseBundledResourceDelivery.Result result =
+            OpenHouseBundledResourceDelivery.deliverForTesting(
+                home, "2.2", 52L, utcMillis("20260713"),
+                OpenHouseBundledResourceDelivery.Reason.FIRST_INSTALL, incomplete);
+
+        assertTrue(result.output, result.isSuccess());
+        assertFalse(new File(result.resourceDirectory,
+            "product-payloads/openhouse-web.tgz").exists());
+    }
+
+    @Test
     public void failureCreatesNoPendingAndKeepsUnrelatedDirectoriesWhileRemovingOwnTemporary() throws Exception {
         File home = readyHome();
         File root = new File(home, OpenHouseBundledResourceDelivery.ROOT_RELATIVE_PATH);
@@ -401,7 +417,8 @@ public class OpenHouseBundledResourceDeliveryTest {
                 .put(resource("openhouse-control-plane", controlPlane))
                 .put(resource("openhouse-runtime", runtime))
                 .put(resource("wuyou", wuyou))
-                .put(resource("openhouse-web", openHouseWeb)));
+                .put(resource("openhouse-web", openHouseWeb))
+                .put(resource("openhouse-resource-manager", bytes("market-only"))));
         files.put("openhouse/product-payloads/resource-set.json", bytes(resourceSet.toString()));
         files.put("openhouse/product-payloads/service-manager.tgz", serviceManager);
         files.put("openhouse/product-payloads/openhouse-control-plane.tgz", controlPlane);
@@ -418,9 +435,19 @@ public class OpenHouseBundledResourceDeliveryTest {
     }
 
     private static JSONObject resource(String id, byte[] contents) throws Exception {
+        String archive;
+        switch (id) {
+            case "service-manager": archive = "service-manager.tgz"; break;
+            case "openhouse-control-plane": archive = "openhouse-control-plane.tgz"; break;
+            case "openhouse-runtime": archive = "runtime-aarch64.tgz"; break;
+            case "wuyou": archive = "wuyou.tgz"; break;
+            case "openhouse-web": archive = "openhouse-web.tgz"; break;
+            default: archive = id + ".tgz"; break;
+        }
         return new JSONObject()
             .put("id", id)
             .put("version", "test")
+            .put("archive", archive)
             .put("sha256", sha256(contents));
     }
 

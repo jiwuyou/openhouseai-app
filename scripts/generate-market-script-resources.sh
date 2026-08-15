@@ -12,10 +12,11 @@ guide_path="$repo_dir/docs/resource-sets/openhouse-core-stack-2026.08.14.1.md"
 mode="${1:-generate}"
 
 set_id="${OPENHOUSE_MARKET_RESOURCE_SET_ID:-openhouse-core-stack}"
-set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.15.2}"
-set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081502}"
+set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.15.3}"
+set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081503}"
 script_version="${OPENHOUSE_MARKET_SCRIPT_VERSION:-1.0.1}"
-manager_version="${OPENHOUSE_MARKET_RESOURCE_MANAGER_VERSION:-1.0.3}"
+manager_version="${OPENHOUSE_MARKET_RESOURCE_MANAGER_VERSION:-1.0.4}"
+import_version="${OPENHOUSE_MARKET_RESOURCE_IMPORT_VERSION:-1.0.2}"
 setup_version="${OPENHOUSE_MARKET_SETUP_VERSION:-1.0.2}"
 ubuntu_bootstrap_version="${OPENHOUSE_MARKET_UBUNTU_BOOTSTRAP_VERSION:-1.0.1}"
 runtime_version="${OPENHOUSE_MARKET_RUNTIME_VERSION:-0.2.0+registry.2}"
@@ -96,7 +97,7 @@ add_script_resource() {
 
 add_script_resource openhouse-resource-manager "$manager_version" openhouse-resource-manager.tgz \
   openhouse-resource-manager "$bootstrap_dir/openhouse-resource-manager"
-add_script_resource openhouse-resource-import "$script_version" openhouse-resource-import.tgz \
+add_script_resource openhouse-resource-import "$import_version" openhouse-resource-import.tgz \
   openhouse-resource-import "$bootstrap_dir/openhouse-resource-import"
 add_script_resource wuxianpi-setup "$setup_version" wuxianpi-setup.tgz \
   wuxianpi-setup "$bootstrap_dir/wuxianpi-setup"

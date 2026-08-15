@@ -4,14 +4,14 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 generator="$repo_dir/scripts/generate-market-script-resources.sh"
 root="$repo_dir/distribution/market-script-resources"
-set_file="$root/resource-sets/openhouse-core-stack/2026.08.15.1/manifest.json"
+set_file="$root/resource-sets/openhouse-core-stack/2026.08.15.3/manifest.json"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 "$generator" --check
 jq -e '
   .schema == 2 and .id == "openhouse-core-stack" and
-  .version == "2026.08.15.1" and .sequence == 2026081501 and
+  .version == "2026.08.15.3" and .sequence == 2026081503 and
   (.guide.title | length) > 0 and (.guide.markdown | contains("市场不可用")) and
   ([.resources[].id] | sort) == [
     "openhouse-bootstrap",
@@ -49,8 +49,8 @@ while IFS=$'\t' read -r id version archive member; do
     || fail "$id has a non-Termux Bash shebang: $first"
   bash -n <(tar -xOzf "$path" "$member")
 done <<'EOF'
-openhouse-resource-manager	1.0.2	openhouse-resource-manager.tgz	openhouse-resource-manager
-openhouse-resource-import	1.0.1	openhouse-resource-import.tgz	openhouse-resource-import
+openhouse-resource-manager	1.0.4	openhouse-resource-manager.tgz	openhouse-resource-manager
+openhouse-resource-import	1.0.2	openhouse-resource-import.tgz	openhouse-resource-import
 wuxianpi-setup	1.0.2	wuxianpi-setup.tgz	wuxianpi-setup
 openhouse-bootstrap	1.0.1	openhouse-bootstrap.tgz	bootstrap.sh
 openhouse-install-ubuntu	1.0.1	openhouse-install-ubuntu.tgz	20-install-ubuntu.sh
@@ -67,7 +67,7 @@ openhouse-repair-control-plane	1.0.1	openhouse-repair-control-plane.tgz	repair-c
 openhouse-inspect-control-plane	1.0.1	openhouse-inspect-control-plane.tgz	inspect-control-plane.sh
 EOF
 
-runtime="$root/resources/openhouse-runtime/0.2.0+registry.1/runtime-aarch64.tgz"
+runtime="$root/resources/openhouse-runtime/0.2.0+registry.2/runtime-aarch64.tgz"
 if [[ -f "$repo_dir/../../wuxianpi/packaging/termux/bundle/register-service.sh" ]]; then
   grep -Fq 'http://127.0.0.1:{{port:runtime}}/health' \
     "$repo_dir/../../wuxianpi/packaging/termux/bundle/register-service.sh" \
@@ -97,8 +97,13 @@ manager="$repo_dir/app/src/main/assets/smallphoneai/bootstrap/scripts/openhouse-
 setup="$repo_dir/app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-setup"
 grep -Fq 'apply_content "$SET_FILE" "$row_plan" "$transaction" 0' "$manager" \
   || fail 'market resources are not committed one at a time'
-grep -Fq 'openhouse-ubuntu-mirror-policy","openhouse-update-ubuntu-packages' "$manager" \
-  || fail 'resource manager 20-resource contract is not in canonical sort order'
+grep -Fq '(.resources | type == "array")' "$manager" \
+  || fail 'resource manager does not accept partial allowlisted sets'
+grep -Fq 'record_installed_resource "$SET_FILE" "$id"' "$manager" \
+  || fail 'resource manager does not merge each completed market resource'
+if grep -Fq '([.resources[].id] | sort) ==' "$manager"; then
+  fail 'resource manager still requires an exact resource count or member set'
+fi
 grep -Fq '"ai": {' "$setup" || fail 'WuxianPi component is missing the ai layer'
 grep -Fq '{component:$component[0],services:[{id:"yuanshengwuxianpi",service:$service[0]}]}' "$setup" \
   || fail 'registry/apply payload does not wrap the service'

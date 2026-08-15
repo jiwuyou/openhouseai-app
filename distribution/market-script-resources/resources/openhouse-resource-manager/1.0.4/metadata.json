@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-resource-manager",
+  "version": "1.0.4",
+  "archive": "openhouse-resource-manager.tgz",
+  "size": 6690,
+  "sha256": "9319f91a70f042165b1ad67c2062d41ad248c763fa44bbc64e80393000eab0be",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-resource-manager/1.0.4/openhouse-resource-manager.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

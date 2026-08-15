@@ -81,9 +81,7 @@ read_set() {
     .schema == 2 and .id == "openhouse-core-stack" and
     (.version | type == "string" and length > 0) and
     (.sequence | type == "number" and . > 0) and .abi == "arm64-v8a" and
-    (([.resources[].id] | sort) == ["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"] or
-     ([.resources[].id] | sort) == ["openhouse-control-plane-start","openhouse-inspect-control-plane","openhouse-install-runtime-components","openhouse-register-component","openhouse-repair-control-plane","openhouse-resource-import","openhouse-resource-manager","openhouse-runtime","openhouse-start-service-manager","openhouse-start-smallphone","openhouse-termux-services-env","openhouse-web","service-manager","wuxianpi-setup","wuyou"] or
-     ([.resources[].id] | sort) == ["openhouse-bootstrap","openhouse-control-plane-start","openhouse-inspect-control-plane","openhouse-install-runtime-components","openhouse-install-ubuntu","openhouse-register-component","openhouse-repair-control-plane","openhouse-resource-import","openhouse-resource-manager","openhouse-retry-profile","openhouse-runtime","openhouse-start-service-manager","openhouse-start-smallphone","openhouse-termux-services-env","openhouse-ubuntu-mirror-policy","openhouse-update-ubuntu-packages","openhouse-web","service-manager","wuxianpi-setup","wuyou"]) and
+    (.resources | type == "array") and
     ([.resources[].id] | length) == ([.resources[].id] | unique | length)
   ' "$file" >/dev/null || die "resource set structure is invalid"
   jq -e '
@@ -108,7 +106,8 @@ read_set() {
       "openhouse-start-service-manager":"openhouse-start-service-manager.tgz",
       "openhouse-repair-control-plane":"openhouse-repair-control-plane.tgz",
       "openhouse-inspect-control-plane":"openhouse-inspect-control-plane.tgz"} as $archives |
-    all(.resources[]; $archives[.id] == .archive) and
+    all(.resources[]; (.id | type == "string" and length > 0) and
+      (.version | type == "string" and length > 0) and $archives[.id] == .archive) and
     all(.resources[]; (.sha256 | type == "string" and test("^[a-f0-9]{64}$"))) and
     all(.resources[]; (.size | type == "number" and . > 0 and . <= 62914560))
   ' "$file" >/dev/null || die "resource archive mapping is invalid"
@@ -189,10 +188,32 @@ write_receipt() {
 write_installed_set() {
   local set_file="$1" temporary
   temporary="$INSTALLED_SET.tmp.$$"
-  jq '{schema:4,id,version,sequence,abi,resources:[.resources[] | {id,version,size,sha256}]}' \
-    "$set_file" >"$temporary"
+  if [[ -f "$INSTALLED_SET" ]]; then
+    jq -s '
+      .[0] as $set | .[1] as $installed |
+      ($set.resources | map({id,version,size,sha256})) as $incoming |
+      ($incoming | map(.id)) as $incomingIds |
+      {schema:4,id:$set.id,version:$set.version,sequence:$set.sequence,abi:$set.abi,
+       resources:($incoming + [
+         $installed.resources[]? |
+         select(.id as $id | ($incomingIds | index($id)) == null) |
+         {id,version,size,sha256}
+       ])}
+    ' "$set_file" "$INSTALLED_SET" >"$temporary"
+  else
+    jq '{schema:4,id,version,sequence,abi,resources:[.resources[] | {id,version,size,sha256}]}' \
+      "$set_file" >"$temporary"
+  fi
   chmod 600 "$temporary"
   mv -f "$temporary" "$INSTALLED_SET"
+}
+
+record_installed_resource() {
+  local set_file="$1" id="$2" partial
+  partial="$TRANSACTIONS/installed-resource-$id-$$.json"
+  jq --arg id "$id" '.resources |= map(select(.id == $id))' "$set_file" >"$partial"
+  write_installed_set "$partial"
+  rm -f "$partial"
 }
 
 refresh_receipts() {
@@ -522,6 +543,7 @@ run_market() {
   plan="$workspace/plan.tsv"
   build_plan "$SET_FILE" "$plan"
   print_plan "$plan"
+  [[ ! -f "$INSTALLED_SET" ]] || install -m 600 "$INSTALLED_SET" "$PREVIOUS_SET"
 
   while IFS=$'\t' read -r id version archive size digest status; do
     [[ "$status" == apply ]] || continue
@@ -549,10 +571,10 @@ run_market() {
       die "market resource install failed: $id@$version; completed resources were retained"
     fi
     rm -rf "$transaction"
+    record_installed_resource "$SET_FILE" "$id"
     printf 'resource=%s version=%s status=installed\n' "$id" "$version"
   done <"$plan"
 
-  [[ ! -f "$INSTALLED_SET" ]] || install -m 600 "$INSTALLED_SET" "$PREVIOUS_SET"
   write_installed_set "$SET_FILE"
   refresh_receipts "$SET_FILE"
   rm -rf "$workspace"

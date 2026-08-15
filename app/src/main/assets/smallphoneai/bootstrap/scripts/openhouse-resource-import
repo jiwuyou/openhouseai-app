@@ -44,7 +44,7 @@ validate_tar() {
 }
 
 validate_manifest() {
-  local root="$1" manifest set
+  local root="$1" local_set="$2" manifest set ids_file id archive size file
   manifest="$root/bundle-manifest.json"
   set="$root/resources/resource-set.json"
   [[ -f "$manifest" && -f "$set" ]] || die 'bundle manifest or resource set is missing'
@@ -56,21 +56,59 @@ validate_manifest() {
   ' "$manifest" >/dev/null || die 'bundle manifest is invalid'
   jq -e '
     .schema == 2 and .id == "openhouse-core-stack" and .abi == "arm64-v8a" and
-    (([.resources[].id] | sort) == ["openhouse-control-plane","openhouse-runtime","openhouse-web","service-manager","wuyou"] or
-     ([.resources[].id] | sort) == ["openhouse-control-plane-start","openhouse-inspect-control-plane","openhouse-install-runtime-components","openhouse-register-component","openhouse-repair-control-plane","openhouse-resource-import","openhouse-resource-manager","openhouse-runtime","openhouse-start-service-manager","openhouse-start-smallphone","openhouse-termux-services-env","openhouse-web","service-manager","wuxianpi-setup","wuyou"]) and
+    (.resources | type == "array") and
     ([.resources[].id] | length) == ([.resources[].id] | unique | length) and
-    all(.resources[]; (.archive | type == "string" and test("^[A-Za-z0-9._-]+\\.tgz$")) and (.size | type == "number" and . > 0))
+    {"service-manager":"service-manager.tgz",
+     "openhouse-control-plane":"openhouse-control-plane.tgz",
+     "openhouse-runtime":"runtime-aarch64.tgz",
+     "wuyou":"wuyou.tgz",
+     "openhouse-web":"openhouse-web.tgz",
+     "openhouse-resource-manager":"openhouse-resource-manager.tgz",
+     "openhouse-resource-import":"openhouse-resource-import.tgz",
+     "wuxianpi-setup":"wuxianpi-setup.tgz",
+     "openhouse-bootstrap":"openhouse-bootstrap.tgz",
+     "openhouse-install-runtime-components":"openhouse-install-runtime-components.tgz",
+     "openhouse-install-ubuntu":"openhouse-install-ubuntu.tgz",
+     "openhouse-update-ubuntu-packages":"openhouse-update-ubuntu-packages.tgz",
+     "openhouse-ubuntu-mirror-policy":"openhouse-ubuntu-mirror-policy.tgz",
+     "openhouse-retry-profile":"openhouse-retry-profile.tgz",
+     "openhouse-start-smallphone":"openhouse-start-smallphone.tgz",
+     "openhouse-register-component":"openhouse-register-component.tgz",
+     "openhouse-control-plane-start":"openhouse-control-plane-start.tgz",
+     "openhouse-termux-services-env":"openhouse-termux-services-env.tgz",
+     "openhouse-start-service-manager":"openhouse-start-service-manager.tgz",
+     "openhouse-repair-control-plane":"openhouse-repair-control-plane.tgz",
+     "openhouse-inspect-control-plane":"openhouse-inspect-control-plane.tgz"} as $archives |
+    all(.resources[];
+      (.id | type == "string" and length > 0) and
+      (.version | type == "string" and length > 0) and
+      $archives[.id] == .archive and
+      (.size | type == "number" and . > 0) and
+      (.sha256 | type == "string" and test("^[a-f0-9]{64}$")))
   ' "$set" >/dev/null || die 'resource set is invalid'
   jq -e --slurpfile set "$set" '.resourceSet == $set[0]' "$manifest" >/dev/null \
     || die 'bundle manifest and resource set differ'
+  ids_file="$local_set.ids"
+  : >"$ids_file"
   while IFS=$'\t' read -r id archive size; do
-    [[ -f "$root/resources/$archive" && ! -L "$root/resources/$archive" ]] \
-      || die "resource archive is missing: $id"
-    [[ "$(stat -c '%s' "$root/resources/$archive")" == "$size" ]] \
-      || die "resource archive size is invalid: $id"
-    gzip -t "$root/resources/$archive" || die "resource archive is not valid gzip: $id"
-    tar -tzf "$root/resources/$archive" >/dev/null || die "resource archive cannot be listed: $id"
+    file="$root/resources/$archive"
+    if [[ ! -f "$file" || -L "$file" ]]; then
+      log "local resource unavailable; market may provide it: $id"
+      continue
+    fi
+    if [[ "$(stat -c '%s' "$file")" != "$size" ]] ||
+       ! gzip -t "$file" >/dev/null 2>&1 ||
+       ! tar -tzf "$file" >/dev/null 2>&1; then
+      log "local resource invalid; market may replace it: $id"
+      continue
+    fi
+    printf '%s\n' "$id" >>"$ids_file"
   done < <(jq -r '.resources[] | [.id,.archive,.size] | @tsv' "$set")
+  jq --rawfile ids "$ids_file" '
+    ($ids | split("\n") | map(select(length > 0))) as $available |
+    .resources |= map(select(.id as $id | $available | index($id)))
+  ' "$set" >"$local_set"
+  rm -f "$ids_file"
   for required in \
     bootstrap/bootstrap.sh \
     bootstrap/scripts/wuxianpi-setup \
@@ -123,7 +161,7 @@ main() {
   [[ $# -eq 1 ]] || die 'usage: openhouse-resource-import INBOX_DIRECTORY'
   mkdir -p "$MANAGER_ROOT" "$TRANSACTIONS" "$FAILED" "$RECEIPTS"
   chmod 700 "$MANAGER_ROOT" "$TRANSACTIONS" "$FAILED" "$RECEIPTS"
-  local inbox ready bundle offer_id transaction extracted manifest installed
+  local inbox ready bundle offer_id transaction extracted manifest local_set local_count total_count
   inbox="$(canonical_inbox "$1")"
   ready="$inbox/.ready"; bundle="$inbox/$BUNDLE_NAME"; offer_id="$(basename "$inbox")"
   [[ "$offer_id" =~ ^[A-Za-z0-9._-]+$ ]] || die 'offerId directory name is invalid'
@@ -143,8 +181,12 @@ main() {
   FAILED_STEP=extract-bundle
   tar -xf "$bundle" -C "$transaction/bundle" --no-same-owner --no-same-permissions
   extracted="$transaction/bundle"; manifest="$extracted/bundle-manifest.json"
+  local_set="$transaction/local-resource-set.json"
   FAILED_STEP=validate-bundle
-  validate_manifest "$extracted"
+  validate_manifest "$extracted" "$local_set"
+  local_count="$(jq '.resources | length' "$local_set")"
+  total_count="$(jq '.resourceSet.resources | length' "$manifest")"
+  log "local delivery resources available: $local_count/$total_count"
   [[ "$offer_id" == *-"$(jq -r '.apkVersionCode' "$manifest")"-"$(jq -r '.resourceSet.sequence' "$manifest")" ]] \
     || die 'offerId does not match bundle APK version and resource sequence'
   FAILED_STEP=install-bootstrap
@@ -152,7 +194,7 @@ main() {
   install -m 700 "$extracted/bootstrap/scripts/openhouse-resource-import" "$PREFIX/bin/openhouse-resource-import"
   write_offer_receipt "$offer_id" "$manifest" pending pending
   FAILED_STEP=install-content
-  OPENHOUSEAI_RESOURCE_SET_FILE="$extracted/resources/resource-set.json" \
+  OPENHOUSEAI_RESOURCE_SET_FILE="$local_set" \
   OPENHOUSEAI_RESOURCE_SOURCE_DIR="$extracted/resources" \
     "$PREFIX/bin/bash" "$PREFIX/bin/openhouse-resource-manager" apply
   write_offer_receipt "$offer_id" "$manifest" installed pending
