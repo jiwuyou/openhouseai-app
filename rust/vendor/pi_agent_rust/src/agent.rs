@@ -514,8 +514,8 @@ pub const MAX_TOOL_ITERATIONS_DEFAULT: usize = 50;
 pub const MAX_TOOL_ITERATIONS_CEILING: usize = 1_000;
 
 /// Threshold (as a fraction of `max_tool_iterations`) at which the runtime
-/// emits a one-shot soft-handoff steering message so the agent can begin a
-/// graceful incomplete-handoff rather than being silently killed at the cap.
+/// emits a one-shot internal warning before the hard cap. The warning is kept
+/// out of the model message stream so it cannot trigger an artificial handoff.
 /// Encoded as numerator/denominator to avoid floating-point in a hot loop.
 const ITERATION_WARN_NUMERATOR: usize = 4;
 const ITERATION_WARN_DENOMINATOR: usize = 5;
@@ -607,20 +607,6 @@ pub fn clamp_max_tool_iterations(value: Option<usize>) -> usize {
 pub const fn should_warn_at_iteration_threshold(current: usize, max: usize) -> bool {
     max >= ITERATION_WARN_MIN_CAP
         && current >= max.saturating_mul(ITERATION_WARN_NUMERATOR) / ITERATION_WARN_DENOMINATOR
-}
-
-/// Body of the one-shot soft-handoff steering message, formatted with the
-/// current/max iteration counts. Kept as a free function so test fixtures
-/// can pin the wording without instantiating a full agent.
-pub fn iteration_handoff_steering_text(current: usize, max: usize) -> String {
-    format!(
-        "[runtime] Tool-iteration budget at >=80% (used {current} of {max}). \
-         Per the iteration-aware-handoff protocol in your spec, begin graceful \
-         handoff now: commit current work, post a one-line status note, and \
-         write an incomplete-handoff envelope with what's done / what remains \
-         / next-agent starting position. Do NOT compress remaining work into \
-         the last few iterations."
-    )
 }
 
 /// Configuration for the agent.
@@ -1666,13 +1652,9 @@ impl Agent {
                 let mut tool_results: Vec<Arc<ToolResultMessage>> = Vec::new();
                 if has_more_tool_calls {
                     iterations += 1;
-                    // Soft handoff: at >=80% of the cap, push a one-shot
-                    // steering message so the agent has room to write an
-                    // incomplete-handoff envelope before the hard stop. The
-                    // queue drains at the next loop iteration via
-                    // drain_steering_messages, so the agent observes the
-                    // steering before its next assistant turn rather than
-                    // after the cap fires.
+                    // At >=80% of the cap, emit one internal warning. Do not
+                    // inject a model-visible steering message: the runtime
+                    // must not require an artificial handoff envelope.
                     if !warned_at_handoff_threshold
                         && should_warn_at_iteration_threshold(
                             iterations,
@@ -1680,24 +1662,17 @@ impl Agent {
                         )
                     {
                         warned_at_handoff_threshold = true;
-                        let warning = Message::User(UserMessage {
-                            content: UserContent::Text(iteration_handoff_steering_text(
-                                iterations,
-                                self.config.max_tool_iterations,
-                            )),
-                            timestamp: Utc::now().timestamp_millis(),
-                        });
-                        self.message_queue.push_steering(warning);
                         tracing::warn!(
                             iterations,
                             max = self.config.max_tool_iterations,
-                            "tool-iteration budget at >=80%; injected handoff steering message"
+                            "tool-iteration budget at >=80%; continuing without handoff steering"
                         );
                     }
                     if iterations > self.config.max_tool_iterations {
                         let error_message = format!(
-                            "Maximum tool iterations ({}) exceeded",
-                            self.config.max_tool_iterations
+                            "Maximum tool iterations ({}) exceeded; progress is preserved. \
+                             Continue to resume this session.",
+                            self.config.max_tool_iterations,
                         );
                         let mut stop_message = (*assistant_arc).clone();
                         stop_message.stop_reason = StopReason::Error;
@@ -11193,21 +11168,6 @@ mod tests {
             usize::MAX / 5,
             usize::MAX
         ));
-    }
-
-    #[test]
-    fn iteration_handoff_steering_text_is_self_describing() {
-        // Pinning the wording is intentional: this string is the load-bearing
-        // contract between the runtime and the agent's iteration-aware-handoff
-        // protocol. If it changes, downstream spec templates may need an
-        // update, so the test forces a deliberate review on edits.
-        let text = iteration_handoff_steering_text(42, 50);
-        assert!(text.contains("[runtime]"));
-        assert!(text.contains("Tool-iteration budget at >=80%"));
-        assert!(text.contains("used 42 of 50"));
-        assert!(text.contains("graceful handoff"));
-        assert!(text.contains("incomplete-handoff"));
-        assert!(text.contains("Do NOT compress"));
     }
 
     #[test]
