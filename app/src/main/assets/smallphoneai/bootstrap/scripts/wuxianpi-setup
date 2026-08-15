@@ -741,7 +741,7 @@ update_offer_activation() {
   jq --arg activation "$state" --arg failure "$failure" \
     --arg updatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
       .activation = $activation |
-      .activationFailure = $failure |
+      .activationFailure = (if $failure == "" then null else $failure end) |
       .status = (if $activation == "ready" then "ready-to-complete" else "pending" end) |
       .updatedAt = $updatedAt
     ' "$receipt" >"$temporary"
@@ -925,6 +925,31 @@ wait_wuxianpi_health() {
   return 1
 }
 
+wuxianpi_service_state() {
+  local body
+  body="$(authenticated_service_manager_request GET /api/v1/services/yuanshengwuxianpi/status 2>/dev/null || true)"
+  printf '%s' "$body" | jq -r '(.state // .status // .service.state // empty)' 2>/dev/null
+}
+
+ensure_wuxianpi_started() {
+  local state
+  if pi_ready; then
+    log 'WuxianPi 已健康运行，跳过重复 start。'
+    return 0
+  fi
+  state="$(wuxianpi_service_state || true)"
+  case "$state" in
+    running|starting)
+      log "WuxianPi service-manager 状态为 $state，等待现有实例健康。"
+      wait_wuxianpi_health
+      return
+      ;;
+  esac
+  authenticated_service_manager_request POST /api/v1/services/yuanshengwuxianpi/start >/dev/null \
+    || return 1
+  wait_wuxianpi_health
+}
+
 activate_runtime() {
   local control_script services offer_id token
   mkdir -p "$ACTIVATION_ROOT"
@@ -962,8 +987,7 @@ activate_runtime() {
     || activation_fail wuxianpi_registration_missing
   canonical_service_manager_registry_ready \
     || activation_fail component_registry_missing
-  authenticated_service_manager_request POST /api/v1/services/yuanshengwuxianpi/start >/dev/null \
-    || activation_fail wuxianpi_start_failed
+  ensure_wuxianpi_started || activation_fail wuxianpi_start_failed
   wuxianpi_runtime_endpoint_ready || activation_fail wuxianpi_endpoint_failed
   wait_wuxianpi_health || activation_fail wuxianpi_health_failed
 
@@ -1060,7 +1084,11 @@ case "$command" in
   inspect|status) emit_status ;;
   prepare-tmux) apply_options "$@"; prepare_tmux ;;
   install) apply_options "$@"; start_install ;;
-  activate) apply_options "$@"; activate_runtime ;;
+  activate)
+    [ ! -s "$REQUEST_FILE" ] || load_request "$REQUEST_FILE"
+    apply_options "$@"
+    activate_runtime
+    ;;
   register-component) apply_options "$@"; register_installed_resources; register_openhouse_component ;;
   ubuntu) apply_options "$@"; run_ubuntu_install ;;
   connection-info) connection_info ;;

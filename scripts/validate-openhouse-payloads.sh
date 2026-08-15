@@ -1137,6 +1137,7 @@ PY
 
 "$REPO_DIR/scripts/validate-openhouse-install-bundle.sh"
 "$REPO_DIR/app/src/test/shell/openhouse-install-bundle-import-test.sh"
+"$REPO_DIR/app/src/test/shell/wuxianpi-activation-idempotency-test.sh"
 "$REPO_DIR/app/src/test/shell/market-script-resources-test.sh"
 if [[ -f "$REPO_DIR/distribution/market-payloads/catalog.json" ]]; then
   "$REPO_DIR/scripts/validate-market-payloads.sh"

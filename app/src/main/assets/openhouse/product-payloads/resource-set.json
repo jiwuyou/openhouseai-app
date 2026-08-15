@@ -1,8 +1,8 @@
 {
   "schema": 2,
   "id": "openhouse-core-stack",
-  "version": "2026.08.15.3",
-  "sequence": 2026081503,
+  "version": "2026.08.15.4",
+  "sequence": 2026081504,
   "abi": "arm64-v8a",
   "minApkVersionCode": 126,
   "guide": {
@@ -19,17 +19,17 @@
     },
     {
       "id": "openhouse-resource-import",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "archive": "openhouse-resource-import.tgz",
-      "size": 3237,
-      "sha256": "902f4ee62423300d45446bd0214e1ec3829d762da86480f37274d7f13e6c54a2"
+      "size": 3244,
+      "sha256": "42cf70cffab0fb5454963068e0444b407af0e54a6cc6fe6e09f14bbb59d84ffe"
     },
     {
       "id": "wuxianpi-setup",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "archive": "wuxianpi-setup.tgz",
-      "size": 11283,
-      "sha256": "4a6f32b202766ea1aa43c5da4c6ac709a06571fca37ae549371b30593654a59e"
+      "size": 11487,
+      "sha256": "9bd598c80f8d28fc1bdfc386096a09f4152311fb0519bb831c1ecc8d9b911ba2"
     },
     {
       "id": "openhouse-bootstrap",

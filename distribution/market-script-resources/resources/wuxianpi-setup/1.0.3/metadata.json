@@ -1,0 +1,12 @@
+{
+  "id": "wuxianpi-setup",
+  "version": "1.0.3",
+  "archive": "wuxianpi-setup.tgz",
+  "size": 11487,
+  "sha256": "9bd598c80f8d28fc1bdfc386096a09f4152311fb0519bb831c1ecc8d9b911ba2",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/wuxianpi-setup/1.0.3/wuxianpi-setup.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

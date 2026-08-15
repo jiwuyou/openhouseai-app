@@ -4,14 +4,14 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 generator="$repo_dir/scripts/generate-market-script-resources.sh"
 root="$repo_dir/distribution/market-script-resources"
-set_file="$root/resource-sets/openhouse-core-stack/2026.08.15.3/manifest.json"
+set_file="$root/resource-sets/openhouse-core-stack/2026.08.15.4/manifest.json"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 "$generator" --check
 jq -e '
   .schema == 2 and .id == "openhouse-core-stack" and
-  .version == "2026.08.15.3" and .sequence == 2026081503 and
+  .version == "2026.08.15.4" and .sequence == 2026081504 and
   (.guide.title | length) > 0 and (.guide.markdown | contains("市场不可用")) and
   ([.resources[].id] | sort) == [
     "openhouse-bootstrap",
@@ -50,8 +50,8 @@ while IFS=$'\t' read -r id version archive member; do
   bash -n <(tar -xOzf "$path" "$member")
 done <<'EOF'
 openhouse-resource-manager	1.0.4	openhouse-resource-manager.tgz	openhouse-resource-manager
-openhouse-resource-import	1.0.2	openhouse-resource-import.tgz	openhouse-resource-import
-wuxianpi-setup	1.0.2	wuxianpi-setup.tgz	wuxianpi-setup
+openhouse-resource-import	1.0.3	openhouse-resource-import.tgz	openhouse-resource-import
+wuxianpi-setup	1.0.3	wuxianpi-setup.tgz	wuxianpi-setup
 openhouse-bootstrap	1.0.1	openhouse-bootstrap.tgz	bootstrap.sh
 openhouse-install-ubuntu	1.0.1	openhouse-install-ubuntu.tgz	20-install-ubuntu.sh
 openhouse-ubuntu-mirror-policy	1.0.1	openhouse-ubuntu-mirror-policy.tgz	_ubuntu-mirror-policy.sh

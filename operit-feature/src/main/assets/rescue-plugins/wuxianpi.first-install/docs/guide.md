@@ -1,6 +1,6 @@
 # WuxianPi 首次安装
 
-`wuxianpi.first-install 1.0.22` 将权限准备、Android 资源投递、市场差异补齐、运行激活和 Ubuntu 安装拆成独立阶段。后续阶段失败不会删除已经完成的前序阶段。
+`wuxianpi.first-install 1.0.23` 将权限准备、Android 资源投递、市场差异补齐、运行激活和 Ubuntu 安装拆成独立阶段。后续阶段失败不会删除已经完成的前序阶段。
 
 第一段只按需安装 `tmux`，由 Termux 自动解析当前 `ncurses` 依赖。tmux 就绪后，第二段在持久会话内只安装并验证核心 Termux 基础环境和 Node.js 24，不执行 `pkg upgrade`。只有第二段成功，Android 宿主才从 APK Asset 读取 canonical TAR，通过短生命周期本机 HTTP 投递到 Termux Inbox。Termux 只解包已投递的 TAR，不读取 APK。随后查询市场 promoted 的 `openhouse-core-stack`，只获取缺失、版本变化或 SHA 变化的资源。首次安装不依赖资源更新插件。
 

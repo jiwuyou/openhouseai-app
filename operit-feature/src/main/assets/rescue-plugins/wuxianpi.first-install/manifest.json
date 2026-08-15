@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "wuxianpi.first-install",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "name": "首次安装",
   "description": "在 tmux 两段初始化后先导入 Android 投递资源，再从市场补齐差异；连接保存后最后安装 Ubuntu。",
   "category": "setup",

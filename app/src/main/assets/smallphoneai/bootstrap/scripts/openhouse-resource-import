@@ -58,6 +58,7 @@ validate_manifest() {
     .schema == 2 and .id == "openhouse-core-stack" and .abi == "arm64-v8a" and
     (.resources | type == "array") and
     ([.resources[].id] | length) == ([.resources[].id] | unique | length) and
+    (
     {"service-manager":"service-manager.tgz",
      "openhouse-control-plane":"openhouse-control-plane.tgz",
      "openhouse-runtime":"runtime-aarch64.tgz",
@@ -84,7 +85,8 @@ validate_manifest() {
       (.version | type == "string" and length > 0) and
       $archives[.id] == .archive and
       (.size | type == "number" and . > 0) and
-      (.sha256 | type == "string" and test("^[a-f0-9]{64}$")))
+     (.sha256 | type == "string" and test("^[a-f0-9]{64}$")))
+    )
   ' "$set" >/dev/null || die 'resource set is invalid'
   jq -e --slurpfile set "$set" '.resourceSet == $set[0]' "$manifest" >/dev/null \
     || die 'bundle manifest and resource set differ'

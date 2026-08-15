@@ -8,6 +8,28 @@ setup="$repo_dir/app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-set
 work="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-bundle-import-test.XXXXXX")"
 trap 'rm -rf -- "$work"' EXIT
 
+full_home="$work/full-home"
+full_prefix="$work/full-prefix"
+full_bundle="$work/full-bundle"
+mkdir -p "$full_home" "$full_prefix/bin" "$full_bundle"
+ln -s "$(command -v bash)" "$full_prefix/bin/bash"
+tar -xf "$repo_dir/app/src/main/assets/wuxianpi-install/openhouse-install-bundle.tar" -C "$full_bundle"
+printf '%s\n' '#!/data/data/com.termux/files/usr/bin/bash' 'exit 0' \
+  >"$full_bundle/bootstrap/scripts/openhouse-resource-manager"
+chmod 700 "$full_bundle/bootstrap/scripts/openhouse-resource-manager"
+tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+  -C "$full_bundle" -cf "$work/full-install.tar" .
+full_offer="full-$(jq -r '.apkVersionCode' "$full_bundle/bundle-manifest.json")-$(jq -r '.resourceSet.sequence' "$full_bundle/bundle-manifest.json")"
+full_inbox="$full_home/.local/share/openhouseai/apk-resource-inbox/$full_offer"
+mkdir -p "$full_inbox"
+cp "$work/full-install.tar" "$full_inbox/openhouse-install-bundle.tar"
+: >"$full_inbox/.ready"
+HOME="$full_home" PREFIX="$full_prefix" bash "$importer" "$full_inbox" >"$work/full-import.log" 2>&1
+grep -Fq 'local delivery resources available: 20/20' "$work/full-import.log"
+! grep -Fq 'Cannot index boolean with string' "$work/full-import.log"
+jq -e '.offerId == $offer and .content == "installed"' --arg offer "$full_offer" \
+  "$full_home/.local/share/openhouseai/resource-manager/receipts/apk-offers/$full_offer.json" >/dev/null
+
 export HOME="$work/home"
 export PREFIX="$work/prefix"
 export PATH="$PREFIX/bin:$PATH"
