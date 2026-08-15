@@ -4,14 +4,14 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 generator="$repo_dir/scripts/generate-market-script-resources.sh"
 root="$repo_dir/distribution/market-script-resources"
-set_file="$root/resource-sets/openhouse-core-stack/2026.08.14.3/manifest.json"
+set_file="$root/resource-sets/openhouse-core-stack/2026.08.15.1/manifest.json"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 "$generator" --check
 jq -e '
   .schema == 2 and .id == "openhouse-core-stack" and
-  .version == "2026.08.14.3" and .sequence == 2026081403 and
+  .version == "2026.08.15.1" and .sequence == 2026081501 and
   (.guide.title | length) > 0 and (.guide.markdown | contains("市场不可用")) and
   ([.resources[].id] | sort) == [
     "openhouse-bootstrap",
@@ -28,8 +28,8 @@ jq -e '
     "openhouse-start-service-manager",
     "openhouse-start-smallphone",
     "openhouse-termux-services-env",
-    "openhouse-update-ubuntu-packages",
     "openhouse-ubuntu-mirror-policy",
+    "openhouse-update-ubuntu-packages",
     "openhouse-web",
     "service-manager",
     "wuxianpi-setup",
@@ -54,8 +54,8 @@ openhouse-resource-import	1.0.1	openhouse-resource-import.tgz	openhouse-resource
 wuxianpi-setup	1.0.2	wuxianpi-setup.tgz	wuxianpi-setup
 openhouse-bootstrap	1.0.1	openhouse-bootstrap.tgz	bootstrap.sh
 openhouse-install-ubuntu	1.0.1	openhouse-install-ubuntu.tgz	20-install-ubuntu.sh
-openhouse-update-ubuntu-packages	1.0.1	openhouse-update-ubuntu-packages.tgz	30-update-ubuntu-packages.sh
 openhouse-ubuntu-mirror-policy	1.0.1	openhouse-ubuntu-mirror-policy.tgz	_ubuntu-mirror-policy.sh
+openhouse-update-ubuntu-packages	1.0.1	openhouse-update-ubuntu-packages.tgz	30-update-ubuntu-packages.sh
 openhouse-retry-profile	1.0.1	openhouse-retry-profile.tgz	_retry-profile.sh
 openhouse-install-runtime-components	1.0.1	openhouse-install-runtime-components.tgz	50-install-runtime-components.sh
 openhouse-start-smallphone	1.0.1	openhouse-start-smallphone.tgz	60-start-smallphone.sh
@@ -97,6 +97,8 @@ manager="$repo_dir/app/src/main/assets/smallphoneai/bootstrap/scripts/openhouse-
 setup="$repo_dir/app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-setup"
 grep -Fq 'apply_content "$SET_FILE" "$row_plan" "$transaction" 0' "$manager" \
   || fail 'market resources are not committed one at a time'
+grep -Fq 'openhouse-ubuntu-mirror-policy","openhouse-update-ubuntu-packages' "$manager" \
+  || fail 'resource manager 20-resource contract is not in canonical sort order'
 grep -Fq '"ai": {' "$setup" || fail 'WuxianPi component is missing the ai layer'
 grep -Fq '{component:$component[0],services:[{id:"yuanshengwuxianpi",service:$service[0]}]}' "$setup" \
   || fail 'registry/apply payload does not wrap the service'

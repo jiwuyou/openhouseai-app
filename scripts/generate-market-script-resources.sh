@@ -12,10 +12,10 @@ guide_path="$repo_dir/docs/resource-sets/openhouse-core-stack-2026.08.14.1.md"
 mode="${1:-generate}"
 
 set_id="${OPENHOUSE_MARKET_RESOURCE_SET_ID:-openhouse-core-stack}"
-set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.14.3}"
-set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081403}"
+set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.15.1}"
+set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081501}"
 script_version="${OPENHOUSE_MARKET_SCRIPT_VERSION:-1.0.1}"
-manager_version="${OPENHOUSE_MARKET_RESOURCE_MANAGER_VERSION:-1.0.2}"
+manager_version="${OPENHOUSE_MARKET_RESOURCE_MANAGER_VERSION:-1.0.3}"
 setup_version="${OPENHOUSE_MARKET_SETUP_VERSION:-1.0.2}"
 ubuntu_bootstrap_version="${OPENHOUSE_MARKET_UBUNTU_BOOTSTRAP_VERSION:-1.0.1}"
 runtime_version="${OPENHOUSE_MARKET_RUNTIME_VERSION:-0.2.0+registry.1}"
@@ -104,10 +104,10 @@ add_script_resource openhouse-bootstrap "$ubuntu_bootstrap_version" openhouse-bo
   bootstrap.sh "$fixed_sources/bootstrap.sh"
 add_script_resource openhouse-install-ubuntu "$ubuntu_bootstrap_version" openhouse-install-ubuntu.tgz \
   20-install-ubuntu.sh "$fixed_sources/20-install-ubuntu.sh"
-add_script_resource openhouse-update-ubuntu-packages "$ubuntu_bootstrap_version" openhouse-update-ubuntu-packages.tgz \
-  30-update-ubuntu-packages.sh "$fixed_sources/30-update-ubuntu-packages.sh"
 add_script_resource openhouse-ubuntu-mirror-policy "$ubuntu_bootstrap_version" openhouse-ubuntu-mirror-policy.tgz \
   _ubuntu-mirror-policy.sh "$fixed_sources/_ubuntu-mirror-policy.sh"
+add_script_resource openhouse-update-ubuntu-packages "$ubuntu_bootstrap_version" openhouse-update-ubuntu-packages.tgz \
+  30-update-ubuntu-packages.sh "$fixed_sources/30-update-ubuntu-packages.sh"
 add_script_resource openhouse-retry-profile "$ubuntu_bootstrap_version" openhouse-retry-profile.tgz \
   _retry-profile.sh "$fixed_sources/_retry-profile.sh"
 add_script_resource openhouse-install-runtime-components "$script_version" openhouse-install-runtime-components.tgz \
