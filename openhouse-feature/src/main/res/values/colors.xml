@@ -7,5 +7,6 @@
     <color name="oh_border">#D9DFE3</color>
     <color name="oh_accent">#147D64</color>
     <color name="oh_accent_soft">#E3F3EE</color>
+    <color name="oh_attention">#9A5B00</color>
     <color name="oh_danger">#B3261E</color>
 </resources>

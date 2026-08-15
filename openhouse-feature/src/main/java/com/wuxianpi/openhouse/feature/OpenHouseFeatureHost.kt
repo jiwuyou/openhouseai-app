@@ -13,6 +13,23 @@ import com.wuxianpi.openhouse.core.workspace.ComponentServiceSummary
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
 
+enum class OpenHouseSetupAttention {
+    FIRST_INSTALL,
+    RESOURCE_UPDATE,
+    GENERIC;
+
+    companion object {
+        fun fromResourceOffer(reason: String?, requiresReminder: Boolean): OpenHouseSetupAttention? {
+            if (!requiresReminder) return null
+            return when (reason) {
+                "first-install" -> FIRST_INSTALL
+                "apk-update" -> RESOURCE_UPDATE
+                else -> GENERIC
+            }
+        }
+    }
+}
+
 /** Host integration boundary for the shared OpenHouse display layer. */
 interface OpenHouseFeatureHost {
     fun edition(): HostEdition = HostEdition.NATIVE_ANDROID
@@ -77,12 +94,24 @@ interface OpenHouseFeatureHost {
     /** True only while the current APK resource offer still needs user attention. */
     fun hasPendingApkResourceOffer(): Boolean = false
 
+    /** Maps a pending APK resource offer to the compact action shown in the top bar. */
+    fun setupAttention(): OpenHouseSetupAttention? = null
+
     /** Suppresses the current offer reminder without changing installed Termux resource state. */
     fun dismissCurrentApkResourceOffer() = Unit
 
     /** Opens Rescue AI and submits the resource-check intent as a normal conversation. */
     fun launchApkResourceUpdate(activity: Activity) {
         launchAiMode(activity, ProductRoute.REPAIR)
+    }
+
+    /** Opens Rescue AI at the action represented by the current top-bar reminder. */
+    fun launchSetupAttention(activity: Activity, attention: OpenHouseSetupAttention) {
+        if (attention == OpenHouseSetupAttention.RESOURCE_UPDATE) {
+            launchApkResourceUpdate(activity)
+        } else {
+            launchAiMode(activity, ProductRoute.REPAIR)
+        }
     }
 
     /** Resolves a Web component without blocking the main thread. */

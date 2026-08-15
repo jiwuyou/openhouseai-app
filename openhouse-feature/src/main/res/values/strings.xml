@@ -7,6 +7,9 @@
     <string name="oh_sidebar">侧栏</string>
     <string name="oh_close">关闭</string>
     <string name="oh_desktop">桌面</string>
+    <string name="oh_setup_attention_first_install">未完成首次安装，请进入维修模式</string>
+    <string name="oh_setup_attention_resource_update">Termux 资源待更新，请进入维修模式</string>
+    <string name="oh_setup_attention_generic">安装事项待处理，请进入维修模式</string>
     <string name="oh_basic">基础模式</string>
     <string name="oh_advanced">高级 UI</string>
     <string name="oh_repair">维修模式</string>

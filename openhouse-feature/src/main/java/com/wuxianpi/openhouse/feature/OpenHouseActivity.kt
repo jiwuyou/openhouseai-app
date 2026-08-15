@@ -60,7 +60,9 @@ import com.wuxianpi.openhouse.feature.workspace.WorkspaceWebMountGate
 class OpenHouseActivity : AppCompatActivity() {
     private lateinit var drawer: DrawerLayout
     private lateinit var content: FrameLayout
+    private lateinit var titleGroup: View
     private lateinit var title: TextView
+    private lateinit var setupAttentionView: TextView
     private lateinit var doneEditing: Button
     private lateinit var setCurrentHome: Button
     private lateinit var openBrowser: Button
@@ -94,6 +96,8 @@ class OpenHouseActivity : AppCompatActivity() {
     private var pendingServiceActionIds: Set<String> = emptySet()
     private var drawerVisible = false
     private var serviceRefreshGeneration = 0L
+    private var setupAttention: OpenHouseSetupAttention? = null
+    private var webToolbarMode = false
 
     private val servicePoll = Runnable {
         if (drawerVisible) refreshSidebarServiceStates()
@@ -118,6 +122,7 @@ class OpenHouseActivity : AppCompatActivity() {
             releaseDesktopAndFinish()
         }
         bindViews()
+        refreshSetupAttention()
         bindNavigation()
         refreshComponents()
         showDesktop()
@@ -148,6 +153,7 @@ class OpenHouseActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshRescueState()
+        refreshSetupAttention()
         if (workspaceNavigator.current is WorkspaceDestination.Component && !webMountGate.isPending) webPagePool.onResume()
         else activeWorkspaceContent?.onResume()
         // Installation flows and external app setup return here while this Activity stays alive.
@@ -214,7 +220,9 @@ class OpenHouseActivity : AppCompatActivity() {
     private fun bindViews() {
         drawer = findViewById(R.id.oh_drawer)
         content = findViewById(R.id.oh_content)
+        titleGroup = findViewById(R.id.oh_title_group)
         title = findViewById(R.id.oh_title)
+        setupAttentionView = findViewById(R.id.oh_setup_attention)
         doneEditing = findViewById(R.id.oh_done_editing)
         setCurrentHome = findViewById(R.id.oh_set_current_home)
         openBrowser = findViewById(R.id.oh_top_open_browser)
@@ -246,6 +254,9 @@ class OpenHouseActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.oh_open_drawer).setOnClickListener { drawer.openDrawer(GravityCompat.START) }
         findViewById<Button>(R.id.oh_top_desktop).setOnClickListener { showDesktop() }
+        setupAttentionView.setOnClickListener {
+            setupAttention?.let { attention -> host.launchSetupAttention(this, attention) }
+        }
         findViewById<Button>(R.id.oh_close_drawer).setOnClickListener { drawer.closeDrawer(GravityCompat.START) }
         setCurrentHome.setOnClickListener { setCurrentDestinationAsHome() }
         openBrowser.setOnClickListener { openActiveWebInBrowser() }
@@ -468,23 +479,53 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun showApkResourceOfferIfNeeded() {
-        if (isFinishing || isDestroyed || !host.hasPendingApkResourceOffer()) return
+        if (isFinishing || isDestroyed) return
+        val attention = host.setupAttention() ?: return
+        val firstInstall = attention == OpenHouseSetupAttention.FIRST_INSTALL
         AlertDialog.Builder(this)
-            .setTitle("APK 更新待检查")
+            .setTitle(if (firstInstall) "首次安装待完成" else "APK 更新待检查")
             .setMessage(
-                "检测到 APK 已安装或更新。为了保留你在 Termux 中自行维护资源的自由，" +
-                    "本次不会自动覆盖现有内容。请前往维修助手完成本次更新的后一半事情。\n\n" +
-                    "稍后仍可从维修模式顶部的“检查更新”再次触发。"
+                if (firstInstall) {
+                    "检测到首次安装尚未完成。请进入维修模式，根据当前设备的真实状态继续完成安装。\n\n" +
+                        "选择稍后处理后，仍可点击顶部提示继续。"
+                } else {
+                    "检测到 APK 已安装或更新。为了保留你在 Termux 中自行维护资源的自由，" +
+                        "本次不会自动覆盖现有内容。请前往维修助手完成本次更新的后一半事情。\n\n" +
+                        "选择稍后处理后，仍可点击顶部提示继续。"
+                }
             )
-            .setPositiveButton("前往维修助手检查更新") { _, _ ->
-                host.launchApkResourceUpdate(this)
+            .setPositiveButton(if (firstInstall) "前往维修模式完成安装" else "前往维修助手检查更新") { _, _ ->
+                host.launchSetupAttention(this, attention)
             }
             .setNegativeButton("稍后处理", null)
             .setNeutralButton("结束本次提醒") { _, _ ->
                 host.dismissCurrentApkResourceOffer()
+                refreshSetupAttention()
                 Toast.makeText(this, "已结束本 APK 资源提醒，未修改 Termux 资源状态。", Toast.LENGTH_LONG).show()
             }
             .show()
+    }
+
+    private fun refreshSetupAttention() {
+        if (!::setupAttentionView.isInitialized) return
+        setupAttention = host.setupAttention()
+        val text = when (setupAttention) {
+            OpenHouseSetupAttention.FIRST_INSTALL -> getString(R.string.oh_setup_attention_first_install)
+            OpenHouseSetupAttention.RESOURCE_UPDATE -> getString(R.string.oh_setup_attention_resource_update)
+            OpenHouseSetupAttention.GENERIC -> getString(R.string.oh_setup_attention_generic)
+            null -> ""
+        }
+        setupAttentionView.text = text
+        setupAttentionView.contentDescription = text.takeIf(String::isNotBlank)
+        updateSetupAttentionVisibility()
+    }
+
+    private fun updateSetupAttentionVisibility() {
+        setupAttentionView.visibility = when {
+            webToolbarMode -> View.GONE
+            setupAttention != null -> View.VISIBLE
+            else -> View.INVISIBLE
+        }
     }
 
     private fun requestDesktopRefresh(
@@ -948,7 +989,9 @@ class OpenHouseActivity : AppCompatActivity() {
 
     private fun setWebToolbarMode(enabled: Boolean) {
         if (!::webToolbarController.isInitialized) return
-        title.visibility = if (enabled) View.GONE else View.VISIBLE
+        webToolbarMode = enabled
+        titleGroup.visibility = if (enabled) View.GONE else View.VISIBLE
+        updateSetupAttentionVisibility()
         openBrowser.visibility = if (enabled) View.VISIBLE else View.GONE
         refreshWeb.visibility = if (enabled) View.VISIBLE else View.GONE
         collapseWebToolbar.visibility = if (enabled) View.VISIBLE else View.GONE

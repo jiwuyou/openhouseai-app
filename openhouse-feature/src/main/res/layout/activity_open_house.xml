@@ -31,18 +31,40 @@
                 android:textAllCaps="false"
                 android:textColor="@color/oh_text" />
 
-            <TextView
-                android:id="@+id/oh_title"
+            <LinearLayout
+                android:id="@+id/oh_title_group"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:layout_marginStart="12dp"
                 android:layout_weight="1"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="@string/oh_desktop"
-                android:textColor="@color/oh_text"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/oh_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/oh_desktop"
+                    android:textColor="@color/oh_text"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/oh_setup_attention"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="8dp"
+                    android:clickable="true"
+                    android:ellipsize="end"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:maxLines="1"
+                    android:textColor="@color/oh_attention"
+                    android:textSize="11sp"
+                    android:visibility="invisible" />
+            </LinearLayout>
 
             <Button
                 android:id="@+id/oh_top_desktop"

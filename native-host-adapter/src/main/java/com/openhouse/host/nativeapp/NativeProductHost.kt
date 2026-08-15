@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import com.ai.assistance.operit.host.OperitHostProvider
 import com.ai.assistance.operit.launcher.OperitAiLauncher
 import com.ai.assistance.operit.rescue.ui.RescueActivity
+import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
 import com.ai.assistance.operit.rescue.resources.ApkResourceOfferStore
 import com.ai.assistance.operit.ui.main.OperitHostMode
 import com.ai.assistance.operit.workspace.OperitWorkspaceContent
@@ -35,6 +36,7 @@ import com.wuxianpi.openhouse.feature.ControlPlaneForegroundSupervisor
 import com.wuxianpi.openhouse.feature.ComponentWebLaunchArgs
 import com.wuxianpi.openhouse.feature.OpenHouseFeature
 import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost
+import com.wuxianpi.openhouse.feature.OpenHouseSetupAttention
 import com.wuxianpi.openhouse.feature.workspace.WorkspaceContent
 import com.wuxianpi.openhouse.servicecontrol.OpenHouseFeatureLauncher
 import com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity
@@ -150,20 +152,40 @@ class NativeProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
     override fun hasPendingApkResourceOffer(): Boolean =
         ApkResourceOfferStore.get(appContext).current()?.requiresReminder == true
 
+    override fun setupAttention(): OpenHouseSetupAttention? {
+        val offer = ApkResourceOfferStore.get(appContext).current()
+        return OpenHouseSetupAttention.fromResourceOffer(
+            reason = offer?.reason,
+            requiresReminder = offer?.requiresReminder == true,
+        )
+    }
+
     override fun dismissCurrentApkResourceOffer() {
         ApkResourceOfferStore.get(appContext).dismissCurrent()
     }
 
     override fun launchApkResourceUpdate(activity: Activity) {
+        launchSetupAttention(activity, OpenHouseSetupAttention.RESOURCE_UPDATE)
+    }
+
+    override fun launchSetupAttention(activity: Activity, attention: OpenHouseSetupAttention) {
+        val action = when (attention) {
+            OpenHouseSetupAttention.FIRST_INSTALL -> "first-install" to RESCUE_FIRST_USE_MESSAGE
+            OpenHouseSetupAttention.RESOURCE_UPDATE -> "resource-update" to RescueActivity.RESOURCE_UPDATE_PROMPT
+            OpenHouseSetupAttention.GENERIC -> {
+                launchAiMode(activity, ProductRoute.REPAIR)
+                return
+            }
+        }
         val intent = OperitAiLauncher.repairIntent(activity).apply {
             putExtra(
                 RescueActivity.EXTRA_HOST_RETURN_ACTIVITY,
                 "com.wuxianpi.openhouse.feature.OpenHouseActivity",
             )
-            putExtra(RescueActivity.EXTRA_PENDING_ACTION_ID, "resource-update")
+            putExtra(RescueActivity.EXTRA_PENDING_ACTION_ID, action.first)
             putExtra(
                 RescueActivity.EXTRA_PENDING_ACTION_PROMPT,
-                RescueActivity.RESOURCE_UPDATE_PROMPT,
+                action.second,
             )
         }
         activity.startActivity(intent)
