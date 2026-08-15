@@ -12,13 +12,13 @@ guide_path="$repo_dir/docs/resource-sets/openhouse-core-stack-2026.08.14.1.md"
 mode="${1:-generate}"
 
 set_id="${OPENHOUSE_MARKET_RESOURCE_SET_ID:-openhouse-core-stack}"
-set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.15.1}"
-set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081501}"
+set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.15.2}"
+set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081502}"
 script_version="${OPENHOUSE_MARKET_SCRIPT_VERSION:-1.0.1}"
 manager_version="${OPENHOUSE_MARKET_RESOURCE_MANAGER_VERSION:-1.0.3}"
 setup_version="${OPENHOUSE_MARKET_SETUP_VERSION:-1.0.2}"
 ubuntu_bootstrap_version="${OPENHOUSE_MARKET_UBUNTU_BOOTSTRAP_VERSION:-1.0.1}"
-runtime_version="${OPENHOUSE_MARKET_RUNTIME_VERSION:-0.2.0+registry.1}"
+runtime_version="${OPENHOUSE_MARKET_RUNTIME_VERSION:-0.2.0+registry.2}"
 min_apk_version_code="${OPENHOUSE_RESOURCE_MIN_APK_VERSION_CODE:-126}"
 
 case "$mode" in
