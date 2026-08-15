@@ -8,6 +8,8 @@ import com.wuxianpi.openhouse.core.registry.OpenHouseComponentParser
 import com.wuxianpi.openhouse.core.registry.RegistryManifest
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,6 +41,16 @@ class StartupRouteStoreTest {
         val store = StartupRouteStore(context)
         store.setTarget(StartupTarget.ADVANCED)
         assertEquals(StartupTarget.ADVANCED, StartupRouteStore(context).target())
+    }
+
+    @Test
+    fun manualHintIsShownByDefaultAndCanBeDisabled() {
+        val store = StartupRouteStore(context)
+        assertTrue(store.showManualHint())
+
+        store.setShowManualHint(false)
+
+        assertFalse(StartupRouteStore(context).showManualHint())
     }
 
     @Test

@@ -37,6 +37,7 @@ internal class EmbeddedWebPagePool(
         fun onOpenMaintenance() = Unit
         fun onOpenExternal(uri: Uri) = Unit
         fun onCopyAddress(args: ComponentWebLaunchArgs, address: String) = Unit
+        fun shouldOpenInside(args: ComponentWebLaunchArgs, uri: Uri): Boolean = true
     }
 
     private val pages = LinkedHashMap<String, PageRecord>()
@@ -235,22 +236,30 @@ internal class EmbeddedWebPagePool(
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                if (isCurrentLoad(record, view, generation)) handleNavigation(request.url) else true
+                if (isCurrentLoad(record, view, generation)) handleNavigation(record.args, request.url) else true
 
             @Deprecated("Deprecated in Java")
             override fun shouldOverrideUrlLoading(view: WebView, url: String?): Boolean =
-                if (isCurrentLoad(record, view, generation)) handleNavigation(Uri.parse(url.orEmpty())) else true
+                if (isCurrentLoad(record, view, generation)) {
+                    handleNavigation(record.args, Uri.parse(url.orEmpty()))
+                } else {
+                    true
+                }
         }
     }
 
     private fun isCurrentLoad(record: PageRecord, view: WebView, generation: Long): Boolean =
         !destroyed && !record.disposed && record.webView === view && record.loadGeneration == generation
 
-    private fun handleNavigation(uri: Uri?): Boolean {
+    private fun handleNavigation(args: ComponentWebLaunchArgs, uri: Uri?): Boolean {
         val value = uri?.toString().orEmpty()
-        if (HttpUrlNormalizer.normalize(value) != null) return false
+        if (HttpUrlNormalizer.normalize(value) != null) {
+            if (uri != null && callbacks.shouldOpenInside(args, uri)) return false
+            if (uri != null) callbacks.onOpenExternal(uri)
+            return true
+        }
         val scheme = uri?.scheme.orEmpty().lowercase()
-        if (scheme.isNotEmpty() && scheme != "http" && scheme != "https") {
+        if (scheme == "tel" || scheme == "mailto") {
             callbacks.onOpenExternal(uri!!)
         }
         return true

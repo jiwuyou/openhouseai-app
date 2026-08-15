@@ -38,3 +38,38 @@ dependencies {
     testImplementation "androidx.test:core:1.6.1"
     testImplementation "org.robolectric:robolectric:4.14.1"
 }
+
+def openHouseGuideUrl = "https://app.webefficacy.com/guide/"
+def openHouseGuideSnapshot = file("src/main/assets/openhouse/guide/index.html")
+
+tasks.register("syncOpenHouseGuideSnapshot") {
+    description = "Save the current online OpenHouse guide as the APK offline snapshot."
+    outputs.file(openHouseGuideSnapshot)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        openHouseGuideSnapshot.parentFile.mkdirs()
+        try {
+            def connection = new URI(openHouseGuideUrl).toURL().openConnection()
+            connection.connectTimeout = 5000
+            connection.readTimeout = 10000
+            connection.setRequestProperty("User-Agent", "OpenHouse-Android-Build")
+            def html = connection.inputStream.getText("UTF-8")
+            if (html.trim().isEmpty()) throw new GradleException("Online OpenHouse guide is empty")
+            def temporary = new File(openHouseGuideSnapshot.parentFile, "index.html.tmp")
+            temporary.setText(html, "UTF-8")
+            java.nio.file.Files.move(
+                temporary.toPath(),
+                openHouseGuideSnapshot.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (Exception error) {
+            if (!openHouseGuideSnapshot.isFile() || openHouseGuideSnapshot.length() == 0L) throw error
+            logger.warn("Unable to refresh the online guide; keeping the existing APK snapshot: ${error.message}")
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("syncOpenHouseGuideSnapshot")
+}

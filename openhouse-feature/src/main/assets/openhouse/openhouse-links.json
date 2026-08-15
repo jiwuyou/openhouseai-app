@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "kind": "openhouse-links",
+  "revision": 2,
+  "generatedAt": "2026-08-15T00:00:00Z",
+  "expiresAt": "2027-08-15T00:00:00Z",
+  "urls": {
+    "app": "https://app.webefficacy.com/",
+    "platform": "https://openhouse.webefficacy.com/",
+    "downloads": "https://app.stcplus.com/",
+    "guide": "https://app.webefficacy.com/guide/"
+  },
+  "pages": [
+    {
+      "id": "openhouse.app",
+      "title": "OpenHouse 应用",
+      "icon": "openhouse",
+      "urlKey": "app",
+      "order": 10,
+      "enabled": true
+    },
+    {
+      "id": "openhouse.platform",
+      "title": "OpenHouse 平台",
+      "icon": "openhouse",
+      "urlKey": "platform",
+      "order": 20,
+      "enabled": true
+    },
+    {
+      "id": "openhouse.guide",
+      "title": "使用手册",
+      "icon": "book",
+      "urlKey": "guide",
+      "order": 30,
+      "enabled": true
+    }
+  ],
+  "allowedHosts": [
+    "app.webefficacy.com",
+    "openhouse.webefficacy.com",
+    "app.stcplus.com"
+  ],
+  "sources": [
+    "https://openhouse.webefficacy.com/.well-known/openhouse-links.json",
+    "https://app.webefficacy.com/.well-known/openhouse-links.json",
+    "https://app.stcplus.com/.well-known/openhouse-links.json"
+  ],
+  "features": {
+    "customPages": true,
+    "userHiddenPages": true,
+    "signedUpdates": "optional"
+  },
+  "extensions": {}
+}

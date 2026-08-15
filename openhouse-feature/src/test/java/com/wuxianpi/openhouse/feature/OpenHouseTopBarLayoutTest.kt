@@ -3,7 +3,6 @@ package com.wuxianpi.openhouse.feature
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
@@ -30,7 +29,8 @@ class OpenHouseTopBarLayoutTest {
         assertEquals(LinearLayout.HORIZONTAL, topBar.orientation)
         assertEquals(LinearLayout.HORIZONTAL, titleGroup.orientation)
         assertEquals(1f, (titleGroup.layoutParams as LinearLayout.LayoutParams).weight)
-        assertEquals(ViewGroup.LayoutParams.WRAP_CONTENT, attention.layoutParams.width)
+        assertEquals(0, attention.layoutParams.width)
+        assertEquals(1f, (attention.layoutParams as LinearLayout.LayoutParams).weight)
         assertEquals(View.INVISIBLE, attention.visibility)
         assertEquals(1, attention.maxLines)
     }

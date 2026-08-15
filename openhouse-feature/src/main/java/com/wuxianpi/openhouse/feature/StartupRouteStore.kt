@@ -111,6 +111,12 @@ class StartupRouteStore internal constructor(
         preferences.edit().putBoolean(KEY_KEEP_RESIDENT, enabled).apply()
     }
 
+    fun showManualHint(): Boolean = preferences.getBoolean(KEY_SHOW_MANUAL_HINT, true)
+
+    fun setShowManualHint(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_SHOW_MANUAL_HINT, enabled).apply()
+    }
+
     private fun parseRoute(value: String?): ProductRoute? = value
         ?.takeIf(String::isNotBlank)
         ?.let { ProductRoute.fromPersistenceKey(it, ProductRoute.DESKTOP) }
@@ -243,6 +249,7 @@ class StartupRouteStore internal constructor(
         private const val KEY_DESTINATION = "startup_destination_v2"
         private const val KEY_LAST_DESTINATION = "startup_last_destination_v2"
         private const val KEY_KEEP_RESIDENT = "desktop_keep_resident"
+        private const val KEY_SHOW_MANUAL_HINT = "desktop_show_manual_hint"
         private const val LEGACY_PREFS_NAME = "openhouse_home"
         private const val LEGACY_START_MODE = "start_page_mode"
         private const val LEGACY_HOME_PAGE = "home_page"

@@ -81,6 +81,12 @@ class DesktopLayoutStore internal constructor(
         return buildState(components, saved).also(::persist)
     }
 
+    fun restoreHidden(components: List<DesktopComponent>): DesktopLayoutState {
+        val saved = readSaved()
+        saved.hidden.clear()
+        return buildState(components, saved).also(::persist)
+    }
+
     fun saveCurrentPage(components: List<DesktopComponent>, currentPage: Int): DesktopLayoutState {
         val saved = readSaved().apply { page = currentPage.coerceAtLeast(0) }
         return buildState(components, saved).also(::persist)

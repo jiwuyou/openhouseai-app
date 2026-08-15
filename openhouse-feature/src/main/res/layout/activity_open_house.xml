@@ -53,9 +53,10 @@
 
                 <TextView
                     android:id="@+id/oh_setup_attention"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_marginStart="8dp"
+                    android:layout_weight="1"
                     android:clickable="true"
                     android:ellipsize="end"
                     android:focusable="true"
@@ -101,6 +102,19 @@
                 android:background="@drawable/oh_button_background"
                 android:minWidth="0dp"
                 android:text="@string/oh_refresh"
+                android:textAllCaps="false"
+                android:textColor="@color/oh_text"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/oh_top_close_page"
+                android:layout_width="46dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_close_page"
                 android:textAllCaps="false"
                 android:textColor="@color/oh_text"
                 android:textSize="12sp"

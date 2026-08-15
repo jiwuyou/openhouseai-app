@@ -49,6 +49,9 @@ import com.wuxianpi.openhouse.feature.desktop.DesktopLayoutState
 import com.wuxianpi.openhouse.feature.desktop.DesktopLayoutStore
 import com.wuxianpi.openhouse.feature.desktop.ui.DesktopUiEntry
 import com.wuxianpi.openhouse.feature.desktop.ui.OpenHouseDesktopView
+import com.wuxianpi.openhouse.feature.pages.BuiltInPageRegistry
+import com.wuxianpi.openhouse.feature.pages.CustomPage
+import com.wuxianpi.openhouse.feature.pages.ResolverSource
 import com.wuxianpi.openhouse.feature.workspace.CollapsibleWebToolbarController
 import com.wuxianpi.openhouse.feature.workspace.EmbeddedWebPagePool
 import com.wuxianpi.openhouse.feature.workspace.WorkspacePreferenceStore
@@ -67,6 +70,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var setCurrentHome: Button
     private lateinit var openBrowser: Button
     private lateinit var refreshWeb: Button
+    private lateinit var closeWebPage: Button
     private lateinit var collapseWebToolbar: Button
     private lateinit var controlWeb: Button
     private lateinit var host: OpenHouseFeatureHost
@@ -77,6 +81,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var workspaceSidebar: WorkspaceSidebar
     private lateinit var webPagePool: EmbeddedWebPagePool
     private lateinit var webToolbarController: CollapsibleWebToolbarController
+    private lateinit var pageRegistry: BuiltInPageRegistry
     private val workspaceNavigator = WorkspaceNavigator()
     private val retainedContents = LinkedHashMap<String, WorkspaceContent>()
     private val webMountGate = WorkspaceWebMountGate()
@@ -118,6 +123,7 @@ class OpenHouseActivity : AppCompatActivity() {
         layoutStore = DesktopLayoutStore(this)
         startupStore = StartupRouteStore(this)
         workspacePreferences = WorkspacePreferenceStore(this)
+        pageRegistry = BuiltInPageRegistry(this)
         residency = DesktopResidencyController(DesktopResidencyController.MainThreadScheduler()) {
             releaseDesktopAndFinish()
         }
@@ -178,6 +184,7 @@ class OpenHouseActivity : AppCompatActivity() {
             rescueStateReceiverRegistered = false
         }
         residency.onDestroy()
+        pageRegistry.close()
         releaseDesktopResources()
         super.onDestroy()
     }
@@ -227,6 +234,7 @@ class OpenHouseActivity : AppCompatActivity() {
         setCurrentHome = findViewById(R.id.oh_set_current_home)
         openBrowser = findViewById(R.id.oh_top_open_browser)
         refreshWeb = findViewById(R.id.oh_top_refresh)
+        closeWebPage = findViewById(R.id.oh_top_close_page)
         collapseWebToolbar = findViewById(R.id.oh_top_collapse)
         controlWeb = findViewById(R.id.oh_top_control)
         findViewById<TextView>(R.id.oh_edition).setText(editionLabel(host.edition()))
@@ -254,13 +262,12 @@ class OpenHouseActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.oh_open_drawer).setOnClickListener { drawer.openDrawer(GravityCompat.START) }
         findViewById<Button>(R.id.oh_top_desktop).setOnClickListener { showDesktop() }
-        setupAttentionView.setOnClickListener {
-            setupAttention?.let { attention -> host.launchSetupAttention(this, attention) }
-        }
+        setupAttentionView.setOnClickListener { showManualPicker() }
         findViewById<Button>(R.id.oh_close_drawer).setOnClickListener { drawer.closeDrawer(GravityCompat.START) }
         setCurrentHome.setOnClickListener { setCurrentDestinationAsHome() }
         openBrowser.setOnClickListener { openActiveWebInBrowser() }
         refreshWeb.setOnClickListener { webPagePool.reloadActive() }
+        closeWebPage.setOnClickListener { closeCurrentWebPage() }
         collapseWebToolbar.setOnClickListener {
             webToolbarController.collapse()
             Toast.makeText(this, "顶部栏已收起，点击悬浮按钮可恢复。", Toast.LENGTH_SHORT).show()
@@ -340,7 +347,11 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun refreshComponents() {
-        registryComponents = host.desktopComponents()
+        val unique = linkedMapOf<String, OpenHouseComponent>()
+        (host.desktopComponents() + pageRegistry.components()).forEach { component ->
+            unique.putIfAbsent(WorkspaceDestination.normalizeId(component.id), component)
+        }
+        registryComponents = unique.values.toList()
         components = DesktopCatalog.merge(registryComponents, host.capabilities())
         layoutState = layoutStore.merge(components)
         bindWorkspaceSidebar()
@@ -348,7 +359,7 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun bindWorkspaceSidebar() {
-        val entries = WorkspaceCatalog.applications(registryComponents, host.capabilities())
+        val entries = workspaceEntries()
         val pinned = entries.asSequence()
             .filter { workspacePreferences.isPinned(it.component) }
             .mapTo(linkedSetOf()) { WorkspaceDestination.normalizeId(it.component.id) }
@@ -364,7 +375,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private fun refreshSidebarServiceStates() {
         if (!drawerVisible) return
         mainHandler.removeCallbacks(servicePoll)
-        val entries = WorkspaceCatalog.applications(registryComponents, host.capabilities())
+        val entries = workspaceEntries()
         val generation = ++serviceRefreshGeneration
         host.loadComponentServiceStates(entries.map { it.component }) { loaded ->
             runOnUiThread {
@@ -381,6 +392,14 @@ class OpenHouseActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun workspaceEntries() = WorkspaceCatalog.applications(
+        registryComponents.filterNot { component ->
+            pageRegistry.isManagedPage(component.id) &&
+                layoutState?.find(component.id)?.hidden == true
+        },
+        host.capabilities(),
+    )
 
     private fun setComponentServicesRunning(component: OpenHouseComponent, running: Boolean) {
         val id = WorkspaceDestination.normalizeId(component.id)
@@ -509,23 +528,48 @@ class OpenHouseActivity : AppCompatActivity() {
     private fun refreshSetupAttention() {
         if (!::setupAttentionView.isInitialized) return
         setupAttention = host.setupAttention()
-        val text = when (setupAttention) {
-            OpenHouseSetupAttention.FIRST_INSTALL -> getString(R.string.oh_setup_attention_first_install)
-            OpenHouseSetupAttention.RESOURCE_UPDATE -> getString(R.string.oh_setup_attention_resource_update)
-            OpenHouseSetupAttention.GENERIC -> getString(R.string.oh_setup_attention_generic)
-            null -> ""
-        }
+        val text = getString(R.string.oh_manual_hint)
         setupAttentionView.text = text
-        setupAttentionView.contentDescription = text.takeIf(String::isNotBlank)
+        setupAttentionView.contentDescription = text
         updateSetupAttentionVisibility()
     }
 
     private fun updateSetupAttentionVisibility() {
         setupAttentionView.visibility = when {
             webToolbarMode -> View.GONE
-            setupAttention != null -> View.VISIBLE
+            workspaceNavigator.current == WorkspaceDestination.Desktop && startupStore.showManualHint() -> View.VISIBLE
             else -> View.INVISIBLE
         }
+    }
+
+    private fun showManualPicker() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.oh_manual_online)
+            .setMessage(R.string.oh_manual_picker_message)
+            .setPositiveButton(R.string.oh_manual_online) { _, _ ->
+                openComponentAfterRefresh(MANUAL_PAGE_ID)
+            }
+            .setNeutralButton(R.string.oh_manual_offline) { _, _ -> showOfflineManual() }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showOfflineManual() {
+        val manual = android.webkit.WebView(this).apply {
+            settings.javaScriptEnabled = false
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(560))
+            loadUrl(OFFLINE_MANUAL_URL)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.oh_manual_offline)
+            .setView(manual)
+            .setPositiveButton("关闭", null)
+            .create()
+        dialog.setOnDismissListener {
+            manual.stopLoading()
+            manual.destroy()
+        }
+        dialog.show()
     }
 
     private fun requestDesktopRefresh(
@@ -539,18 +583,20 @@ class OpenHouseActivity : AppCompatActivity() {
         }
         lastRegistryRefreshAt = now
         host.refreshDesktopComponents {
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                refreshComponents()
-                when (val destination = workspaceNavigator.current) {
-                    WorkspaceDestination.Desktop -> bindDesktopState()
-                    is WorkspaceDestination.Component -> {
-                        findWorkspaceComponent(destination.normalizedComponentId)
-                            ?.let(::openWorkspaceComponent) ?: showDesktop()
+            pageRegistry.refreshAsync(force) {
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    refreshComponents()
+                    when (val destination = workspaceNavigator.current) {
+                        WorkspaceDestination.Desktop -> bindDesktopState()
+                        is WorkspaceDestination.Component -> {
+                            findWorkspaceComponent(destination.normalizedComponentId)
+                                ?.let(::openWorkspaceComponent) ?: showDesktop()
+                        }
+                        is WorkspaceDestination.Route -> Unit
                     }
-                    is WorkspaceDestination.Route -> Unit
+                    onComplete?.invoke()
                 }
-                onComplete?.invoke()
             }
         }
     }
@@ -791,6 +837,7 @@ class OpenHouseActivity : AppCompatActivity() {
                 if (!entry.component.fixed) {
                     layoutState = layoutStore.hide(components, entry.id, true)
                     bindDesktopState()
+                    if (pageRegistry.isManagedPage(entry.id)) bindWorkspaceSidebar()
                 }
                 dialog.dismiss()
             }
@@ -867,6 +914,19 @@ class OpenHouseActivity : AppCompatActivity() {
         panel.addView(keepResident, matchWrap())
         panel.addView(body("关闭时，离开桌面 10 分钟后释放桌面 Activity 和显示资源；返回桌面会取消计时。"))
 
+        panel.addView(heading(getString(R.string.oh_manual_settings_title)).apply {
+            setPadding(0, dp(24), 0, 0)
+        })
+        panel.addView(Switch(this).apply {
+            text = getString(R.string.oh_manual_hint_toggle)
+            isChecked = startupStore.showManualHint()
+            setOnCheckedChangeListener { _, checked ->
+                startupStore.setShowManualHint(checked)
+                updateSetupAttentionVisibility()
+            }
+        }, matchWrap())
+        panel.addView(actionButton(getString(R.string.oh_manual_offline), ::showOfflineManual))
+
         panel.addView(actionButton("刷新桌面组件") {
             requestDesktopRefresh(force = true) {
                 Toast.makeText(this, "桌面组件已刷新。", Toast.LENGTH_SHORT).show()
@@ -876,11 +936,225 @@ class OpenHouseActivity : AppCompatActivity() {
             layoutState = layoutStore.reset(components)
             Toast.makeText(this, "桌面布局已重置。", Toast.LENGTH_SHORT).show()
         })
+
+        panel.addView(heading(getString(R.string.oh_web_pages)).apply {
+            setPadding(0, dp(24), 0, 0)
+        })
+        panel.addView(actionButton(getString(R.string.oh_add_web_page), ::showAddCustomPageDialog))
+        panel.addView(actionButton(getString(R.string.oh_closed_web_pages), ::showClosedPagesDialog))
+        panel.addView(actionButton(getString(R.string.oh_manage_custom_pages), ::showCustomPagesDialog))
+        panel.addView(actionButton(getString(R.string.oh_resolver_sources), ::showResolverSourcesDialog))
+        panel.addView(actionButton(getString(R.string.oh_refresh_online_pages)) {
+            requestDesktopRefresh(force = true) {
+                Toast.makeText(this, "在线页面已刷新。", Toast.LENGTH_SHORT).show()
+            }
+        })
         panel.addView(actionButton(getString(R.string.oh_open_host_settings)) {
             host.launchHostRoute(this, ProductRoute.SETTINGS)
         })
         content.addView(scroll, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         updateSetCurrentHomeButton()
+    }
+
+    private fun showAddCustomPageDialog() {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+        }
+        val titleInput = EditText(this).apply { hint = "页面名称"; maxLines = 1 }
+        val urlInput = EditText(this).apply { hint = "https://example.com/"; maxLines = 1 }
+        val iconInput = EditText(this).apply { hint = "图标名称，可留空"; maxLines = 1 }
+        panel.addView(label("名称"))
+        panel.addView(titleInput, matchWrap())
+        panel.addView(label("地址").apply { setPadding(0, dp(12), 0, 0) })
+        panel.addView(urlInput, matchWrap())
+        panel.addView(label("图标").apply { setPadding(0, dp(12), 0, 0) })
+        panel.addView(iconInput, matchWrap())
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("添加网页小 App")
+            .setView(panel)
+            .setPositiveButton("添加", null)
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val page = pageRegistry.addCustomPage(
+                    titleInput.text?.toString().orEmpty(),
+                    urlInput.text?.toString().orEmpty(),
+                    iconInput.text?.toString().orEmpty(),
+                )
+                if (page == null) {
+                    Toast.makeText(this, "请输入名称和有效的 HTTP/HTTPS 地址。", Toast.LENGTH_SHORT).show()
+                } else {
+                    dialog.dismiss()
+                    refreshComponents()
+                    showDesktop()
+                    Toast.makeText(this, "已添加 ${page.title}。", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun showClosedPagesDialog() {
+        val hidden = layoutState?.allEntries.orEmpty().filter { entry ->
+            entry.hidden && pageRegistry.isManagedPage(entry.id)
+        }
+        if (hidden.isEmpty()) {
+            Toast.makeText(this, "没有已关闭的网页。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("已关闭的页面")
+            .setItems(hidden.map { it.title }.toTypedArray()) { _, index ->
+                layoutState = layoutStore.hide(components, hidden[index].id, false)
+                bindWorkspaceSidebar()
+                Toast.makeText(this, "已恢复 ${hidden[index].title}。", Toast.LENGTH_SHORT).show()
+            }
+            .setPositiveButton("全部恢复") { _, _ ->
+                layoutState = layoutStore.restoreHidden(components)
+                bindWorkspaceSidebar()
+                Toast.makeText(this, "已恢复全部页面。", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showCustomPagesDialog() {
+        val pages = pageRegistry.customPages()
+        if (pages.isEmpty()) {
+            Toast.makeText(this, "尚未添加自定义页面。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("管理自定义页面")
+            .setItems(pages.map { "${it.title}\n${it.url}" }.toTypedArray()) { _, index ->
+                confirmDeleteCustomPage(pages[index])
+            }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun confirmDeleteCustomPage(page: CustomPage) {
+        AlertDialog.Builder(this)
+            .setTitle("删除 ${page.title}")
+            .setMessage(page.url)
+            .setPositiveButton("删除") { _, _ ->
+                if (pageRegistry.removeCustomPage(page.id)) {
+                    refreshComponents()
+                    Toast.makeText(this, "自定义页面已删除。", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showResolverSourcesDialog() {
+        val sources = pageRegistry.resolverSources()
+        val scroll = ScrollView(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+        }
+        scroll.addView(panel, matchWrap())
+        lateinit var dialog: AlertDialog
+        sources.forEachIndexed { index, source ->
+            panel.addView(resolverSourceView(source, index, sources.size) {
+                dialog.dismiss()
+                showResolverSourcesDialog()
+            })
+        }
+        dialog = AlertDialog.Builder(this)
+            .setTitle("网页地址来源")
+            .setView(scroll)
+            .setPositiveButton("新增") { _, _ -> showAddResolverSourceDialog() }
+            .setNeutralButton("恢复默认") { _, _ ->
+                pageRegistry.resetResolverSources()
+                requestDesktopRefresh(force = true)
+            }
+            .setNegativeButton("关闭", null)
+            .create()
+        dialog.show()
+    }
+
+    private fun resolverSourceView(
+        source: ResolverSource,
+        index: Int,
+        count: Int,
+        refreshDialog: () -> Unit,
+    ): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, dp(6), 0, dp(10))
+        addView(Switch(this@OpenHouseActivity).apply {
+            text = source.url
+            isChecked = source.enabled
+            setOnCheckedChangeListener { _, enabled ->
+                pageRegistry.setResolverSourceEnabled(source.url, enabled)
+            }
+        }, matchWrap())
+        addView(LinearLayout(this@OpenHouseActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(sourceActionButton("上移", index > 0) {
+                pageRegistry.moveResolverSource(source.url, -1)
+                refreshDialog()
+            })
+            addView(sourceActionButton("下移", index < count - 1) {
+                pageRegistry.moveResolverSource(source.url, 1)
+                refreshDialog()
+            })
+            addView(sourceActionButton("测试", true) {
+                pageRegistry.testSourceAsync(source.url) { success, message ->
+                    runOnUiThread {
+                        Toast.makeText(
+                            this@OpenHouseActivity,
+                            if (success) "解析成功：$message" else message,
+                            if (success) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+            })
+            if (!source.builtIn) {
+                addView(sourceActionButton("删除", true) {
+                    pageRegistry.removeResolverSource(source.url)
+                    refreshDialog()
+                })
+            }
+        }, matchWrap())
+    }
+
+    private fun sourceActionButton(text: String, enabled: Boolean, action: () -> Unit) = Button(this).apply {
+        this.text = text
+        isAllCaps = false
+        isEnabled = enabled
+        setOnClickListener { action() }
+        layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(4) }
+    }
+
+    private fun showAddResolverSourceDialog() {
+        val input = EditText(this).apply {
+            hint = "https://example.com/openhouse-links.json"
+            maxLines = 2
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("新增解析地址")
+            .setView(input)
+            .setPositiveButton("添加", null)
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (pageRegistry.addResolverSource(input.text?.toString().orEmpty())) {
+                    dialog.dismiss()
+                    requestDesktopRefresh(force = true)
+                    Toast.makeText(this, "解析地址已添加。", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "请输入未添加过的 HTTPS JSON 地址。", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun showAbout() {
@@ -994,6 +1268,7 @@ class OpenHouseActivity : AppCompatActivity() {
         updateSetupAttentionVisibility()
         openBrowser.visibility = if (enabled) View.VISIBLE else View.GONE
         refreshWeb.visibility = if (enabled) View.VISIBLE else View.GONE
+        closeWebPage.visibility = View.GONE
         collapseWebToolbar.visibility = if (enabled) View.VISIBLE else View.GONE
         controlWeb.visibility = if (enabled) View.VISIBLE else View.GONE
         webToolbarController.setWebMode(enabled)
@@ -1007,6 +1282,11 @@ class OpenHouseActivity : AppCompatActivity() {
         openBrowser.isEnabled = address.isNotBlank()
         openBrowser.alpha = if (openBrowser.isEnabled) 1f else 0.45f
         refreshWeb.isEnabled = args != null
+        closeWebPage.visibility = if (webToolbarMode && pageRegistry.isManagedPage(args?.componentId)) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
         controlWeb.isEnabled = args?.hasControlEntry == true
         controlWeb.alpha = if (controlWeb.isEnabled) 1f else 0.45f
     }
@@ -1022,6 +1302,14 @@ class OpenHouseActivity : AppCompatActivity() {
                 copyAddress(webPagePool.activeArgs?.title.orEmpty().ifBlank { "URL" }, address)
                 Toast.makeText(this, R.string.oh_browser_open_failed_copied, Toast.LENGTH_LONG).show()
             }
+    }
+
+    private fun closeCurrentWebPage() {
+        val id = webPagePool.activeArgs?.componentId.orEmpty()
+        if (!pageRegistry.isManagedPage(id)) return
+        layoutState = layoutStore.hide(components, id, true)
+        bindWorkspaceSidebar()
+        showDesktop()
     }
 
     private fun copyAddress(label: String, address: String) {
@@ -1055,6 +1343,9 @@ class OpenHouseActivity : AppCompatActivity() {
             clipboard.setPrimaryClip(ClipData.newPlainText(args.title, address))
             Toast.makeText(this@OpenHouseActivity, R.string.oh_address_copied, Toast.LENGTH_SHORT).show()
         }
+
+        override fun shouldOpenInside(args: ComponentWebLaunchArgs, uri: Uri): Boolean =
+            pageRegistry.canOpenInside(args.componentId, uri)
     }
 
     private fun attachWorkspaceContent(workspaceContent: WorkspaceContent) {
@@ -1162,6 +1453,8 @@ class OpenHouseActivity : AppCompatActivity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
+        const val MANUAL_PAGE_ID = "openhouse.guide"
+        const val OFFLINE_MANUAL_URL = "file:///android_asset/openhouse/guide/index.html"
         const val REGISTRY_REFRESH_DEBOUNCE_MS = 750L
         const val SERVICE_STATE_POLL_MS = 900L
         const val RESCUE_SHUTDOWN_RECHECK_MS = 1_500L

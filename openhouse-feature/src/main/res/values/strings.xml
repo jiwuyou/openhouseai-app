@@ -10,6 +10,12 @@
     <string name="oh_setup_attention_first_install">未完成首次安装，请进入维修模式</string>
     <string name="oh_setup_attention_resource_update">Termux 资源待更新，请进入维修模式</string>
     <string name="oh_setup_attention_generic">安装事项待处理，请进入维修模式</string>
+    <string name="oh_manual_hint">不知道怎么使用，请查看使用手册或离线手册，在设置中可关闭这行小字。</string>
+    <string name="oh_manual_picker_message">查看在线使用手册，或者在没有网络时查看 APK 内置的离线手册。</string>
+    <string name="oh_manual_online">使用手册</string>
+    <string name="oh_manual_offline">离线手册</string>
+    <string name="oh_manual_settings_title">使用帮助</string>
+    <string name="oh_manual_hint_toggle">在桌面顶部显示使用手册提示</string>
     <string name="oh_basic">基础模式</string>
     <string name="oh_advanced">高级 UI</string>
     <string name="oh_repair">维修模式</string>
@@ -26,6 +32,7 @@
     <string name="oh_control">控制</string>
     <string name="oh_collapse">收起</string>
     <string name="oh_open_in_browser">用浏览器打开</string>
+    <string name="oh_close_page">关闭</string>
     <string name="oh_browser_open_failed_copied">无法打开浏览器，地址已复制。</string>
     <string name="oh_expand_toolbar">展开顶部栏并打开侧栏</string>
     <string name="oh_set_current_home">设当前页为主页</string>
@@ -61,4 +68,10 @@
     <string name="oh_component_web_no_address">当前没有可复制的地址</string>
     <string name="oh_component_web_external_failed">无法打开外部链接</string>
     <string name="oh_workspace_connecting">正在打开 %1$s…</string>
+    <string name="oh_web_pages">网页小 App</string>
+    <string name="oh_add_web_page">添加网页</string>
+    <string name="oh_closed_web_pages">已关闭的页面</string>
+    <string name="oh_manage_custom_pages">管理自定义页面</string>
+    <string name="oh_resolver_sources">网页地址来源</string>
+    <string name="oh_refresh_online_pages">刷新在线页面</string>
 </resources>

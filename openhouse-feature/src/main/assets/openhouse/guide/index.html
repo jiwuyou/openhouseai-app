@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#071b18" />
+    <meta name="description" content="OpenHouse APK 首次安装、更新和维修模式使用说明。" />
+    <title>使用手册</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #10201d;
+        --muted: #5a6865;
+        --line: #dce6e2;
+        --paper: #f6f9f7;
+        --green: #087b5b;
+        --green-dark: #065a43;
+        --warm: #fff4dc;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #fff;
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        line-height: 1.7;
+      }
+      header, main, footer { width: min(860px, calc(100% - 40px)); margin: auto; }
+      header { display: flex; align-items: center; gap: 12px; min-height: 68px; border-bottom: 1px solid var(--line); }
+      .mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; background: var(--green); color: #fff; font-weight: 850; }
+      .brand { font-weight: 800; }
+      .brand small { display: block; color: var(--muted); font-size: 12px; font-weight: 500; }
+      main { padding: 56px 0 72px; }
+      h1 { margin: 0; font-size: clamp(38px, 9vw, 64px); line-height: 1.08; letter-spacing: -.04em; }
+      .lead { max-width: 700px; margin: 20px 0 32px; color: var(--muted); font-size: 18px; }
+      .notice { padding: 18px 20px; border: 1px solid #eed9a5; border-radius: 14px; background: var(--warm); font-weight: 700; }
+      .steps { display: grid; gap: 16px; margin-top: 34px; }
+      article { padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
+      article span { color: var(--green); font-size: 13px; font-weight: 850; letter-spacing: .08em; }
+      h2 { margin: 5px 0 10px; font-size: 24px; }
+      p { margin: 0; }
+      ol { margin: 12px 0 0; padding-left: 22px; }
+      li + li { margin-top: 7px; }
+      .after { margin-top: 34px; padding: 26px; border-radius: 16px; background: var(--green-dark); color: #fff; }
+      .after h2 { margin-top: 0; }
+      .after p { color: #d9eee7; }
+      footer { padding: 24px 0 36px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+      @media (max-width: 560px) {
+        header, main, footer { width: min(100% - 28px, 860px); }
+        main { padding-top: 38px; }
+        article { padding: 20px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="mark">OH</div>
+      <div class="brand">使用手册<small>OpenHouse Android</small></div>
+    </header>
+
+    <main>
+      <h1>先完成安装，<br />再开始使用。</h1>
+      <p class="lead">OpenHouse 的首次安装和 APK 更新由维修模式中的 WuxianPi 维修助手引导完成。你不需要自己记住安装命令。</p>
+      <div class="notice">只安装 APK 并不代表首次安装或 Termux 资源更新已经完成。</div>
+
+      <section class="steps" aria-label="使用步骤">
+        <article id="first-install">
+          <span>首次安装</span>
+          <h2>第一次打开时，先进入维修模式</h2>
+          <ol>
+            <li>在 OpenHouse 桌面或侧边栏打开“维修模式”。</li>
+            <li>按照 WuxianPi 维修助手的对话引导，完成权限、Termux 环境和资源安装。</li>
+            <li>维修助手确认安装完成后，再返回 OpenHouse 桌面使用。</li>
+          </ol>
+        </article>
+
+        <article id="apk-update">
+          <span>APK 更新后</span>
+          <h2>看到顶部提示时，再次进入维修模式</h2>
+          <ol>
+            <li>点击顶部“Termux 资源待更新，请进入维修模式”的提示，或者直接打开维修模式。</li>
+            <li>让 WuxianPi 检查并完成本次资源更新。</li>
+            <li>提示消失且维修助手确认完成后，继续正常使用。</li>
+          </ol>
+        </article>
+
+        <article id="repair-mode">
+          <span>遇到问题</span>
+          <h2>直接与 WuxianPi 对话</h2>
+          <p>首次安装完成以后，模型配置、服务启动、更新、诊断和常见故障一般都可以在维修模式中直接告诉 WuxianPi，由维修助手继续处理。</p>
+        </article>
+      </section>
+
+      <section class="after">
+        <h2>记住这一件事即可</h2>
+        <p>首次安装前进入维修模式；APK 更新后看到提示也进入维修模式。其余事情直接和 WuxianPi 说。</p>
+      </section>
+    </main>
+
+    <footer>OpenHouse · WuxianPi 维修助手</footer>
+  </body>
+</html>
