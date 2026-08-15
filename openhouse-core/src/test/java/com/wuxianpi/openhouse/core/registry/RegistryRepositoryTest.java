@@ -122,7 +122,7 @@ public class RegistryRepositoryTest {
         for (String id : OpenHouseBuiltins.protectedIds()) assertNotNull(id, snapshot.find(id));
         assertEquals(11, OpenHouseBuiltins.protectedIds().size());
         OpenHouseComponent about = snapshot.find(OpenHouseBuiltins.ABOUT_ID);
-        assertEquals("关于 WuxianPi", about.title);
+        assertEquals("关于 OpenHouse", about.title);
         assertEquals(OpenHouseComponent.EntryType.NATIVE_PAGE, about.entryType);
         OpenHouseComponent files = snapshot.find(OpenHouseBuiltins.FILES_ID);
         assertEquals("文件", files.title);

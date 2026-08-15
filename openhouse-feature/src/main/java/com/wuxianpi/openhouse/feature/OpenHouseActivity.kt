@@ -1186,6 +1186,11 @@ class OpenHouseActivity : AppCompatActivity() {
         panel.addView(body(getString(R.string.oh_about_environment, editionEnvironment(host.edition()))))
         panel.addView(body(getString(R.string.oh_about_version, appVersion())))
 
+        panel.addView(heading(getString(R.string.oh_about_apk_repository)).apply {
+            setPadding(0, dp(24), 0, 0)
+        })
+        panel.addView(linkButton("OpenHouse APK", APK_REPOSITORY_URL))
+
         panel.addView(heading(getString(R.string.oh_about_repositories)).apply {
             setPadding(0, dp(24), 0, 0)
         })
@@ -1225,7 +1230,6 @@ class OpenHouseActivity : AppCompatActivity() {
     )
 
     private fun productRepositories(): List<Pair<String, String>> = listOf(
-        "Android Host" to "https://github.com/jiwuyou/openhouseai-app",
         "WuxianPi Runtime" to "https://github.com/jiwuyou/wuxianpi",
         "service-manager" to "https://github.com/jiwuyou/service-manager",
         "WuxianPi Rescue" to "https://github.com/jiwuyou/wuxianpi-rescue",
@@ -1458,6 +1462,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
+        const val APK_REPOSITORY_URL = "https://github.com/jiwuyou/openhouseai-app"
         const val MANUAL_PAGE_ID = "openhouse.guide"
         const val OFFLINE_MANUAL_URL = "file:///android_asset/openhouse/guide/index.html"
         const val REGISTRY_REFRESH_DEBOUNCE_MS = 750L

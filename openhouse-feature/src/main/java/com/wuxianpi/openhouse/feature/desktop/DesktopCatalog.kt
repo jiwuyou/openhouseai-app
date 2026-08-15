@@ -29,9 +29,21 @@ object DesktopCatalog {
         OpenHouseBuiltins.SETUP_ID to ProductRoute.SETUP,
     )
 
-    private val fixedEntries = OpenHouseBuiltins.components().map { DesktopComponent.fromCore(it, routeById[it.id]) }
+    // These routes remain available to host code, but are temporarily reached through
+    // maintenance/repair flows instead of occupying a desktop slot.
+    private val hiddenDefaultDesktopIds = setOf(
+        OpenHouseBuiltins.SETUP_ID,
+        ID_BASIC,
+        ID_ADVANCED,
+    )
 
-    private val protectedIds = fixedEntries.mapTo(linkedSetOf()) { it.normalizedId }
+    private val fixedEntries = OpenHouseBuiltins.components()
+        .filterNot { it.id in hiddenDefaultDesktopIds }
+        .map { DesktopComponent.fromCore(it, routeById[it.id]) }
+
+    // Keep hidden built-ins protected so remote components cannot replace their IDs.
+    private val protectedIds = OpenHouseBuiltins.protectedIds()
+        .mapTo(linkedSetOf(), DesktopComponent::normalizeId)
 
     @JvmStatic
     fun fixed(): List<DesktopComponent> = fixedEntries

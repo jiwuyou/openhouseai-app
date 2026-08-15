@@ -14,9 +14,13 @@ class DesktopCatalogTest {
         val merged = DesktopCatalog.merge(listOf(dynamic))
         val ids = merged.map { it.id }
 
-        assertEquals(OpenHouseBuiltins.components().size, merged.size)
+        assertEquals(OpenHouseBuiltins.components().size - 3, merged.size)
         assertTrue(DesktopCatalog.fixed().all { it.id in ids })
-        assertEquals("基础模式", merged.first { it.id == DesktopCatalog.ID_BASIC }.title)
+        assertTrue(DesktopCatalog.ID_BASIC !in ids)
+        assertTrue(DesktopCatalog.ID_ADVANCED !in ids)
+        assertTrue(OpenHouseBuiltins.SETUP_ID !in ids)
+        assertTrue(DesktopCatalog.isProtected(DesktopCatalog.ID_BASIC))
+        assertTrue(DesktopCatalog.isProtected(OpenHouseBuiltins.SETUP_ID))
         assertEquals(
             OpenHouseComponent.EntryType.TERMINAL,
             merged.first { it.id == DesktopCatalog.ID_TERMINAL }.source.entryType,
@@ -27,7 +31,7 @@ class DesktopCatalogTest {
         assertEquals(OpenHouseComponent.EntryType.FILES, files.source.entryType)
         assertTrue(DesktopCatalog.isProtected(DesktopCatalog.ID_FILES))
         val about = merged.first { it.id == DesktopCatalog.ID_ABOUT }
-        assertEquals("关于 WuxianPi", about.title)
+        assertEquals("关于 OpenHouse", about.title)
         assertEquals(ProductRoute.ABOUT, about.route)
         assertTrue(DesktopCatalog.isProtected(DesktopCatalog.ID_ABOUT))
 

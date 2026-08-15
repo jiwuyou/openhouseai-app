@@ -59,7 +59,7 @@ public final class OpenHouseBuiltins {
         values.add(nativeRoute(SETUP_ID, "安装引导", "首次配置运行环境", "tools", 50, "sparkles"));
         values.add(nativeRoute(PERMISSIONS_ID, "权限获取", "后台运行、文件访问和悬浮窗", "tools", 55, "shield"));
         values.add(nativeRoute(SETTINGS_ID, "设置", "启动、桌面与兼容设置", "tools", 60, "sliders"));
-        values.add(nativeRoute(ABOUT_ID, "关于 WuxianPi", "产品、仓库与开源致谢", "tools", 70, "sparkles"));
+        values.add(nativeRoute(ABOUT_ID, "关于 OpenHouse", "产品、仓库与开源致谢", "tools", 70, "sparkles"));
         return Collections.unmodifiableList(values);
     }
 

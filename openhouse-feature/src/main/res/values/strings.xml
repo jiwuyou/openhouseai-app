@@ -24,7 +24,7 @@
     <string name="oh_service_control">服务控制</string>
     <string name="oh_permissions">权限获取</string>
     <string name="oh_settings">设置</string>
-    <string name="oh_about">关于 WuxianPi</string>
+    <string name="oh_about">关于 OpenHouse</string>
     <string name="oh_modes">模式</string>
     <string name="oh_daily_apps">日常应用</string>
     <string name="oh_system">系统</string>
@@ -49,7 +49,8 @@
     <string name="oh_about_environment_external">连接外部 Termux</string>
     <string name="oh_about_version">当前 APK 版本：%1$s</string>
     <string name="oh_about_version_unknown">未知</string>
-    <string name="oh_about_repositories">主要仓库</string>
+    <string name="oh_about_apk_repository">APK 仓库</string>
+    <string name="oh_about_repositories">相关仓库</string>
     <string name="oh_about_acknowledgements">致敬与参考</string>
     <string name="oh_about_open_link_failed">无法打开链接，请确认设备上已安装浏览器。</string>
     <string name="oh_advanced_loading">正在连接高级 UI…</string>
