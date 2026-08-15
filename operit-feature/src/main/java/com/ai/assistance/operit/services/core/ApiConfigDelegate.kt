@@ -530,6 +530,23 @@ class ApiConfigDelegate(
         _apiProviderType.value = providerType
     }
 
+    /** Persists a DeepSeek key for Rescue and refreshes the active service immediately. */
+    suspend fun saveRescueDeepSeekApiKey(apiKey: String) {
+        check(isRescueRuntime) { "DeepSeek quick setup is only available in Rescue" }
+        val updated = rescueModelConfigStore.saveDeepSeekApiKey(apiKey)
+        val selection = rescueModelConfigStore.getActiveSelection()
+        updateStateFromConfig(
+            updated.copy(modelName = getModelByIndex(updated.modelName, selection.modelIndex))
+        )
+        val enhancedAiService = withContext(Dispatchers.IO) {
+            EnhancedAIService.getInstance(context)
+        }
+        withContext(Dispatchers.Main.immediate) {
+            onConfigChanged(enhancedAiService)
+            _isConfigured.value = true
+        }
+    }
+
     /** 保存API设置 */
     fun saveApiSettings() {
         coroutineScope.launch {

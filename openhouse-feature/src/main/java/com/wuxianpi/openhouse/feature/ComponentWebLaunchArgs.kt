@@ -6,6 +6,11 @@ import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.core.workspace.HttpUrlNormalizer
 import com.wuxianpi.openhouse.core.workspace.WorkspaceCatalog
 
+data class ComponentWebTab(
+    val title: String,
+    val url: String,
+)
+
 data class ComponentWebLaunchArgs(
     val componentId: String,
     val title: String,
@@ -15,6 +20,7 @@ data class ComponentWebLaunchArgs(
     val serviceNames: List<String>,
     val serviceRefs: List<String>,
     val catalogFingerprint: String = "",
+    val tabs: List<ComponentWebTab> = emptyList(),
 ) {
     val hasControlEntry: Boolean
         get() = serviceNames.isNotEmpty() || serviceRefs.isNotEmpty()
@@ -35,6 +41,8 @@ data class ComponentWebLaunchArgs(
             putStringArrayListExtra(EXTRA_SERVICE_NAMES, ArrayList(serviceNames))
             putStringArrayListExtra(EXTRA_SERVICE_REFS, ArrayList(serviceRefs))
             putExtra(EXTRA_CATALOG_FINGERPRINT, catalogFingerprint)
+            putStringArrayListExtra(EXTRA_TAB_TITLES, ArrayList(tabs.map { it.title }))
+            putStringArrayListExtra(EXTRA_TAB_URLS, ArrayList(tabs.map { it.url }))
             addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
 
@@ -47,6 +55,8 @@ data class ComponentWebLaunchArgs(
         internal const val EXTRA_SERVICE_NAMES = "com.wuxianpi.openhouse.feature.COMPONENT_WEB_SERVICE_NAMES"
         internal const val EXTRA_SERVICE_REFS = "com.wuxianpi.openhouse.feature.COMPONENT_WEB_SERVICE_REFS"
         internal const val EXTRA_CATALOG_FINGERPRINT = "com.wuxianpi.openhouse.feature.COMPONENT_WEB_CATALOG_FINGERPRINT"
+        internal const val EXTRA_TAB_TITLES = "com.wuxianpi.openhouse.feature.COMPONENT_WEB_TAB_TITLES"
+        internal const val EXTRA_TAB_URLS = "com.wuxianpi.openhouse.feature.COMPONENT_WEB_TAB_URLS"
 
         @JvmStatic
         fun from(component: OpenHouseComponent, resolvedUrl: String): ComponentWebLaunchArgs =
@@ -66,6 +76,14 @@ data class ComponentWebLaunchArgs(
             if (intent == null) return null
             val componentId = intent.getStringExtra(EXTRA_COMPONENT_ID).orEmpty().trim()
             if (componentId.isEmpty()) return null
+            val tabTitles = intent.getStringArrayListExtra(EXTRA_TAB_TITLES).orEmpty()
+            val tabUrls = intent.getStringArrayListExtra(EXTRA_TAB_URLS).orEmpty()
+            val tabs = tabTitles.zip(tabUrls).mapNotNull { (title, url) ->
+                val normalizedTitle = title.trim()
+                val normalizedUrl = HttpUrlNormalizer.normalize(url).orEmpty()
+                if (normalizedTitle.isEmpty() || normalizedUrl.isEmpty()) null
+                else ComponentWebTab(normalizedTitle, normalizedUrl)
+            }
             return ComponentWebLaunchArgs(
                 componentId = componentId,
                 title = intent.getStringExtra(EXTRA_TITLE).orEmpty().trim().ifEmpty { componentId },
@@ -75,6 +93,7 @@ data class ComponentWebLaunchArgs(
                 serviceNames = intent.getStringArrayListExtra(EXTRA_SERVICE_NAMES).orEmpty(),
                 serviceRefs = intent.getStringArrayListExtra(EXTRA_SERVICE_REFS).orEmpty(),
                 catalogFingerprint = intent.getStringExtra(EXTRA_CATALOG_FINGERPRINT).orEmpty().trim(),
+                tabs = tabs,
             )
         }
     }

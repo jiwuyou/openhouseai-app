@@ -15,6 +15,8 @@ import com.ai.assistance.operit.host.terminal.HostTerminalTarget
 import com.ai.assistance.operit.host.terminal.tmux.TmuxHostTerminalBackend
 import com.wuxianpi.openhouse.core.service.ServiceAction
 import com.wuxianpi.openhouse.core.service.ServiceManagerClient
+import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
+import com.wuxianpi.openhouse.feature.OpenHouseFeature
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -74,6 +76,30 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
 
     override fun openHostApp(context: Context): OperitHostOperationResult =
         host.openTerminal().toOperationResult("open_terminal")
+
+    override fun openOpenHousePage(
+        context: Context,
+        pageId: String,
+    ): OperitHostOperationResult = runCatching {
+        val normalizedId = pageId.trim()
+        require(normalizedId.isNotEmpty()) { "OpenHouse page ID must not be blank" }
+        val intent = OpenHouseFeature.createDestinationIntent(
+            context,
+            WorkspaceDestination.Component(normalizedId),
+        )
+        if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+        success(
+            "open_openhouse_page",
+            JSONObject().put("pageId", normalizedId).put("launched", true),
+        )
+    }.getOrElse { error ->
+        failure(
+            "open_openhouse_page",
+            error.message ?: "Unable to open OpenHouse page",
+            JSONObject().put("pageId", pageId),
+        )
+    }
 
     override fun pairingInstallerScript(baseUrl: String, token: String): String =
         pairingScript(baseUrl, token)

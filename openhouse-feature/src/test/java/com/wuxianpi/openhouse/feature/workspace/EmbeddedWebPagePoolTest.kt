@@ -5,7 +5,9 @@ import android.content.Context
 import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
 import com.wuxianpi.openhouse.feature.ComponentWebLaunchArgs
+import com.wuxianpi.openhouse.feature.ComponentWebTab
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -60,6 +62,28 @@ class EmbeddedWebPagePoolTest {
         assertEquals(2L, pool.activeLoadGeneration)
         assertEquals(false, pool.acceptsActiveLoadGeneration(firstGeneration))
         assertEquals(true, pool.acceptsActiveLoadGeneration(pool.activeLoadGeneration))
+        pool.destroy()
+    }
+
+    @Test
+    fun tabsReuseOneWebViewPageRecord() {
+        val pool = EmbeddedWebPagePool(context, object : EmbeddedWebPagePool.Callbacks {})
+        val host = FrameLayout(context)
+        val args = args("deepseek").copy(
+            tabs = listOf(
+                ComponentWebTab("API 密钥", "https://example.test/keys"),
+                ComponentWebTab("用量", "https://example.test/usage"),
+            ),
+        )
+
+        pool.show(args, host)
+        val generation = pool.activeLoadGeneration
+        assertEquals(2, pool.activeTabCount())
+        assertTrue(pool.selectActiveTab(1))
+        assertEquals(1, pool.retainedPageCount)
+        assertEquals(generation, pool.activeLoadGeneration)
+        assertEquals("https://example.test/usage", pool.activeAddress)
+
         pool.destroy()
     }
 

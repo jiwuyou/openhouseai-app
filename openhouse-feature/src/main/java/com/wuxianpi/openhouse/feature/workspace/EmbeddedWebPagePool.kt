@@ -11,10 +11,12 @@ import android.view.ViewGroup
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
+import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -62,6 +64,15 @@ internal class EmbeddedWebPagePool(
     internal fun acceptsActiveLoadGeneration(generation: Long): Boolean =
         activePage?.let { !it.disposed && it.loadGeneration == generation } == true
 
+    internal fun activeTabCount(): Int = activePage?.args?.tabs?.size ?: 0
+
+    internal fun selectActiveTab(index: Int): Boolean {
+        val page = activePage ?: return false
+        val tab = page.args.tabs.getOrNull(index) ?: return false
+        navigate(page, tab.url)
+        return true
+    }
+
     fun show(args: ComponentWebLaunchArgs, host: FrameLayout) {
         if (destroyed) return
         val safeArgs = args.withNormalizedUrls()
@@ -81,6 +92,7 @@ internal class EmbeddedWebPagePool(
         val page = pages[key] ?: createPage(safeArgs).also { pages[key] = it }
         page.args = safeArgs
         page.lastUsedOrder = ++useSequence
+        renderTabBar(page)
         attachPage(page, host)
         if (page.webView.url == null && page.state.phase != ComponentWebLoadPhase.FAILED) {
             reload(page)
@@ -130,21 +142,59 @@ internal class EmbeddedWebPagePool(
     }
 
     private fun createPage(args: ComponentWebLaunchArgs): PageRecord {
-        val pageView = FrameLayout(context)
+        val pageView = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val browserContainer = FrameLayout(context)
         val webView = WebView(context)
+        val tabContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+        }
+        val tabScroll = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            visibility = View.GONE
+            addView(
+                tabContainer,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
         lateinit var record: PageRecord
         val fallback = createFallbackView { record }
         record = PageRecord(
             args = args,
             pageView = pageView,
+            browserContainer = browserContainer,
             webView = webView,
             fallbackView = fallback.root,
             fallbackPrimaryButton = fallback.primaryButton,
+            tabScroll = tabScroll,
+            tabContainer = tabContainer,
             state = ComponentWebPageState(pageAddress(args)),
         )
-        pageView.addView(webView, matchParent())
-        pageView.addView(fallback.root, matchParent())
+        browserContainer.addView(webView, matchParent())
+        browserContainer.addView(fallback.root, matchParent())
+        pageView.addView(
+            browserContainer,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            ),
+        )
+        pageView.addView(
+            tabScroll,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
         fallback.root.visibility = View.GONE
+        renderTabBar(record)
         return record
     }
 
@@ -209,6 +259,10 @@ internal class EmbeddedWebPagePool(
             allowFileAccess = false
             allowContentAccess = false
         }
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(webView, true)
+        }
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 if (!isCurrentLoad(record, view, generation)) return
@@ -259,7 +313,7 @@ internal class EmbeddedWebPagePool(
             return true
         }
         val scheme = uri?.scheme.orEmpty().lowercase()
-        if (scheme == "tel" || scheme == "mailto") {
+        if (scheme in setOf("tel", "mailto", "sms", "alipays", "alipay", "weixin")) {
             callbacks.onOpenExternal(uri!!)
         }
         return true
@@ -278,7 +332,7 @@ internal class EmbeddedWebPagePool(
 
     private fun reload(page: PageRecord) {
         if (destroyed) return
-        val url = pageAddress(page.args)
+        val url = normalizeOrEmpty(page.state.url).ifEmpty { pageAddress(page.args) }
         if (url.isEmpty()) {
             markUnavailable(page, "")
             return
@@ -291,11 +345,49 @@ internal class EmbeddedWebPagePool(
         val newWebView = WebView(context)
         page.webView = newWebView
         configureWebView(page, newWebView, generation)
-        page.pageView.removeView(oldWebView)
-        page.pageView.addView(newWebView, 0, matchParent())
+        page.browserContainer.removeView(oldWebView)
+        page.browserContainer.addView(newWebView, 0, matchParent())
         destroyWebView(oldWebView)
         if (resumed && page === activePage) newWebView.onResume()
         newWebView.loadUrl(url)
+    }
+
+    private fun navigate(page: PageRecord, address: String) {
+        val url = normalizeOrEmpty(address)
+        if (destroyed || url.isEmpty()) return
+        page.state = page.state.loading(url)
+        page.fallbackView.visibility = View.GONE
+        renderState(page)
+        renderTabBar(page)
+        page.webView.loadUrl(url)
+    }
+
+    private fun renderTabBar(page: PageRecord) {
+        val tabs = page.args.tabs
+        page.tabContainer.removeAllViews()
+        page.tabScroll.visibility = if (tabs.isEmpty()) View.GONE else View.VISIBLE
+        if (tabs.isEmpty()) return
+        val currentUrl = normalizeOrEmpty(page.state.url)
+        tabs.forEach { tab ->
+            val tabUrl = normalizeOrEmpty(tab.url)
+            if (tabUrl.isEmpty()) return@forEach
+            page.tabContainer.addView(Button(context).apply {
+                text = tab.title
+                isAllCaps = false
+                minWidth = 0
+                textSize = 13f
+                alpha = if (currentUrl == tabUrl) 1f else 0.72f
+                setBackgroundResource(R.drawable.oh_button_background)
+                setOnClickListener { navigate(page, tabUrl) }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(42),
+                ).apply {
+                    marginStart = dp(3)
+                    marginEnd = dp(3)
+                }
+            })
+        }
     }
 
     private fun markUnavailable(page: PageRecord, failingUrl: String) {
@@ -324,6 +416,7 @@ internal class EmbeddedWebPagePool(
     }
 
     private fun renderState(page: PageRecord) {
+        renderTabBar(page)
         if (page === activePage) callbacks.onStateChanged(page.args, page.state)
     }
 
@@ -388,10 +481,13 @@ internal class EmbeddedWebPagePool(
 
     private data class PageRecord(
         var args: ComponentWebLaunchArgs,
-        val pageView: FrameLayout,
+        val pageView: LinearLayout,
+        val browserContainer: FrameLayout,
         var webView: WebView,
         val fallbackView: LinearLayout,
         val fallbackPrimaryButton: Button,
+        val tabScroll: HorizontalScrollView,
+        val tabContainer: LinearLayout,
         var state: ComponentWebPageState,
         var lastUsedOrder: Long = 0,
         var loadGeneration: Long = 0,

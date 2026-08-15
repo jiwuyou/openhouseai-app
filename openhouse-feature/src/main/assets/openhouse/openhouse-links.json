@@ -1,14 +1,18 @@
 {
   "schema": 1,
   "kind": "openhouse-links",
-  "revision": 2,
+  "revision": 3,
   "generatedAt": "2026-08-15T00:00:00Z",
   "expiresAt": "2027-08-15T00:00:00Z",
   "urls": {
     "app": "https://app.webefficacy.com/",
     "platform": "https://openhouse.webefficacy.com/",
     "downloads": "https://app.stcplus.com/",
-    "guide": "https://app.webefficacy.com/guide/"
+    "guide": "https://app.webefficacy.com/guide/",
+    "deepseekKeys": "https://platform.deepseek.com/api_keys",
+    "deepseekUsage": "https://platform.deepseek.com/usage",
+    "deepseekTopUp": "https://platform.deepseek.com/top_up",
+    "deepseekProfile": "https://platform.deepseek.com/profile"
   },
   "pages": [
     {
@@ -39,7 +43,8 @@
   "allowedHosts": [
     "app.webefficacy.com",
     "openhouse.webefficacy.com",
-    "app.stcplus.com"
+    "app.stcplus.com",
+    "platform.deepseek.com"
   ],
   "sources": [
     "https://openhouse.webefficacy.com/.well-known/openhouse-links.json",
@@ -51,5 +56,34 @@
     "userHiddenPages": true,
     "signedUpdates": "optional"
   },
-  "extensions": {}
+  "extensions": {
+    "hiddenPages": [
+      {
+        "id": "openhouse.api-keys",
+        "title": "获取 DeepSeek 密钥",
+        "icon": "key",
+        "urlKey": "deepseekKeys",
+        "order": 40,
+        "enabled": true,
+        "tabs": [
+          {
+            "title": "API 密钥",
+            "urlKey": "deepseekKeys"
+          },
+          {
+            "title": "用量",
+            "urlKey": "deepseekUsage"
+          },
+          {
+            "title": "充值",
+            "urlKey": "deepseekTopUp"
+          },
+          {
+            "title": "账户",
+            "urlKey": "deepseekProfile"
+          }
+        ]
+      }
+    ]
+  }
 }

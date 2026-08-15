@@ -784,7 +784,12 @@ class OpenHouseActivity : AppCompatActivity() {
         content.removeAllViews()
         val webHost = FrameLayout(this)
         content.addView(webHost, matchFrame())
-        webPagePool.show(ComponentWebLaunchArgs.from(component, resolvedUrl), webHost)
+        webPagePool.show(
+            ComponentWebLaunchArgs.from(component, resolvedUrl).copy(
+                tabs = pageRegistry.tabsFor(component.id),
+            ),
+            webHost,
+        )
         updateWebToolbarActions()
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) webPagePool.onResume()
     }

@@ -111,7 +111,7 @@ class RescueToolCatalogTest {
         assertTrue(
             requireNotNull(byName["store_service_manager_connection"])
                 .getString("description")
-                .contains("connection bridge"),
+                .contains("Android-private storage"),
         )
         val fileEnvironment = requireNotNull(byName["read_file"])
             .getJSONObject("parameters")

@@ -2,6 +2,7 @@ package com.ai.assistance.operit.rescue.pi
 
 import android.content.Context
 import com.ai.assistance.operit.data.model.ModelConfigData
+import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.getModelByIndex
 import com.ai.assistance.operit.data.model.getModelList
 import com.ai.assistance.operit.data.model.getValidModelIndex
@@ -9,6 +10,7 @@ import com.ai.assistance.operit.data.model.usesAndroidLocalModelEngine
 import com.ai.assistance.operit.data.model.usesPiRuntime
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigStorageScope
+import com.ai.assistance.operit.data.preferences.ApiPreferences
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -85,6 +87,34 @@ data class ResolvedRescueModelConfig(
         }
         return config.copy(modelName = models.joinToString(","))
     }
+}
+
+internal fun ModelConfigData.withRescueDeepSeekApiKey(apiKey: String): ModelConfigData {
+    val normalizedKey = apiKey.trim()
+    require(normalizedKey.isNotEmpty()) { "DeepSeek API key must not be blank" }
+    val alreadyDeepSeek =
+        apiProviderType == ApiProviderType.DEEPSEEK ||
+            apiProviderTypeId.equals(ApiProviderType.DEEPSEEK.name, ignoreCase = true)
+    return copy(
+        apiKey = normalizedKey,
+        apiEndpoint = if (alreadyDeepSeek) {
+            apiEndpoint.ifBlank { ApiPreferences.DEFAULT_API_ENDPOINT }
+        } else {
+            ApiPreferences.DEFAULT_API_ENDPOINT
+        },
+        modelName = if (alreadyDeepSeek) {
+            modelName.ifBlank { ApiPreferences.DEFAULT_MODEL_NAME }
+        } else {
+            ApiPreferences.DEFAULT_MODEL_NAME
+        },
+        apiProviderType = ApiProviderType.DEEPSEEK,
+        apiProviderTypeId = ApiProviderType.DEEPSEEK.name,
+        piModelBinding = null,
+        legacyCloudBackup = null,
+        useMultipleApiKeys = false,
+        apiKeyPool = emptyList(),
+        currentKeyIndex = 0,
+    )
 }
 
 /** Active model selection for the Android-private Rescue model registry. */
@@ -174,6 +204,23 @@ class RescueModelConfigStore(context: Context) {
         modelConfigManager.saveModelConfig(
             config.copy(piModelBinding = null, legacyCloudBackup = null)
         )
+    }
+
+    /** Saves a user-provided DeepSeek key into the active Android-private Rescue config. */
+    suspend fun saveDeepSeekApiKey(apiKey: String): ModelConfigData = activeConfigMutex.withLock {
+        val normalizedKey = apiKey.trim()
+        require(normalizedKey.isNotEmpty()) { "DeepSeek API key must not be blank" }
+
+        val selection = getActiveSelectionLocked()
+        val current = modelConfigManager.getModelConfig(selection.configId)
+            ?: throw RescueModelConfigurationException(
+                RescueModelConfigurationIssue.MISSING_CONFIGURATION,
+                "Configure a model before starting Rescue AI",
+            )
+        val updated = current.withRescueDeepSeekApiKey(normalizedKey)
+        validateDirectConfig(updated)
+        modelConfigManager.saveModelConfig(updated)
+        updated
     }
 
     suspend fun loadActiveRegistryConfig(): ResolvedRescueModelConfig {

@@ -56,6 +56,8 @@ import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
 import com.ai.assistance.operit.rescue.plugins.ActiveRescuePluginAction
 import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
 import com.ai.assistance.operit.rescue.ui.RescueFirstUsePrompt
+import com.ai.assistance.operit.rescue.ui.RescueModelSetupPrompt
+import com.ai.assistance.operit.rescue.ui.RESCUE_DEEPSEEK_PAGE_ID
 import com.ai.assistance.operit.rescue.ui.RescueRemoteAssistDialog
 import com.ai.assistance.operit.rescue.ui.PendingRescueActionHandler
 import com.ai.assistance.operit.rescue.ui.plugins.RescuePluginMarketActivity
@@ -324,8 +326,7 @@ val actualViewModel: ChatViewModel =
     val apiKey by actualViewModel.apiKey.collectAsState()
     val apiEndpoint by actualViewModel.apiEndpoint.collectAsState()
     val modelName by actualViewModel.modelName.collectAsState()
-    val apiProviderType by actualViewModel.apiProviderType.collectAsState()
-    val isConfigured by actualViewModel.isConfigured.collectAsState()
+    val isApiConfigInitialized by actualViewModel.isApiConfigInitialized.collectAsState()
     val chatHistory by actualViewModel.chatHistory.collectAsState()
     // 仅对当前会话显示处理中状态（影响“停止/发送”按钮）
     val isLoading by actualViewModel.currentChatIsLoading.collectAsState()
@@ -369,6 +370,13 @@ val actualViewModel: ChatViewModel =
             visibleMessageCount = chatHistory.size,
             isHistoryLoading = isLoadingDisplayWindow,
         )
+    val rescueModelReady =
+        chatViewRuntime != "rescue" ||
+            (isApiConfigInitialized &&
+                apiKey.isNotBlank() &&
+                apiKey != ApiPreferences.DEFAULT_API_KEY &&
+                apiEndpoint.isNotBlank() &&
+                modelName.isNotBlank())
     val latestChatViewParams by rememberUpdatedState(
         ChatViewHookParams(
             context = context,
@@ -816,7 +824,10 @@ val actualViewModel: ChatViewModel =
     }
 
     // 确定是否显示配置界面的最终逻辑
-    val showConfig = shouldShowConfigDialog && !ConfigurationStateHolder.hasConfirmedDefaultInSession
+    val showConfig =
+        chatViewRuntime != "rescue" &&
+            shouldShowConfigDialog &&
+            !ConfigurationStateHolder.hasConfirmedDefaultInSession
 
     // 添加手势状态
     var chatScreenGestureConsumed by remember { mutableStateOf(false) }
@@ -1333,6 +1344,8 @@ val actualViewModel: ChatViewModel =
                                 },
                                 onRequestAutoScrollToBottom = requestAutoScrollToBottom,
                                 showRescueFirstUsePrompt = showRescueFirstUsePrompt,
+                                rescueModelInitialized = isApiConfigInitialized,
+                                rescueModelReady = rescueModelReady,
                         )
                     }
 
@@ -1764,6 +1777,8 @@ private fun ChatInputBottomBar(
     onShowMemoryFolderDialog: () -> Unit,
     onRequestAutoScrollToBottom: () -> Unit,
     showRescueFirstUsePrompt: Boolean,
+    rescueModelInitialized: Boolean,
+    rescueModelReady: Boolean,
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -1801,8 +1816,19 @@ private fun ChatInputBottomBar(
     var nextPendingQueueId by remember(currentChatId) { mutableStateOf(1L) }
     var wasQueueBlocked by remember(currentChatId) { mutableStateOf(false) }
     var suppressNextAutoDequeue by remember(currentChatId) { mutableStateOf(false) }
+    var rescueSetupDismissed by rememberSaveable(currentChatId) { mutableStateOf(false) }
+    var rescueSetupSaving by remember(currentChatId) { mutableStateOf(false) }
+    var rescueSetupError by remember(currentChatId) { mutableStateOf<String?>(null) }
     val waifuMergeBuffer = remember(currentChatId) { mutableStateListOf<String>() }
     val latestQueueBlocked = rememberUpdatedState(isQueueBlocked)
+
+    LaunchedEffect(rescueModelReady) {
+        if (rescueModelReady) {
+            rescueSetupDismissed = false
+            rescueSetupSaving = false
+            rescueSetupError = null
+        }
+    }
     val latestCurrentChatId = rememberUpdatedState(currentChatId)
 
     fun buildChatInputHookContext(
@@ -1921,6 +1947,11 @@ private fun ChatInputBottomBar(
     val sendQueuedItemNow: (PendingQueueMessageItem, Boolean) -> Unit =
         { item, cancelCurrentConversation ->
             coroutineScope.launch {
+                if (inputMenuRuntime == "rescue" && !rescueModelReady) {
+                    restorePendingQueueItem(item)
+                    rescueSetupDismissed = false
+                    return@launch
+                }
                 val submitDecision =
                     ChatInputHookRegistry.dispatchSubmitRequested(
                         buildChatInputHookContext(
@@ -2023,6 +2054,15 @@ private fun ChatInputBottomBar(
                 return@launch
             }
 
+            if (inputMenuRuntime == "rescue" && !rescueModelReady) {
+                if (!rescueModelInitialized) {
+                    Toast.makeText(context, "正在读取维修助手模型配置，请稍候", Toast.LENGTH_SHORT).show()
+                } else {
+                    rescueSetupDismissed = false
+                }
+                return@launch
+            }
+
             val requestedText = textOverride ?: userMessage.text
             val submitDecision =
                 ChatInputHookRegistry.dispatchSubmitRequested(
@@ -2098,7 +2138,48 @@ private fun ChatInputBottomBar(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (showRescueFirstUsePrompt) {
+        if (inputMenuRuntime == "rescue" &&
+            rescueModelInitialized &&
+            !rescueModelReady &&
+            !rescueSetupDismissed
+        ) {
+            RescueModelSetupPrompt(
+                saving = rescueSetupSaving,
+                error = rescueSetupError,
+                onSaveDeepSeekKey = { key ->
+                    rescueSetupSaving = true
+                    rescueSetupError = null
+                    actualViewModel.saveRescueDeepSeekApiKey(key) { error ->
+                        rescueSetupSaving = false
+                        rescueSetupError = error
+                        if (error == null) {
+                            rescueSetupDismissed = true
+                            Toast.makeText(
+                                context,
+                                "DeepSeek 密钥已保存并立即生效",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
+                },
+                onOpenDeepSeekPage = {
+                    val result = OperitHostProvider.operationsOrUnsupported()
+                        .openOpenHousePage(context, RESCUE_DEEPSEEK_PAGE_ID)
+                    if (!result.success) {
+                        Toast.makeText(
+                            context,
+                            result.error ?: result.message.ifBlank { "无法打开 DeepSeek 页面" },
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
+                onConfigureOtherModel = onNavigateToModelConfig,
+                onDismiss = { rescueSetupDismissed = true },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+
+        if (showRescueFirstUsePrompt && rescueModelReady) {
             RescueFirstUsePrompt(
                 onClick = {
                     sendMessage(RESCUE_FIRST_USE_MESSAGE)

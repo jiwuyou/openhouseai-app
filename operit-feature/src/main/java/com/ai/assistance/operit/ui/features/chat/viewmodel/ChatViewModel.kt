@@ -214,6 +214,27 @@ class ChatViewModel(
         _shouldShowConfigDialog.value = true
     }
 
+    fun saveRescueDeepSeekApiKey(apiKey: String, onComplete: (String?) -> Unit) {
+        val normalizedKey = apiKey.trim()
+        if (runtimeSlot != ChatRuntimeSlot.RESCUE) {
+            onComplete("DeepSeek quick setup is only available in Rescue")
+            return
+        }
+        if (normalizedKey.isEmpty()) {
+            onComplete("请输入 DeepSeek API 密钥")
+            return
+        }
+        viewModelScope.launch {
+            val error = runCatching {
+                apiConfigDelegate.saveRescueDeepSeekApiKey(normalizedKey)
+            }.exceptionOrNull()
+            if (error != null) {
+                AppLogger.e(TAG, "Failed to save Rescue DeepSeek configuration", error)
+            }
+            onComplete(error?.message)
+        }
+    }
+
     val featureToggles: StateFlow<Map<String, Boolean>> by lazy { apiConfigDelegate.featureToggles }
     val keepScreenOn: StateFlow<Boolean> by lazy { apiConfigDelegate.keepScreenOn }
 

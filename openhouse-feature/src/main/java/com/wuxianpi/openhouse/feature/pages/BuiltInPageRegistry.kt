@@ -8,6 +8,7 @@ import com.wuxianpi.openhouse.core.registry.OpenHouseComponentParser
 import com.wuxianpi.openhouse.core.registry.RegistryManifest
 import com.wuxianpi.openhouse.core.workspace.HttpUrlNormalizer
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
+import com.wuxianpi.openhouse.feature.ComponentWebTab
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -23,6 +24,8 @@ internal data class OpenHousePageDefinition(
     val icon: String,
     val url: String,
     val order: Int,
+    val desktopVisible: Boolean,
+    val tabs: List<ComponentWebTab>,
 )
 
 internal data class OpenHousePageManifest(
@@ -62,6 +65,13 @@ internal class BuiltInPageRegistry(context: Context) {
     fun isCustomPage(id: String?): Boolean {
         val normalized = WorkspaceDestination.normalizeId(id)
         return customStore.load().any { WorkspaceDestination.normalizeId(it.id) == normalized }
+    }
+
+    fun tabsFor(id: String?): List<ComponentWebTab> {
+        val normalized = WorkspaceDestination.normalizeId(id)
+        return manifest.pages.firstOrNull {
+            WorkspaceDestination.normalizeId(it.id) == normalized
+        }?.tabs.orEmpty()
     }
 
     fun canOpenInside(componentId: String, uri: android.net.Uri): Boolean {
@@ -148,11 +158,16 @@ internal class BuiltInPageRegistry(context: Context) {
     }
 
     private fun loadInitialManifest(): OpenHousePageManifest {
-        listOf(activeFile, previousFile).forEach { file ->
-            OpenHousePageFiles.read(file)?.let(::parseManifest)?.let { return it }
-        }
         val seed = appContext.assets.open(SEED_ASSET).bufferedReader().use { it.readText() }
-        return requireNotNull(parseManifest(seed)) { "Bundled OpenHouse page manifest is invalid" }
+        val bundled = requireNotNull(parseManifest(seed)) {
+            "Bundled OpenHouse page manifest is invalid"
+        }
+        return buildList {
+            listOf(activeFile, previousFile).forEach { file ->
+                OpenHousePageFiles.read(file)?.let(::parseManifest)?.let(::add)
+            }
+            add(bundled)
+        }.maxBy { it.revision }
     }
 
     private fun activate(candidate: OpenHousePageManifest) {
@@ -197,21 +212,42 @@ internal class BuiltInPageRegistry(context: Context) {
             }
         }
         val pagesArray = root.optJSONArray("pages") ?: return@runCatching null
+        val pageSources = buildList {
+            add(pagesArray to false)
+            root.optJSONObject("extensions")
+                ?.optJSONArray("hiddenPages")
+                ?.let { add(it to true) }
+        }
         val pages = buildList {
-            for (index in 0 until pagesArray.length()) {
-                val page = pagesArray.optJSONObject(index) ?: continue
-                if (!page.optBoolean("enabled", true)) continue
-                val id = page.optString("id").trim()
-                val title = page.optString("title").trim()
-                val url = urlByKey[page.optString("urlKey").trim()] ?: continue
-                if (!validId(id) || title.isEmpty() || OpenHouseBuiltins.isProtectedId(id)) continue
-                add(OpenHousePageDefinition(
-                    id = id,
-                    title = title,
-                    icon = safeIcon(page.optString("icon")),
-                    url = url,
-                    order = page.optInt("order", 1000),
-                ))
+            pageSources.forEach { (sourcePages, forceHidden) ->
+                for (index in 0 until sourcePages.length()) {
+                    val page = sourcePages.optJSONObject(index) ?: continue
+                    if (!page.optBoolean("enabled", true)) continue
+                    val id = page.optString("id").trim()
+                    val title = page.optString("title").trim()
+                    val url = urlByKey[page.optString("urlKey").trim()] ?: continue
+                    if (!validId(id) || title.isEmpty() || OpenHouseBuiltins.isProtectedId(id)) continue
+                    val tabs = buildList {
+                        page.optJSONArray("tabs")?.let { items ->
+                            for (tabIndex in 0 until items.length()) {
+                                val tab = items.optJSONObject(tabIndex) ?: continue
+                                val tabTitle = tab.optString("title").trim()
+                                val tabUrl = urlByKey[tab.optString("urlKey").trim()] ?: continue
+                                if (tabTitle.isNotEmpty()) add(ComponentWebTab(tabTitle, tabUrl))
+                            }
+                        }
+                    }.distinctBy { it.title to it.url }
+                    add(OpenHousePageDefinition(
+                        id = id,
+                        title = title,
+                        icon = safeIcon(page.optString("icon")),
+                        url = url,
+                        order = page.optInt("order", 1000),
+                        desktopVisible = !forceHidden &&
+                            (page.optJSONObject("desktop")?.optBoolean("visible", true) ?: true),
+                        tabs = tabs,
+                    ))
+                }
             }
         }.distinctBy { WorkspaceDestination.normalizeId(it.id) }
         require(pages.isNotEmpty())
@@ -223,15 +259,18 @@ internal class BuiltInPageRegistry(context: Context) {
                 }
             }
             pages.mapNotNullTo(this) { page -> runCatching { URI(page.url).host?.lowercase(Locale.US) }.getOrNull() }
+            pages.flatMapTo(mutableListOf()) { page -> page.tabs }.mapNotNullTo(this) { tab ->
+                runCatching { URI(tab.url).host?.lowercase(Locale.US) }.getOrNull()
+            }
         }
         OpenHousePageManifest(revision, pages, allowedHosts, root.toString())
     }.getOrNull()
 
     private fun OpenHousePageDefinition.toComponent(source: String): OpenHouseComponent? =
-        component(id, title, icon, url, order, source)
+        component(id, title, icon, url, order, desktopVisible, source)
 
     private fun CustomPage.toComponent(): OpenHouseComponent? =
-        component(id, title, icon, url, 10_000, SOURCE_CUSTOM)
+        component(id, title, icon, url, 10_000, true, SOURCE_CUSTOM)
 
     private fun component(
         id: String,
@@ -239,6 +278,7 @@ internal class BuiltInPageRegistry(context: Context) {
         icon: String,
         url: String,
         order: Int,
+        desktopVisible: Boolean,
         source: String,
     ): OpenHouseComponent? = runCatching {
         val json = JSONObject()
@@ -250,7 +290,7 @@ internal class BuiltInPageRegistry(context: Context) {
             .put("visible", true)
             .put("entry", JSONObject().put("type", "webview").put("url", url))
             .put("desktop", JSONObject()
-                .put("visible", true)
+                .put("visible", desktopVisible)
                 .put("order", order)
                 .put("icon", icon)
                 .put("label", title.take(1)))

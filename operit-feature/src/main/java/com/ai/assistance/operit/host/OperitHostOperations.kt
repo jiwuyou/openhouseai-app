@@ -23,6 +23,17 @@ interface OperitHostOperations {
 
     fun openHostApp(context: Context): OperitHostOperationResult
 
+    /** Opens one host-owned OpenHouse WebPageApp without routing through Operit WebView code. */
+    fun openOpenHousePage(context: Context, pageId: String): OperitHostOperationResult =
+        OperitHostOperationResult(
+            success = false,
+            details = JSONObject()
+                .put("operation", "open_openhouse_page")
+                .put("pageId", pageId),
+            message = "OpenHouse page navigation is unavailable",
+            error = "The active host does not support OpenHouse page navigation",
+        )
+
     fun pairingInstallerScript(baseUrl: String, token: String): String?
 
     suspend fun runtimeStatus(): OperitHostOperationResult
