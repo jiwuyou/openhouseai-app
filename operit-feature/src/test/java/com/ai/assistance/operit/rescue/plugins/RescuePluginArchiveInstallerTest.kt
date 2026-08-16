@@ -113,7 +113,7 @@ class RescuePluginArchiveInstallerTest {
         val archive =
             zip(
                 "manifest.json" to
-                    """{"schemaVersion":1,"id":"wuxianpi.test","version":"1.0.0","name":"Test","description":"Test plugin","category":"test","minHostVersion":14,"requiredCapabilities":[],"tags":[],"documents":[]}"""
+                    """{"schemaVersion":1,"id":"wuxianpi.test","version":"1.0.0","name":"Test","description":"Test plugin","category":"test","minHostVersion":15,"requiredCapabilities":[],"tags":[],"documents":[]}"""
             )
         val installer = RescuePluginArchiveInstaller(temporaryFolder.newFolder("incompatible"))
 

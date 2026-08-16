@@ -15,7 +15,7 @@ class RescuePluginInstalledReaderTest {
     @Test
     fun persistedIncompatibleActiveFallsBackToCompatiblePreviousAfterProcessStart() {
         val installedRoot = temporaryFolder.newFolder("installed-host-version")
-        writePlugin(installedRoot, version = "2.0.0", minHostVersion = 14)
+        writePlugin(installedRoot, version = "2.0.0", minHostVersion = 15)
         val previousDirectory = writePlugin(installedRoot, version = "1.0.0")
         File(previousDirectory, ".bundled").writeText("")
         val state = state(active = "2.0.0", previous = "1.0.0")

@@ -95,6 +95,11 @@ class RescueToolCatalog private constructor(
                     required = JSONArray().put("serviceManagerBaseUrl").put("token"),
                 ),
                 definition(
+                    name = WuxianPiSetupContract.TOOL_OPEN_WUXIANPI,
+                    description =
+                        "After the setup-finish summary is shown, return a user-confirmed action card that opens the WuxianPi OpenHouse component. Do not open it automatically.",
+                ),
+                definition(
                     name = RescuePluginContract.TOOL_SEARCH,
                     description = "Search the online Rescue Plugin Hub for repair knowledge and workflows.",
                     properties =

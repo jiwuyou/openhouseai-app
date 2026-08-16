@@ -21,6 +21,7 @@ object WuxianPiSetupContract {
     const val TOOL_STORE_SERVICE_MANAGER_CONNECTION = "store_service_manager_connection"
     const val TOOL_ENSURE_OPENHOUSE_CONNECTION_BRIDGE = "ensure_openhouse_connection_bridge"
     const val TOOL_WRITE_SERVICE_MANAGER_CONNECTION = "write_service_manager_connection"
+    const val TOOL_OPEN_WUXIANPI = "open_wuxianpi"
 
     const val OPERATION_INSPECT = "inspect_wuxianpi_setup"
     const val OPERATION_PREPARE_RUNTIME_HOST = "prepare_runtime_host"
@@ -35,6 +36,7 @@ object WuxianPiSetupContract {
     const val OPERATION_STORE_SERVICE_MANAGER_CONNECTION = "store_service_manager_connection"
     const val OPERATION_ENSURE_OPENHOUSE_CONNECTION_BRIDGE = "ensure_openhouse_connection_bridge"
     const val OPERATION_WRITE_SERVICE_MANAGER_CONNECTION = "write_service_manager_connection"
+    const val OPERATION_OPEN_WUXIANPI = "open_wuxianpi"
 
     const val DETAIL_OPERATION = "operation"
     const val DETAIL_SUPPORTED = "supported"
@@ -61,6 +63,27 @@ object WuxianPiSetupContract {
             TOOL_STORE_SERVICE_MANAGER_CONNECTION,
             TOOL_ENSURE_OPENHOUSE_CONNECTION_BRIDGE,
             TOOL_WRITE_SERVICE_MANAGER_CONNECTION,
+            TOOL_OPEN_WUXIANPI,
+        )
+
+    fun openWuxianPiAction(): OperitHostOperationResult =
+        OperitHostOperationResult(
+            success = true,
+            details =
+                JSONObject()
+                    .put(DETAIL_OPERATION, OPERATION_OPEN_WUXIANPI)
+                    .put(DETAIL_SUPPORTED, true)
+                    .put(DETAIL_USER_ACTION_REQUIRED, true)
+                    .put(DETAIL_DEFERRED_USER_ACTION, TOOL_OPEN_WUXIANPI)
+                    .put(DETAIL_ACTION_STAGE, "open_wuxianpi")
+                    .put(DETAIL_ACTION_TITLE, "打开 WuxianPi")
+                    .put(
+                        DETAIL_ACTION_DESCRIPTION,
+                        "首次安装已完成。\n\n以后请直接使用 WuxianPi 完成日常对话、安装更新和问题处理。\n维修助手主要用于首次安装和故障修复，和apk更新。",
+                    )
+                    .put(DETAIL_ACTION_BUTTON, "打开 WuxianPi")
+                    .put("pageId", "yuanshengwuxianpi"),
+            message = "等待用户点击打开 WuxianPi",
         )
 
     fun unsupported(operation: String): OperitHostOperationResult =

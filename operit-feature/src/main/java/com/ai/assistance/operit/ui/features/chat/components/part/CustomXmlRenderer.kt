@@ -960,6 +960,13 @@ class CustomXmlRenderer(
                 ?.groupValues
                 ?.getOrNull(1)
                 .orEmpty()
+        val pageId =
+            Regex("""\bpageId\s*=\s*[\"']([^\"']+)[\"']""")
+                .find(content)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.ifBlank { "yuanshengwuxianpi" }
+                ?: "yuanshengwuxianpi"
         val spec =
             when (operation) {
                 WuxianPiSetupContract.TOOL_REQUEST_TERMUX_HOME_ACCESS ->
@@ -985,6 +992,12 @@ class CustomXmlRenderer(
                         R.string.rescue_plugin_comment_confirm_title,
                         R.string.rescue_plugin_comment_confirm_description,
                         R.string.rescue_plugin_comment_confirm_button,
+                    )
+                WuxianPiSetupContract.TOOL_OPEN_WUXIANPI ->
+                    Triple(
+                        R.string.wuxianpi_action_open_title,
+                        R.string.wuxianpi_action_open_description,
+                        R.string.wuxianpi_action_open_button,
                     )
                 else -> null
             }
@@ -1053,6 +1066,8 @@ class CustomXmlRenderer(
                                 WuxianPiSetupContract.TOOL_REQUEST_TERMUX_RUN_COMMAND_PERMISSION ->
                                     operations.launchTermuxRunCommandPermission(context)
                                 "reload_termux_settings" -> operations.openHostApp(context)
+                                WuxianPiSetupContract.TOOL_OPEN_WUXIANPI ->
+                                    operations.openOpenHousePage(context, pageId)
                                 else -> error("Unsupported WuxianPi action: $operation")
                             }
                         }.getOrElse { error ->

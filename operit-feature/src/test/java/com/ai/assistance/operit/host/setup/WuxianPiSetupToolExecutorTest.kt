@@ -15,7 +15,7 @@ class WuxianPiSetupToolExecutorTest {
         val executor = WuxianPiSetupToolExecutor { host }
         val context = ContextWrapper(null)
 
-        WuxianPiSetupContract.toolNames.forEach { toolName ->
+        (WuxianPiSetupContract.toolNames - WuxianPiSetupContract.TOOL_OPEN_WUXIANPI).forEach { toolName ->
             val args =
                 if (toolName == WuxianPiSetupContract.TOOL_WRITE_SERVICE_MANAGER_CONNECTION) {
                     JSONObject()
@@ -27,7 +27,15 @@ class WuxianPiSetupToolExecutorTest {
             val result = executor.execute(toolName, context, args)
             assertEquals(toolName, result.details.getString("called"))
         }
-        assertEquals(WuxianPiSetupContract.toolNames.toList(), host.calls)
+        assertEquals(WuxianPiSetupContract.toolNames - WuxianPiSetupContract.TOOL_OPEN_WUXIANPI, host.calls.toSet())
+
+        val openResult = executor.execute(WuxianPiSetupContract.TOOL_OPEN_WUXIANPI, context)
+        assertEquals(WuxianPiSetupContract.OPERATION_OPEN_WUXIANPI, openResult.details.getString("operation"))
+        assertEquals(true, openResult.details.getBoolean("userActionRequired"))
+        assertEquals(
+            "首次安装已完成。\n\n以后请直接使用 WuxianPi 完成日常对话、安装更新和问题处理。\n维修助手主要用于首次安装和故障修复，和apk更新。",
+            openResult.details.getString("actionDescription"),
+        )
     }
 
     private class RecordingSetupHostOperations : TestOperitHostOperations() {

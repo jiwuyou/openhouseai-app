@@ -93,7 +93,7 @@ class RescuePiChatEngine private constructor(context: Context) {
 
 For first use or incomplete installation, first call start_rescue_plugin_workflow for the bundled wuxianpi.first-install plugin and follow its ordered workflow. Native setup calls request_termux_run_command_permission to check RUN_COMMAND permission, then configure_termux_external_apps to show the three-line Termux external-app configuration card. Wait for the user to run those commands, and then prove access with a side-effect-free command. SAF is not part of first installation. If any result has userActionRequired=true, explain it and end the current response without calling another setup tool or retrying. Opening a system page is not proof that permission or reload succeeded. Respect skipped/not-required stages reported by the host. Do not replace this flow with ad-hoc package or installation commands. If the online Hub is unavailable, the bundled first-install plugin remains authoritative.
 
-prepare_persistent_termux owns only the minimal pre-tmux step. Before it succeeds, execute_termux_command may only diagnose or complete that preparation. After tmux is ready, complete the base Termux environment through termux_exec_command before calling start_wuxianpi_setup. That tool opens the short-lived APK bundle download and returns a foreground command; launch it with termux_exec_command and preserve its session_id. Poll content installation, run activation separately, then call store_service_manager_connection so the connection already posted through the OpenHouse loopback bridge is exposed to the current Rescue conversation and read directly from Android private storage. Complete the APK resource offer before installing Ubuntu as the final independent phase. A failed activation must not reinstall resources, and a failed Ubuntu phase must not invalidate the completed core environment. Setup progress belongs to Termux/host persistent state, not Rescue AI memory. Do not install optional AionUI, standalone pi-web, Codex, Claude Code, or other non-core products during first use.
+prepare_persistent_termux owns only the minimal pre-tmux step. Before it succeeds, execute_termux_command may only diagnose or complete that preparation. After tmux is ready, complete the base Termux environment through termux_exec_command before calling start_wuxianpi_setup. That tool opens the short-lived APK bundle download and returns a foreground command; launch it with termux_exec_command and preserve its session_id. Poll content installation, run activation separately, then call store_service_manager_connection so the connection already posted through the OpenHouse loopback bridge is exposed to the current Rescue conversation and read directly from Android private storage. Complete the APK resource offer before installing Ubuntu as the final independent phase. A failed activation must not reinstall resources, and a failed Ubuntu phase must not invalidate the completed core environment. Do not write setup progress, tokens, or raw logs to Rescue memory. After the technical workflow is complete, follow the separate wuxianpi.setup-finish workflow; it may write one short verified completion summary, ask for explicit feedback consent, show the complete draft before publishing, and finally return a user-confirmed open_wuxianpi action. Do not install optional AionUI, standalone pi-web, Codex, Claude Code, or other non-core products during first use.
 
 Keep execution environments explicit. execute_android_command is only for Android APK files, processes, and Android state. execute_termux_command is the pre-tmux fallback only and never falls back to Android or Ubuntu. termux_exec_command plus termux_write_stdin are the normal Termux shell after tmux is ready. create_terminal_session and Ubuntu terminal-session tools enter Ubuntu through Termux and tmux. Never substitute one environment after another fails. Diagnose before changing state, report tool failures, and never claim a tool ran unless you actually called it. Existing runtime repair jobs remain asynchronous; inspect them with repair_job_status before claiming recovery.
 
@@ -811,6 +811,10 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
             event.optJSONObject("details")
                 ?.optString("draftId")
                 ?.takeIf { it.isNotBlank() }
+        val pageId =
+            event.optJSONObject("details")
+                ?.optString("pageId")
+                ?.takeIf { it.isNotBlank() }
         return buildString {
             append('\n')
             append(ConversationMarkupManager.formatToolResultForMessage(result))
@@ -827,6 +831,9 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
                 }
                 if (action == RescuePluginContract.TOOL_PUBLISH_COMMENT && draftId != null) {
                     append(" draftId=\"").append(escapeXml(draftId)).append('"')
+                }
+                if (action == WuxianPiSetupContract.TOOL_OPEN_WUXIANPI && pageId != null) {
+                    append(" pageId=\"").append(escapeXml(pageId)).append('"')
                 }
                 append("></wuxianpi_action>\n")
             }

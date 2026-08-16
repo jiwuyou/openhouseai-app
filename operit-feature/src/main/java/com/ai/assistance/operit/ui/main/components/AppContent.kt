@@ -30,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -51,6 +52,8 @@ import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.common.displays.FpsCounter
 import com.ai.assistance.operit.ui.main.NavigationTransitionSource
+import com.ai.assistance.operit.ui.main.LocalOperitHostMode
+import com.ai.assistance.operit.ui.main.OperitHostMode
 import com.ai.assistance.operit.ui.main.TopBarTitleContent
 import com.ai.assistance.operit.ui.main.navigation.RouteEntry
 import com.ai.assistance.operit.ui.main.screens.Screen
@@ -344,12 +347,18 @@ fun AppContent(
                     },
                     actions = {
                         if (isHostedMode && showHostedLifecycleActions) {
-                            IconButton(onClick = onOpenHostDesktop) {
-                                Icon(
-                                    imageVector = Icons.Default.Home,
-                                    contentDescription = "桌面",
-                                    tint = appBarContentColor,
-                                )
+                            if (LocalOperitHostMode.current == OperitHostMode.RESCUE) {
+                                TextButton(onClick = onOpenHostDesktop) {
+                                    Text(text = "桌面", color = appBarContentColor)
+                                }
+                            } else {
+                                IconButton(onClick = onOpenHostDesktop) {
+                                    Icon(
+                                        imageVector = Icons.Default.Home,
+                                        contentDescription = "桌面",
+                                        tint = appBarContentColor,
+                                    )
+                                }
                             }
                         } else {
                             actions()

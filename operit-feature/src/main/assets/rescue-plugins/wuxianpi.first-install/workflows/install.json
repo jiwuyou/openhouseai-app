@@ -220,6 +220,24 @@
         "retryWhen": ["Ubuntu 安装仍在运行"]
       },
       "description": "汇总 Ubuntu 后置阶段；Ubuntu 失败不得将已经完成的核心安装改写为失败。"
+    },
+    {
+      "id": "install-finish-plugin",
+      "kind": "tool",
+      "tool": "install_rescue_plugin",
+      "arguments": {
+        "pluginId": "wuxianpi.setup-finish"
+      },
+      "description": "首次安装技术流程已经结束。安装或确认独立的 wuxianpi.setup-finish 收尾插件；此步骤失败不能回滚或否定已经完成的首次安装。"
+    },
+    {
+      "id": "start-finish-plugin",
+      "kind": "tool",
+      "tool": "start_rescue_plugin_workflow",
+      "arguments": {
+        "pluginId": "wuxianpi.setup-finish"
+      },
+      "description": "启动独立收尾工作流。后续只整理记忆、询问反馈并引导打开 WuxianPi，不重新执行安装。"
     }
   ]
 }

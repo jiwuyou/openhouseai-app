@@ -162,7 +162,7 @@ class RescuePluginContractTest {
 
     @Test
     fun declaresCurrentHostCompatibility() {
-        assertEquals(13, RescuePluginContract.HOST_API_VERSION)
+        assertEquals(14, RescuePluginContract.HOST_API_VERSION)
         assertEquals(
             setOf(
                 "setup-tools",
@@ -215,7 +215,7 @@ class RescuePluginContractTest {
         assertEquals(compatible, RescuePluginContract.requireCompatible(compatible))
 
         assertThrows(IllegalArgumentException::class.java) {
-            RescuePluginContract.requireCompatible(manifest(minHostVersion = 14))
+            RescuePluginContract.requireCompatible(manifest(minHostVersion = 15))
         }
         assertThrows(IllegalArgumentException::class.java) {
             RescuePluginContract.requireCompatible(

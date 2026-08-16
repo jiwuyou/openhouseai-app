@@ -7840,6 +7840,12 @@
     <string name="wuxianpi_action_run_command_description">点击后会打开 Android 权限页面。允许后，WuxianPi 会发送一条测试命令确认连接。</string>
     <string name="wuxianpi_action_run_command_button">打开权限请求</string>
     <string name="wuxianpi_action_reload_termux_title">让 Termux 配置生效</string>
+    <string name="wuxianpi_action_open_title">打开 WuxianPi</string>
+    <string name="wuxianpi_action_open_description">首次安装已完成。
+
+以后请直接使用 WuxianPi 完成日常对话、安装更新和问题处理。
+维修助手主要用于首次安装和故障修复，和apk更新。</string>
+    <string name="wuxianpi_action_open_button">打开 WuxianPi</string>
     <string name="wuxianpi_action_reload_termux_description">配置已经写入 Termux。请打开 Termux，在终端执行 termux-reload-settings，然后返回维修助手。</string>
     <string name="wuxianpi_action_reload_termux_button">打开 Termux</string>
     <string name="wuxianpi_action_opened">系统页面已打开，完成后返回此对话。</string>

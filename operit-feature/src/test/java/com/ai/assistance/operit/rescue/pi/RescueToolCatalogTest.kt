@@ -41,6 +41,7 @@ class RescueToolCatalogTest {
         assertTrue("prepare_persistent_termux missing", "prepare_persistent_termux" in names)
         assertTrue("start_wuxianpi_setup missing", "start_wuxianpi_setup" in names)
         assertTrue("get_wuxianpi_setup_status missing", "get_wuxianpi_setup_status" in names)
+        assertTrue("open_wuxianpi missing", "open_wuxianpi" in names)
         assertTrue(
             "store_service_manager_connection missing",
             "store_service_manager_connection" in names,

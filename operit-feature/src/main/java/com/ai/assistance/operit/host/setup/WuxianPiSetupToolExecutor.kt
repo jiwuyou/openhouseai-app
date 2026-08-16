@@ -42,6 +42,8 @@ class WuxianPiSetupToolExecutor(
                     args.getString("serviceManagerBaseUrl"),
                     args.getString("token"),
                 )
+            WuxianPiSetupContract.TOOL_OPEN_WUXIANPI ->
+                WuxianPiSetupContract.openWuxianPiAction()
             else -> error("Unknown WuxianPi setup tool: $toolName")
         }
     }
