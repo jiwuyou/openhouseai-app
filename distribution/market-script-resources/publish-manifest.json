@@ -16,9 +16,9 @@
     },
     {
       "id": "wuxianpi-setup",
-      "version": "1.0.3",
-      "archivePath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.3/wuxianpi-setup.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.3/metadata.json"
+      "version": "1.0.4",
+      "archivePath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.4/wuxianpi-setup.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/wuxianpi-setup/1.0.4/metadata.json"
     },
     {
       "id": "openhouse-bootstrap",
@@ -125,7 +125,7 @@
   ],
   "resourceSet": {
     "id": "openhouse-core-stack",
-    "version": "2026.08.15.4",
-    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.15.4/manifest.json"
+    "version": "2026.08.16.1",
+    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.16.1/manifest.json"
   }
 }

@@ -950,6 +950,21 @@ ensure_wuxianpi_started() {
   wait_wuxianpi_health
 }
 
+install_canonical_service_manager_runit() {
+  local install_status=0
+  local run_file="$TERMUX_PREFIX/var/service/service-manager/run"
+
+  service-manager install-service --config "$CANONICAL_SM_CONFIG" --bind "$CANONICAL_SM_BIND" \
+    || install_status=$?
+  [ "$install_status" -ne 0 ] || return 0
+  if [ -x "$run_file" ]; then
+    log "install-service 启动验证延迟：exit=$install_status run=$run_file；交由 openhouse-control-plane-start 重试。"
+    return 0
+  fi
+  log "install-service 失败且未生成可执行 run 文件：exit=$install_status run=$run_file"
+  return "$install_status"
+}
+
 activate_runtime() {
   local control_script services offer_id token
   mkdir -p "$ACTIVATION_ROOT"
@@ -965,8 +980,7 @@ activate_runtime() {
   ensure_canonical_service_manager_config \
     || activation_fail canonical_config_invalid
 
-  service-manager install-service --config "$CANONICAL_SM_CONFIG" --bind "$CANONICAL_SM_BIND" \
-    || activation_fail runit_install_failed
+  install_canonical_service_manager_runit || activation_fail runit_install_failed
   control_script="$TERMUX_PREFIX/bin/openhouse-control-plane-start"
   [ -x "$control_script" ] || activation_fail control_plane_entry_missing
   "$control_script" || activation_fail service_manager_start_failed
