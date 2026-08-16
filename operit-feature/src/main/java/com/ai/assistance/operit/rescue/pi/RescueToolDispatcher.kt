@@ -5,6 +5,7 @@ import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
+import java.net.URI
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -231,11 +232,19 @@ class RescueToolDispatcher private constructor(
                         val offer = requireNotNull(resourceOfferStore.current()) {
                             "APK resource offer is unavailable"
                         }
-                        val hostStatus = operationsProvider().wuxianPiSetupStatus()
-                        require(hostStatus.success) {
-                            hostStatus.error ?: "Unable to verify the real Termux setup status"
+                        val gate = if (offer.reason == "apk-update") {
+                            val connection = operationsProvider().storeServiceManagerConnection()
+                            require(connection.success) {
+                                connection.error ?: "Unable to read the Android-private service-manager connection"
+                            }
+                            verifySatisfiedApkUpdateOffer(connection.details)
+                        } else {
+                            val hostStatus = operationsProvider().wuxianPiSetupStatus()
+                            require(hostStatus.success) {
+                                hostStatus.error ?: "Unable to verify the real Termux setup status"
+                            }
+                            verifySatisfiedApkResourceOffer(offer.toJson(), hostStatus.details)
                         }
-                        val gate = verifySatisfiedApkResourceOffer(offer.toJson(), hostStatus.details)
                         require(gate.accepted) {
                             "APK resource offer cannot be satisfied: ${gate.failures.joinToString(", ")}"
                         }
@@ -416,7 +425,27 @@ internal data class ApkResourceOfferVerification(
     val failures: List<String>,
 )
 
-/** SATISFIED means the host independently proved both installed content and live activation. */
+/** APK updates only require the Android-private connection contract. */
+internal fun verifySatisfiedApkUpdateOffer(
+    connection: JSONObject,
+): ApkResourceOfferVerification {
+    val failures = mutableListOf<String>()
+    val url = connection.optString("serviceManagerBaseUrl").trim()
+    if (connection.optBoolean("hasToken", false).not()) failures += "hasToken=false"
+    try {
+        val uri = URI(url)
+        val loopback =
+            uri.host == "127.0.0.1" || uri.host.equals("localhost", true) || uri.host == "::1"
+        if (uri.scheme != "http" || !loopback || uri.port !in 1..65535) {
+            failures += "serviceManagerBaseUrl=invalid"
+        }
+    } catch (_: Exception) {
+        failures += "serviceManagerBaseUrl=invalid"
+    }
+    return ApkResourceOfferVerification(failures.isEmpty(), failures)
+}
+
+/** First-install SATISFIED still proves installed content and live activation. */
 internal fun verifySatisfiedApkResourceOffer(
     offer: JSONObject,
     hostDetails: JSONObject,

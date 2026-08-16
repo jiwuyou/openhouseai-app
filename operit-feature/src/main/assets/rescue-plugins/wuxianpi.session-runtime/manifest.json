@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "wuxianpi.session-runtime",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "name": "会话运行规则",
   "description": "在插件统一更新后即时接管当前维修对话，选择业务插件、验证设备状态并维护长期记忆。",
   "category": "core",
@@ -27,7 +27,7 @@
       "title": "检查更新",
       "icon": "refresh-cw",
       "priority": 90,
-      "prompt": "请检查 APK、Termux 和维修助手市场中的资源更新；读取资源更新插件说明，先比较本地状态，只处理缺失、损坏或 SHA 不一致的资源。",
+      "prompt": "请检查 APK 配套状态；先使用最新版 APK 配套更新插件，只确认或修复 Android 私有 service-manager 连接，不更新 WuxianPi 或 Termux 运行资源。",
       "visibleWhen": "always",
       "requiresPlugins": ["wuxianpi.resource-update"]
     },

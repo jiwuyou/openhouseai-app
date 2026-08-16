@@ -369,6 +369,11 @@ class RescuePluginManager private constructor(context: Context) {
     }
 
     suspend fun startWorkflow(pluginId: String, path: String?): JSONObject {
+        if (pluginId == RescuePluginContract.RESOURCE_UPDATE_PLUGIN_ID) {
+            store.updateResourceUpdateIfAvailable()
+            reloadActiveActions()
+            return workflowRunner.start(pluginId, path)
+        }
         if (pluginId != RescuePluginContract.FIRST_INSTALL_PLUGIN_ID) {
             return workflowRunner.start(pluginId, path)
         }

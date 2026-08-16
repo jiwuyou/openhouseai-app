@@ -212,6 +212,30 @@ class RescueToolDispatcherSetupTest {
         assertTrue(verification.failures.any { it.startsWith("wuxianpiHealth=") })
     }
 
+    @Test
+    fun apkUpdateOfferOnlyRequiresAndroidPrivateLoopbackConnection() {
+        val verification = verifySatisfiedApkUpdateOffer(
+            JSONObject()
+                .put("serviceManagerBaseUrl", "http://127.0.0.1:20087")
+                .put("hasToken", true),
+        )
+
+        assertTrue(verification.failures.toString(), verification.accepted)
+    }
+
+    @Test
+    fun apkUpdateOfferRejectsMissingTokenOrNonLoopbackConnection() {
+        val verification = verifySatisfiedApkUpdateOffer(
+            JSONObject()
+                .put("serviceManagerBaseUrl", "https://example.com:20087")
+                .put("hasToken", false),
+        )
+
+        assertFalse(verification.accepted)
+        assertTrue(verification.failures.any { it == "hasToken=false" })
+        assertTrue(verification.failures.any { it == "serviceManagerBaseUrl=invalid" })
+    }
+
     private class UserActionHostOperations : TestOperitHostOperations() {
         var requestCount = 0
         var configureCount = 0

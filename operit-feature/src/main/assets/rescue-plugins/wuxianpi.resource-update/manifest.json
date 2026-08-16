@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "wuxianpi.resource-update",
+  "version": "4.0.1",
+  "name": "APK 配套更新",
+  "description": "检查并修复 APK 使用的 Android 私有 service-manager 连接，不更新 WuxianPi 或 Termux 资源。",
+  "category": "update",
+  "minHostVersion": 14,
+  "requiredCapabilities": ["setup-tools", "termux", "persistent-terminal"],
+  "tags": ["APK", "Android", "连接"],
+  "entryWorkflow": "workflows/update.json",
+  "documents": [
+    { "path": "docs/guide.md", "title": "APK 配套更新说明" }
+  ]
+}

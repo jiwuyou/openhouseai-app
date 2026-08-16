@@ -41,4 +41,4 @@ Android 私有目录保存权威缓存、修订号、历史和 pending 同步标
 
 ## APK Resource Offers
 
-APK 更新仅在 Android 私有目录创建五资源集合的 offer，绝不在启动时复制或覆盖 Termux 文件。维修助手比较实际已安装集合后，才按需把 SHA 不同的单个 APK 归档暂存到 Termux。只有经验证的 `satisfied` 或本机更高的 `superseded` 可以关闭提醒；`dismissed` 只结束本次提醒，不修改资源安装状态。
+首次安装 offer 继续携带完整资源并使用原有资源、激活和健康门禁。普通 APK 更新 offer 只要求 Android 私有的 service-manager loopback URL 和 Token 可读取；最新版 `wuxianpi.resource-update` 仅在连接缺失时从 Termux 读取 `connection-info` 并直接写入 Android 私有存储，不投递或更新 WuxianPi/Termux 资源。经宿主独立验证后写 `satisfied`；`dismissed` 只结束当前 APK 提醒，不伪造成功或修改 Termux。

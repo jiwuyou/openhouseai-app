@@ -8,6 +8,7 @@ object RescuePluginContract {
     const val HOST_API_VERSION = 14
     const val DEFAULT_HUB_URL = "https://wuxianpirescue.webefficacy.com"
     const val FIRST_INSTALL_PLUGIN_ID = "wuxianpi.first-install"
+    const val RESOURCE_UPDATE_PLUGIN_ID = "wuxianpi.resource-update"
     const val SESSION_BOOTSTRAP_PLUGIN_ID = "wuxianpi.session-bootstrap"
     const val SESSION_RUNTIME_PLUGIN_ID = "wuxianpi.session-runtime"
 

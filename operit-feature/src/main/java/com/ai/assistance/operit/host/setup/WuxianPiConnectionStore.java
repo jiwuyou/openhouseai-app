@@ -30,7 +30,8 @@ public final class WuxianPiConnectionStore {
         }
 
         public boolean isReady() {
-            return !serviceManagerBaseUrl.isEmpty() && !token.isEmpty();
+            return !serviceManagerBaseUrl.isEmpty() && !token.isEmpty()
+                && isLoopbackUrl(serviceManagerBaseUrl);
         }
     }
 
@@ -94,6 +95,15 @@ public final class WuxianPiConnectionStore {
             throw exception;
         } catch (Exception exception) {
             throw new IllegalArgumentException("service-manager URL is invalid", exception);
+        }
+    }
+
+    private static boolean isLoopbackUrl(String value) {
+        try {
+            validateLoopbackUrl(value);
+            return true;
+        } catch (RuntimeException exception) {
+            return false;
         }
     }
 }

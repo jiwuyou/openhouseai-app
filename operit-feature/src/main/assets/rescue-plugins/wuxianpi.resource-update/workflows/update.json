@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "wuxianpi.resource-update.update",
+  "title": "检查 APK 配套状态",
+  "executionPolicy": { "afterPersistentTermux": "termux_exec_command" },
+  "steps": [
+    {
+      "id": "inspect-offer",
+      "kind": "tool",
+      "tool": "inspect_apk_resource_offer",
+      "description": "读取当前 APK offer。此插件只处理 reason=apk-update；首次安装必须继续使用首次安装插件。"
+    },
+    {
+      "id": "read-android-connection",
+      "kind": "tool",
+      "tool": "store_service_manager_connection",
+      "description": "从 Android 私有存储读取 canonical service-manager 连接。serviceManagerBaseUrl 为显式 loopback HTTP 端口且 hasToken=true 时无需访问或修改 Termux。"
+    },
+    {
+      "id": "prepare-termux-channel",
+      "kind": "tool",
+      "tool": "prepare_persistent_termux",
+      "when": "steps.inspect-offer.reason == apk-update and steps.read-android-connection.hasToken != true",
+      "description": "仅准备已有的持久 Termux 命令通道；不安装、更新或激活任何资源。"
+    },
+    {
+      "id": "read-termux-connection",
+      "kind": "tool",
+      "tool": "termux_exec_command",
+      "when": "steps.inspect-offer.reason == apk-update and steps.read-android-connection.hasToken != true",
+      "arguments": {
+        "command": "set -eu; export PREFIX=\"${PREFIX:-/data/data/com.termux/files/usr}\"; \"$PREFIX/bin/wuxianpi-setup\" connection-info",
+        "working_directory": "$HOME",
+        "session_name": "wuxianpi-apk-connection-info",
+        "yield_time_ms": 1000
+      },
+      "description": "仅在 Android 私有连接缺失时读取 Termux 已有的 canonical JSON。不得把 token 写入对话、日志或记忆。"
+    },
+    {
+      "id": "write-android-connection",
+      "kind": "tool",
+      "tool": "write_service_manager_connection",
+      "when": "steps.inspect-offer.reason == apk-update and steps.read-android-connection.hasToken != true",
+      "arguments": {
+        "serviceManagerBaseUrl": "{{steps.read-termux-connection.serviceManagerBaseUrl}}",
+        "token": "{{steps.read-termux-connection.token}}"
+      },
+      "description": "将已有连接直接写入 Android 私有存储，不经过 Bridge HTTP，不修改 service-manager 或其他 Termux 内容。"
+    },
+    {
+      "id": "confirm-android-connection",
+      "kind": "tool",
+      "tool": "store_service_manager_connection",
+      "when": "steps.inspect-offer.reason == apk-update",
+      "description": "最终确认 Android 私有连接可读取、URL 合法且 hasToken=true。"
+    },
+    {
+      "id": "complete-apk-offer",
+      "kind": "tool",
+      "tool": "complete_apk_resource_offer",
+      "when": "steps.inspect-offer.reason == apk-update and steps.confirm-android-connection.hasToken == true",
+      "arguments": {
+        "status": "satisfied",
+        "detail": "Android-private service-manager connection verified"
+      },
+      "description": "只在宿主再次独立验证 Android 私有连接后完成当前 APK offer。失败时保留提醒；用户可在桌面选择结束本次提醒。"
+    }
+  ]
+}

@@ -194,6 +194,7 @@ def sharedRescueRustLibrary =
 def repositoryDir = file("${projectDir}/..")
 def bundledRescuePluginIds = [
     "wuxianpi.first-install",
+    "wuxianpi.resource-update",
     "wuxianpi.session-bootstrap",
     "wuxianpi.session-runtime",
 ]

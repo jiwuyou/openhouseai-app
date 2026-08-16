@@ -61,7 +61,7 @@ class RescueActivity : ComponentActivity() {
         const val EXTRA_PENDING_ACTION_ID = "com.wuxianpi.extra.RESCUE_ACTION_ID"
         const val EXTRA_PENDING_ACTION_PROMPT = "com.wuxianpi.extra.RESCUE_ACTION_PROMPT"
         const val RESOURCE_UPDATE_PROMPT =
-            "请检查 APK、Termux 和维修助手市场中的资源更新；先完成官方插件统一更新，再读取最新版资源更新插件说明，比较本地状态，只处理缺失、损坏或 SHA 不一致的资源。"
+            "请检查 APK 配套状态；先使用最新版 APK 配套更新插件，只确认或修复 Android 私有 service-manager 连接，不更新 WuxianPi 或 Termux 运行资源。"
         const val RESCUE_PROCESS_SUFFIX = ":rescue_ui"
         private const val TAG = "RescueActivity"
 

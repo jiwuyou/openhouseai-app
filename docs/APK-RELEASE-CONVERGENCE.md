@@ -54,8 +54,8 @@
 - [ ] `openhouse-core-stack` 可以继续分发既有通用资源，但运行中枢固定入口不依赖其中的 `openhouse-control-plane` 资源。
 - [ ] All-in-One 与 Native 的五个 TGZ、resource-set version、sequence 和 SHA-256 完全一致。
 - [ ] Native 通过 SAF 投递到 `update-resources/apk-*/product-payloads`，所有文件完成后才写 `.complete`。
-- [ ] APK 更新只写 pending；资源更新插件负责差异比较、事务切换、健康检查和回滚。
-- [ ] 本机完整资源不下载；缓存命中优先于 APK，APK 命中优先于市场。
+- [ ] APK 更新只写 pending；APK 配套更新插件只确认或修复 Android 私有 service-manager 连接。
+- [ ] APK 配套更新不得下载、切换、激活或回滚 WuxianPi/Termux 运行资源。
 - [ ] 同版本内容损坏时按 SHA 和文件树凭据恢复，不能仅比较版本号。
 - [ ] 本机 sequence 高于 APK 时禁止自动降级；显式 rollback 只回到 previous-set。
 - [ ] APK 不再包含 Native 专用的第二份 `openhouse-runtime/runtime-aarch64.tgz`。

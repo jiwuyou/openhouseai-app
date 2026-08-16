@@ -311,15 +311,15 @@ class RescuePluginStore(
     }
 
     /**
-     * Updates the bundled first-install plugin only when the catalog publishes a compatible,
-     * strictly newer SemVer release. Any recoverable catalog or installation failure leaves the
-     * active plugin unchanged and returns it so first-install can continue offline.
+     * Updates an APK-bundled plugin only when the catalog publishes a compatible, strictly newer
+     * SemVer release. Any recoverable catalog or installation failure leaves the active plugin
+     * unchanged so the host can continue with its offline copy.
      */
-    suspend fun updateFirstInstallIfAvailable(): InstalledRescuePlugin =
+    private suspend fun updateBundledPluginIfAvailable(pluginId: String): InstalledRescuePlugin =
         withContext(Dispatchers.IO) {
-            val current = ensureBundledFirstInstall()
+            val current = ensureBundledPlugin(pluginId)
             try {
-                val listing = catalogClient.getPlugin(RescuePluginContract.FIRST_INSTALL_PLUGIN_ID)
+                val listing = catalogClient.getPlugin(pluginId)
                 requireCompatibleListing(listing)
                 if (
                     RescuePluginContract.compareSemanticVersions(
@@ -335,10 +335,16 @@ class RescuePluginStore(
                 throw cancelled
             } catch (_: Exception) {
                 synchronized(stateLock) {
-                    readInstalled(RescuePluginContract.FIRST_INSTALL_PLUGIN_ID) ?: current
+                    readInstalled(pluginId) ?: current
                 }
             }
         }
+
+    suspend fun updateFirstInstallIfAvailable(): InstalledRescuePlugin =
+        updateBundledPluginIfAvailable(RescuePluginContract.FIRST_INSTALL_PLUGIN_ID)
+
+    suspend fun updateResourceUpdateIfAvailable(): InstalledRescuePlugin =
+        updateBundledPluginIfAvailable(RescuePluginContract.RESOURCE_UPDATE_PLUGIN_ID)
 
     /** Switches to the recorded previous version when it still has a valid compatible payload. */
     suspend fun rollbackToPrevious(pluginId: String): InstalledRescuePlugin? =
@@ -787,6 +793,7 @@ class RescuePluginStore(
         val BUNDLED_CORE_PLUGIN_IDS =
             listOf(
                 RescuePluginContract.FIRST_INSTALL_PLUGIN_ID,
+                RescuePluginContract.RESOURCE_UPDATE_PLUGIN_ID,
                 RescuePluginContract.SESSION_BOOTSTRAP_PLUGIN_ID,
                 RescuePluginContract.SESSION_RUNTIME_PLUGIN_ID,
             )
