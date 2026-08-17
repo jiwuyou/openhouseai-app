@@ -1,6 +1,6 @@
 # WuxianPi 首次安装
 
-`wuxianpi.first-install 1.0.24` 将权限准备、Android 资源投递、市场差异补齐、运行激活和 Ubuntu 安装拆成独立阶段。技术流程结束后单独启动 `wuxianpi.setup-finish` 收尾插件。后续阶段失败不会删除已经完成的前序阶段。
+`wuxianpi.first-install 1.0.28` 将权限准备、Android 资源投递、市场差异补齐、运行激活和 Ubuntu 安装拆成独立阶段。技术流程结束后单独启动 `wuxianpi.setup-finish` 收尾插件。后续阶段失败不会删除已经完成的前序阶段。
 
 第一段只按需安装 `tmux`，由 Termux 自动解析当前 `ncurses` 依赖。tmux 就绪后，第二段在持久会话内只安装并验证核心 Termux 基础环境和 Node.js 24，不执行 `pkg upgrade`。只有第二段成功，Android 宿主才从 APK Asset 读取 canonical TAR，通过短生命周期本机 HTTP 投递到 Termux Inbox。Termux 只解包已投递的 TAR，不读取 APK。随后查询市场 promoted 的 `openhouse-core-stack`，只获取缺失、版本变化或 SHA 变化的资源。首次安装不依赖资源更新插件。
 
@@ -11,7 +11,7 @@ bash jq curl ca-certificates tar gzip zstd coreutils findutils gawk
 util-linux procps termux-services nodejs-lts（失败时回退 nodejs）
 ```
 
-其中 `termux-services` 提供 `sv`、`service-daemon` 和 `runsvdir`，`util-linux` 提供 `flock`，`zstd` 只用于解开当前 WuxianPi Runtime 内部的三个 `.tar.zst` 层。Node.js 主版本必须不低于 24 且 `npm` 可执行。`proot-distro` 只在最后 Ubuntu 阶段按需安装；不安装 `libncursesw`、`git`、Python 或编译工具链。
+其中 `termux-services` 提供 `sv`、`service-daemon` 和 `runsvdir`，`util-linux` 提供 `flock`，`git` 用于导入和更新 WuxianPi Package，`zstd` 只用于解开当前 WuxianPi Runtime 内部的三个 `.tar.zst` 层。Node.js 主版本必须不低于 24 且 `npm` 可执行。`proot-distro` 只在最后 Ubuntu 阶段按需安装；不安装 `libncursesw`、Python 或编译工具链。
 
 ## Native 权限顺序
 
@@ -34,7 +34,7 @@ Termux 运行中枢入口固定为 `$PREFIX/bin/openhouse-control-plane-start`�
 
 ## 本地投递与市场补齐
 
-联网时资源集合包含 `service-manager`、`openhouse-runtime`、`wuyou`、`openhouse-web` 和 16 个单脚本资源。每个脚本归档只含一个可执行文件，安装位置由资源管理器内置允许列表决定。`_termux-services-env.sh`、50/60 脚本、Ubuntu bootstrap、固定启动入口、注册脚本和诊断脚本因此可以独立更新，不需要发布 APK。
+联网时资源集合包含核心服务、单脚本资源，以及任意数量的 `wuxianpi-package-*` 发行包。每个脚本归档只含一个可执行文件，安装位置由资源管理器内置映射决定；Package 则统一投递到 `~/.local/share/openhouseai/distribution-packages/`，由 Runtime 动态 reconcile，不再从 npm 安装公版。新增 Package 只需发布符合通用协议的新资源，不需要修改首次安装工作流或重新发布 Runtime。
 
 APK 新制品应携带当前 canonical 集合的全部资源，但运行时不按资源数量判定投递是否成功。导入器只安装 TAR 中实际存在且结构有效的资源；缺失或损坏的本地归档交给市场补齐。资源管理器按资源 ID、版本和 SHA 比较，只下载差异归档并逐个写 receipt。某个资源失败时保留已经成功的资源和失败证据，下次运行只继续未完成项。安装目录不做逐文件 Hash。
 
@@ -79,7 +79,7 @@ APK content 事务失败时回滚 `current`。市场资源逐个提交，失败�
 → 启动和验证 WuxianPi
 ```
 
-激活前会创建 `$PREFIX/var/service`、`$PREFIX/var/log` 和 `$PREFIX/var/lock`，检查 `_termux-services-env.sh`、50/60 脚本、`$PREFIX/bin/openhouse-control-plane-start` 与 `$PREFIX/libexec/openhouse/start-service-manager.sh` 可执行，并确认它们使用 Termux Bash 绝对 shebang。组件注册必须通过 `registry/apply` 同时提交含 `ai` layer 的组件和 `yuanshengwuxianpi` 服务，再执行 `registry/sync`；只写入 `services.d` 不视为注册成功。
+激活前会创建 `$PREFIX/var/service`、`$PREFIX/var/log` 和 `$PREFIX/var/lock`，检查 `_termux-services-env.sh`、50/60 脚本、`$PREFIX/bin/openhouse-control-plane-start` 与 `$PREFIX/libexec/openhouse/start-service-manager.sh` 可执行，并确认它们使用 Termux Bash 绝对 shebang。组件注册必须通过 `registry/apply` 同时提交含 `ai` layer 的组件和 `yuanshengwuxianpi` 服务，再执行 `registry/sync`；只写入 `services.d` 不视为注册成功。激活后 Runtime 会读取发行目录的 `index.json`，动态导入全部 Package；工作流再逐项确认 `sourceKind=preinstalled`、`sourceStatus=ready`，不能只看 health 就结束。
 
 失败写入具体 `activationFailure`，例如 `canonical_auth_failed`、`registry_sync_failed` 或 `wuxianpi_health_failed`。激活前，维修助手在工具可用时调用 `ensure_openhouse_connection_bridge`，并把返回的 `bridgeId` 传给 `wuxianpi-setup activate --connection-bridge-id`。成功后 Termux 通过匹配的 OpenHouse connection bridge 上报 service-manager URL 和 Token；OpenHouse 自身直接读取 Android 私有存储，不通过该 HTTP 端口。
 
