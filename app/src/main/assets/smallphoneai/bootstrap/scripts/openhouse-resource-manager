@@ -16,6 +16,7 @@ SOURCE_DIR="${OPENHOUSEAI_RESOURCE_SOURCE_DIR:-}"
 MARKET_ORIGIN="${OPENHOUSEAI_RESOURCE_MARKET_ORIGIN:-https://wuxianpirescue.webefficacy.com}"
 OFFICIAL_MARKET_ORIGIN="https://wuxianpirescue.webefficacy.com"
 MARKET_CACHE="$MANAGER_ROOT/market-cache"
+DISTRIBUTION_PACKAGES="${OPENHOUSEAI_DISTRIBUTION_PACKAGES_ROOT:-$HOME/.local/share/openhouseai/distribution-packages}"
 COMMAND="${1:-inspect}"
 FORCE_RESOURCE=""
 CURRENT_TRANSACTION=""
@@ -26,7 +27,7 @@ die() { printf '[resource-manager] ERROR: %s\n' "$*" >&2; exit 1; }
 
 require_tools() {
   local tool
-  for tool in jq tar gzip find sort awk sed readlink flock stat tee mktemp; do
+  for tool in jq tar gzip find sort awk sed readlink flock stat tee mktemp cmp cp; do
     command -v "$tool" >/dev/null 2>&1 || die "missing required command: $tool"
   done
 }
@@ -39,8 +40,8 @@ require_market_tools() {
 }
 
 setup_dirs() {
-  mkdir -p "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY/receipts" "$MARKET_CACHE"
-  chmod 700 "$MANAGER_ROOT" "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY" "$LEGACY/receipts" "$MARKET_CACHE"
+  mkdir -p "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY/receipts" "$MARKET_CACHE" "$DISTRIBUTION_PACKAGES"
+  chmod 700 "$MANAGER_ROOT" "$RECEIPTS" "$TRANSACTIONS" "$FAILED" "$INSTALL_ROOT" "$LEGACY" "$LEGACY/receipts" "$MARKET_CACHE" "$DISTRIBUTION_PACKAGES"
   local receipt schema name
   for receipt in "$RECEIPTS"/*.json; do
     [[ -f "$receipt" ]] || continue
@@ -107,7 +108,13 @@ read_set() {
       "openhouse-repair-control-plane":"openhouse-repair-control-plane.tgz",
       "openhouse-inspect-control-plane":"openhouse-inspect-control-plane.tgz"} as $archives |
     all(.resources[]; (.id | type == "string" and length > 0) and
-      (.version | type == "string" and length > 0) and $archives[.id] == .archive) and
+      (.version | type == "string" and length > 0) and
+      (if (.id | startswith("wuxianpi-package-")) then
+        ((.id | test("^wuxianpi-package-[a-z0-9][a-z0-9.-]*$")) and
+         .kind == "wuxianpi-package" and .archive == (.id + ".tgz"))
+       else $archives[.id] == .archive end)) and
+    all(.resources[]; (.id | startswith("wuxianpi-package-") | not) or
+      (.kind == "wuxianpi-package" and (.archive == (.id + ".tgz")))) and
     all(.resources[]; (.sha256 | type == "string" and test("^[a-f0-9]{64}$"))) and
     all(.resources[]; (.size | type == "number" and . > 0 and . <= 62914560))
   ' "$file" >/dev/null || die "resource archive mapping is invalid"
@@ -153,8 +160,65 @@ resource_required() {
     openhouse-start-service-manager) [[ -x "$2/start-service-manager.sh" ]] ;;
     openhouse-repair-control-plane) [[ -x "$2/repair-control-plane.sh" ]] ;;
     openhouse-inspect-control-plane) [[ -x "$2/inspect-control-plane.sh" ]] ;;
+    wuxianpi-package-*) distribution_package_required "$1" "$2" ;;
     *) return 1 ;;
   esac
+}
+
+distribution_package_id() {
+  jq -r '.packageId // empty' "$1/package-resource.json" 2>/dev/null || true
+}
+
+distribution_package_required() {
+  local resource_id="$1" directory="$2" package_id plan_manifest
+  [[ "$resource_id" =~ ^wuxianpi-package-[a-z0-9][a-z0-9.-]*$ ]] || return 1
+  [[ -f "$directory/package-resource.json" && -f "$directory/install-plan.json" ]] || return 1
+  [[ -d "$directory/source" && -f "$directory/source/wuxianpi-package.json" ]] || return 1
+  jq -e --arg resource_id "$resource_id" '
+    .kind == "wuxianpi-package" and
+    .resourceId == $resource_id and
+    (.packageId | type == "string" and test("^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$")) and
+    $resource_id == ("wuxianpi-package-" + .packageId) and
+    (.version | type == "string" and length > 0) and
+    (.initialBindings | type == "array") and
+    all(.initialBindings[];
+      (.assistantId | type == "string" and length > 0) and
+      (.contributionIds | type == "array") and
+      all(.contributionIds[]; type == "string" and length > 0))
+  ' "$directory/package-resource.json" >/dev/null || return 1
+  package_id="$(distribution_package_id "$directory")"
+  plan_manifest="$(jq -r '.manifestPath // empty' "$directory/install-plan.json" 2>/dev/null || true)"
+  jq -e --arg package_id "$package_id" --arg version "$(jq -r '.version' "$directory/package-resource.json")" \
+    '.packageId == $package_id and .version == $version and (.approvedCommit | type == "string" and test("^[a-f0-9]{40}$")) and (.manifestDigest | type == "string" and test("^[a-f0-9]{64}$"))' \
+    "$directory/install-plan.json" >/dev/null || return 1
+  [[ -n "$plan_manifest" && -f "$directory/source/$plan_manifest" ]] || return 1
+  jq -e --arg package_id "$package_id" --arg version "$(jq -r '.version' "$directory/package-resource.json")" \
+    '.id == $package_id and .version == $version' "$directory/source/$plan_manifest" >/dev/null
+}
+
+resource_deployed() {
+  local id="$1" directory="$2" package_id target version
+  [[ "$id" =~ ^wuxianpi-package- ]] || return 0
+  package_id="$(distribution_package_id "$directory")"
+  version="$(jq -r '.version' "$directory/package-resource.json")"
+  target="$DISTRIBUTION_PACKAGES/$package_id"
+  [[ -f "$target/package-resource.json" ]] || return 1
+  jq -e --arg id "$id" --arg version "$version" \
+    '.resourceId == $id and .version == $version' "$target/package-resource.json" >/dev/null
+}
+
+rebuild_distribution_index() {
+  local temporary="$DISTRIBUTION_PACKAGES/index.json.tmp.$$" files=()
+  while IFS= read -r -d '' file; do files+=("$file"); done \
+    < <(find "$DISTRIBUTION_PACKAGES" -mindepth 2 -maxdepth 2 -type f -name package-resource.json -print0 | sort -z)
+  if ((${#files[@]})); then
+    jq -s '{schemaVersion:1,distributionId:"openhouse",packages:map({packageId,initialBindings})}' \
+      "${files[@]}" >"$temporary"
+  else
+    printf '%s\n' '{"schemaVersion":1,"distributionId":"openhouse","packages":[]}' >"$temporary"
+  fi
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$DISTRIBUTION_PACKAGES/index.json"
 }
 
 current_target() { readlink -f "$INSTALL_ROOT/$1/current" 2>/dev/null || true; }
@@ -172,7 +236,7 @@ current_valid() {
     receipt_digest="$(jq -r '.archiveSha256 // empty' "$RECEIPTS/$id.json" 2>/dev/null || true)"
     [[ "$receipt_digest" == "$digest" ]] || return 1
   fi
-  resource_required "$id" "$target"
+  resource_required "$id" "$target" && resource_deployed "$id" "$target"
 }
 
 write_receipt() {
@@ -289,7 +353,7 @@ install_script_resource() {
 }
 
 install_handler() {
-  local id="$1" directory="$2"
+  local id="$1" directory="$2" source target temporary backup
   case "$id" in
     service-manager)
       chmod 755 "$directory/service-manager" "$directory/scripts/"*.sh
@@ -321,15 +385,32 @@ SH
     openhouse-web)
       chmod 755 "$directory/scripts/"*.sh
       "$directory/scripts/install.sh" ;;
+    wuxianpi-package-*)
+      distribution_package_required "$id" "$directory" \
+        || die "invalid WuxianPi Package resource: $id"
+      source="$(distribution_package_id "$directory")"
+      target="$DISTRIBUTION_PACKAGES/$source"
+      temporary="$DISTRIBUTION_PACKAGES/.${source}.tmp.$$"
+      backup="$DISTRIBUTION_PACKAGES/.${source}.old.$$"
+      [[ ! -e "$temporary" ]] || rm -rf "$temporary"
+      [[ ! -e "$backup" ]] || rm -rf "$backup"
+      cp -a "$directory" "$temporary"
+      [[ ! -e "$target" ]] || mv "$target" "$backup"
+      if ! mv "$temporary" "$target"; then
+        [[ ! -e "$backup" ]] || mv "$backup" "$target"
+        return 1
+      fi
+      rm -rf "$backup"
+      rebuild_distribution_index ;;
     openhouse-resource-manager|openhouse-resource-import|wuxianpi-setup|openhouse-bootstrap|openhouse-install-runtime-components|openhouse-install-ubuntu|openhouse-update-ubuntu-packages|openhouse-ubuntu-mirror-policy|openhouse-retry-profile|openhouse-start-smallphone|openhouse-register-component|openhouse-control-plane-start|openhouse-termux-services-env|openhouse-start-service-manager|openhouse-repair-control-plane|openhouse-inspect-control-plane)
       install_script_resource "$id" "$directory" ;;
-    *) die "resource is not allowlisted: $id" ;;
+    *) die "resource is not supported: $id" ;;
   esac
 }
 
 verify_handler() {
   local id="$1" directory="$2"
-  resource_required "$id" "$directory"
+  resource_required "$id" "$directory" && resource_deployed "$id" "$directory"
 }
 
 validate_archive() {

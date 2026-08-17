@@ -83,7 +83,12 @@ validate_manifest() {
     all(.resources[];
       (.id | type == "string" and length > 0) and
       (.version | type == "string" and length > 0) and
-      $archives[.id] == .archive and
+      (
+        ((.id | startswith("wuxianpi-package-")) and
+         (.id | test("^wuxianpi-package-[a-z0-9][a-z0-9.-]*$")) and
+         .kind == "wuxianpi-package" and .archive == (.id + ".tgz")) or
+        (((.id | startswith("wuxianpi-package-")) | not) and $archives[.id] == .archive)
+      ) and
       (.size | type == "number" and . > 0) and
      (.sha256 | type == "string" and test("^[a-f0-9]{64}$")))
     )

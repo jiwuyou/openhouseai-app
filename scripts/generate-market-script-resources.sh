@@ -12,14 +12,15 @@ guide_path="$repo_dir/docs/resource-sets/openhouse-core-stack-2026.08.14.1.md"
 mode="${1:-generate}"
 
 set_id="${OPENHOUSE_MARKET_RESOURCE_SET_ID:-openhouse-core-stack}"
-set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.16.1}"
-set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081601}"
+set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.17.2}"
+set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081702}"
 script_version="${OPENHOUSE_MARKET_SCRIPT_VERSION:-1.0.1}"
-manager_version="${OPENHOUSE_MARKET_RESOURCE_MANAGER_VERSION:-1.0.4}"
-import_version="${OPENHOUSE_MARKET_RESOURCE_IMPORT_VERSION:-1.0.3}"
+manager_version="${OPENHOUSE_MARKET_RESOURCE_MANAGER_VERSION:-1.0.5}"
+import_version="${OPENHOUSE_MARKET_RESOURCE_IMPORT_VERSION:-1.0.4}"
 setup_version="${OPENHOUSE_MARKET_SETUP_VERSION:-1.0.4}"
 ubuntu_bootstrap_version="${OPENHOUSE_MARKET_UBUNTU_BOOTSTRAP_VERSION:-1.0.1}"
-runtime_version="${OPENHOUSE_MARKET_RUNTIME_VERSION:-0.2.0+registry.2}"
+runtime_version="${OPENHOUSE_MARKET_RUNTIME_VERSION:-0.2.2}"
+distribution_packages_root="${OPENHOUSEAI_DISTRIBUTION_PACKAGES_ROOT:-$repo_dir/../../wuxianpi/packaging/termux/preinstalled-packages}"
 min_apk_version_code="${OPENHOUSE_RESOURCE_MIN_APK_VERSION_CODE:-126}"
 
 case "$mode" in
@@ -35,6 +36,10 @@ for command in cmp diff gzip install jq python3 sha256sum tar; do
   }
 done
 [[ -s "$guide_path" ]] || { printf 'Missing resource-set guide: %s\n' "$guide_path" >&2; exit 1; }
+[[ -d "$distribution_packages_root" ]] || {
+  printf 'Missing prepared WuxianPi Package directory: %s\n' "$distribution_packages_root" >&2
+  exit 1
+}
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-market-resources.XXXXXX")"
 trap 'rm -rf -- "$work_dir"' EXIT
@@ -132,6 +137,7 @@ runtime_stage="$work_dir/runtime"
 runtime_archive="$generated/resources/openhouse-runtime/$runtime_version/runtime-aarch64.tgz"
 mkdir -p "$runtime_stage" "$(dirname "$runtime_archive")"
 tar -xzf "$payload_dir/runtime-aarch64.tgz" -C "$runtime_stage" --no-same-owner
+rm -rf "$runtime_stage/payload/preinstalled-packages"
 install -m 0755 "$runtime_register_source" \
   "$runtime_stage/scripts/register-service.sh"
 tar --format=ustar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
@@ -151,6 +157,36 @@ for component in service-manager wuyou openhouse-web; do
     "$component_id" "$version" "$archive" "$payload_dir/$archive" \
     "app/src/main/assets/openhouse/product-payloads/$archive" >>"$specs"
 done
+
+while IFS= read -r package_dir; do
+  [[ -d "$package_dir" ]] || continue
+  package_id="$(jq -r '.packageId // empty' "$package_dir/install-plan.json" 2>/dev/null || true)"
+  package_version="$(jq -r '.version // empty' "$package_dir/install-plan.json" 2>/dev/null || true)"
+  [[ -n "$package_id" && -n "$package_version" ]] || {
+    printf 'Prepared Package is missing packageId/version: %s\n' "$package_dir" >&2
+    exit 1
+  }
+  resource_id="wuxianpi-package-$package_id"
+  resource_archive="$resource_id.tgz"
+  package_stage="$work_dir/$resource_id"
+  package_resource="$package_stage/package-resource.json"
+  mkdir -p "$package_stage" "$package_stage/artifacts" \
+    "$generated/resources/$resource_id/$package_version"
+  cp -a "$package_dir/install-plan.json" "$package_stage/install-plan.json"
+  cp -a "$package_dir/source" "$package_stage/source"
+  if [[ -d "$package_dir/artifacts" ]]; then cp -a "$package_dir/artifacts/." "$package_stage/artifacts/"; fi
+  jq -n --arg resourceId "$resource_id" --arg packageId "$package_id" \
+    --arg version "$package_version" --slurpfile index "$distribution_packages_root/index.json" \
+    '{kind:"wuxianpi-package",resourceId:$resourceId,packageId:$packageId,version:$version,
+      initialBindings:(($index[0].packages // []) | map(select(.packageId == $packageId) | .initialBindings) | .[0] // [])}' \
+    >"$package_resource"
+  package_archive="$generated/resources/$resource_id/$package_version/$resource_archive"
+  tar --format=ustar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+    -C "$package_stage" -cf - . | gzip -n >"$package_archive"
+  printf '%s\t%s\t%s\t%s\t%s\n' \
+    "$resource_id" "$package_version" "$resource_archive" "$package_archive" \
+    "distribution/market-script-resources/resources/$resource_id/$package_version/$resource_archive" >>"$specs"
+done < <(find "$distribution_packages_root" -mindepth 1 -maxdepth 1 -type d ! -name artifacts | LC_ALL=C sort)
 
 python3 - "$specs" "$generated" "$guide_path" "$set_id" "$set_version" \
   "$set_sequence" "$min_apk_version_code" <<'PY'
@@ -176,6 +212,8 @@ for raw in spec_path.read_text(encoding="utf-8").splitlines():
         "size": len(data),
         "sha256": digest,
     }
+    if resource_id.startswith("wuxianpi-package-"):
+        member["kind"] = "wuxianpi-package"
     resources.append(member)
     metadata = {
         **member,

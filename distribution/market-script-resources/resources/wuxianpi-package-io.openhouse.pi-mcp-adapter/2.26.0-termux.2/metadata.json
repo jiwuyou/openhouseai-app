@@ -1,0 +1,13 @@
+{
+  "id": "wuxianpi-package-io.openhouse.pi-mcp-adapter",
+  "version": "2.26.0-termux.2",
+  "archive": "wuxianpi-package-io.openhouse.pi-mcp-adapter.tgz",
+  "size": 36919763,
+  "sha256": "98b555723a9b2c53cc28e98aa79c10c06ab9702a0ec53c58494188a753e6e7ee",
+  "kind": "wuxianpi-package",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/wuxianpi-package-io.openhouse.pi-mcp-adapter/2.26.0-termux.2/wuxianpi-package-io.openhouse.pi-mcp-adapter.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-runtime",
+  "version": "0.2.2",
+  "archive": "runtime-aarch64.tgz",
+  "size": 20104358,
+  "sha256": "7da07575eb74fb0207911dcf08306d4a3660e233c07f13e970372c4df97e41a5",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-runtime/0.2.2/runtime-aarch64.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

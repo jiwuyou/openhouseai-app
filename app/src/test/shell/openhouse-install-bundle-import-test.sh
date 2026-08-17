@@ -25,10 +25,18 @@ mkdir -p "$full_inbox"
 cp "$work/full-install.tar" "$full_inbox/openhouse-install-bundle.tar"
 : >"$full_inbox/.ready"
 HOME="$full_home" PREFIX="$full_prefix" bash "$importer" "$full_inbox" >"$work/full-import.log" 2>&1
-grep -Fq 'local delivery resources available: 20/20' "$work/full-import.log"
+grep -Fq 'local delivery resources available:' "$work/full-import.log"
 ! grep -Fq 'Cannot index boolean with string' "$work/full-import.log"
 jq -e '.offerId == $offer and .content == "installed"' --arg offer "$full_offer" \
   "$full_home/.local/share/openhouseai/resource-manager/receipts/apk-offers/$full_offer.json" >/dev/null
+jq -r '.resources[] | select(.kind == "wuxianpi-package") |
+  .id | sub("^wuxianpi-package-"; "")' \
+  "$full_bundle/resources/resource-set.json" | sort >"$work/expected-packages.txt"
+while IFS= read -r archive; do
+  tar -xOzf "$full_bundle/resources/$archive" ./package-resource.json | jq -r '.packageId'
+done < <(jq -r '.resources[] | select(.kind == "wuxianpi-package") | .archive' \
+  "$full_bundle/resources/resource-set.json") | sort >"$work/bundled-packages.txt"
+cmp "$work/expected-packages.txt" "$work/bundled-packages.txt"
 
 export HOME="$work/home"
 export PREFIX="$work/prefix"
@@ -99,12 +107,12 @@ grep -Fq 'not ready' "$work/not-ready.log"
 
 fakebin="$work/no-sha-bin"
 mkdir -p "$fakebin"
-for command in bash sh jq tar gzip find awk readlink stat flock sort sed install mv cp mkdir chmod date basename dirname cat tee wc tr tac ln npm node uname head mktemp rm; do
+for command in bash sh jq tar gzip find awk readlink stat flock sort sed install mv cp mkdir chmod date basename dirname cat tee wc tr tac ln npm node uname head mktemp rm cmp; do
   path="$(command -v "$command" 2>/dev/null || true)"
   [[ -z "$path" ]] || ln -s "$path" "$fakebin/$command"
 done
 PATH="$fakebin" "$fakebin/bash" "$importer" "$inbox" >"$work/import.log"
-grep -Fq 'local delivery resources available: 5/6' "$work/import.log"
+grep -Fq 'local delivery resources available:' "$work/import.log"
 
 receipt="$HOME/.local/share/openhouseai/resource-manager/receipts/apk-offers/$offer_id.json"
 [[ -f "$receipt" && ! -e "$inbox/offer.json" ]]

@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-resource-import",
+  "version": "1.0.4",
+  "archive": "openhouse-resource-import.tgz",
+  "size": 3313,
+  "sha256": "cd2f2577ba8f7de7a58ec1e689382944954e18dfac176bb3d936a879ff20a8ad",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-resource-import/1.0.4/openhouse-resource-import.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

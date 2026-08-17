@@ -4,37 +4,20 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 generator="$repo_dir/scripts/generate-market-script-resources.sh"
 root="$repo_dir/distribution/market-script-resources"
-set_file="$root/resource-sets/openhouse-core-stack/2026.08.16.1/manifest.json"
+set_file="$root/resource-sets/openhouse-core-stack/2026.08.17.2/manifest.json"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 "$generator" --check
-jq -e '
+distribution_index="${OPENHOUSEAI_DISTRIBUTION_PACKAGES_ROOT:-$repo_dir/../../wuxianpi/packaging/termux/preinstalled-packages}/index.json"
+[[ -s "$distribution_index" ]] || fail "prepared WuxianPi Package index is missing"
+jq -e --slurpfile index "$distribution_index" '
   .schema == 2 and .id == "openhouse-core-stack" and
-  .version == "2026.08.16.1" and .sequence == 2026081601 and
+  .version == "2026.08.17.2" and .sequence == 2026081702 and
   (.guide.title | length) > 0 and (.guide.markdown | contains("市场不可用")) and
-  ([.resources[].id] | sort) == [
-    "openhouse-bootstrap",
-    "openhouse-control-plane-start",
-    "openhouse-inspect-control-plane",
-    "openhouse-install-runtime-components",
-    "openhouse-install-ubuntu",
-    "openhouse-register-component",
-    "openhouse-repair-control-plane",
-    "openhouse-resource-import",
-    "openhouse-resource-manager",
-    "openhouse-retry-profile",
-    "openhouse-runtime",
-    "openhouse-start-service-manager",
-    "openhouse-start-smallphone",
-    "openhouse-termux-services-env",
-    "openhouse-ubuntu-mirror-policy",
-    "openhouse-update-ubuntu-packages",
-    "openhouse-web",
-    "service-manager",
-    "wuxianpi-setup",
-    "wuyou"
-  ]
+  ([.resources[] | select(.kind == "wuxianpi-package") | .id] | sort) ==
+    ([$index[0].packages[].packageId | "wuxianpi-package-" + .] | sort) and
+  (all(.resources[]; (.id | startswith("wuxianpi-package-")) or .kind == null))
 ' "$set_file" >/dev/null
 
 while IFS=$'\t' read -r id version archive member; do
@@ -49,8 +32,8 @@ while IFS=$'\t' read -r id version archive member; do
     || fail "$id has a non-Termux Bash shebang: $first"
   bash -n <(tar -xOzf "$path" "$member")
 done <<'EOF'
-openhouse-resource-manager	1.0.4	openhouse-resource-manager.tgz	openhouse-resource-manager
-openhouse-resource-import	1.0.3	openhouse-resource-import.tgz	openhouse-resource-import
+openhouse-resource-manager	1.0.5	openhouse-resource-manager.tgz	openhouse-resource-manager
+openhouse-resource-import	1.0.4	openhouse-resource-import.tgz	openhouse-resource-import
 wuxianpi-setup	1.0.4	wuxianpi-setup.tgz	wuxianpi-setup
 openhouse-bootstrap	1.0.1	openhouse-bootstrap.tgz	bootstrap.sh
 openhouse-install-ubuntu	1.0.1	openhouse-install-ubuntu.tgz	20-install-ubuntu.sh
@@ -67,7 +50,8 @@ openhouse-repair-control-plane	1.0.1	openhouse-repair-control-plane.tgz	repair-c
 openhouse-inspect-control-plane	1.0.1	openhouse-inspect-control-plane.tgz	inspect-control-plane.sh
 EOF
 
-runtime="$root/resources/openhouse-runtime/0.2.0+registry.2/runtime-aarch64.tgz"
+runtime_version="$(jq -r '.resources[] | select(.id == "openhouse-runtime") | .version' "$set_file")"
+runtime="$root/resources/openhouse-runtime/$runtime_version/runtime-aarch64.tgz"
 if [[ -f "$repo_dir/../../wuxianpi/packaging/termux/bundle/register-service.sh" ]]; then
   grep -Fq 'http://127.0.0.1:{{port:runtime}}/health' \
     "$repo_dir/../../wuxianpi/packaging/termux/bundle/register-service.sh" \
@@ -92,6 +76,18 @@ openhouse-install-runtime-components/1.0.1/openhouse-install-runtime-components.
   grep -Fq 'libexec/openhouse/_termux-services-env.sh' <<<"$content" \
     || fail "$member does not prefer the market-installed Termux service environment"
 done
+
+while IFS=$'\t' read -r package_id package_version package_archive; do
+  package_resource="$root/resources/$package_id/$package_version/$package_archive"
+  [[ -s "$package_resource" ]] || fail "WuxianPi Package resource is missing: $package_id@$package_version"
+  package_listing="$(tar -tzf "$package_resource")"
+  grep -Fxq './package-resource.json' <<<"$package_listing" \
+    || fail "$package_id does not contain package-resource.json"
+  grep -Fxq './install-plan.json' <<<"$package_listing" \
+    || fail "$package_id does not contain install-plan.json"
+  grep -Fxq './source/wuxianpi-package.json' <<<"$package_listing" \
+    || fail "$package_id does not contain a Package manifest"
+done < <(jq -r '.resources[] | select(.kind == "wuxianpi-package") | [.id,.version,.archive] | @tsv' "$set_file")
 
 manager="$repo_dir/app/src/main/assets/smallphoneai/bootstrap/scripts/openhouse-resource-manager"
 setup="$repo_dir/app/src/main/assets/smallphoneai/bootstrap/scripts/wuxianpi-setup"
@@ -121,6 +117,10 @@ for mapping in \
   'openhouse-retry-profile) source="$directory/_retry-profile.sh"; target="$PREFIX/libexec/openhouse/bootstrap/scripts/_retry-profile.sh"'; do
   grep -Fq "$mapping" "$manager" || fail "missing fixed Ubuntu bootstrap mapping: $mapping"
 done
+grep -Fq 'DISTRIBUTION_PACKAGES=' "$manager" \
+  || fail 'WuxianPi Package distribution directory is missing'
+grep -Fq 'wuxianpi-package-*)' "$manager" \
+  || fail 'WuxianPi Package resources are not handled dynamically'
 
 # A market-only installation has no legacy APK resource directory. The setup
 # command must still dispatch both Ubuntu stages through the fixed layout.

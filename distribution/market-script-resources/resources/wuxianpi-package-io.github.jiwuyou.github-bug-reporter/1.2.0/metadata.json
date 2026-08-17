@@ -1,0 +1,13 @@
+{
+  "id": "wuxianpi-package-io.github.jiwuyou.github-bug-reporter",
+  "version": "1.2.0",
+  "archive": "wuxianpi-package-io.github.jiwuyou.github-bug-reporter.tgz",
+  "size": 59440,
+  "sha256": "2b01efaf18c6d210368b9991fe8f403a286f99442cb946a1026f3bec43dff353",
+  "kind": "wuxianpi-package",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/wuxianpi-package-io.github.jiwuyou.github-bug-reporter/1.2.0/wuxianpi-package-io.github.jiwuyou.github-bug-reporter.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

@@ -1,9 +1,9 @@
 {
   "schema": 2,
-  "bundleId": "openhouse-core-stack-2026081701",
+  "bundleId": "openhouse-core-stack-2026081702",
   "apkVersionCode": 128,
-  "resourceSetVersion": "2026.08.17.1",
-  "resourceSetSequence": 2026081701,
+  "resourceSetVersion": "2026.08.17.2",
+  "resourceSetSequence": 2026081702,
   "bundleAsset": "wuxianpi-install/openhouse-install-bundle.tar",
-  "bundleSize": 27402240
+  "bundleSize": 64378880
 }

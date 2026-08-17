@@ -1,8 +1,8 @@
 {
   "schema": 2,
   "id": "openhouse-core-stack",
-  "version": "2026.08.17.1",
-  "sequence": 2026081701,
+  "version": "2026.08.17.2",
+  "sequence": 2026081702,
   "abi": "arm64-v8a",
   "minApkVersionCode": 126,
   "guide": {
@@ -12,17 +12,17 @@
   "resources": [
     {
       "id": "openhouse-resource-manager",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "archive": "openhouse-resource-manager.tgz",
-      "size": 6690,
-      "sha256": "9319f91a70f042165b1ad67c2062d41ad248c763fa44bbc64e80393000eab0be"
+      "size": 7614,
+      "sha256": "fe34fca26f16babdeaedecbb4026b18023d0d44a7739bd366d3e2c0660a94750"
     },
     {
       "id": "openhouse-resource-import",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "archive": "openhouse-resource-import.tgz",
-      "size": 3244,
-      "sha256": "42cf70cffab0fb5454963068e0444b407af0e54a6cc6fe6e09f14bbb59d84ffe"
+      "size": 3313,
+      "sha256": "cd2f2577ba8f7de7a58ec1e689382944954e18dfac176bb3d936a879ff20a8ad"
     },
     {
       "id": "wuxianpi-setup",
@@ -124,10 +124,10 @@
     },
     {
       "id": "openhouse-runtime",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "archive": "runtime-aarch64.tgz",
-      "size": 20762460,
-      "sha256": "7275d530f17857447b08c76fd671e76283bcb3462f0b934f0c3cadde0e9ec905"
+      "size": 20104358,
+      "sha256": "7da07575eb74fb0207911dcf08306d4a3660e233c07f13e970372c4df97e41a5"
     },
     {
       "id": "service-manager",
@@ -149,6 +149,30 @@
       "archive": "openhouse-web.tgz",
       "size": 36123,
       "sha256": "cd193bb28f40d6c0c7759a125a499aff6e2f1c45f6afa0c276e293eb5b925ad0"
+    },
+    {
+      "id": "wuxianpi-package-io.github.jiwuyou.github-bug-reporter",
+      "version": "1.2.0",
+      "archive": "wuxianpi-package-io.github.jiwuyou.github-bug-reporter.tgz",
+      "size": 59440,
+      "sha256": "2b01efaf18c6d210368b9991fe8f403a286f99442cb946a1026f3bec43dff353",
+      "kind": "wuxianpi-package"
+    },
+    {
+      "id": "wuxianpi-package-io.openhouse.pi-mcp-adapter",
+      "version": "2.26.0-termux.2",
+      "archive": "wuxianpi-package-io.openhouse.pi-mcp-adapter.tgz",
+      "size": 36919763,
+      "sha256": "98b555723a9b2c53cc28e98aa79c10c06ab9702a0ec53c58494188a753e6e7ee",
+      "kind": "wuxianpi-package"
+    },
+    {
+      "id": "wuxianpi-package-io.openhouse.small-app-guide",
+      "version": "1.0.0",
+      "archive": "wuxianpi-package-io.openhouse.small-app-guide.tgz",
+      "size": 652209,
+      "sha256": "e3ae0450b454d9109dabab40fe3f730bf696cd4f447ab3ebfd37ff65836a7e45",
+      "kind": "wuxianpi-package"
     }
   ]
 }

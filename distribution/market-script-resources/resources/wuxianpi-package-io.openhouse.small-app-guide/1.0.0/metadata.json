@@ -1,0 +1,13 @@
+{
+  "id": "wuxianpi-package-io.openhouse.small-app-guide",
+  "version": "1.0.0",
+  "archive": "wuxianpi-package-io.openhouse.small-app-guide.tgz",
+  "size": 652209,
+  "sha256": "e3ae0450b454d9109dabab40fe3f730bf696cd4f447ab3ebfd37ff65836a7e45",
+  "kind": "wuxianpi-package",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/wuxianpi-package-io.openhouse.small-app-guide/1.0.0/wuxianpi-package-io.openhouse.small-app-guide.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}
