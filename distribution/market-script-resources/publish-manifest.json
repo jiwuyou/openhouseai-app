@@ -100,9 +100,9 @@
     },
     {
       "id": "openhouse-runtime",
-      "version": "0.2.0+registry.2",
-      "archivePath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.0+registry.2/runtime-aarch64.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.0+registry.2/metadata.json"
+      "version": "0.2.1",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.1/runtime-aarch64.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.1/metadata.json"
     },
     {
       "id": "service-manager",
@@ -125,7 +125,7 @@
   ],
   "resourceSet": {
     "id": "openhouse-core-stack",
-    "version": "2026.08.16.1",
-    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.16.1/manifest.json"
+    "version": "2026.08.17.1",
+    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.17.1/manifest.json"
   }
 }

@@ -1,0 +1,154 @@
+{
+  "schema": 2,
+  "id": "openhouse-core-stack",
+  "version": "2026.08.17.1",
+  "sequence": 2026081701,
+  "abi": "arm64-v8a",
+  "minApkVersionCode": 126,
+  "guide": {
+    "title": "OpenHouse Core Stack 使用指南",
+    "markdown": "# OpenHouse Core Stack 使用指南\n\n本组合用于首次安装和在线补齐。先完成 Termux 的两段基础环境初始化，再由 Android 投递 APK 内置单包。\n\n安装顺序：\n\n1. 导入 Android 已投递 TAR 中实际可用的资源，不按资源数量拒绝。\n2. 读取生产市场集合，下载本机缺失、版本不同或 SHA 不同的资源；每个市场归档只在下载后校验一次大小和 SHA-256。\n3. 安装静态内容和固定脚本，不在此阶段启动或验证服务。\n4. 内容安装完成后，单独执行 `wuxianpi-setup activate`。\n5. 激活阶段必须通过带 Token 的服务列表、registry 和 WuxianPi 健康检查。\n6. 确认 Android 私有存储已有 service-manager 连接后，最后单独安装 Ubuntu；Ubuntu 使用市场发布的 bootstrap、20/30 阶段与镜像/重试脚本，不依赖 APK 旧资源目录，失败不影响已经完成的核心环境。\n\n市场不可用时继续使用 APK 已投递资源。完整 APK 可以离线安装；不完整 APK 保留已导入内容并明确报告缺失资源。\n"
+  },
+  "resources": [
+    {
+      "id": "openhouse-resource-manager",
+      "version": "1.0.4",
+      "archive": "openhouse-resource-manager.tgz",
+      "size": 6690,
+      "sha256": "9319f91a70f042165b1ad67c2062d41ad248c763fa44bbc64e80393000eab0be"
+    },
+    {
+      "id": "openhouse-resource-import",
+      "version": "1.0.3",
+      "archive": "openhouse-resource-import.tgz",
+      "size": 3244,
+      "sha256": "42cf70cffab0fb5454963068e0444b407af0e54a6cc6fe6e09f14bbb59d84ffe"
+    },
+    {
+      "id": "wuxianpi-setup",
+      "version": "1.0.4",
+      "archive": "wuxianpi-setup.tgz",
+      "size": 11630,
+      "sha256": "1f71efb1384e7d2d7ba8edae97ca726e8233308f66b2d970d8a6a6e386c34d54"
+    },
+    {
+      "id": "openhouse-bootstrap",
+      "version": "1.0.1",
+      "archive": "openhouse-bootstrap.tgz",
+      "size": 6486,
+      "sha256": "f8a20d9b68a20c901db3475d24ce9ca7a3ac871a13037addb95b94f18ce013b9"
+    },
+    {
+      "id": "openhouse-install-ubuntu",
+      "version": "1.0.1",
+      "archive": "openhouse-install-ubuntu.tgz",
+      "size": 7121,
+      "sha256": "1fcf1ed19980e2a27e0130ff858d4ab3b884761c368d2b35c03cb1a4a1250dad"
+    },
+    {
+      "id": "openhouse-ubuntu-mirror-policy",
+      "version": "1.0.1",
+      "archive": "openhouse-ubuntu-mirror-policy.tgz",
+      "size": 4569,
+      "sha256": "4175720021d8236b6dc4dee8caac8c5777edd5e7613dbd72da2df02113aad86a"
+    },
+    {
+      "id": "openhouse-update-ubuntu-packages",
+      "version": "1.0.1",
+      "archive": "openhouse-update-ubuntu-packages.tgz",
+      "size": 1689,
+      "sha256": "90d7c877e4ede364bcac97599a4adc38a50dd271e24abe5731000afe2ff25c2d"
+    },
+    {
+      "id": "openhouse-retry-profile",
+      "version": "1.0.1",
+      "archive": "openhouse-retry-profile.tgz",
+      "size": 1658,
+      "sha256": "427f488e7f06357bc22dc6b6b096ba9ae4a4f4d6f87104c02ca9e029596d2fa2"
+    },
+    {
+      "id": "openhouse-install-runtime-components",
+      "version": "1.0.1",
+      "archive": "openhouse-install-runtime-components.tgz",
+      "size": 17998,
+      "sha256": "bb1d950ffc9971b3ed77019da298b9b8469b930ecb142d8e962c1335c1c77e07"
+    },
+    {
+      "id": "openhouse-start-smallphone",
+      "version": "1.0.1",
+      "archive": "openhouse-start-smallphone.tgz",
+      "size": 8273,
+      "sha256": "f92761f317c845a4639ecbe0d88642348dfe3e310b7cac39c7497bcc63467272"
+    },
+    {
+      "id": "openhouse-register-component",
+      "version": "1.0.1",
+      "archive": "openhouse-register-component.tgz",
+      "size": 216,
+      "sha256": "b73bdf58ff9844fe7fa789ea62ee4368afaac9521da15dcea4164a230e3f9687"
+    },
+    {
+      "id": "openhouse-control-plane-start",
+      "version": "1.0.1",
+      "archive": "openhouse-control-plane-start.tgz",
+      "size": 221,
+      "sha256": "c9da8bbeb6920125e09620c0449b313c2f24da7dfcd7fd8252b4a67fd02994f0"
+    },
+    {
+      "id": "openhouse-termux-services-env",
+      "version": "1.0.1",
+      "archive": "openhouse-termux-services-env.tgz",
+      "size": 1458,
+      "sha256": "e9e74cfc258ba7e7b13a934dcd539aee1ab3c6695db1cadc653ba04d37f97faf"
+    },
+    {
+      "id": "openhouse-start-service-manager",
+      "version": "1.0.1",
+      "archive": "openhouse-start-service-manager.tgz",
+      "size": 510,
+      "sha256": "7ef86ceb65e08ba8177aa93194e57f20e5b2f25b998edb8182679fbe44153ac8"
+    },
+    {
+      "id": "openhouse-repair-control-plane",
+      "version": "1.0.1",
+      "archive": "openhouse-repair-control-plane.tgz",
+      "size": 7773,
+      "sha256": "8b60ae8d6328d44786ba0679cd8165c3f516cb6e283620173006fc2cd4731a47"
+    },
+    {
+      "id": "openhouse-inspect-control-plane",
+      "version": "1.0.1",
+      "archive": "openhouse-inspect-control-plane.tgz",
+      "size": 1977,
+      "sha256": "28952ba426c5300b564de5df203873e40cd121209716fb80c744191b6d982650"
+    },
+    {
+      "id": "openhouse-runtime",
+      "version": "0.2.1",
+      "archive": "runtime-aarch64.tgz",
+      "size": 20762460,
+      "sha256": "7275d530f17857447b08c76fd671e76283bcb3462f0b934f0c3cadde0e9ec905"
+    },
+    {
+      "id": "service-manager",
+      "version": "0.3.4",
+      "archive": "service-manager.tgz",
+      "size": 2640506,
+      "sha256": "e4753a26e9ea36441d218f945c559433836fee1f8f0af571d51087ff258b0d64"
+    },
+    {
+      "id": "wuyou",
+      "version": "0.1.0",
+      "archive": "wuyou.tgz",
+      "size": 3289922,
+      "sha256": "f7bcaa402fa95273c8abbae3a1642aa3cbb17e44309c56146f260816f1ca2ca2"
+    },
+    {
+      "id": "openhouse-web",
+      "version": "1.1.2",
+      "archive": "openhouse-web.tgz",
+      "size": 36123,
+      "sha256": "cd193bb28f40d6c0c7759a125a499aff6e2f1c45f6afa0c276e293eb5b925ad0"
+    }
+  ]
+}

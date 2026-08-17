@@ -1,8 +1,8 @@
 {
   "schema": 2,
   "id": "openhouse-core-stack",
-  "version": "2026.08.15.4",
-  "sequence": 2026081504,
+  "version": "2026.08.17.1",
+  "sequence": 2026081701,
   "abi": "arm64-v8a",
   "minApkVersionCode": 126,
   "guide": {
@@ -26,10 +26,10 @@
     },
     {
       "id": "wuxianpi-setup",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "archive": "wuxianpi-setup.tgz",
-      "size": 11487,
-      "sha256": "9bd598c80f8d28fc1bdfc386096a09f4152311fb0519bb831c1ecc8d9b911ba2"
+      "size": 11630,
+      "sha256": "1f71efb1384e7d2d7ba8edae97ca726e8233308f66b2d970d8a6a6e386c34d54"
     },
     {
       "id": "openhouse-bootstrap",
@@ -124,10 +124,10 @@
     },
     {
       "id": "openhouse-runtime",
-      "version": "0.2.0+registry.2",
+      "version": "0.2.1",
       "archive": "runtime-aarch64.tgz",
-      "size": 20093567,
-      "sha256": "4c3fb0bb4700ff3deacbdf0bcb8cdc733fef19011e8bc5ac76dd41d016698f5d"
+      "size": 20762460,
+      "sha256": "7275d530f17857447b08c76fd671e76283bcb3462f0b934f0c3cadde0e9ec905"
     },
     {
       "id": "service-manager",

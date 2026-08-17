@@ -16,9 +16,9 @@
     },
     {
       "id": "openhouse-runtime",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "archivePath": "app/src/main/assets/openhouse/product-payloads/runtime-aarch64.tgz",
-      "metadataPath": "distribution/resources-v2/resources/openhouse-runtime/0.2.0/metadata.json"
+      "metadataPath": "distribution/resources-v2/resources/openhouse-runtime/0.2.1/metadata.json"
     },
     {
       "id": "wuyou",
@@ -35,7 +35,7 @@
   ],
   "resourceSet": {
     "id": "openhouse-core-stack",
-    "version": "2026.08.13.2",
-    "manifestPath": "distribution/resources-v2/resource-sets/openhouse-core-stack/2026.08.13.2/manifest.json"
+    "version": "2026.08.17.1",
+    "manifestPath": "distribution/resources-v2/resource-sets/openhouse-core-stack/2026.08.17.1/manifest.json"
   }
 }
