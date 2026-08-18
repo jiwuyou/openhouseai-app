@@ -1,0 +1,35 @@
+{
+  "schema": 2,
+  "id": "openhouse-core-stack-dev",
+  "version": "2026.08.18-dev.1",
+  "sequence": 2026081801,
+  "abi": "arm64-v8a",
+  "minApkVersionCode": 126,
+  "guide": {
+    "title": "OpenHouse 首次安装开发资源",
+    "markdown": "# OpenHouse 首次安装开发资源\n\n用于 `wuxianpi.first-install-dev` 真机验证。仅包含本轮需要补齐的 Ubuntu 镜像策略和安装脚本；APK 继续提供完整核心种子。"
+  },
+  "resources": [
+    {
+      "id": "openhouse-install-ubuntu",
+      "version": "1.0.2",
+      "archive": "openhouse-install-ubuntu.tgz",
+      "size": 7085,
+      "sha256": "7509b99a78ead89789c28594034b8c6ba4946d581fcbe25a8112addc518df612"
+    },
+    {
+      "id": "openhouse-ubuntu-mirror-policy",
+      "version": "1.0.2",
+      "archive": "openhouse-ubuntu-mirror-policy.tgz",
+      "size": 5331,
+      "sha256": "a8519dbb5011b4b7bfdc194bffafa4419461d9a6781972bbcbd7d7480d0ef137"
+    },
+    {
+      "id": "openhouse-update-ubuntu-packages",
+      "version": "1.0.2",
+      "archive": "openhouse-update-ubuntu-packages.tgz",
+      "size": 1892,
+      "sha256": "5f53e79c13ed3af266af6d89efa1cd6612a9b653231954bd60353fbae541bd43"
+    }
+  ]
+}
