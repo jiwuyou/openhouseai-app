@@ -1136,6 +1136,7 @@ print(f"OpenHouse payload validation passed: {len(digest_cache)} archives checke
 PY
 
 "$REPO_DIR/scripts/validate-openhouse-install-bundle.sh"
+"$REPO_DIR/app/src/test/shell/base-telephony-permission-test.sh"
 "$REPO_DIR/app/src/test/shell/openhouse-install-bundle-import-test.sh"
 "$REPO_DIR/app/src/test/shell/wuxianpi-activation-idempotency-test.sh"
 "$REPO_DIR/app/src/test/shell/market-script-resources-test.sh"

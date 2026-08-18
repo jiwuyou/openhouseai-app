@@ -46,6 +46,15 @@ else
 fi
 [[ "${#apks[@]}" -gt 0 ]] || { printf 'no APK outputs found under %s\n' "$apk_root" >&2; exit 1; }
 
+# The base APK only opens user-confirmed DIAL/SENDTO intents. It must not
+# request dangerous call/SMS permissions; the permissions screen may still
+# describe those permissions when inspecting another installed application.
+base_operit_manifest="$repo_dir/operit-feature/src/main/AndroidManifest.xml"
+if rg -n -q 'android\.permission\.(CALL_PHONE|SEND_SMS)' "$base_operit_manifest"; then
+  printf 'Base Operit feature must not declare CALL_PHONE or SEND_SMS\n' >&2
+  exit 1
+fi
+
 for apk in "${apks[@]}"; do
   if [[ "$apk" == */release/* ]]; then
     "$repo_dir/scripts/validate-quickjs-jni-contract.sh"
@@ -83,6 +92,11 @@ for apk in "${apks[@]}"; do
   (( size <= limit )) || { printf '%s APK exceeds size gate: %s bytes\n' "$label" "$size" >&2; exit 1; }
   unzip -tqq "$apk" || { printf 'APK ZIP test failed: %s\n' "$apk" >&2; exit 1; }
   badging="$($aapt dump badging "$apk")"
+  permissions="$($aapt dump permissions "$apk")"
+  if grep -Eq "uses-permission: name='android\.permission\.(CALL_PHONE|SEND_SMS)'" <<<"$permissions"; then
+    printf 'Base APK declares optional call/SMS permission: %s\n' "$apk" >&2
+    exit 1
+  fi
   package_name="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<<"$badging" | head -n 1)"
   application_label="$(sed -n "s/^application-label:'\([^']*\)'.*/\1/p" <<<"$badging" | head -n 1)"
   version_code="$(sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p" <<<"$badging" | head -n 1)"
