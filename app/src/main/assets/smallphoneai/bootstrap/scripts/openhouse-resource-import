@@ -52,10 +52,15 @@ validate_manifest() {
     .schema == 2 and .id == "openhouse-install-bundle" and
     (.bundleId | type == "string" and length > 0) and
     (.apkVersionCode | type == "number" and . > 0) and
-    .resourceSet.id == "openhouse-core-stack" and .resourceSet.abi == "arm64-v8a"
+    (.resourceSet.id | type == "string" and test("^[a-z0-9]+(?:[.-][a-z0-9]+)*$")) and
+    .resourceSet.abi == "arm64-v8a"
   ' "$manifest" >/dev/null || die 'bundle manifest is invalid'
   jq -e '
-    .schema == 2 and .id == "openhouse-core-stack" and .abi == "arm64-v8a" and
+    .schema == 2 and
+    (.id | type == "string" and test("^[a-z0-9]+(?:[.-][a-z0-9]+)*$")) and
+    (.version | type == "string" and length > 0) and
+    (.sequence | type == "number" and . > 0) and
+    .abi == "arm64-v8a" and
     (.resources | type == "array") and
     ([.resources[].id] | length) == ([.resources[].id] | unique | length) and
     (

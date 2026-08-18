@@ -4,15 +4,15 @@
   "resources": [
     {
       "id": "openhouse-resource-manager",
-      "version": "1.0.5",
-      "archivePath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.5/openhouse-resource-manager.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.5/metadata.json"
+      "version": "1.0.6",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.6/openhouse-resource-manager.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-resource-manager/1.0.6/metadata.json"
     },
     {
       "id": "openhouse-resource-import",
-      "version": "1.0.4",
-      "archivePath": "distribution/market-script-resources/resources/openhouse-resource-import/1.0.4/openhouse-resource-import.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/openhouse-resource-import/1.0.4/metadata.json"
+      "version": "1.0.5",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-resource-import/1.0.5/openhouse-resource-import.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-resource-import/1.0.5/metadata.json"
     },
     {
       "id": "wuxianpi-setup",
@@ -143,7 +143,7 @@
   ],
   "resourceSet": {
     "id": "openhouse-core-stack",
-    "version": "2026.08.18.1",
-    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.18.1/manifest.json"
+    "version": "2026.08.18.2",
+    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.18.2/manifest.json"
   }
 }

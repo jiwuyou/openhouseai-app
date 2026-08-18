@@ -1,8 +1,8 @@
 {
   "schema": 2,
   "id": "openhouse-core-stack",
-  "version": "2026.08.17.2",
-  "sequence": 2026081702,
+  "version": "2026.08.18.2",
+  "sequence": 2026081802,
   "abi": "arm64-v8a",
   "minApkVersionCode": 126,
   "guide": {
@@ -12,17 +12,17 @@
   "resources": [
     {
       "id": "openhouse-resource-manager",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "archive": "openhouse-resource-manager.tgz",
-      "size": 7614,
-      "sha256": "fe34fca26f16babdeaedecbb4026b18023d0d44a7739bd366d3e2c0660a94750"
+      "size": 7607,
+      "sha256": "c232b1e89c32fe31a0cacb35afcd84cfe774b4cfa72cf3fc85923f85f55dcd86"
     },
     {
       "id": "openhouse-resource-import",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "archive": "openhouse-resource-import.tgz",
-      "size": 3313,
-      "sha256": "cd2f2577ba8f7de7a58ec1e689382944954e18dfac176bb3d936a879ff20a8ad"
+      "size": 3332,
+      "sha256": "4b7dd1c8cd976e8c20d1a3bc6b4fe4687ef1d75d4036eaf95c40597a6bf14b47"
     },
     {
       "id": "wuxianpi-setup",
@@ -40,24 +40,24 @@
     },
     {
       "id": "openhouse-install-ubuntu",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "archive": "openhouse-install-ubuntu.tgz",
-      "size": 7121,
-      "sha256": "1fcf1ed19980e2a27e0130ff858d4ab3b884761c368d2b35c03cb1a4a1250dad"
+      "size": 7085,
+      "sha256": "7509b99a78ead89789c28594034b8c6ba4946d581fcbe25a8112addc518df612"
     },
     {
       "id": "openhouse-ubuntu-mirror-policy",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "archive": "openhouse-ubuntu-mirror-policy.tgz",
-      "size": 4569,
-      "sha256": "4175720021d8236b6dc4dee8caac8c5777edd5e7613dbd72da2df02113aad86a"
+      "size": 5331,
+      "sha256": "a8519dbb5011b4b7bfdc194bffafa4419461d9a6781972bbcbd7d7480d0ef137"
     },
     {
       "id": "openhouse-update-ubuntu-packages",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "archive": "openhouse-update-ubuntu-packages.tgz",
-      "size": 1689,
-      "sha256": "90d7c877e4ede364bcac97599a4adc38a50dd271e24abe5731000afe2ff25c2d"
+      "size": 1892,
+      "sha256": "5f53e79c13ed3af266af6d89efa1cd6612a9b653231954bd60353fbae541bd43"
     },
     {
       "id": "openhouse-retry-profile",

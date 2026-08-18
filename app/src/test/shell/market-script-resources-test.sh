@@ -4,7 +4,8 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 generator="$repo_dir/scripts/generate-market-script-resources.sh"
 root="$repo_dir/distribution/market-script-resources"
-set_file="$root/resource-sets/openhouse-core-stack/2026.08.17.2/manifest.json"
+publish_manifest="$root/publish-manifest.json"
+set_file="$repo_dir/$(jq -r '.resourceSet.manifestPath' "$publish_manifest")"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
@@ -13,7 +14,6 @@ distribution_index="${OPENHOUSEAI_DISTRIBUTION_PACKAGES_ROOT:-$repo_dir/../../wu
 [[ -s "$distribution_index" ]] || fail "prepared WuxianPi Package index is missing"
 jq -e --slurpfile index "$distribution_index" '
   .schema == 2 and .id == "openhouse-core-stack" and
-  .version == "2026.08.17.2" and .sequence == 2026081702 and
   (.guide.title | length) > 0 and (.guide.markdown | contains("市场不可用")) and
   ([.resources[] | select(.kind == "wuxianpi-package") | .id] | sort) ==
     ([$index[0].packages[].packageId | "wuxianpi-package-" + .] | sort) and
@@ -32,8 +32,8 @@ while IFS=$'\t' read -r id version archive member; do
     || fail "$id has a non-Termux Bash shebang: $first"
   bash -n <(tar -xOzf "$path" "$member")
 done <<'EOF'
-openhouse-resource-manager	1.0.5	openhouse-resource-manager.tgz	openhouse-resource-manager
-openhouse-resource-import	1.0.4	openhouse-resource-import.tgz	openhouse-resource-import
+openhouse-resource-manager	1.0.6	openhouse-resource-manager.tgz	openhouse-resource-manager
+openhouse-resource-import	1.0.5	openhouse-resource-import.tgz	openhouse-resource-import
 wuxianpi-setup	1.0.4	wuxianpi-setup.tgz	wuxianpi-setup
 openhouse-bootstrap	1.0.1	openhouse-bootstrap.tgz	bootstrap.sh
 openhouse-install-ubuntu	1.0.1	openhouse-install-ubuntu.tgz	20-install-ubuntu.sh
@@ -95,6 +95,20 @@ grep -Fq 'apply_content "$SET_FILE" "$row_plan" "$transaction" 0' "$manager" \
   || fail 'market resources are not committed one at a time'
 grep -Fq '(.resources | type == "array")' "$manager" \
   || fail 'resource manager does not accept partial allowlisted sets'
+if grep -Fq '.id == "openhouse-core-stack"' "$manager"; then
+  fail 'resource manager still locks updates to openhouse-core-stack'
+fi
+dev_test_root="$(mktemp -d "${TMPDIR:-/tmp}/openhouse-dev-resource-set.XXXXXX")"
+mkdir -p "$dev_test_root/tmp"
+dev_set="$dev_test_root/openhouse-core-stack-dev.json"
+jq '.id = "openhouse-core-stack-dev"' "$set_file" >"$dev_set"
+OPENHOUSEAI_RESOURCE_MANAGER_ROOT="$dev_test_root/manager" \
+  HOME="$dev_test_root/home" TMPDIR="$dev_test_root/tmp" \
+  bash "$manager" plan --set "$dev_set" --source "$root/resources" \
+  >"$dev_test_root/dev-set-plan.log"
+grep -Fq 'target_resources=' "$dev_test_root/dev-set-plan.log" \
+  || fail 'resource manager did not accept the development resource set ID'
+rm -rf "$dev_test_root"
 grep -Fq 'record_installed_resource "$SET_FILE" "$id"' "$manager" \
   || fail 'resource manager does not merge each completed market resource'
 if grep -Fq '([.resources[].id] | sort) ==' "$manager"; then

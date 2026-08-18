@@ -79,7 +79,8 @@ read_set() {
   local file="$1"
   [[ -f "$file" ]] || die "resource set is missing: $file"
   jq -e '
-    .schema == 2 and .id == "openhouse-core-stack" and
+    .schema == 2 and
+    (.id | type == "string" and test("^[a-z0-9]+(?:[.-][a-z0-9]+)*$")) and
     (.version | type == "string" and length > 0) and
     (.sequence | type == "number" and . > 0) and .abi == "arm64-v8a" and
     (.resources | type == "array") and

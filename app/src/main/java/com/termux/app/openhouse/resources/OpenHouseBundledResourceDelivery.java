@@ -450,7 +450,9 @@ public final class OpenHouseBundledResourceDelivery {
         try {
             JSONObject resourceSet = readJson(new File(target, "product-payloads/resource-set.json"));
             if (resourceSet.optInt("schema", 0) != 2
-                || !"openhouse-core-stack".equals(resourceSet.optString("id", ""))
+                || !resourceSet.optString("id", "").matches("[a-z0-9]+(?:[.-][a-z0-9]+)*")
+                || resourceSet.optString("version", "").isEmpty()
+                || resourceSet.optLong("sequence", 0L) <= 0L
                 || !"arm64-v8a".equals(resourceSet.optString("abi", ""))
                 || resourceSet.optLong("minApkVersionCode", Long.MAX_VALUE) > expectedVersionCode) {
                 return false;

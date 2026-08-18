@@ -407,7 +407,7 @@ public class OpenHouseBundledResourceDeliveryTest {
             bytes(OpenHouseBundledResourceDelivery.AI_REQUEST_SENTENCE));
         JSONObject resourceSet = new JSONObject()
             .put("schema", 2)
-            .put("id", "openhouse-core-stack")
+            .put("id", "openhouse-core-stack-dev")
             .put("version", "test")
             .put("sequence", 1)
             .put("abi", "arm64-v8a")

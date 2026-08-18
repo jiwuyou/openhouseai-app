@@ -80,7 +80,7 @@ jq -n \
   --argjson runtime "$(stat -c '%s' "$work/bundle/resources/runtime-aarch64.tgz")" \
   --argjson wuyou "$(stat -c '%s' "$work/bundle/resources/wuyou.tgz")" \
   --argjson web "$(stat -c '%s' "$work/bundle/resources/openhouse-web.tgz")" \
-  '{schema:2,id:"openhouse-core-stack",version:"test.1",sequence:2026081201,abi:"arm64-v8a",minApkVersionCode:126,resources:[
+  '{schema:2,id:"openhouse-core-stack-dev",version:"test.1",sequence:2026081201,abi:"arm64-v8a",minApkVersionCode:126,resources:[
     {id:"service-manager",version:"test.1",archive:"service-manager.tgz",size:$sm,sha256:("0"*64)},
     {id:"openhouse-control-plane",version:"test.1",archive:"openhouse-control-plane.tgz",size:$control,sha256:("0"*64)},
     {id:"openhouse-runtime",version:"test.1",archive:"runtime-aarch64.tgz",size:$runtime,sha256:("0"*64)},
@@ -89,7 +89,7 @@ jq -n \
     {id:"openhouse-resource-manager",version:"test.1",archive:"openhouse-resource-manager.tgz",size:123,sha256:("1"*64)}]}' \
   >"$work/bundle/resources/resource-set.json"
 jq -n --slurpfile set "$work/bundle/resources/resource-set.json" \
-  '{schema:2,id:"openhouse-install-bundle",bundleId:"openhouse-core-stack-2026081201",apkVersionCode:126,format:"uncompressed-tar",resourceSet:$set[0]}' \
+  '{schema:2,id:"openhouse-install-bundle",bundleId:"openhouse-core-stack-dev-2026081201",apkVersionCode:126,format:"uncompressed-tar",resourceSet:$set[0]}' \
   >"$work/bundle/bundle-manifest.json"
 cp "$importer" "$manager" "$setup" "$work/bundle/bootstrap/scripts/"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$work/bundle/bootstrap/bootstrap.sh"

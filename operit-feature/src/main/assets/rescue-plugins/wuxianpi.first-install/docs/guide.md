@@ -1,8 +1,10 @@
 # WuxianPi 首次安装
 
-`wuxianpi.first-install 1.0.28` 将权限准备、Android 资源投递、市场差异补齐、运行激活和 Ubuntu 安装拆成独立阶段。技术流程结束后单独启动 `wuxianpi.setup-finish` 收尾插件。后续阶段失败不会删除已经完成的前序阶段。
+`wuxianpi.first-install 1.0.29` 将权限准备、公网镜像测速、Android 资源投递、市场差异补齐、运行激活和 Ubuntu 安装拆成独立阶段。技术流程结束后单独启动 `wuxianpi.setup-finish` 收尾插件。后续阶段失败不会删除已经完成的前序阶段。
 
-第一段只按需安装 `tmux`，由 Termux 自动解析当前 `ncurses` 依赖。tmux 就绪后，第二段在持久会话内只安装并验证核心 Termux 基础环境和 Node.js 24，不执行 `pkg upgrade`。只有第二段成功，Android 宿主才从 APK Asset 读取 canonical TAR，通过短生命周期本机 HTTP 投递到 Termux Inbox。Termux 只解包已投递的 TAR，不读取 APK。随后查询市场 promoted 的 `openhouse-core-stack`，只获取缺失、版本变化或 SHA 变化的资源。首次安装不依赖资源更新插件。
+第一段先下载并执行 `scripts/termux-mirror.sh`，根据公网出口国家测试两个 Termux 官方源和对应区域候选源。脚本从 `InRelease` 读取实际索引格式，校验索引 SHA-256、`tmux` 和 `proot-distro` 的实际 `.deb` 包池，并通过真实 `apt-get update` 后固定合格源。海外完整可用时优先使用官方源；中国大陆区域源只有比最快官方源至少快 20% 才会优先。测速日志位于 `$HOME/.local/state/wuxianpi-setup/mirror/benchmark.log`，选择结果位于 `$HOME/.local/state/wuxianpi-setup/mirror/profile.json`。
+
+镜像阶段完成后，第一段按需安装 `tmux`，由 Termux 自动解析当前 `ncurses` 依赖。tmux 就绪后，第二段在持久会话内只安装并验证核心 Termux 基础环境和 Node.js 24，不执行 `pkg upgrade`。只有第二段成功，Android 宿主才从 APK Asset 读取 canonical TAR，通过短生命周期本机 HTTP 投递到 Termux Inbox。Termux 只解包已投递的 TAR，不读取 APK。随后查询市场 promoted 的 `openhouse-core-stack`，只获取缺失、版本变化或 SHA 变化的资源。首次安装不依赖资源更新插件。
 
 第二段核心包为：
 
