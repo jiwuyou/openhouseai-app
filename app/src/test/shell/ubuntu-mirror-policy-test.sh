@@ -67,13 +67,13 @@ curl() {
 
   case "$TEST_SCENARIO" in
     default_rootfs)
-      printf 'HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/104857600\r\n\r\n' > "$headers"
-      printf '206 1'
+      printf 'HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-1048575/104857600\r\n\r\n' > "$headers"
+      printf '206 1048576 1'
       return 0
       ;;
     bad_rootfs_range)
-      printf 'HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 1-1/104857600\r\n\r\n' > "$headers"
-      printf '206 1'
+      printf 'HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 1-1048576/104857600\r\n\r\n' > "$headers"
+      printf '206 1048576 1'
       return 0
       ;;
     rootfs_ignores_range)
@@ -86,11 +86,23 @@ curl() {
         *mirrors.tuna*:16) printf '000 0'; return 28 ;;
         *mirror.nju*:16) printf '404 0'; return 22 ;;
         *mirrors.tuna*:32)
-          printf 'HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/104857600\r\n\r\n' > "$headers"
-          printf '206 1'
+          printf 'HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-1048575/104857600\r\n\r\n' > "$headers"
+          printf '206 1048576 1'
           return 0
           ;;
       esac
+      ;;
+    cn_speed_rootfs)
+      case "$url" in
+        *mirrors.tuna*) speed=4 ;;
+        *mirrors.nju*) speed=1 ;;
+        *mirrors.ustc*) speed=2 ;;
+        *cloud-images.ubuntu*) speed=3 ;;
+        *) printf '404 0'; return 22 ;;
+      esac
+      printf 'HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-1048575/104857600\r\n\r\n' > "$headers"
+      printf '206 1048576 %s' "$speed"
+      return 0
       ;;
     apt_tuna_transient_nju_success)
       case "$url" in
@@ -98,6 +110,16 @@ curl() {
         *mirror.nju*) printf '200'; return 0 ;;
         *) printf '404'; return 22 ;;
       esac
+      ;;
+    cn_speed_apt)
+      case "$url" in
+        *mirrors.tuna*) printf '200 100 4' ;;
+        *mirror.nju*) printf '200 100 1' ;;
+        *mirrors.ustc*) printf '200 100 2' ;;
+        *ports.ubuntu.com*) printf '200 100 3' ;;
+        *) printf '404 0 1'; return 22 ;;
+      esac
+      return 0
       ;;
     retry_transient_only)
       case "$url:$timeout" in
@@ -155,6 +177,61 @@ https://mirrors.ustc.edu.cn/ubuntu-ports
 EOF
 )"
 assert_eq "$expected_apt_order" "$(smallphoneai_ubuntu_apt_candidates)" 'apt candidate order'
+
+PROFILE="$TMP_ROOT/profile.json"
+printf '%s\n' '{"schema":3,"country":"SG","region":"asia","networkClass":"global","validated":true}' > "$PROFILE"
+export OPENHOUSEAI_TERMUX_MIRROR_PROFILE="$PROFILE"
+export SMALLPHONEAI_TERMUX_MIRROR_PROFILE="$PROFILE"
+expected_global_rootfs_order="$(cat <<'EOF'
+https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+https://mirrors.nju.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+EOF
+)"
+assert_eq "$expected_global_rootfs_order" "$(smallphoneai_ubuntu_rootfs_candidates arm64)" 'global rootfs candidate order'
+assert_eq "$(cat <<'EOF'
+https://ports.ubuntu.com/ubuntu-ports
+https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports
+https://mirror.nju.edu.cn/ubuntu-ports
+https://mirrors.ustc.edu.cn/ubuntu-ports
+EOF
+)" "$(smallphoneai_ubuntu_apt_candidates)" 'global apt candidate order'
+printf '%s\n' '{"schema":3,"country":"CN","region":"chinese_mainland","networkClass":"cn","validated":true}' > "$PROFILE"
+assert_eq "$(cat <<'EOF'
+https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+https://mirrors.nju.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-arm64-root.tar.xz
+EOF
+)" "$(smallphoneai_ubuntu_rootfs_candidates arm64)" 'cn rootfs candidate order'
+assert_eq "$(cat <<'EOF'
+https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports
+https://mirror.nju.edu.cn/ubuntu-ports
+https://mirrors.ustc.edu.cn/ubuntu-ports
+https://ports.ubuntu.com/ubuntu-ports
+EOF
+)" "$(smallphoneai_ubuntu_apt_candidates)" 'cn apt candidate order'
+unset OPENHOUSEAI_TERMUX_MIRROR_PROFILE SMALLPHONEAI_TERMUX_MIRROR_PROFILE
+
+printf '%s\n' '{"schema":3,"country":"CN","region":"chinese_mainland","networkClass":"cn","validated":true}' > "$PROFILE"
+export OPENHOUSEAI_TERMUX_MIRROR_PROFILE="$PROFILE"
+export SMALLPHONEAI_TERMUX_MIRROR_PROFILE="$PROFILE"
+export OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID=cn-speed-rootfs
+export SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID=cn-speed-rootfs
+: > "$CALLS"
+TEST_SCENARIO=cn_speed_rootfs
+resolved="$(smallphoneai_resolve_ubuntu_rootfs_url arm64)"
+assert_eq 'https://mirrors.nju.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-arm64-root.tar.xz' "$resolved" 'CN rootfs fastest candidate'
+assert_eq 4 "$(wc -l < "$CALLS" | tr -d ' ')" 'CN rootfs tests all candidates'
+export OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID=cn-speed-apt
+export SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID=cn-speed-apt
+: > "$CALLS"
+TEST_SCENARIO=cn_speed_apt
+resolved="$(smallphoneai_resolve_ubuntu_apt_mirror noble)"
+assert_eq 'https://mirror.nju.edu.cn/ubuntu-ports' "$resolved" 'CN apt fastest candidate'
+assert_eq 4 "$(wc -l < "$CALLS" | tr -d ' ')" 'CN apt tests all candidates'
+unset OPENHOUSEAI_TERMUX_MIRROR_PROFILE SMALLPHONEAI_TERMUX_MIRROR_PROFILE
 
 export OPENHOUSEAI_UBUNTU_MIRROR_RUN_ID=rootfs-default
 export SMALLPHONEAI_UBUNTU_MIRROR_RUN_ID=rootfs-default

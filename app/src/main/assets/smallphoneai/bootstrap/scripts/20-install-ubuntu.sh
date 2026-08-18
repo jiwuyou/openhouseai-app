@@ -130,17 +130,12 @@ ubuntu_rootfs_candidates() {
 }
 
 ubuntu_rootfs_download_candidates() {
-  local selected="$1" candidate_list="$2" candidate found=0
+  local selected="$1" candidate_list="$2" candidate
+  printf '%s\n' "$selected"
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
-    if [ "$candidate" = "$selected" ]; then
-      found=1
-    fi
-    [ "$found" -eq 1 ] && printf '%s\n' "$candidate"
+    [ "$candidate" = "$selected" ] || printf '%s\n' "$candidate"
   done <<< "$candidate_list"
-  if [ "$found" -eq 0 ]; then
-    printf '%s\n' "$selected"
-  fi
 }
 
 ubuntu_rootfs_debian_arch() {

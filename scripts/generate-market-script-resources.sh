@@ -12,13 +12,17 @@ guide_path="$repo_dir/docs/resource-sets/openhouse-core-stack-2026.08.14.1.md"
 mode="${1:-generate}"
 
 set_id="${OPENHOUSE_MARKET_RESOURCE_SET_ID:-openhouse-core-stack}"
-set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.17.2}"
-set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081702}"
+set_version="${OPENHOUSE_MARKET_RESOURCE_SET_VERSION:-2026.08.18.1}"
+set_sequence="${OPENHOUSE_MARKET_RESOURCE_SET_SEQUENCE:-2026081801}"
 script_version="${OPENHOUSE_MARKET_SCRIPT_VERSION:-1.0.1}"
 manager_version="${OPENHOUSE_MARKET_RESOURCE_MANAGER_VERSION:-1.0.5}"
 import_version="${OPENHOUSE_MARKET_RESOURCE_IMPORT_VERSION:-1.0.4}"
 setup_version="${OPENHOUSE_MARKET_SETUP_VERSION:-1.0.4}"
-ubuntu_bootstrap_version="${OPENHOUSE_MARKET_UBUNTU_BOOTSTRAP_VERSION:-1.0.1}"
+bootstrap_version="${OPENHOUSE_MARKET_BOOTSTRAP_VERSION:-1.0.1}"
+install_ubuntu_version="${OPENHOUSE_MARKET_INSTALL_UBUNTU_VERSION:-1.0.2}"
+ubuntu_policy_version="${OPENHOUSE_MARKET_UBUNTU_MIRROR_POLICY_VERSION:-1.0.2}"
+update_ubuntu_version="${OPENHOUSE_MARKET_UPDATE_UBUNTU_VERSION:-1.0.2}"
+retry_profile_version="${OPENHOUSE_MARKET_RETRY_PROFILE_VERSION:-1.0.1}"
 runtime_version="${OPENHOUSE_MARKET_RUNTIME_VERSION:-0.2.2}"
 distribution_packages_root="${OPENHOUSEAI_DISTRIBUTION_PACKAGES_ROOT:-$repo_dir/../../wuxianpi/packaging/termux/preinstalled-packages}"
 min_apk_version_code="${OPENHOUSE_RESOURCE_MIN_APK_VERSION_CODE:-126}"
@@ -106,15 +110,15 @@ add_script_resource openhouse-resource-import "$import_version" openhouse-resour
   openhouse-resource-import "$bootstrap_dir/openhouse-resource-import"
 add_script_resource wuxianpi-setup "$setup_version" wuxianpi-setup.tgz \
   wuxianpi-setup "$bootstrap_dir/wuxianpi-setup"
-add_script_resource openhouse-bootstrap "$ubuntu_bootstrap_version" openhouse-bootstrap.tgz \
+add_script_resource openhouse-bootstrap "$bootstrap_version" openhouse-bootstrap.tgz \
   bootstrap.sh "$fixed_sources/bootstrap.sh"
-add_script_resource openhouse-install-ubuntu "$ubuntu_bootstrap_version" openhouse-install-ubuntu.tgz \
+add_script_resource openhouse-install-ubuntu "$install_ubuntu_version" openhouse-install-ubuntu.tgz \
   20-install-ubuntu.sh "$fixed_sources/20-install-ubuntu.sh"
-add_script_resource openhouse-ubuntu-mirror-policy "$ubuntu_bootstrap_version" openhouse-ubuntu-mirror-policy.tgz \
+add_script_resource openhouse-ubuntu-mirror-policy "$ubuntu_policy_version" openhouse-ubuntu-mirror-policy.tgz \
   _ubuntu-mirror-policy.sh "$fixed_sources/_ubuntu-mirror-policy.sh"
-add_script_resource openhouse-update-ubuntu-packages "$ubuntu_bootstrap_version" openhouse-update-ubuntu-packages.tgz \
+add_script_resource openhouse-update-ubuntu-packages "$update_ubuntu_version" openhouse-update-ubuntu-packages.tgz \
   30-update-ubuntu-packages.sh "$fixed_sources/30-update-ubuntu-packages.sh"
-add_script_resource openhouse-retry-profile "$ubuntu_bootstrap_version" openhouse-retry-profile.tgz \
+add_script_resource openhouse-retry-profile "$retry_profile_version" openhouse-retry-profile.tgz \
   _retry-profile.sh "$fixed_sources/_retry-profile.sh"
 add_script_resource openhouse-install-runtime-components "$script_version" openhouse-install-runtime-components.tgz \
   50-install-runtime-components.sh "$bootstrap_dir/50-install-runtime-components.sh"

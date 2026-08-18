@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-ubuntu-mirror-policy",
+  "version": "1.0.2",
+  "archive": "openhouse-ubuntu-mirror-policy.tgz",
+  "size": 5331,
+  "sha256": "a8519dbb5011b4b7bfdc194bffafa4419461d9a6781972bbcbd7d7480d0ef137",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-ubuntu-mirror-policy/1.0.2/openhouse-ubuntu-mirror-policy.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

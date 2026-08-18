@@ -28,21 +28,21 @@
     },
     {
       "id": "openhouse-install-ubuntu",
-      "version": "1.0.1",
-      "archivePath": "distribution/market-script-resources/resources/openhouse-install-ubuntu/1.0.1/openhouse-install-ubuntu.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/openhouse-install-ubuntu/1.0.1/metadata.json"
+      "version": "1.0.2",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-install-ubuntu/1.0.2/openhouse-install-ubuntu.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-install-ubuntu/1.0.2/metadata.json"
     },
     {
       "id": "openhouse-ubuntu-mirror-policy",
-      "version": "1.0.1",
-      "archivePath": "distribution/market-script-resources/resources/openhouse-ubuntu-mirror-policy/1.0.1/openhouse-ubuntu-mirror-policy.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/openhouse-ubuntu-mirror-policy/1.0.1/metadata.json"
+      "version": "1.0.2",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-ubuntu-mirror-policy/1.0.2/openhouse-ubuntu-mirror-policy.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-ubuntu-mirror-policy/1.0.2/metadata.json"
     },
     {
       "id": "openhouse-update-ubuntu-packages",
-      "version": "1.0.1",
-      "archivePath": "distribution/market-script-resources/resources/openhouse-update-ubuntu-packages/1.0.1/openhouse-update-ubuntu-packages.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/openhouse-update-ubuntu-packages/1.0.1/metadata.json"
+      "version": "1.0.2",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-update-ubuntu-packages/1.0.2/openhouse-update-ubuntu-packages.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-update-ubuntu-packages/1.0.2/metadata.json"
     },
     {
       "id": "openhouse-retry-profile",
@@ -143,7 +143,7 @@
   ],
   "resourceSet": {
     "id": "openhouse-core-stack",
-    "version": "2026.08.17.2",
-    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.17.2/manifest.json"
+    "version": "2026.08.18.1",
+    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.18.1/manifest.json"
   }
 }

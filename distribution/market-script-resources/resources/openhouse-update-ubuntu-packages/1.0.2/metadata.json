@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-update-ubuntu-packages",
+  "version": "1.0.2",
+  "archive": "openhouse-update-ubuntu-packages.tgz",
+  "size": 1892,
+  "sha256": "5f53e79c13ed3af266af6d89efa1cd6612a9b653231954bd60353fbae541bd43",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-update-ubuntu-packages/1.0.2/openhouse-update-ubuntu-packages.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

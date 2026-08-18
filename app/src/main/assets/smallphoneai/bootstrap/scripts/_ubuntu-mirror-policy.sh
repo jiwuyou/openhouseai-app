@@ -28,6 +28,43 @@ smallphoneai_resolve_dual_namespace_value() {
   fi
 }
 
+smallphoneai_network_profile_path() {
+  local configured
+  configured="$(smallphoneai_resolve_dual_namespace_value \
+    OPENHOUSEAI_TERMUX_MIRROR_PROFILE \
+    SMALLPHONEAI_TERMUX_MIRROR_PROFILE \
+    'Termux mirror profile path' 2>/dev/null || true)"
+  printf '%s\n' "${configured:-${HOME:-/data/data/com.termux/files/home}/.local/state/wuxianpi-setup/mirror/profile.json}"
+}
+
+smallphoneai_network_class() {
+  local profile raw
+  profile="$(smallphoneai_network_profile_path)"
+  [ -s "$profile" ] || {
+    printf 'legacy\n'
+    return 0
+  }
+  if grep -Eq '"schema"[[:space:]]*:[[:space:]]*3' "$profile" \
+    && grep -Eq '"validated"[[:space:]]*:[[:space:]]*true' "$profile"; then
+    raw="$(sed -n 's/.*"networkClass"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$profile" | head -n 1)"
+  fi
+  case "$raw" in
+    cn|global) printf '%s\n' "$raw" ;;
+    *) printf 'legacy\n' ;;
+  esac
+}
+
+smallphoneai_log_network_class() {
+  local profile class
+  profile="$(smallphoneai_network_profile_path)"
+  class="$(smallphoneai_network_class)"
+  if [ "$class" = legacy ]; then
+    smallphoneai_mirror_policy_error "未找到有效 schema:3 网络 profile，使用兼容候选顺序"
+  else
+    smallphoneai_mirror_policy_error "读取首次测速网络 profile：$class（$profile）"
+  fi
+}
+
 smallphoneai_ubuntu_mirror_run_id() {
   local run_id safe_run_id
   run_id="$(smallphoneai_resolve_dual_namespace_value \
@@ -144,8 +181,29 @@ smallphoneai_ubuntu_rootfs_arch() {
 }
 
 smallphoneai_ubuntu_rootfs_candidates() {
-  local arch
+  local arch policy
   arch="$(smallphoneai_ubuntu_rootfs_arch "${1:-}")" || return $?
+  policy="$(smallphoneai_network_class)"
+  case "$policy" in
+    global)
+      cat <<EOF
+https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
+https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
+https://mirrors.nju.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
+https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
+EOF
+      return 0
+      ;;
+    cn)
+      cat <<EOF
+https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
+https://mirrors.nju.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
+https://mirrors.ustc.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
+https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
+EOF
+      return 0
+      ;;
+  esac
   cat <<EOF
 https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
 https://mirrors.nju.edu.cn/ubuntu-cloud-images/noble/current/noble-server-cloudimg-${arch}-root.tar.xz
@@ -209,6 +267,26 @@ smallphoneai_ubuntu_rootfs_effective_candidates() {
 }
 
 smallphoneai_ubuntu_apt_candidates() {
+  case "$(smallphoneai_network_class)" in
+    global)
+      cat <<'EOF'
+https://ports.ubuntu.com/ubuntu-ports
+https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports
+https://mirror.nju.edu.cn/ubuntu-ports
+https://mirrors.ustc.edu.cn/ubuntu-ports
+EOF
+      return 0
+      ;;
+    cn)
+      cat <<'EOF'
+https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports
+https://mirror.nju.edu.cn/ubuntu-ports
+https://mirrors.ustc.edu.cn/ubuntu-ports
+https://ports.ubuntu.com/ubuntu-ports
+EOF
+      return 0
+      ;;
+  esac
   cat <<'EOF'
 https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports
 https://mirror.nju.edu.cn/ubuntu-ports
@@ -245,7 +323,7 @@ smallphoneai_mirror_timeout_value() {
 }
 
 smallphoneai_probe_ubuntu_rootfs_mirror() {
-  local url="$1" timeout_seconds="$2" metrics curl_exit http_code size_download classification
+  local url="$1" timeout_seconds="$2" metrics curl_exit http_code size_download classification speed bytes seconds
   local headers content_range temp_root max_filesize configured_max_filesize
   temp_root="${TMPDIR:-/tmp}"
   configured_max_filesize="$(smallphoneai_resolve_dual_namespace_value \
@@ -260,16 +338,22 @@ smallphoneai_probe_ubuntu_rootfs_mirror() {
       ;;
   esac
   [ "$max_filesize" -ge 1 ] || return 64
+  [ "$max_filesize" -ge 1048576 ] || max_filesize=2097152
   mkdir -p "$temp_root" || return 1
   headers="$(mktemp "$temp_root/smallphoneai-rootfs-range.XXXXXX")" || return 1
   metrics="$(curl --silent --show-error --location --fail-with-body \
     --connect-timeout "$timeout_seconds" --max-time "$timeout_seconds" \
-    --range 0-0 --max-filesize "$max_filesize" \
+    --range 0-1048575 --max-filesize "$max_filesize" \
     --dump-header "$headers" --output /dev/null \
-    --write-out '%{http_code} %{size_download}' "$url" 2>/dev/null)"
+    --write-out '%{http_code} %{size_download} %{time_total}' "$url" 2>/dev/null)"
   curl_exit=$?
   http_code="${metrics%% *}"
-  size_download="${metrics##* }"
+  metrics="${metrics#* }"
+  size_download="${metrics%% *}"
+  seconds="${metrics##* }"
+  bytes="$size_download"
+  speed="$(awk -v bytes="$bytes" -v seconds="$seconds" 'BEGIN { if (seconds > 0) printf "%.0f", bytes / seconds; else print 0 }')"
+  SMALLPHONEAI_UBUNTU_MIRROR_LAST_SPEED_BPS="${speed:-0}"
   content_range="$(tr -d '\r' < "$headers" | awk '
     tolower($1)=="content-range:" {
       $1=""
@@ -287,16 +371,16 @@ smallphoneai_probe_ubuntu_rootfs_mirror() {
       return 1
       ;;
     206)
-      if [ "$curl_exit" = "0" ] && [ "${size_download:-0}" -eq 1 ] 2>/dev/null; then
+      if [ "$curl_exit" = "0" ] && [ "${size_download:-0}" -eq 1048576 ] 2>/dev/null; then
         case "$content_range" in
-          'bytes 0-0/'*)
+          'bytes 0-1048575/'*)
             SMALLPHONEAI_UBUNTU_MIRROR_LAST_CLASS=success
             return 0
             ;;
         esac
       fi
       case "$content_range:$size_download" in
-        'bytes 0-0/'*:1) ;;
+        'bytes 0-1048575/'*:1048576) ;;
         *)
           SMALLPHONEAI_UBUNTU_MIRROR_LAST_CLASS=permanent
           return 1
@@ -313,13 +397,18 @@ smallphoneai_probe_ubuntu_rootfs_mirror() {
 }
 
 smallphoneai_probe_ubuntu_apt_mirror() {
-  local mirror="$1" codename="$2" timeout_seconds="$3" metrics curl_exit http_code classification
+  local mirror="$1" codename="$2" timeout_seconds="$3" metrics curl_exit http_code classification speed bytes seconds
   metrics="$(curl --silent --show-error --location --fail-with-body \
     --connect-timeout "$timeout_seconds" --max-time "$timeout_seconds" \
-    --output /dev/null --write-out '%{http_code}' \
+    --output /dev/null --write-out '%{http_code} %{size_download} %{time_total}' \
     "$mirror/dists/$codename/InRelease" 2>/dev/null)"
   curl_exit=$?
-  http_code="$metrics"
+  http_code="${metrics%% *}"
+  metrics="${metrics#* }"
+  bytes="${metrics%% *}"
+  seconds="${metrics##* }"
+  speed="$(awk -v bytes="$bytes" -v seconds="$seconds" 'BEGIN { if (seconds > 0) printf "%.0f", bytes / seconds; else print 0 }')"
+  SMALLPHONEAI_UBUNTU_MIRROR_LAST_SPEED_BPS="${speed:-0}"
   SMALLPHONEAI_UBUNTU_MIRROR_LAST_EXIT="$curl_exit"
   SMALLPHONEAI_UBUNTU_MIRROR_LAST_HTTP="${http_code:-000}"
   if [ "$curl_exit" = "0" ] && [ "$http_code" = "200" ]; then
@@ -355,7 +444,7 @@ smallphoneai_export_resolved_ubuntu_mirror() {
 
 smallphoneai_resolve_ubuntu_mirror() {
   local kind="$1" detail="$2" override first_timeout retry_timeout lock_dir candidate selected=""
-  local transient_candidates="" result_file run_id lock_root candidates selection_variant=default
+  local transient_candidates="" result_file run_id lock_root candidates selection_variant=default policy ranked_file
 
   case "$kind" in
     rootfs)
@@ -376,10 +465,14 @@ smallphoneai_resolve_ubuntu_mirror() {
     return 0
   fi
 
+  policy="$(smallphoneai_network_class)"
+  smallphoneai_log_network_class
+  selection_variant="$policy"
+
   if [ "$kind" = rootfs ]; then
     candidates="$(smallphoneai_ubuntu_rootfs_list_override)" || return $?
     if [ -n "$candidates" ]; then
-      selection_variant="list-$(printf '%s\n' "$candidates" | cksum | awk '{print $1 "-" $2}')"
+      selection_variant="$policy-list-$(printf '%s\n' "$candidates" | cksum | awk '{print $1 "-" $2}')"
     fi
   fi
 
@@ -400,6 +493,7 @@ smallphoneai_resolve_ubuntu_mirror() {
   export OPENHOUSEAI_UBUNTU_MIRROR_LOCK_ROOT="$lock_root"
   export SMALLPHONEAI_UBUNTU_MIRROR_LOCK_ROOT="$lock_root"
   result_file="$lock_root/$run_id.$kind-$detail-$selection_variant.selected"
+  ranked_file="$lock_root/$run_id.$kind-$detail-$selection_variant.ranked"
   if [ -s "$result_file" ]; then
     selected="$(sed -n '1p' "$result_file")"
   fi
@@ -416,31 +510,46 @@ smallphoneai_resolve_ubuntu_mirror() {
       candidates="$(smallphoneai_ubuntu_apt_candidates)"
     fi
 
+    : > "$ranked_file"
     while IFS= read -r candidate; do
       [ -n "$candidate" ] || continue
       if { [ "$kind" = rootfs ] \
           && smallphoneai_probe_ubuntu_rootfs_mirror "$candidate" "$first_timeout"; } \
         || { [ "$kind" = apt ] \
           && smallphoneai_probe_ubuntu_apt_mirror "$candidate" "$detail" "$first_timeout"; }; then
-        selected="$candidate"
-        break
-      fi
-      if [ "${SMALLPHONEAI_UBUNTU_MIRROR_LAST_CLASS:-permanent}" = transient ]; then
-        transient_candidates="${transient_candidates}${candidate}\n"
-      fi
-    done <<< "$candidates"
-
-    if [ -z "$selected" ] && [ -n "$transient_candidates" ]; then
-      while IFS= read -r candidate; do
-        [ -n "$candidate" ] || continue
-        if { [ "$kind" = rootfs ] \
-            && smallphoneai_probe_ubuntu_rootfs_mirror "$candidate" "$retry_timeout"; } \
-          || { [ "$kind" = apt ] \
-            && smallphoneai_probe_ubuntu_apt_mirror "$candidate" "$detail" "$retry_timeout"; }; then
+        if [ "$policy" = cn ]; then
+          printf '%s\t%s\n' "$candidate" "${SMALLPHONEAI_UBUNTU_MIRROR_LAST_SPEED_BPS:-0}" >> "$ranked_file"
+        else
           selected="$candidate"
           break
         fi
+      elif [ "${SMALLPHONEAI_UBUNTU_MIRROR_LAST_CLASS:-permanent}" = transient ]; then
+        transient_candidates="${transient_candidates}${candidate}\n"
+      fi
+    done <<< "$candidates"
+    if [ "$policy" = cn ] && [ -s "$ranked_file" ]; then
+      selected="$(sort -t $'\t' -k2,2nr "$ranked_file" | head -n 1 | cut -f1)"
+    fi
+
+    if [ -n "$transient_candidates" ] \
+      && { [ "$policy" = cn ] || [ -z "$selected" ]; }; then
+      while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        if { [ "$kind" = rootfs ] \
+          && smallphoneai_probe_ubuntu_rootfs_mirror "$candidate" "$retry_timeout"; } \
+          || { [ "$kind" = apt ] \
+          && smallphoneai_probe_ubuntu_apt_mirror "$candidate" "$detail" "$retry_timeout"; }; then
+          if [ "$policy" = cn ]; then
+            printf '%s\t%s\n' "$candidate" "${SMALLPHONEAI_UBUNTU_MIRROR_LAST_SPEED_BPS:-0}" >> "$ranked_file"
+          elif [ -z "$selected" ]; then
+            selected="$candidate"
+            break
+          fi
+        fi
       done <<< "$(printf '%b' "$transient_candidates")"
+      if [ "$policy" = cn ] && [ -s "$ranked_file" ]; then
+        selected="$(sort -t $'\t' -k2,2nr "$ranked_file" | head -n 1 | cut -f1)"
+      fi
     fi
 
     if [ -n "$selected" ]; then

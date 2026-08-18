@@ -102,33 +102,59 @@ if ! command -v smallphoneai_resolve_ubuntu_apt_mirror >/dev/null 2>&1; then
   exit 1
 fi
 codename="$(ubuntu_codename)"
-log "正在按 canonical 顺序解析 Ubuntu apt mirror：TUNA -> NJU -> official -> USTC。"
+log "正在根据首次测速 profile 解析 Ubuntu apt mirror 候选。"
 selected_mirror="$(smallphoneai_resolve_ubuntu_apt_mirror "$codename")" || {
   log "未找到可用 Ubuntu apt mirror。"
+  exit 1
+}
+candidate_list="$(smallphoneai_ubuntu_apt_candidates)"
+ordered_candidates="$selected_mirror"
+while IFS= read -r candidate; do
+  [ -n "$candidate" ] || continue
+  [ "$candidate" = "$selected_mirror" ] || ordered_candidates="${ordered_candidates}
+${candidate}"
+done <<< "$candidate_list"
+apt_ready=0
+while IFS= read -r candidate; do
+  [ -n "$candidate" ] || continue
+  export OPENHOUSEAI_UBUNTU_APT_MIRROR="$candidate"
+  export SMALLPHONEAI_UBUNTU_APT_MIRROR="$candidate"
+  export OPENHOUSEAI_RESOLVED_UBUNTU_APT_MIRROR="$candidate"
+  export SMALLPHONEAI_RESOLVED_UBUNTU_APT_MIRROR="$candidate"
+  log "验证 Ubuntu apt mirror：$candidate"
+  if run_ubuntu_logged env \
+    SMALLPHONEAI_UBUNTU_MIRROR_POLICY_PATH="$SCRIPT_DIR/_ubuntu-mirror-policy.sh" \
+    SMALLPHONEAI_SELECTED_UBUNTU_APT_MIRROR="$candidate" \
+    SMALLPHONEAI_SELECTED_UBUNTU_CODENAME="$codename" \
+    bash -lc 'set -euo pipefail
+. "$SMALLPHONEAI_UBUNTU_MIRROR_POLICY_PATH"
+smallphoneai_write_canonical_ubuntu_sources \
+  "$SMALLPHONEAI_SELECTED_UBUNTU_APT_MIRROR" \
+  "$SMALLPHONEAI_SELECTED_UBUNTU_CODENAME"' \
+    && run_ubuntu_logged bash -lc 'set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt update'; then
+    selected_mirror="$candidate"
+    apt_ready=1
+    log "Ubuntu apt mirror 验证通过：$candidate"
+    break
+  fi
+  log "Ubuntu apt mirror 验证失败，尝试下一个候选。"
+done <<< "$ordered_candidates"
+[ "$apt_ready" -eq 1 ] || {
+  log "所有 Ubuntu apt mirror 均未通过 Ubuntu 内 apt update。"
   exit 1
 }
 export OPENHOUSEAI_UBUNTU_APT_MIRROR="$selected_mirror"
 export SMALLPHONEAI_UBUNTU_APT_MIRROR="$selected_mirror"
 export OPENHOUSEAI_RESOLVED_UBUNTU_APT_MIRROR="$selected_mirror"
 export SMALLPHONEAI_RESOLVED_UBUNTU_APT_MIRROR="$selected_mirror"
-log "选择 Ubuntu apt mirror：$selected_mirror"
-run_ubuntu_logged env \
-  SMALLPHONEAI_UBUNTU_MIRROR_POLICY_PATH="$SCRIPT_DIR/_ubuntu-mirror-policy.sh" \
-  SMALLPHONEAI_SELECTED_UBUNTU_APT_MIRROR="$selected_mirror" \
-  SMALLPHONEAI_SELECTED_UBUNTU_CODENAME="$codename" \
-  bash -lc 'set -euo pipefail
-. "$SMALLPHONEAI_UBUNTU_MIRROR_POLICY_PATH"
-smallphoneai_write_canonical_ubuntu_sources \
-  "$SMALLPHONEAI_SELECTED_UBUNTU_APT_MIRROR" \
-  "$SMALLPHONEAI_SELECTED_UBUNTU_CODENAME"'
 
-log "正在 Ubuntu 内更新 apt 索引。"
+log "正在修复 Ubuntu 软件包状态。"
 run_ubuntu_logged bash -lc 'set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-echo "正在修复可能被中断的 Ubuntu 软件包状态"
 dpkg --configure -a
-apt -f install -y
-apt update'
+apt -f install -y'
 
 log "正在 Ubuntu 内安装基础依赖。"
 run_ubuntu_logged bash -lc 'set -euo pipefail

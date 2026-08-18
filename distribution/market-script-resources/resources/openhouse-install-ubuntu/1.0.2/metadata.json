@@ -1,0 +1,12 @@
+{
+  "id": "openhouse-install-ubuntu",
+  "version": "1.0.2",
+  "archive": "openhouse-install-ubuntu.tgz",
+  "size": 7085,
+  "sha256": "7509b99a78ead89789c28594034b8c6ba4946d581fcbe25a8112addc518df612",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/openhouse-install-ubuntu/1.0.2/openhouse-install-ubuntu.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}
