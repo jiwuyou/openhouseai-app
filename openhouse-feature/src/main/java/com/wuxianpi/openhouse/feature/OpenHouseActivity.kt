@@ -18,6 +18,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -68,7 +69,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var setupAttentionView: TextView
     private lateinit var doneEditing: Button
     private lateinit var setCurrentHome: Button
-    private lateinit var openBrowser: Button
+    private lateinit var openBrowser: ImageButton
     private lateinit var refreshWeb: Button
     private lateinit var closeWebPage: Button
     private lateinit var collapseWebToolbar: Button
@@ -81,6 +82,8 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var workspaceSidebar: WorkspaceSidebar
     private lateinit var webPagePool: EmbeddedWebPagePool
     private lateinit var webToolbarController: CollapsibleWebToolbarController
+    private lateinit var floatingWindowStore: FloatingWindowStore
+    private lateinit var floatingWebViewHost: FloatingWebViewHost
     private lateinit var pageRegistry: BuiltInPageRegistry
     private val workspaceNavigator = WorkspaceNavigator()
     private val retainedContents = LinkedHashMap<String, WorkspaceContent>()
@@ -103,6 +106,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private var serviceRefreshGeneration = 0L
     private var setupAttention: OpenHouseSetupAttention? = null
     private var webToolbarMode = false
+    private var returnToSmallAppUrl: String? = null
 
     private val servicePoll = Runnable {
         if (drawerVisible) refreshSidebarServiceStates()
@@ -124,10 +128,19 @@ class OpenHouseActivity : AppCompatActivity() {
         startupStore = StartupRouteStore(this)
         workspacePreferences = WorkspacePreferenceStore(this)
         pageRegistry = BuiltInPageRegistry(this)
+        floatingWindowStore = FloatingWindowStore(this)
         residency = DesktopResidencyController(DesktopResidencyController.MainThreadScheduler()) {
             releaseDesktopAndFinish()
         }
         bindViews()
+        floatingWebViewHost = FloatingWebViewHost(
+            context = this,
+            parent = findViewById(R.id.oh_page_host),
+            store = floatingWindowStore,
+            callbacks = object : FloatingWebViewHost.Callbacks {
+                override fun onBrowser(url: String) = openExternalUri(Uri.parse(url))
+            },
+        )
         refreshSetupAttention()
         bindNavigation()
         refreshComponents()
@@ -162,6 +175,7 @@ class OpenHouseActivity : AppCompatActivity() {
         refreshSetupAttention()
         if (workspaceNavigator.current is WorkspaceDestination.Component && !webMountGate.isPending) webPagePool.onResume()
         else activeWorkspaceContent?.onResume()
+        floatingWebViewHost.onResume()
         // Installation flows and external app setup return here while this Activity stays alive.
         requestDesktopRefresh()
     }
@@ -169,6 +183,7 @@ class OpenHouseActivity : AppCompatActivity() {
     override fun onPause() {
         activeWorkspaceContent?.onPause()
         webPagePool.onPause()
+        floatingWebViewHost.onPause()
         super.onPause()
     }
 
@@ -185,6 +200,7 @@ class OpenHouseActivity : AppCompatActivity() {
         }
         residency.onDestroy()
         pageRegistry.close()
+        floatingWebViewHost.dispose()
         releaseDesktopResources()
         super.onDestroy()
     }
@@ -202,6 +218,11 @@ class OpenHouseActivity : AppCompatActivity() {
     override fun onBackPressed() {
         if (drawer.isDrawerOpen(GravityCompat.START)) {
             drawer.closeDrawer(GravityCompat.START)
+            return
+        }
+        if (::floatingWebViewHost.isInitialized && floatingWebViewHost.isOpen) {
+            floatingWebViewHost.close()
+            updateWebToolbarActions()
             return
         }
         desktopView?.takeIf { it.isEditMode() }?.let {
@@ -265,8 +286,8 @@ class OpenHouseActivity : AppCompatActivity() {
         setupAttentionView.setOnClickListener { showManualPicker() }
         findViewById<Button>(R.id.oh_close_drawer).setOnClickListener { drawer.closeDrawer(GravityCompat.START) }
         setCurrentHome.setOnClickListener { setCurrentDestinationAsHome() }
-        openBrowser.setOnClickListener { openActiveWebInBrowser() }
-        refreshWeb.setOnClickListener { webPagePool.reloadActive() }
+        openBrowser.setOnClickListener { showWebPresentationMenu() }
+        refreshWeb.setOnClickListener { refreshOrReturnToSmallApp() }
         closeWebPage.setOnClickListener { closeCurrentWebPage() }
         collapseWebToolbar.setOnClickListener {
             webToolbarController.collapse()
@@ -1288,9 +1309,14 @@ class OpenHouseActivity : AppCompatActivity() {
         if (!::webPagePool.isInitialized || !::openBrowser.isInitialized) return
         val args = webPagePool.activeArgs
         val address = webPagePool.activeAddress
-        openBrowser.isEnabled = address.isNotBlank()
+        openBrowser.isEnabled = address.isNotBlank() || floatingWindowStore.load() != null
         openBrowser.alpha = if (openBrowser.isEnabled) 1f else 0.45f
         refreshWeb.isEnabled = args != null
+        refreshWeb.text = if (returnToSmallAppUrl != null) {
+            getString(R.string.oh_return_to_small_app)
+        } else {
+            getString(R.string.oh_refresh)
+        }
         closeWebPage.visibility = if (webToolbarMode && pageRegistry.isManagedPage(args?.componentId)) {
             View.VISIBLE
         } else {
@@ -1311,6 +1337,62 @@ class OpenHouseActivity : AppCompatActivity() {
                 copyAddress(webPagePool.activeArgs?.title.orEmpty().ifBlank { "URL" }, address)
                 Toast.makeText(this, R.string.oh_browser_open_failed_copied, Toast.LENGTH_LONG).show()
             }
+    }
+
+    private fun refreshOrReturnToSmallApp() {
+        val returnUrl = returnToSmallAppUrl
+        if (!returnUrl.isNullOrBlank()) {
+            webPagePool.loadActiveUrl(returnUrl)
+            returnToSmallAppUrl = null
+            updateWebToolbarActions()
+        } else {
+            webPagePool.reloadActive()
+        }
+    }
+
+    private fun showWebPresentationMenu() {
+        val address = webPagePool.activeAddress
+        val last = floatingWindowStore.load()
+        val entries = buildList {
+            add(WebPresentationMenu.Entry(getString(R.string.oh_current_page)) {
+                floatingWebViewHost.close()
+                returnToSmallAppUrl = null
+                updateWebToolbarActions()
+            })
+            if (address.isNotBlank()) {
+                add(WebPresentationMenu.Entry(getString(R.string.oh_open_floating)) {
+                    webPagePool.activeArgs?.let { args ->
+                        val returnUrl = webPagePool.previousAddress.ifBlank { args.loadUrl }
+                        val snapshot = FloatingWindowSnapshot(
+                            title = args.title,
+                            conversationUrl = address,
+                            returnUrl = returnUrl,
+                            x = 0,
+                            y = 0,
+                            width = dp(340),
+                            height = dp(460),
+                            updatedAt = System.currentTimeMillis(),
+                        )
+                        floatingWebViewHost.open(snapshot)
+                        returnToSmallAppUrl = returnUrl
+                        updateWebToolbarActions()
+                    }
+                })
+            }
+            if (last != null) {
+                add(WebPresentationMenu.Entry(getString(R.string.oh_open_last_floating)) {
+                    floatingWebViewHost.open(last)
+                    returnToSmallAppUrl = last.returnUrl.ifBlank { null }
+                    updateWebToolbarActions()
+                })
+            }
+            if (address.isNotBlank()) {
+                add(WebPresentationMenu.Entry(getString(R.string.oh_open_in_browser)) {
+                    openActiveWebInBrowser()
+                })
+            }
+        }
+        WebPresentationMenu(this).show(openBrowser, entries)
     }
 
     private fun closeCurrentWebPage() {

@@ -87,6 +87,19 @@ class EmbeddedWebPagePoolTest {
         pool.destroy()
     }
 
+    @Test
+    fun remembersPreviousAddressWhenLoadingASecondUrl() {
+        val pool = EmbeddedWebPagePool(context, object : EmbeddedWebPagePool.Callbacks {})
+        val host = FrameLayout(context)
+
+        pool.show(args("agent", "conversation"), host)
+        pool.loadActiveUrl("https://example.test/source")
+
+        assertEquals("https://example.test/conversation", pool.previousAddress)
+        assertEquals("https://example.test/source", pool.activeAddress)
+        pool.destroy()
+    }
+
     private fun args(
         id: String,
         path: String = id,

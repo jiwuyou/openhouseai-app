@@ -35,6 +35,16 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
+        <ImageButton
+            android:id="@+id/oh_component_web_modes"
+            android:layout_width="46dp"
+            android:layout_height="42dp"
+            android:background="@drawable/oh_button_background"
+            android:contentDescription="@string/oh_open_modes"
+            android:minWidth="0dp"
+            android:padding="10dp"
+            android:src="@drawable/oh_ic_window" />
+
         <Button
             android:id="@+id/oh_component_web_close"
             android:layout_width="58dp"
@@ -115,8 +125,14 @@
     </LinearLayout>
 
     <FrameLayout
-        android:id="@+id/oh_component_web_host"
+        android:id="@+id/oh_component_web_overlay_host"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1">
+
+        <FrameLayout
+            android:id="@+id/oh_component_web_host"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </FrameLayout>
 </LinearLayout>

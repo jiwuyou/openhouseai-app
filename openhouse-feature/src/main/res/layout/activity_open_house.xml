@@ -77,21 +77,16 @@
                 android:textAllCaps="false"
                 android:textColor="@color/oh_text" />
 
-            <Button
+            <ImageButton
                 android:id="@+id/oh_top_open_browser"
-                android:layout_width="0dp"
+                android:layout_width="46dp"
                 android:layout_height="42dp"
                 android:layout_marginStart="6dp"
-                android:layout_weight="1"
                 android:background="@drawable/oh_button_background"
-                android:ellipsize="end"
-                android:maxLines="1"
+                android:contentDescription="@string/oh_open_modes"
                 android:minWidth="0dp"
-                android:paddingHorizontal="4dp"
-                android:text="@string/oh_open_in_browser"
-                android:textAllCaps="false"
-                android:textColor="@color/oh_text"
-                android:textSize="12sp"
+                android:padding="10dp"
+                android:src="@drawable/oh_ic_window"
                 android:visibility="gone" />
 
             <Button

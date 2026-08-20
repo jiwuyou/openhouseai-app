@@ -55,6 +55,15 @@ internal class EmbeddedWebPagePool(
     val activeAddress: String
         get() = activePage?.let { it.state.url.ifEmpty { pageAddress(it.args) } }.orEmpty()
 
+    val previousAddress: String
+        get() = activePage?.previousAddress.orEmpty()
+
+    fun loadActiveUrl(address: String): Boolean {
+        val page = activePage ?: return false
+        navigate(page, address)
+        return true
+    }
+
     internal val retainedPageCount: Int
         get() = pages.size
 
@@ -266,7 +275,9 @@ internal class EmbeddedWebPagePool(
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 if (!isCurrentLoad(record, view, generation)) return
-                record.state = record.state.loading(normalizeOrEmpty(url).ifEmpty { pageAddress(record.args) })
+                val nextUrl = normalizeOrEmpty(url).ifEmpty { pageAddress(record.args) }
+                record.rememberPrevious(nextUrl)
+                record.state = record.state.loading(nextUrl)
                 record.fallbackView.visibility = View.GONE
                 renderState(record)
             }
@@ -355,6 +366,7 @@ internal class EmbeddedWebPagePool(
     private fun navigate(page: PageRecord, address: String) {
         val url = normalizeOrEmpty(address)
         if (destroyed || url.isEmpty()) return
+        page.rememberPrevious(url)
         page.state = page.state.loading(url)
         page.fallbackView.visibility = View.GONE
         renderState(page)
@@ -489,10 +501,16 @@ internal class EmbeddedWebPagePool(
         val tabScroll: HorizontalScrollView,
         val tabContainer: LinearLayout,
         var state: ComponentWebPageState,
+        var previousAddress: String = "",
         var lastUsedOrder: Long = 0,
         var loadGeneration: Long = 0,
         var disposed: Boolean = false,
-    )
+    ) {
+        fun rememberPrevious(nextUrl: String) {
+            val current = HttpUrlNormalizer.normalize(state.url).orEmpty()
+            if (current.isNotEmpty() && current != nextUrl) previousAddress = current
+        }
+    }
 
     private data class FallbackView(
         val root: LinearLayout,

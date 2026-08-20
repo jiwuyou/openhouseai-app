@@ -29,9 +29,14 @@
     <string name="oh_daily_apps">日常应用</string>
     <string name="oh_system">系统</string>
     <string name="oh_refresh">刷新</string>
+    <string name="oh_return_to_small_app">返回小 App</string>
     <string name="oh_control">控制</string>
     <string name="oh_collapse">收起</string>
     <string name="oh_open_in_browser">用浏览器打开</string>
+    <string name="oh_open_modes">打开方式</string>
+    <string name="oh_current_page">当前页面</string>
+    <string name="oh_open_floating">悬浮窗打开</string>
+    <string name="oh_open_last_floating">打开上次悬浮窗</string>
     <string name="oh_close_page">关闭</string>
     <string name="oh_browser_open_failed_copied">无法打开浏览器，地址已复制。</string>
     <string name="oh_expand_toolbar">展开顶部栏并打开侧栏</string>
