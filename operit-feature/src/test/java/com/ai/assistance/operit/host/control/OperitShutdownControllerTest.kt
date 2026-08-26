@@ -22,4 +22,9 @@ class OperitShutdownControllerTest {
             ),
         )
     }
+
+    @Test
+    fun rescueShutdownKeepsTheSharedHostTask() {
+        assertFalse(OperitShutdownController.REMOVE_RESCUE_TASK_ON_SHUTDOWN)
+    }
 }

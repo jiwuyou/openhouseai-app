@@ -169,7 +169,8 @@ object OpenHouseFeature {
     fun createDestinationIntent(context: Context, destination: WorkspaceDestination): Intent {
         return createIntent(context).apply {
             when (destination) {
-                WorkspaceDestination.Desktop -> Unit
+                WorkspaceDestination.Desktop ->
+                    putExtra(EXTRA_STARTUP_ROUTE, ProductRoute.DESKTOP.name)
                 is WorkspaceDestination.Route ->
                     putExtra(EXTRA_STARTUP_ROUTE, destination.route.name)
                 is WorkspaceDestination.Component ->

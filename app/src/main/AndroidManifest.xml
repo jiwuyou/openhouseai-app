@@ -106,7 +106,7 @@
             android:name="com.wuxianpi.openhouse.feature.OpenHouseActivity"
             android:exported="true"
             android:label="@string/oh_app_name"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:process=":openhouse"
             android:resizeableActivity="true"
             android:theme="@style/Theme.TermuxMaintenance.DayNight.NoActionBar"
@@ -227,11 +227,10 @@
 
         <activity
             android:name="com.ai.assistance.operit.rescue.ui.RescueActivity"
-            android:excludeFromRecents="true"
             android:exported="false"
-            android:taskAffinity="${applicationId}.rescue"
+            android:launchMode="singleTop"
             android:process=":rescue_ui"
-            tools:replace="android:excludeFromRecents,android:exported,android:process,android:taskAffinity" />
+            tools:replace="android:exported,android:launchMode,android:process" />
 
         <activity
             android:name="com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity"

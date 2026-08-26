@@ -15,6 +15,8 @@ object OperitAiLauncher {
     const val AION_UI_URL = "http://127.0.0.1:25808/"
     const val BUILTIN_WEB_UI_URL = PI_RUNTIME_URL
     const val ADVANCED_UI_METADATA_URL = "${PI_RUNTIME_URL}v1/ui/metadata"
+    internal val REPAIR_INTENT_FLAGS =
+        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
 
     @JvmStatic
     fun basicIntent(context: Context): Intent = basicIntent(context, null)
@@ -34,13 +36,9 @@ object OperitAiLauncher {
     @JvmStatic
     fun repairIntent(context: Context): Intent =
         RescueActivity.createIntent(context).apply {
-            // Rescue has its own task/process so returning to OpenHouse does not destroy the
-            // running repair session. Reusing the task keeps reopening the mode instantaneous.
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP,
-            )
+            // Rescue shares the host task while retaining its isolated UI process. Reordering an
+            // existing activity preserves the repair session without clearing the host task.
+            addFlags(REPAIR_INTENT_FLAGS)
         }
 
     @JvmStatic

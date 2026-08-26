@@ -31,6 +31,7 @@ import kotlinx.coroutines.withContext
 
 object OperitShutdownController {
     private const val TAG = "OperitShutdownController"
+    internal const val REMOVE_RESCUE_TASK_ON_SHUTDOWN = false
     private val shutdownStarted = AtomicBoolean(false)
     private val shutdownScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -83,7 +84,9 @@ object OperitShutdownController {
                 updateControlState = false,
                 stopApplicationServices = false,
             )
-            finishActivity(activity, removeTask = true)
+            // Rescue shares the OpenHouse task. Finishing the task here would also remove the
+            // host desktop; explicit shutdown only closes this UI and its isolated process.
+            finishActivity(activity, removeTask = REMOVE_RESCUE_TASK_ON_SHUTDOWN)
             killCurrentProcess(activity.applicationContext, rescueProcessSuffix, "Rescue")
         }
     }

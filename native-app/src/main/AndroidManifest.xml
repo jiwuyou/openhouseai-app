@@ -82,7 +82,7 @@
         <activity
             android:name="com.wuxianpi.openhouse.feature.OpenHouseActivity"
             android:exported="true"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:process=":openhouse"
             tools:replace="android:exported,android:launchMode,android:process">
             <intent-filter>
@@ -120,13 +120,11 @@
         <activity
             android:name="com.ai.assistance.operit.rescue.ui.RescueActivity"
             android:exported="false"
-            android:excludeFromRecents="true"
-            android:taskAffinity="${applicationId}.rescue"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:label="@string/rescue_ai_title"
             android:process=":rescue_ui"
             android:theme="@style/Theme.Operit"
-            tools:replace="android:excludeFromRecents,android:exported,android:launchMode,android:process,android:taskAffinity" />
+            tools:replace="android:exported,android:launchMode,android:process" />
 
         <activity
             android:name="com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity"

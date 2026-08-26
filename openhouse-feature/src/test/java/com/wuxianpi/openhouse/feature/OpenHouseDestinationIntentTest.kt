@@ -29,6 +29,20 @@ class OpenHouseDestinationIntentTest {
     }
 
     @Test
+    fun desktopDestinationUsesExplicitDesktopRouteExtra() {
+        val intent = OpenHouseFeature.createDestinationIntent(
+            context,
+            WorkspaceDestination.Desktop,
+        )
+
+        assertEquals(
+            ProductRoute.DESKTOP.name,
+            intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_ROUTE),
+        )
+        assertNull(intent.getStringExtra(OpenHouseFeature.EXTRA_STARTUP_COMPONENT_ID))
+    }
+
+    @Test
     fun componentDestinationUsesNormalizedComponentId() {
         val intent = OpenHouseFeature.createDestinationIntent(
             context,
