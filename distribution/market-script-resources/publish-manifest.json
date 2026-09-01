@@ -100,15 +100,15 @@
     },
     {
       "id": "openhouse-runtime",
-      "version": "0.2.2",
-      "archivePath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.2/runtime-aarch64.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.2/metadata.json"
+      "version": "0.2.3",
+      "archivePath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.3/runtime-aarch64.tgz",
+      "metadataPath": "distribution/market-script-resources/resources/openhouse-runtime/0.2.3/metadata.json"
     },
     {
       "id": "service-manager",
-      "version": "0.3.4",
+      "version": "0.3.5",
       "archivePath": "app/src/main/assets/openhouse/product-payloads/service-manager.tgz",
-      "metadataPath": "distribution/market-script-resources/resources/service-manager/0.3.4/metadata.json"
+      "metadataPath": "distribution/market-script-resources/resources/service-manager/0.3.5/metadata.json"
     },
     {
       "id": "wuyou",
@@ -143,7 +143,7 @@
   ],
   "resourceSet": {
     "id": "openhouse-core-stack",
-    "version": "2026.08.18.2",
-    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.08.18.2/manifest.json"
+    "version": "2026.09.01.1",
+    "manifestPath": "distribution/market-script-resources/resource-sets/openhouse-core-stack/2026.09.01.1/manifest.json"
   }
 }

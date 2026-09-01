@@ -1,8 +1,8 @@
 {
   "schema": 2,
   "id": "openhouse-core-stack",
-  "version": "2026.08.18.2",
-  "sequence": 2026081802,
+  "version": "2026.09.01.1",
+  "sequence": 2026090101,
   "abi": "arm64-v8a",
   "minApkVersionCode": 126,
   "guide": {
@@ -124,17 +124,17 @@
     },
     {
       "id": "openhouse-runtime",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "archive": "runtime-aarch64.tgz",
-      "size": 20104358,
-      "sha256": "7da07575eb74fb0207911dcf08306d4a3660e233c07f13e970372c4df97e41a5"
+      "size": 20115586,
+      "sha256": "01138e7c5e03831f8d4442e967c67ed68eeee101653fa278c8d8f5c010cab8a6"
     },
     {
       "id": "service-manager",
-      "version": "0.3.4",
+      "version": "0.3.5",
       "archive": "service-manager.tgz",
-      "size": 2640506,
-      "sha256": "e4753a26e9ea36441d218f945c559433836fee1f8f0af571d51087ff258b0d64"
+      "size": 2607159,
+      "sha256": "92ab201a8fb007abe972047c9a1761cb5506ab1e0d6e01743c63c55dc3222e5e"
     },
     {
       "id": "wuyou",

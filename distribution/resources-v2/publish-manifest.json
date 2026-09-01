@@ -4,9 +4,9 @@
   "resources": [
     {
       "id": "service-manager",
-      "version": "0.3.4",
+      "version": "0.3.5",
       "archivePath": "app/src/main/assets/openhouse/product-payloads/service-manager.tgz",
-      "metadataPath": "distribution/resources-v2/resources/service-manager/0.3.4/metadata.json"
+      "metadataPath": "distribution/resources-v2/resources/service-manager/0.3.5/metadata.json"
     },
     {
       "id": "openhouse-control-plane",
@@ -16,9 +16,9 @@
     },
     {
       "id": "openhouse-runtime",
-      "version": "0.2.1",
+      "version": "0.2.3",
       "archivePath": "app/src/main/assets/openhouse/product-payloads/runtime-aarch64.tgz",
-      "metadataPath": "distribution/resources-v2/resources/openhouse-runtime/0.2.1/metadata.json"
+      "metadataPath": "distribution/resources-v2/resources/openhouse-runtime/0.2.3/metadata.json"
     },
     {
       "id": "wuyou",
@@ -35,7 +35,7 @@
   ],
   "resourceSet": {
     "id": "openhouse-core-stack",
-    "version": "2026.08.17.1",
-    "manifestPath": "distribution/resources-v2/resource-sets/openhouse-core-stack/2026.08.17.1/manifest.json"
+    "version": "2026.09.01.1",
+    "manifestPath": "distribution/resources-v2/resource-sets/openhouse-core-stack/2026.09.01.1/manifest.json"
   }
 }

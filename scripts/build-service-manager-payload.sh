@@ -20,7 +20,7 @@ Usage:
 
 Production identity contract:
   - Source is fixed to /root/projects/service-manager.
-  - Cargo package must be service-manager 0.3.4.
+  - Cargo package must be service-manager 0.3.5.
   - The script itself clean-builds target/service-manager-payload-build/aarch64-linux-android/release/service-manager.
   - Arbitrary --binary, --source, and --output substitutions are rejected.
   - The payload binary must exactly match that Cargo output.
@@ -99,9 +99,9 @@ package = next(
 )
 if package is None:
     raise SystemExit("error: authoritative Cargo root package is missing")
-if package.get("name") != "service-manager" or package.get("version") != "0.3.4":
+if package.get("name") != "service-manager" or package.get("version") != "0.3.5":
     raise SystemExit(
-        f"error: expected Cargo package service-manager 0.3.4, got {package.get('name')} {package.get('version')}"
+        f"error: expected Cargo package service-manager 0.3.5, got {package.get('name')} {package.get('version')}"
     )
 manifest_dir = os.path.realpath(os.path.dirname(package.get("manifest_path", "")))
 if manifest_dir != source_repo:
@@ -255,12 +255,12 @@ if any(value in binary for value in (b"GLIBC_", b"/lib/ld-linux", b"libc.so.6"))
     raise SystemExit("error: payload binary contains glibc identity")
 if not re.search(r'^name = "service-manager"$', cargo_toml, re.MULTILINE):
     raise SystemExit("error: packaged Cargo.toml package name is stale")
-if not re.search(r'^version = "0.3.4"$', cargo_toml, re.MULTILINE):
+if not re.search(r'^version = "0.3.5"$', cargo_toml, re.MULTILINE):
     raise SystemExit("error: packaged Cargo.toml version is stale")
 
 expected = {
     "component": "service-manager",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "sourceCommit": expected_commit,
     "sourceDirty": expected_dirty,
     "sourceStatusSha256": expected_status_sha,
@@ -406,7 +406,7 @@ import sys
 ) = sys.argv[1:]
 metadata = {
     "component": "service-manager",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "sourceRepo": "https://github.com/jiwuyou/service-manager",
     "sourceCommit": source_commit,
     "sourceDirty": source_dirty == "true",
@@ -479,7 +479,7 @@ values = {
     "platform": "termux-arm64",
     "buildPlatform": "android-arm64",
     "binaryInterpreter": "/system/bin/linker64",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "sourceRepo": "https://github.com/jiwuyou/service-manager",
     "sourceCommit": source_commit,
     "sourceDirty": source_dirty == "true",

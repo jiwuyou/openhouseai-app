@@ -1,0 +1,12 @@
+{
+  "id": "service-manager",
+  "version": "0.3.5",
+  "archive": "service-manager.tgz",
+  "size": 2607159,
+  "sha256": "92ab201a8fb007abe972047c9a1761cb5506ab1e0d6e01743c63c55dc3222e5e",
+  "compression": "gzip",
+  "abi": "arm64-v8a",
+  "url": "/resources-v2/service-manager/0.3.5/service-manager.tgz",
+  "mirrors": [],
+  "minApkVersionCode": 126
+}

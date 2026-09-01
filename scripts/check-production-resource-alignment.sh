@@ -72,6 +72,7 @@ import json
 import os
 import pathlib
 import ssl
+import socket
 import sys
 import tempfile
 import time
@@ -126,6 +127,27 @@ def normalized_origin(url, label):
 
 market_url = market_url_value.rstrip("/")
 trusted_origin = normalized_origin(market_url, "market URL")
+
+resolve_value = os.environ.get("WUXIANPI_RESCUE_MANAGEMENT_RESOLVE", "").strip()
+if resolve_value:
+    try:
+        resolve_host, resolve_port, resolve_address = resolve_value.rsplit(":", 2)
+        resolve_port = int(resolve_port)
+    except ValueError as error:
+        fail(f"invalid WUXIANPI_RESCUE_MANAGEMENT_RESOLVE: {error}")
+    if resolve_host.lower() != trusted_origin[1] or resolve_port != trusted_origin[2]:
+        fail(
+            "WUXIANPI_RESCUE_MANAGEMENT_RESOLVE must target the market URL origin: "
+            f"{resolve_host}:{resolve_port}"
+        )
+    original_getaddrinfo = socket.getaddrinfo
+
+    def resolved_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        if host and host.lower() == resolve_host.lower() and int(port) == resolve_port:
+            return original_getaddrinfo(resolve_address, port, family, type, proto, flags)
+        return original_getaddrinfo(host, port, family, type, proto, flags)
+
+    socket.getaddrinfo = resolved_getaddrinfo
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

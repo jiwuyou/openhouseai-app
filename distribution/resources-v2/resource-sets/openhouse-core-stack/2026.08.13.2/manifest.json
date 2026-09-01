@@ -10,22 +10,22 @@
       "id": "service-manager",
       "version": "0.3.4",
       "archive": "service-manager.tgz",
-      "size": 2640506,
-      "sha256": "e4753a26e9ea36441d218f945c559433836fee1f8f0af571d51087ff258b0d64"
+      "size": 2606954,
+      "sha256": "8838b2c62e2b4d1e763be635021a3250bae222bfecaba3d6b4d28fe67070be4c"
     },
     {
       "id": "openhouse-control-plane",
       "version": "1.0.2",
       "archive": "openhouse-control-plane.tgz",
-      "size": 12327,
-      "sha256": "d5b30a825cf0f593f2089b01d97c5b06827a884b87b0838e516d665e5697351e"
+      "size": 12324,
+      "sha256": "46fd3825d9879a7b2bc1b4a0ca3bf3f4b8e40f76ed5ef34503a522ee821a9dba"
     },
     {
       "id": "openhouse-runtime",
-      "version": "0.2.0",
+      "version": "0.2.3",
       "archive": "runtime-aarch64.tgz",
-      "size": 20093444,
-      "sha256": "dc6a1892f1fd96226d060457e6b60515bcb7787e9852c7a1b4696e68603f7ab2"
+      "size": 20115618,
+      "sha256": "eb5281c066aa2e8fc4b136049f721db9845f07609e7a7cd1799da38988d514df"
     },
     {
       "id": "wuyou",
