@@ -1,8 +1,8 @@
 {
   "schema": 2,
   "id": "openhouse-core-stack",
-  "version": "2026.09.01.1",
-  "sequence": 2026090101,
+  "version": "2026.09.05.1",
+  "sequence": 2026090501,
   "abi": "arm64-v8a",
   "minApkVersionCode": 126,
   "guide": {
@@ -124,10 +124,10 @@
     },
     {
       "id": "openhouse-runtime",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "archive": "runtime-aarch64.tgz",
-      "size": 20115586,
-      "sha256": "01138e7c5e03831f8d4442e967c67ed68eeee101653fa278c8d8f5c010cab8a6"
+      "size": 20114830,
+      "sha256": "b64c2e8d06dd719c30c722a89d4300439d859ba3e071e149c871e450e9c0ab24"
     },
     {
       "id": "service-manager",
