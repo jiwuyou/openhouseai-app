@@ -290,7 +290,13 @@ class OpenHouseActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.oh_open_drawer).setOnClickListener { openNavigationDrawer() }
         findViewById<Button>(R.id.oh_top_desktop).setOnClickListener { showDesktop() }
-        setupAttentionView.setOnClickListener { showManualPicker() }
+        setupAttentionView.setOnClickListener {
+            if (setupAttention == OpenHouseSetupAttention.FIRST_INSTALL) {
+                openComponentAfterRefresh(MANUAL_PAGE_ID)
+            } else {
+                showManualPicker()
+            }
+        }
         findViewById<Button>(R.id.oh_close_drawer).setOnClickListener { drawer.closeDrawer(GravityCompat.START) }
         setCurrentHome.setOnClickListener { setCurrentDestinationAsHome() }
         openBrowser.setOnClickListener { showWebPresentationMenu() }
@@ -538,25 +544,36 @@ class OpenHouseActivity : AppCompatActivity() {
         val attention = host.setupAttention() ?: return
         val firstInstall = attention == OpenHouseSetupAttention.FIRST_INSTALL
         AlertDialog.Builder(this)
-            .setTitle(if (firstInstall) "首次安装待完成" else "APK 更新待检查")
+            .setTitle(if (firstInstall) {
+                getString(R.string.oh_first_install_incomplete_title)
+            } else {
+                "APK 更新待检查"
+            })
             .setMessage(
                 if (firstInstall) {
-                    "检测到首次安装尚未完成。请进入维修模式，根据当前设备的真实状态继续完成安装。\n\n" +
-                        "选择稍后处理后，仍可点击顶部提示继续。"
+                    getString(R.string.oh_first_install_incomplete_message)
                 } else {
                     "检测到 APK 已安装或更新。请前往维修助手确认 Android 私有连接，" +
                         "不会自动更新 WuxianPi 或 Termux 运行资源。\n\n" +
-                        "选择稍后处理后，仍可点击顶部提示继续。"
+                        "选择下次提醒后，仍可点击顶部提示继续。"
                 }
             )
-            .setPositiveButton(if (firstInstall) "前往维修模式完成安装" else "前往维修助手检查更新") { _, _ ->
-                host.launchSetupAttention(this, attention)
+            .setPositiveButton(if (firstInstall) {
+                getString(R.string.oh_view_manual)
+            } else {
+                "前往维修助手检查更新"
+            }) { _, _ ->
+                if (firstInstall) {
+                    openComponentAfterRefresh(MANUAL_PAGE_ID)
+                } else {
+                    host.launchSetupAttention(this, attention)
+                }
             }
-            .setNegativeButton("稍后处理", null)
-            .setNeutralButton("结束本次提醒") { _, _ ->
+            .setNegativeButton(R.string.oh_remind_next_time, null)
+            .setNeutralButton(R.string.oh_do_not_remind) { _, _ ->
                 host.dismissCurrentApkResourceOffer()
                 refreshSetupAttention()
-                Toast.makeText(this, "已结束本 APK 资源提醒，未修改 Termux 资源状态。", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "已关闭当前 APK 提醒，未修改安装状态。", Toast.LENGTH_LONG).show()
             }
             .show()
     }
@@ -564,7 +581,16 @@ class OpenHouseActivity : AppCompatActivity() {
     private fun refreshSetupAttention() {
         if (!::setupAttentionView.isInitialized) return
         setupAttention = host.setupAttention()
-        val text = getString(R.string.oh_manual_hint)
+        val text = when (setupAttention) {
+            OpenHouseSetupAttention.FIRST_INSTALL ->
+                getString(R.string.oh_setup_attention_first_install)
+            OpenHouseSetupAttention.RESOURCE_UPDATE ->
+                getString(R.string.oh_setup_attention_resource_update)
+            OpenHouseSetupAttention.GENERIC ->
+                getString(R.string.oh_setup_attention_generic)
+            null ->
+                getString(R.string.oh_manual_hint)
+        }
         setupAttentionView.text = text
         setupAttentionView.contentDescription = text
         updateSetupAttentionVisibility()
