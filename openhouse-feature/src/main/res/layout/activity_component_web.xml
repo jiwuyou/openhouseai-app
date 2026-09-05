@@ -52,17 +52,6 @@
                 android:padding="10dp"
                 android:src="@drawable/oh_ic_window" />
 
-            <ImageButton
-                android:id="@+id/oh_component_web_page_actions"
-                android:layout_width="46dp"
-                android:layout_height="42dp"
-                android:layout_marginStart="6dp"
-                android:background="@drawable/oh_button_background"
-                android:contentDescription="@string/oh_page_actions_content_description"
-                android:minWidth="0dp"
-                android:padding="10dp"
-                android:src="@drawable/oh_ic_page_actions" />
-
             <Button
                 android:id="@+id/oh_component_web_return_small_app"
                 android:layout_width="64dp"
@@ -83,6 +72,17 @@
                 android:minWidth="0dp"
                 android:text="@string/oh_close"
                 android:textAllCaps="false" />
+
+            <ImageButton
+                android:id="@+id/oh_component_web_page_actions"
+                android:layout_width="46dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/oh_button_background"
+                android:contentDescription="@string/oh_page_actions_content_description"
+                android:minWidth="0dp"
+                android:padding="10dp"
+                android:src="@drawable/oh_ic_page_actions" />
         </LinearLayout>
 
         <TextView
