@@ -70,6 +70,12 @@ internal class EmbeddedWebPagePool(
     internal val activeLoadGeneration: Long
         get() = activePage?.loadGeneration ?: 0
 
+    internal val activeCacheMode: Int
+        get() = activePage?.webView?.settings?.cacheMode ?: WebSettings.LOAD_DEFAULT
+
+    internal val activeLoadHeaders: Map<String, String>
+        get() = activePage?.loadHeaders.orEmpty()
+
     internal fun acceptsActiveLoadGeneration(generation: Long): Boolean =
         activePage?.let { !it.disposed && it.loadGeneration == generation } == true
 
@@ -104,7 +110,7 @@ internal class EmbeddedWebPagePool(
         renderTabBar(page)
         attachPage(page, host)
         if (page.webView.url == null && page.state.phase != ComponentWebLoadPhase.FAILED) {
-            reload(page)
+            reload(page, ReloadPolicy.NORMAL)
         } else {
             renderState(page)
         }
@@ -112,7 +118,11 @@ internal class EmbeddedWebPagePool(
     }
 
     fun reloadActive() {
-        activePage?.let(::reload)
+        activePage?.let { reload(it, ReloadPolicy.NORMAL) }
+    }
+
+    fun forceReloadActive() {
+        activePage?.let { reload(it, ReloadPolicy.FORCE_NETWORK) }
     }
 
     fun canGoBack(): Boolean = activePage?.webView?.canGoBack() == true
@@ -240,7 +250,7 @@ internal class EmbeddedWebPagePool(
                 else callbacks.onOpenMaintenance()
             }
             actions.addView(primaryButton)
-            actions.addView(fallbackButton(context.getString(R.string.oh_refresh)) { reload(record()) })
+            actions.addView(fallbackButton(context.getString(R.string.oh_refresh)) { reload(record(), ReloadPolicy.NORMAL) })
             addView(actions)
             val copyButton = fallbackButton(context.getString(R.string.oh_copy_address)) {
                 val page = record()
@@ -284,6 +294,7 @@ internal class EmbeddedWebPagePool(
 
             override fun onPageFinished(view: WebView, url: String?) {
                 if (!isCurrentLoad(record, view, generation) || record.state.phase == ComponentWebLoadPhase.FAILED) return
+                restoreDefaultCacheMode(record, view, generation)
                 record.state = record.state.connected(normalizeOrEmpty(url).ifEmpty { pageAddress(record.args) })
                 record.fallbackView.visibility = View.GONE
                 renderState(record)
@@ -291,13 +302,17 @@ internal class EmbeddedWebPagePool(
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError?) {
                 if (isCurrentLoad(record, view, generation) && request.isForMainFrame) {
+                    restoreDefaultCacheMode(record, view, generation)
                     markUnavailable(record, request.url?.toString().orEmpty())
                 }
             }
 
             @Deprecated("Deprecated in Java")
             override fun onReceivedError(view: WebView, errorCode: Int, description: String?, failingUrl: String?) {
-                if (isCurrentLoad(record, view, generation)) markUnavailable(record, failingUrl.orEmpty())
+                if (isCurrentLoad(record, view, generation)) {
+                    restoreDefaultCacheMode(record, view, generation)
+                    markUnavailable(record, failingUrl.orEmpty())
+                }
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
@@ -341,7 +356,7 @@ internal class EmbeddedWebPagePool(
         renderState(page)
     }
 
-    private fun reload(page: PageRecord) {
+    private fun reload(page: PageRecord, policy: ReloadPolicy) {
         if (destroyed) return
         val url = normalizeOrEmpty(page.state.url).ifEmpty { pageAddress(page.args) }
         if (url.isEmpty()) {
@@ -355,12 +370,34 @@ internal class EmbeddedWebPagePool(
         val generation = ++page.loadGeneration
         val newWebView = WebView(context)
         page.webView = newWebView
+        page.reloadPolicy = policy
+        page.loadHeaders = if (policy == ReloadPolicy.FORCE_NETWORK) {
+            mapOf(
+                "Cache-Control" to "no-cache",
+                "Pragma" to "no-cache",
+            )
+        } else {
+            emptyMap()
+        }
         configureWebView(page, newWebView, generation)
+        newWebView.settings.cacheMode = policy.cacheMode
         page.browserContainer.removeView(oldWebView)
         page.browserContainer.addView(newWebView, 0, matchParent())
         destroyWebView(oldWebView)
         if (resumed && page === activePage) newWebView.onResume()
-        newWebView.loadUrl(url)
+        if (policy == ReloadPolicy.FORCE_NETWORK) {
+            newWebView.loadUrl(url, page.loadHeaders)
+        } else {
+            newWebView.loadUrl(url)
+        }
+    }
+
+    private fun restoreDefaultCacheMode(page: PageRecord, view: WebView, generation: Long) {
+        if (!isCurrentLoad(page, view, generation)) return
+        if (page.reloadPolicy == ReloadPolicy.FORCE_NETWORK) {
+            view.settings.cacheMode = WebSettings.LOAD_DEFAULT
+            page.reloadPolicy = ReloadPolicy.NORMAL
+        }
     }
 
     private fun navigate(page: PageRecord, address: String) {
@@ -504,6 +541,8 @@ internal class EmbeddedWebPagePool(
         var previousAddress: String = "",
         var lastUsedOrder: Long = 0,
         var loadGeneration: Long = 0,
+        var reloadPolicy: ReloadPolicy = ReloadPolicy.NORMAL,
+        var loadHeaders: Map<String, String> = emptyMap(),
         var disposed: Boolean = false,
     ) {
         fun rememberPrevious(nextUrl: String) {
@@ -516,6 +555,11 @@ internal class EmbeddedWebPagePool(
         val root: LinearLayout,
         val primaryButton: Button,
     )
+
+    private enum class ReloadPolicy(val cacheMode: Int) {
+        NORMAL(WebSettings.LOAD_DEFAULT),
+        FORCE_NETWORK(WebSettings.LOAD_NO_CACHE),
+    }
 
     companion object {
         const val DEFAULT_MAX_RETAINED_PAGES = 2

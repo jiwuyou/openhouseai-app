@@ -13,6 +13,7 @@ import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.drawerlayout.widget.DrawerLayout
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.feature.workspace.EmbeddedWebPagePool
 
@@ -26,8 +27,12 @@ class OpenHouseComponentWebActivity : AppCompatActivity() {
     private lateinit var controlButton: Button
     private lateinit var pagePool: EmbeddedWebPagePool
     private lateinit var openModes: ImageButton
+    private lateinit var pageActions: ImageButton
+    private lateinit var returnSmallApp: Button
     private lateinit var floatingWebViewHost: FloatingWebViewHost
     private lateinit var floatingWindowStore: FloatingWindowStore
+    private lateinit var drawer: DrawerLayout
+    private lateinit var pageRefreshDrawer: PageRefreshDrawerController
     private var returnToSmallAppUrl: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,6 +84,9 @@ class OpenHouseComponentWebActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (::pageRefreshDrawer.isInitialized && pageRefreshDrawer.handleBackPressed()) {
+            return
+        }
         if (::floatingWebViewHost.isInitialized && floatingWebViewHost.isOpen) {
             floatingWebViewHost.close()
             updatePresentationState()
@@ -88,16 +96,22 @@ class OpenHouseComponentWebActivity : AppCompatActivity() {
     }
 
     private fun bindViews() {
+        drawer = findViewById(R.id.oh_component_web_drawer)
         titleView = findViewById(R.id.oh_component_web_title)
         statusView = findViewById(R.id.oh_component_web_status)
         browserHost = findViewById(R.id.oh_component_web_host)
         overlayHost = findViewById(R.id.oh_component_web_overlay_host)
         openModes = findViewById(R.id.oh_component_web_modes)
+        pageActions = findViewById(R.id.oh_component_web_page_actions)
+        returnSmallApp = findViewById(R.id.oh_component_web_return_small_app)
         controlButton = findViewById(R.id.oh_component_web_control)
+        pageRefreshDrawer = PageRefreshDrawerController(drawer, pagePool)
+        pageRefreshDrawer.setAvailable(true)
         findViewById<Button>(R.id.oh_component_web_desktop).setOnClickListener { returnToDesktop() }
         findViewById<Button>(R.id.oh_component_web_close).setOnClickListener { finish() }
-        findViewById<Button>(R.id.oh_component_web_refresh).setOnClickListener { refreshOrReturnToSmallApp() }
         openModes.setOnClickListener { showWebPresentationMenu() }
+        pageActions.setOnClickListener { pageRefreshDrawer.open() }
+        returnSmallApp.setOnClickListener { refreshOrReturnToSmallApp() }
         findViewById<Button>(R.id.oh_component_web_copy).setOnClickListener { copyActiveAddress() }
         findViewById<Button>(R.id.oh_component_web_maintenance).setOnClickListener {
             host.launchMaintenance(this)
@@ -211,12 +225,12 @@ class OpenHouseComponentWebActivity : AppCompatActivity() {
     }
 
     private fun updatePresentationState() {
-        val refresh = findViewById<Button>(R.id.oh_component_web_refresh)
-        refresh.text = if (returnToSmallAppUrl != null) {
-            getString(R.string.oh_return_to_small_app)
-        } else {
-            getString(R.string.oh_refresh)
-        }
+        val returningToSmallApp = !returnToSmallAppUrl.isNullOrBlank()
+        pageActions.visibility = if (returningToSmallApp) View.GONE else View.VISIBLE
+        returnSmallApp.visibility = if (returningToSmallApp) View.VISIBLE else View.GONE
+        pageActions.isEnabled = pagePool.activeArgs != null && !returningToSmallApp
+        returnSmallApp.isEnabled = returningToSmallApp
+        pageRefreshDrawer.updateEnabledState()
         openModes.isEnabled = pagePool.activeAddress.isNotBlank() || floatingWindowStore.load() != null
         openModes.alpha = if (openModes.isEnabled) 1f else 0.45f
     }
@@ -242,6 +256,7 @@ class OpenHouseComponentWebActivity : AppCompatActivity() {
     }
 
     private fun returnToDesktop() {
+        if (::pageRefreshDrawer.isInitialized) pageRefreshDrawer.close()
         startActivity(OpenHouseFeature.createIntent(this, ProductRoute.DESKTOP).apply {
             addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         })

@@ -29,6 +29,9 @@
     <string name="oh_daily_apps">日常应用</string>
     <string name="oh_system">系统</string>
     <string name="oh_refresh">刷新</string>
+    <string name="oh_force_refresh">强制刷新</string>
+    <string name="oh_page_actions">页面操作</string>
+    <string name="oh_page_actions_content_description">页面操作</string>
     <string name="oh_return_to_small_app">返回小 App</string>
     <string name="oh_control">控制</string>
     <string name="oh_collapse">收起</string>

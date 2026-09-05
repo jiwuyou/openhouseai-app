@@ -70,7 +70,8 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var doneEditing: Button
     private lateinit var setCurrentHome: Button
     private lateinit var openBrowser: ImageButton
-    private lateinit var refreshWeb: Button
+    private lateinit var pageActions: ImageButton
+    private lateinit var returnSmallApp: Button
     private lateinit var closeWebPage: Button
     private lateinit var collapseWebToolbar: Button
     private lateinit var controlWeb: Button
@@ -84,6 +85,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var webToolbarController: CollapsibleWebToolbarController
     private lateinit var floatingWindowStore: FloatingWindowStore
     private lateinit var floatingWebViewHost: FloatingWebViewHost
+    private lateinit var pageRefreshDrawer: PageRefreshDrawerController
     private lateinit var pageRegistry: BuiltInPageRegistry
     private val workspaceNavigator = WorkspaceNavigator()
     private val retainedContents = LinkedHashMap<String, WorkspaceContent>()
@@ -216,6 +218,9 @@ class OpenHouseActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (::pageRefreshDrawer.isInitialized && pageRefreshDrawer.handleBackPressed()) {
+            return
+        }
         if (drawer.isDrawerOpen(GravityCompat.START)) {
             drawer.closeDrawer(GravityCompat.START)
             return
@@ -254,7 +259,8 @@ class OpenHouseActivity : AppCompatActivity() {
         doneEditing = findViewById(R.id.oh_done_editing)
         setCurrentHome = findViewById(R.id.oh_set_current_home)
         openBrowser = findViewById(R.id.oh_top_open_browser)
-        refreshWeb = findViewById(R.id.oh_top_refresh)
+        pageActions = findViewById(R.id.oh_top_page_actions)
+        returnSmallApp = findViewById(R.id.oh_top_return_small_app)
         closeWebPage = findViewById(R.id.oh_top_close_page)
         collapseWebToolbar = findViewById(R.id.oh_top_collapse)
         controlWeb = findViewById(R.id.oh_top_control)
@@ -273,21 +279,23 @@ class OpenHouseActivity : AppCompatActivity() {
             },
         )
         webPagePool = EmbeddedWebPagePool(this, workspaceWebCallbacks())
+        pageRefreshDrawer = PageRefreshDrawerController(drawer, webPagePool)
         webToolbarController = CollapsibleWebToolbarController(
             context = this,
             pageHost = findViewById(R.id.oh_page_host),
             toolbar = findViewById(R.id.oh_top_bar),
             bubble = findViewById(R.id.oh_top_bar_bubble),
         ) {
-            drawer.openDrawer(GravityCompat.START)
+            openNavigationDrawer()
         }
-        findViewById<Button>(R.id.oh_open_drawer).setOnClickListener { drawer.openDrawer(GravityCompat.START) }
+        findViewById<Button>(R.id.oh_open_drawer).setOnClickListener { openNavigationDrawer() }
         findViewById<Button>(R.id.oh_top_desktop).setOnClickListener { showDesktop() }
         setupAttentionView.setOnClickListener { showManualPicker() }
         findViewById<Button>(R.id.oh_close_drawer).setOnClickListener { drawer.closeDrawer(GravityCompat.START) }
         setCurrentHome.setOnClickListener { setCurrentDestinationAsHome() }
         openBrowser.setOnClickListener { showWebPresentationMenu() }
-        refreshWeb.setOnClickListener { refreshOrReturnToSmallApp() }
+        pageActions.setOnClickListener { pageRefreshDrawer.open() }
+        returnSmallApp.setOnClickListener { refreshOrReturnToSmallApp() }
         closeWebPage.setOnClickListener { closeCurrentWebPage() }
         collapseWebToolbar.setOnClickListener {
             webToolbarController.collapse()
@@ -299,12 +307,14 @@ class OpenHouseActivity : AppCompatActivity() {
         doneEditing.setOnClickListener { desktopView?.setEditMode(false) }
         drawer.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
             override fun onDrawerOpened(drawerView: View) {
+                if (drawerView.id != R.id.oh_navigation_drawer) return
                 drawerVisible = true
                 updateSetCurrentHomeButton()
                 refreshSidebarServiceStates()
             }
 
             override fun onDrawerClosed(drawerView: View) {
+                if (drawerView.id != R.id.oh_navigation_drawer) return
                 drawerVisible = false
                 serviceRefreshGeneration++
                 mainHandler.removeCallbacks(servicePoll)
@@ -325,6 +335,11 @@ class OpenHouseActivity : AppCompatActivity() {
         findViewById<View>(R.id.oh_nav_service).setOnClickListener { openRoute(ProductRoute.SERVICE_CONTROL) }
         findViewById<View>(R.id.oh_nav_settings).setOnClickListener { openRoute(ProductRoute.SETTINGS) }
         findViewById<View>(R.id.oh_nav_service).isEnabled = host.capabilities().supports(ProductRoute.SERVICE_CONTROL)
+    }
+
+    private fun openNavigationDrawer() {
+        if (::pageRefreshDrawer.isInitialized) pageRefreshDrawer.close()
+        drawer.openDrawer(GravityCompat.START)
     }
 
     private fun applyInitialNavigation() {
@@ -655,6 +670,7 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun showDesktop() {
+        if (::pageRefreshDrawer.isInitialized) pageRefreshDrawer.close()
         webMountGate.cancel()
         workspaceNavigator.navigate(WorkspaceDestination.Desktop)
         currentRoute = ProductRoute.DESKTOP
@@ -1294,10 +1310,13 @@ class OpenHouseActivity : AppCompatActivity() {
     private fun setWebToolbarMode(enabled: Boolean) {
         if (!::webToolbarController.isInitialized) return
         webToolbarMode = enabled
+        if (!enabled && ::pageRefreshDrawer.isInitialized) pageRefreshDrawer.close()
+        if (::pageRefreshDrawer.isInitialized) pageRefreshDrawer.setAvailable(enabled)
         titleGroup.visibility = if (enabled) View.GONE else View.VISIBLE
         updateSetupAttentionVisibility()
         openBrowser.visibility = if (enabled) View.VISIBLE else View.GONE
-        refreshWeb.visibility = if (enabled) View.VISIBLE else View.GONE
+        pageActions.visibility = if (enabled && returnToSmallAppUrl.isNullOrBlank()) View.VISIBLE else View.GONE
+        returnSmallApp.visibility = if (enabled && !returnToSmallAppUrl.isNullOrBlank()) View.VISIBLE else View.GONE
         closeWebPage.visibility = View.GONE
         collapseWebToolbar.visibility = if (enabled) View.VISIBLE else View.GONE
         controlWeb.visibility = if (enabled) View.VISIBLE else View.GONE
@@ -1311,12 +1330,12 @@ class OpenHouseActivity : AppCompatActivity() {
         val address = webPagePool.activeAddress
         openBrowser.isEnabled = address.isNotBlank() || floatingWindowStore.load() != null
         openBrowser.alpha = if (openBrowser.isEnabled) 1f else 0.45f
-        refreshWeb.isEnabled = args != null
-        refreshWeb.text = if (returnToSmallAppUrl != null) {
-            getString(R.string.oh_return_to_small_app)
-        } else {
-            getString(R.string.oh_refresh)
-        }
+        val returningToSmallApp = !returnToSmallAppUrl.isNullOrBlank()
+        pageActions.isEnabled = args != null && !returningToSmallApp
+        returnSmallApp.isEnabled = returningToSmallApp
+        pageActions.visibility = if (webToolbarMode && !returningToSmallApp) View.VISIBLE else View.GONE
+        returnSmallApp.visibility = if (webToolbarMode && returningToSmallApp) View.VISIBLE else View.GONE
+        pageRefreshDrawer.updateEnabledState()
         closeWebPage.visibility = if (webToolbarMode && pageRegistry.isManagedPage(args?.componentId)) {
             View.VISIBLE
         } else {

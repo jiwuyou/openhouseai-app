@@ -2,6 +2,7 @@ package com.wuxianpi.openhouse.feature.workspace
 
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.webkit.WebSettings
 import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
 import com.wuxianpi.openhouse.feature.ComponentWebLaunchArgs
@@ -97,6 +98,29 @@ class EmbeddedWebPagePoolTest {
 
         assertEquals("https://example.test/conversation", pool.previousAddress)
         assertEquals("https://example.test/source", pool.activeAddress)
+        pool.destroy()
+    }
+
+    @Test
+    fun forceReloadUsesNetworkPolicyForOnlyTheCurrentLoad() {
+        val pool = EmbeddedWebPagePool(context, object : EmbeddedWebPagePool.Callbacks {})
+        val host = FrameLayout(context)
+
+        pool.show(args("manual", "guide"), host)
+        assertEquals(WebSettings.LOAD_DEFAULT, pool.activeCacheMode)
+        assertTrue(pool.activeLoadHeaders.isEmpty())
+
+        pool.forceReloadActive()
+
+        assertEquals("https://example.test/guide", pool.activeAddress)
+        assertEquals(WebSettings.LOAD_NO_CACHE, pool.activeCacheMode)
+        assertEquals("no-cache", pool.activeLoadHeaders["Cache-Control"])
+        assertEquals("no-cache", pool.activeLoadHeaders["Pragma"])
+
+        pool.reloadActive()
+
+        assertEquals(WebSettings.LOAD_DEFAULT, pool.activeCacheMode)
+        assertTrue(pool.activeLoadHeaders.isEmpty())
         pool.destroy()
     }
 

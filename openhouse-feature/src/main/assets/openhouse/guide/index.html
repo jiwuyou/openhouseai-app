@@ -1,116 +1,149 @@
 <!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#071b18" />
-    <meta name="description" content="OpenHouse APK 首次安装、更新和维修模式使用说明。" />
-    <title>使用手册</title>
-    <style>
-      :root {
-        color-scheme: light;
-        --ink: #10201d;
-        --muted: #5a6865;
-        --line: #dce6e2;
-        --paper: #f6f9f7;
-        --green: #087b5b;
-        --green-dark: #065a43;
-        --warm: #fff4dc;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        background: #fff;
-        color: var(--ink);
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-        line-height: 1.7;
-      }
-      .community-banner {
-        display: flex;
-        min-height: 54px;
-        align-items: center;
-        justify-content: center;
-        padding: 8px 20px;
-        background: var(--green-dark);
-        color: #fff;
-        font-size: 19px;
-        font-weight: 850;
-        letter-spacing: .04em;
-        text-align: center;
-      }
-      header, main, footer { width: min(860px, calc(100% - 40px)); margin: auto; }
-      header { display: flex; align-items: center; gap: 12px; min-height: 68px; border-bottom: 1px solid var(--line); }
-      .mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; background: var(--green); color: #fff; font-weight: 850; }
-      .brand { font-weight: 800; }
-      .brand small { display: block; color: var(--muted); font-size: 12px; font-weight: 500; }
-      main { padding: 56px 0 72px; }
-      h1 { margin: 0; font-size: clamp(38px, 9vw, 64px); line-height: 1.08; letter-spacing: -.04em; }
-      .lead { max-width: 700px; margin: 20px 0 32px; color: var(--muted); font-size: 18px; }
-      .notice { padding: 18px 20px; border: 1px solid #eed9a5; border-radius: 14px; background: var(--warm); font-weight: 700; }
-      .steps { display: grid; gap: 16px; margin-top: 34px; }
-      article { padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
-      article span { color: var(--green); font-size: 13px; font-weight: 850; letter-spacing: .08em; }
-      h2 { margin: 5px 0 10px; font-size: 24px; }
-      p { margin: 0; }
-      ol { margin: 12px 0 0; padding-left: 22px; }
-      li + li { margin-top: 7px; }
-      .after { margin-top: 34px; padding: 26px; border-radius: 16px; background: var(--green-dark); color: #fff; }
-      .after h2 { margin-top: 0; }
-      .after p { color: #d9eee7; }
-      footer { padding: 24px 0 36px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
-      @media (max-width: 560px) {
-        header, main, footer { width: min(100% - 28px, 860px); }
-        main { padding-top: 38px; }
-        article { padding: 20px; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="community-banner" role="note">qq交流群：519292219</div>
-    <header>
-      <div class="mark">OH</div>
-      <div class="brand">使用手册<small>OpenHouse Android</small></div>
-    </header>
+<html lang="zh-Hans">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenHouse 使用手册 &#8211; 安装、更新、维护和日常使用的图文说明</title>
+<meta name='robots' content='max-image-preview:large' />
+	<style>img:is([sizes="auto" i], [sizes^="auto," i]) { contain-intrinsic-size: 3000px 1500px }</style>
+	<script>
+window._wpemojiSettings = {"baseUrl":"https:\/\/s.w.org\/images\/core\/emoji\/16.0.1\/72x72\/","ext":".png","svgUrl":"https:\/\/s.w.org\/images\/core\/emoji\/16.0.1\/svg\/","svgExt":".svg","source":{"concatemoji":"https:\/\/app.webefficacy.com\/guide\/wp-includes\/js\/wp-emoji-release.min.js?ver=6.8.2"}};
+/*! This file is auto-generated */
+!function(s,n){var o,i,e;function c(e){try{var t={supportTests:e,timestamp:(new Date).valueOf()};sessionStorage.setItem(o,JSON.stringify(t))}catch(e){}}function p(e,t,n){e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(t,0,0);var t=new Uint32Array(e.getImageData(0,0,e.canvas.width,e.canvas.height).data),a=(e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(n,0,0),new Uint32Array(e.getImageData(0,0,e.canvas.width,e.canvas.height).data));return t.every(function(e,t){return e===a[t]})}function u(e,t){e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(t,0,0);for(var n=e.getImageData(16,16,1,1),a=0;a<n.data.length;a++)if(0!==n.data[a])return!1;return!0}function f(e,t,n,a){switch(t){case"flag":return n(e,"\ud83c\udff3\ufe0f\u200d\u26a7\ufe0f","\ud83c\udff3\ufe0f\u200b\u26a7\ufe0f")?!1:!n(e,"\ud83c\udde8\ud83c\uddf6","\ud83c\udde8\u200b\ud83c\uddf6")&&!n(e,"\ud83c\udff4\udb40\udc67\udb40\udc62\udb40\udc65\udb40\udc6e\udb40\udc67\udb40\udc7f","\ud83c\udff4\u200b\udb40\udc67\u200b\udb40\udc62\u200b\udb40\udc65\u200b\udb40\udc6e\u200b\udb40\udc67\u200b\udb40\udc7f");case"emoji":return!a(e,"\ud83e\udedf")}return!1}function g(e,t,n,a){var r="undefined"!=typeof WorkerGlobalScope&&self instanceof WorkerGlobalScope?new OffscreenCanvas(300,150):s.createElement("canvas"),o=r.getContext("2d",{willReadFrequently:!0}),i=(o.textBaseline="top",o.font="600 32px Arial",{});return e.forEach(function(e){i[e]=t(o,e,n,a)}),i}function t(e){var t=s.createElement("script");t.src=e,t.defer=!0,s.head.appendChild(t)}"undefined"!=typeof Promise&&(o="wpEmojiSettingsSupports",i=["flag","emoji"],n.supports={everything:!0,everythingExceptFlag:!0},e=new Promise(function(e){s.addEventListener("DOMContentLoaded",e,{once:!0})}),new Promise(function(t){var n=function(){try{var e=JSON.parse(sessionStorage.getItem(o));if("object"==typeof e&&"number"==typeof e.timestamp&&(new Date).valueOf()<e.timestamp+604800&&"object"==typeof e.supportTests)return e.supportTests}catch(e){}return null}();if(!n){if("undefined"!=typeof Worker&&"undefined"!=typeof OffscreenCanvas&&"undefined"!=typeof URL&&URL.createObjectURL&&"undefined"!=typeof Blob)try{var e="postMessage("+g.toString()+"("+[JSON.stringify(i),f.toString(),p.toString(),u.toString()].join(",")+"));",a=new Blob([e],{type:"text/javascript"}),r=new Worker(URL.createObjectURL(a),{name:"wpTestEmojiSupports"});return void(r.onmessage=function(e){c(n=e.data),r.terminate(),t(n)})}catch(e){}c(n=g(i,f,p,u))}t(n)}).then(function(e){for(var t in e)n.supports[t]=e[t],n.supports.everything=n.supports.everything&&n.supports[t],"flag"!==t&&(n.supports.everythingExceptFlag=n.supports.everythingExceptFlag&&n.supports[t]);n.supports.everythingExceptFlag=n.supports.everythingExceptFlag&&!n.supports.flag,n.DOMReady=!1,n.readyCallback=function(){n.DOMReady=!0}}).then(function(){return e}).then(function(){var e;n.supports.everything||(n.readyCallback(),(e=n.source||{}).concatemoji?t(e.concatemoji):e.wpemoji&&e.twemoji&&(t(e.twemoji),t(e.wpemoji)))}))}((window,document),window._wpemojiSettings);
+</script>
+<style id='wp-emoji-styles-inline-css'>
 
-    <main>
-      <h1>先完成安装，<br />再开始使用。</h1>
-      <p class="lead">OpenHouse 的首次安装和 APK 更新由维修模式中的 WuxianPi 维修助手引导完成。你不需要自己记住安装命令。</p>
-      <div class="notice">只安装 APK 并不代表首次安装或 Termux 资源更新已经完成。</div>
+	img.wp-smiley, img.emoji {
+		display: inline !important;
+		border: none !important;
+		box-shadow: none !important;
+		height: 1em !important;
+		width: 1em !important;
+		margin: 0 0.07em !important;
+		vertical-align: -0.1em !important;
+		background: none !important;
+		padding: 0 !important;
+	}
+</style>
+<link rel='stylesheet' id='wp-block-library-css' href='https://app.webefficacy.com/guide/wp-includes/css/dist/block-library/style.min.css?ver=6.8.2' media='all' />
+<style id='classic-theme-styles-inline-css'>
+/*! This file is auto-generated */
+.wp-block-button__link{color:#fff;background-color:#32373c;border-radius:9999px;box-shadow:none;text-decoration:none;padding:calc(.667em + 2px) calc(1.333em + 2px);font-size:1.125em}.wp-block-file__button{background:#32373c;color:#fff;text-decoration:none}
+</style>
+<style id='global-styles-inline-css'>
+:root{--wp--preset--aspect-ratio--square: 1;--wp--preset--aspect-ratio--4-3: 4/3;--wp--preset--aspect-ratio--3-4: 3/4;--wp--preset--aspect-ratio--3-2: 3/2;--wp--preset--aspect-ratio--2-3: 2/3;--wp--preset--aspect-ratio--16-9: 16/9;--wp--preset--aspect-ratio--9-16: 9/16;--wp--preset--color--black: #000000;--wp--preset--color--cyan-bluish-gray: #abb8c3;--wp--preset--color--white: #ffffff;--wp--preset--color--pale-pink: #f78da7;--wp--preset--color--vivid-red: #cf2e2e;--wp--preset--color--luminous-vivid-orange: #ff6900;--wp--preset--color--luminous-vivid-amber: #fcb900;--wp--preset--color--light-green-cyan: #7bdcb5;--wp--preset--color--vivid-green-cyan: #00d084;--wp--preset--color--pale-cyan-blue: #8ed1fc;--wp--preset--color--vivid-cyan-blue: #0693e3;--wp--preset--color--vivid-purple: #9b51e0;--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple: linear-gradient(135deg,rgba(6,147,227,1) 0%,rgb(155,81,224) 100%);--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan: linear-gradient(135deg,rgb(122,220,180) 0%,rgb(0,208,130) 100%);--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange: linear-gradient(135deg,rgba(252,185,0,1) 0%,rgba(255,105,0,1) 100%);--wp--preset--gradient--luminous-vivid-orange-to-vivid-red: linear-gradient(135deg,rgba(255,105,0,1) 0%,rgb(207,46,46) 100%);--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray: linear-gradient(135deg,rgb(238,238,238) 0%,rgb(169,184,195) 100%);--wp--preset--gradient--cool-to-warm-spectrum: linear-gradient(135deg,rgb(74,234,220) 0%,rgb(151,120,209) 20%,rgb(207,42,186) 40%,rgb(238,44,130) 60%,rgb(251,105,98) 80%,rgb(254,248,76) 100%);--wp--preset--gradient--blush-light-purple: linear-gradient(135deg,rgb(255,206,236) 0%,rgb(152,150,240) 100%);--wp--preset--gradient--blush-bordeaux: linear-gradient(135deg,rgb(254,205,165) 0%,rgb(254,45,45) 50%,rgb(107,0,62) 100%);--wp--preset--gradient--luminous-dusk: linear-gradient(135deg,rgb(255,203,112) 0%,rgb(199,81,192) 50%,rgb(65,88,208) 100%);--wp--preset--gradient--pale-ocean: linear-gradient(135deg,rgb(255,245,203) 0%,rgb(182,227,212) 50%,rgb(51,167,181) 100%);--wp--preset--gradient--electric-grass: linear-gradient(135deg,rgb(202,248,128) 0%,rgb(113,206,126) 100%);--wp--preset--gradient--midnight: linear-gradient(135deg,rgb(2,3,129) 0%,rgb(40,116,252) 100%);--wp--preset--font-size--small: 13px;--wp--preset--font-size--medium: 20px;--wp--preset--font-size--large: 36px;--wp--preset--font-size--x-large: 42px;--wp--preset--spacing--20: 0.44rem;--wp--preset--spacing--30: 0.67rem;--wp--preset--spacing--40: 1rem;--wp--preset--spacing--50: 1.5rem;--wp--preset--spacing--60: 2.25rem;--wp--preset--spacing--70: 3.38rem;--wp--preset--spacing--80: 5.06rem;--wp--preset--shadow--natural: 6px 6px 9px rgba(0, 0, 0, 0.2);--wp--preset--shadow--deep: 12px 12px 50px rgba(0, 0, 0, 0.4);--wp--preset--shadow--sharp: 6px 6px 0px rgba(0, 0, 0, 0.2);--wp--preset--shadow--outlined: 6px 6px 0px -3px rgba(255, 255, 255, 1), 6px 6px rgba(0, 0, 0, 1);--wp--preset--shadow--crisp: 6px 6px 0px rgba(0, 0, 0, 1);}:where(.is-layout-flex){gap: 0.5em;}:where(.is-layout-grid){gap: 0.5em;}body .is-layout-flex{display: flex;}.is-layout-flex{flex-wrap: wrap;align-items: center;}.is-layout-flex > :is(*, div){margin: 0;}body .is-layout-grid{display: grid;}.is-layout-grid > :is(*, div){margin: 0;}:where(.wp-block-columns.is-layout-flex){gap: 2em;}:where(.wp-block-columns.is-layout-grid){gap: 2em;}:where(.wp-block-post-template.is-layout-flex){gap: 1.25em;}:where(.wp-block-post-template.is-layout-grid){gap: 1.25em;}.has-black-color{color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-color{color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-color{color: var(--wp--preset--color--white) !important;}.has-pale-pink-color{color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-color{color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-color{color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-color{color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-color{color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-color{color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-color{color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-color{color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-color{color: var(--wp--preset--color--vivid-purple) !important;}.has-black-background-color{background-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-background-color{background-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-background-color{background-color: var(--wp--preset--color--white) !important;}.has-pale-pink-background-color{background-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-background-color{background-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-background-color{background-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-background-color{background-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-background-color{background-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-background-color{background-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-background-color{background-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-background-color{background-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-background-color{background-color: var(--wp--preset--color--vivid-purple) !important;}.has-black-border-color{border-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-border-color{border-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-border-color{border-color: var(--wp--preset--color--white) !important;}.has-pale-pink-border-color{border-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-border-color{border-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-border-color{border-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-border-color{border-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-border-color{border-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-border-color{border-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-border-color{border-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-border-color{border-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-border-color{border-color: var(--wp--preset--color--vivid-purple) !important;}.has-vivid-cyan-blue-to-vivid-purple-gradient-background{background: var(--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple) !important;}.has-light-green-cyan-to-vivid-green-cyan-gradient-background{background: var(--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan) !important;}.has-luminous-vivid-amber-to-luminous-vivid-orange-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange) !important;}.has-luminous-vivid-orange-to-vivid-red-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-orange-to-vivid-red) !important;}.has-very-light-gray-to-cyan-bluish-gray-gradient-background{background: var(--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray) !important;}.has-cool-to-warm-spectrum-gradient-background{background: var(--wp--preset--gradient--cool-to-warm-spectrum) !important;}.has-blush-light-purple-gradient-background{background: var(--wp--preset--gradient--blush-light-purple) !important;}.has-blush-bordeaux-gradient-background{background: var(--wp--preset--gradient--blush-bordeaux) !important;}.has-luminous-dusk-gradient-background{background: var(--wp--preset--gradient--luminous-dusk) !important;}.has-pale-ocean-gradient-background{background: var(--wp--preset--gradient--pale-ocean) !important;}.has-electric-grass-gradient-background{background: var(--wp--preset--gradient--electric-grass) !important;}.has-midnight-gradient-background{background: var(--wp--preset--gradient--midnight) !important;}.has-small-font-size{font-size: var(--wp--preset--font-size--small) !important;}.has-medium-font-size{font-size: var(--wp--preset--font-size--medium) !important;}.has-large-font-size{font-size: var(--wp--preset--font-size--large) !important;}.has-x-large-font-size{font-size: var(--wp--preset--font-size--x-large) !important;}
+:where(.wp-block-post-template.is-layout-flex){gap: 1.25em;}:where(.wp-block-post-template.is-layout-grid){gap: 1.25em;}
+:where(.wp-block-columns.is-layout-flex){gap: 2em;}:where(.wp-block-columns.is-layout-grid){gap: 2em;}
+:root :where(.wp-block-pullquote){font-size: 1.5em;line-height: 1.6;}
+</style>
+<link rel='stylesheet' id='atelier-style-css' href='https://app.webefficacy.com/guide/wp-content/themes/atelier/style.css?ver=1.2.0' media='all' />
+<link rel="https://api.w.org/" href="https://app.webefficacy.com/guide/wp-json/" /><link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://app.webefficacy.com/guide/xmlrpc.php?rsd" />
+<meta name="generator" content="WordPress 6.8.2" />
+</head>
+<body class="home blog wp-theme-atelier openhouse-manual">
+<div class="site-shell">
+<a class="skip-link" href="#main-content">跳转到主要内容</a>
+<div class="community-banner" role="note">QQ 交流群：519292219</div>
+<header class="site-header">
+    <div class="container header-inner">
+        <a class="site-brand" href="https://app.webefficacy.com/guide/" rel="home">
+                            <span class="site-brand__name">OpenHouse 使用手册</span>
+                <span class="site-brand__tag">安装 · 更新 · 维护</span>
+                    </a>
+        <button class="manual-drawer-toggle" type="button" aria-expanded="false" aria-controls="manual-drawer">全部教程</button>
+    </div>
+</header>
+    <div class="manual-drawer-backdrop" hidden></div>
+    <aside id="manual-drawer" class="manual-drawer" aria-hidden="true" aria-label="全部教程">
+        <div class="manual-drawer__header">
+            <strong>全部教程</strong>
+            <button class="manual-drawer__close" type="button" aria-label="关闭教程列表">×</button>
+        </div>
+        <nav class="manual-drawer__list" aria-label="全部教程">
+                                            <a class="manual-drawer__item" href="https://app.webefficacy.com/guide/openhouse%e9%a6%96%e6%ac%a1%e5%ae%89%e8%a3%85%e5%ae%8c%e6%95%b4%e6%95%99%e7%a8%8b/">
+                    <span class="manual-drawer__meta">未分类 · 2026.09.05</span>
+                    <strong>openhouse首次安装完整教程</strong>
+                </a>
+                                            <a class="manual-drawer__item is-current" href="https://app.webefficacy.com/guide/%e4%bd%bf%e7%94%a8%e6%89%8b%e5%86%8c%e7%9a%84%e9%a6%96%e6%ac%a1%e4%bd%bf%e7%94%a8%e6%96%b9%e5%bc%8f/">
+                    <span class="manual-drawer__meta">使用教程本身 · 2026.09.05</span>
+                    <strong>使用手册的首次使用方式</strong>
+                </a>
+                                            <a class="manual-drawer__item" href="https://app.webefficacy.com/guide/wuxianpi%e7%9a%84%e9%a6%96%e6%ac%a1%e4%bd%bf%e7%94%a8/">
+                    <span class="manual-drawer__meta">未分类 · 2026.09.04</span>
+                    <strong>wuxianpi的首次使用</strong>
+                </a>
+                    </nav>
+    </aside>
+    <main id="main-content">
+<article class="manual-home-article">
+    <header class="container single-header">
+        <div class="post-meta">
+            <time datetime="2026-09-04T16:36:32+08:00">2026.09.04</time>
+            <span class="post-meta__dot" aria-hidden="true"></span>
+            <span>使用教程本身</span>
+        </div>
+        <h1>使用手册的首次使用方式</h1>
+            </header>
+        <div class="container single-layout">
+        <div class="entry-content">
+<p>考虑到可能需要一边看使用手册，一般完成首次完整安装操作。所以推荐使用浏览器打开使用教程。方法如下：点击&#8221;这个类似电脑的图标&#8221;</p>
 
-      <section class="steps" aria-label="使用步骤">
-        <article id="first-install">
-          <span>首次安装</span>
-          <h2>第一次打开时，先进入维修模式</h2>
-          <ol>
-            <li>在 OpenHouse 桌面或侧边栏打开“维修模式”。</li>
-            <li>按照 WuxianPi 维修助手的对话引导，完成权限、Termux 环境和资源安装。</li>
-            <li>维修助手确认安装完成后，再返回 OpenHouse 桌面使用。</li>
-          </ol>
-        </article>
 
-        <article id="apk-update">
-          <span>APK 更新后</span>
-          <h2>看到顶部提示时，再次进入维修模式</h2>
-          <ol>
-            <li>点击顶部“Termux 资源待更新，请进入维修模式”的提示，或者直接打开维修模式。</li>
-            <li>让 WuxianPi 检查并完成本次资源更新。</li>
-            <li>提示消失且维修助手确认完成后，继续正常使用。</li>
-          </ol>
-        </article>
 
-        <article id="repair-mode">
-          <span>遇到问题</span>
-          <h2>直接与 WuxianPi 对话</h2>
-          <p>首次安装完成以后，模型配置、服务启动、更新、诊断和常见故障一般都可以在维修模式中直接告诉 WuxianPi，由维修助手继续处理。</p>
-        </article>
-      </section>
+<figure class="wp-block-image size-large"><img fetchpriority="high" decoding="async" width="464" height="1024" src="https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091776-1-464x1024.jpg" alt="" class="wp-image-124" srcset="https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091776-1-464x1024.jpg 464w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091776-1-136x300.jpg 136w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091776-1-768x1694.jpg 768w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091776-1-696x1536.jpg 696w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091776-1-928x2048.jpg 928w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091776-1-scaled.jpg 1161w" sizes="(max-width: 464px) 100vw, 464px" /></figure>
 
-      <section class="after">
-        <h2>记住这一件事即可</h2>
-        <p>首次安装前进入维修模式；APK 更新后看到提示也进入维修模式。其余事情直接和 WuxianPi 说。</p>
-      </section>
-    </main>
 
-    <footer>OpenHouse · WuxianPi 维修助手</footer>
-  </body>
+
+<p>再点击用浏览器打开</p>
+
+
+
+<figure class="wp-block-image size-large"><img decoding="async" width="464" height="1024" src="https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091778-464x1024.jpg" alt="" class="wp-image-125" srcset="https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091778-464x1024.jpg 464w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091778-136x300.jpg 136w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091778-768x1694.jpg 768w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091778-696x1536.jpg 696w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091778-928x2048.jpg 928w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091778-scaled.jpg 1161w" sizes="(max-width: 464px) 100vw, 464px" /></figure>
+
+
+
+<p>再把浏览器弄成浮窗（如果手机没有浮窗功能），也没关系，只不过需要切应用而已。没什么的。浏览器弄成浮窗之后。回到openhouse。点击顶部栏&#8221;桌面&#8221;&#8221;，再进入维修模式。</p>
+
+
+
+<figure class="wp-block-image size-large"><img decoding="async" width="464" height="1024" src="https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091779-464x1024.jpg" alt="" class="wp-image-126" srcset="https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091779-464x1024.jpg 464w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091779-136x300.jpg 136w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091779-768x1694.jpg 768w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091779-696x1536.jpg 696w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091779-928x2048.jpg 928w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091779-scaled.jpg 1161w" sizes="(max-width: 464px) 100vw, 464px" /></figure>
+
+
+
+<figure class="wp-block-image size-large"><img decoding="async" width="461" height="1024" src="https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091682-461x1024.jpg" alt="" class="wp-image-127" srcset="https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091682-461x1024.jpg 461w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091682-135x300.jpg 135w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091682-768x1707.jpg 768w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091682-691x1536.jpg 691w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091682-922x2048.jpg 922w, https://app.webefficacy.com/guide/wp-content/uploads/2026/09/1000091682.jpg 1080w" sizes="(max-width: 461px) 100vw, 461px" /></figure>
+
+
+
+<p>进入维修模式之后，维修模式中怎么做，你可以点击下方教程进行查看</p>
+
+
+
+<figure class="wp-block-embed is-type-wp-embed is-provider-openhouse wp-block-embed-openhouse"><div class="wp-block-embed__wrapper">
+<blockquote class="wp-embedded-content" data-secret="st5FtsDBuy"><a href="https://app.webefficacy.com/guide/openhouse%e9%a6%96%e6%ac%a1%e5%ae%89%e8%a3%85%e5%ae%8c%e6%95%b4%e6%95%99%e7%a8%8b/">openhouse首次安装完整教程</a></blockquote><iframe class="wp-embedded-content" sandbox="allow-scripts" security="restricted" style="position: absolute; visibility: hidden;" title="《 openhouse首次安装完整教程 》—OpenHouse 使用手册" src="https://app.webefficacy.com/guide/openhouse%e9%a6%96%e6%ac%a1%e5%ae%89%e8%a3%85%e5%ae%8c%e6%95%b4%e6%95%99%e7%a8%8b/embed/#?secret=JpD9m6WiV1#?secret=st5FtsDBuy" data-secret="st5FtsDBuy" width="500" height="282" frameborder="0" marginwidth="0" marginheight="0" scrolling="no"></iframe>
+</div></figure>
+
+
+
+<p></p>
+</div>
+        <aside class="manual-sidebar manual-sidebar--hint">
+            <span class="sidebar-label">使用手册</span>
+            <span>需要查找其他内容时，点击顶部“全部教程”。</span>
+        </aside>
+    </div>
+</article>
+</main>
+<footer class="site-footer">
+    <div class="container footer-inner">
+        <p>OpenHouse 使用手册 · 2026</p>
+        <p>遇到问题，可以先查看教程，再进入维修模式。</p>
+    </div>
+</footer>
+</div>
+<script type="speculationrules">
+{"prefetch":[{"source":"document","where":{"and":[{"href_matches":"\/guide\/*"},{"not":{"href_matches":["\/guide\/wp-*.php","\/guide\/wp-admin\/*","\/guide\/wp-content\/uploads\/*","\/guide\/wp-content\/*","\/guide\/wp-content\/plugins\/*","\/guide\/wp-content\/themes\/atelier\/*","\/guide\/*\\?(.+)"]}},{"not":{"selector_matches":"a[rel~=\"nofollow\"]"}},{"not":{"selector_matches":".no-prefetch, .no-prefetch a"}}]},"eagerness":"conservative"}]}
+</script>
+<script src="https://app.webefficacy.com/guide/wp-content/themes/atelier/manual.js?ver=1.1.0" id="atelier-manual-js"></script>
+<script src="https://app.webefficacy.com/guide/wp-includes/js/wp-embed.min.js?ver=6.8.2" id="wp-embed-js" defer data-wp-strategy="defer"></script>
+</body>
 </html>

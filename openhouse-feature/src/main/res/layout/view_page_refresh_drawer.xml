@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/oh_page_refresh_drawer"
+    android:layout_width="280dp"
+    android:layout_height="match_parent"
+    android:layout_gravity="end"
+    android:background="@color/oh_panel"
+    android:elevation="8dp"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/oh_page_actions"
+            android:textColor="@color/oh_text"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/oh_page_refresh_close"
+            android:layout_width="58dp"
+            android:layout_height="42dp"
+            android:background="@drawable/oh_button_background"
+            android:minWidth="0dp"
+            android:text="@string/oh_close"
+            android:textAllCaps="false" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/oh_page_refresh_normal"
+        style="@style/OhDrawerButton"
+        android:layout_marginTop="18dp"
+        android:text="@string/oh_refresh" />
+
+    <Button
+        android:id="@+id/oh_page_refresh_force"
+        style="@style/OhDrawerButton"
+        android:text="@string/oh_force_refresh" />
+</LinearLayout>

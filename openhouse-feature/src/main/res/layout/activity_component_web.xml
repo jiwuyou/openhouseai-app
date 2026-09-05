@@ -1,138 +1,159 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/oh_component_web_drawer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/oh_surface"
-    android:orientation="vertical">
+    android:fitsSystemWindows="true">
 
     <LinearLayout
+        android:id="@+id/oh_component_web_content"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:background="@color/oh_panel"
-        android:elevation="2dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="8dp">
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-        <Button
-            android:id="@+id/oh_component_web_desktop"
-            android:layout_width="64dp"
-            android:layout_height="42dp"
-            android:background="@drawable/oh_button_background"
-            android:minWidth="0dp"
-            android:text="@string/oh_desktop"
-            android:textAllCaps="false" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@color/oh_panel"
+            android:elevation="2dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp">
+
+            <Button
+                android:id="@+id/oh_component_web_desktop"
+                android:layout_width="64dp"
+                android:layout_height="42dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_desktop"
+                android:textAllCaps="false" />
+
+            <TextView
+                android:id="@+id/oh_component_web_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="10dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/oh_text"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/oh_component_web_modes"
+                android:layout_width="46dp"
+                android:layout_height="42dp"
+                android:background="@drawable/oh_button_background"
+                android:contentDescription="@string/oh_open_modes"
+                android:minWidth="0dp"
+                android:padding="10dp"
+                android:src="@drawable/oh_ic_window" />
+
+            <ImageButton
+                android:id="@+id/oh_component_web_page_actions"
+                android:layout_width="46dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/oh_button_background"
+                android:contentDescription="@string/oh_page_actions_content_description"
+                android:minWidth="0dp"
+                android:padding="10dp"
+                android:src="@drawable/oh_ic_page_actions" />
+
+            <Button
+                android:id="@+id/oh_component_web_return_small_app"
+                android:layout_width="64dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_return_to_small_app"
+                android:textAllCaps="false"
+                android:textSize="11sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/oh_component_web_close"
+                android:layout_width="58dp"
+                android:layout_height="42dp"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_close"
+                android:textAllCaps="false" />
+        </LinearLayout>
 
         <TextView
-            android:id="@+id/oh_component_web_title"
-            android:layout_width="0dp"
+            android:id="@+id/oh_component_web_status"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="10dp"
-            android:layout_weight="1"
-            android:ellipsize="end"
+            android:background="@color/oh_panel"
+            android:ellipsize="middle"
             android:maxLines="1"
-            android:textColor="@color/oh_text"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="6dp"
+            android:textColor="@color/oh_text_secondary"
+            android:textSize="12sp" />
 
-        <ImageButton
-            android:id="@+id/oh_component_web_modes"
-            android:layout_width="46dp"
-            android:layout_height="42dp"
-            android:background="@drawable/oh_button_background"
-            android:contentDescription="@string/oh_open_modes"
-            android:minWidth="0dp"
-            android:padding="10dp"
-            android:src="@drawable/oh_ic_window" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@color/oh_panel"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="6dp">
 
-        <Button
-            android:id="@+id/oh_component_web_close"
-            android:layout_width="58dp"
-            android:layout_height="42dp"
-            android:background="@drawable/oh_button_background"
-            android:minWidth="0dp"
-            android:text="@string/oh_close"
-            android:textAllCaps="false" />
-    </LinearLayout>
+            <Button
+                android:id="@+id/oh_component_web_control"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginHorizontal="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_service_control"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
 
-    <TextView
-        android:id="@+id/oh_component_web_status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/oh_panel"
-        android:ellipsize="middle"
-        android:maxLines="1"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="6dp"
-        android:textColor="@color/oh_text_secondary"
-        android:textSize="12sp" />
+            <Button
+                android:id="@+id/oh_component_web_maintenance"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginHorizontal="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_maintenance"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:background="@color/oh_panel"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:paddingHorizontal="6dp">
-
-        <Button
-            android:id="@+id/oh_component_web_control"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="2dp"
-            android:layout_weight="1"
-            android:background="@drawable/oh_button_background"
-            android:minWidth="0dp"
-            android:text="@string/oh_service_control"
-            android:textAllCaps="false"
-            android:textSize="13sp" />
-
-        <Button
-            android:id="@+id/oh_component_web_maintenance"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="2dp"
-            android:layout_weight="1"
-            android:background="@drawable/oh_button_background"
-            android:minWidth="0dp"
-            android:text="@string/oh_maintenance"
-            android:textAllCaps="false"
-            android:textSize="13sp" />
-
-        <Button
-            android:id="@+id/oh_component_web_refresh"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="2dp"
-            android:layout_weight="1"
-            android:background="@drawable/oh_button_background"
-            android:minWidth="0dp"
-            android:text="@string/oh_refresh"
-            android:textAllCaps="false"
-            android:textSize="13sp" />
-
-        <Button
-            android:id="@+id/oh_component_web_copy"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="2dp"
-            android:layout_weight="1"
-            android:background="@drawable/oh_button_background"
-            android:minWidth="0dp"
-            android:text="@string/oh_copy_address"
-            android:textAllCaps="false"
-            android:textSize="13sp" />
-    </LinearLayout>
-
-    <FrameLayout
-        android:id="@+id/oh_component_web_overlay_host"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+            <Button
+                android:id="@+id/oh_component_web_copy"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginHorizontal="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/oh_button_background"
+                android:minWidth="0dp"
+                android:text="@string/oh_copy_address"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
+        </LinearLayout>
 
         <FrameLayout
-            android:id="@+id/oh_component_web_host"
+            android:id="@+id/oh_component_web_overlay_host"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-    </FrameLayout>
-</LinearLayout>
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <FrameLayout
+                android:id="@+id/oh_component_web_host"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <include layout="@layout/view_page_refresh_drawer" />
+</androidx.drawerlayout.widget.DrawerLayout>
