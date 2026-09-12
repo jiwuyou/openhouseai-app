@@ -74,7 +74,10 @@ private val LightColorScheme =
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-fun OperitTheme(content: @Composable () -> Unit) {
+fun OperitTheme(
+    applySystemBars: Boolean = true,
+    content: @Composable () -> Unit,
+) {
     val context = LocalContext.current
     val preferencesManager = remember { UserPreferencesManager.getInstance(context) }
     val coroutineScope = rememberCoroutineScope()
@@ -168,7 +171,7 @@ fun OperitTheme(content: @Composable () -> Unit) {
     }
 
     val view = LocalView.current
-    if (!view.isInEditMode) {
+    if (applySystemBars && !view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
             val insetsController = window.decorView.let { decorView ->

@@ -230,7 +230,8 @@
             android:exported="false"
             android:launchMode="singleTop"
             android:process=":rescue_ui"
-            tools:replace="android:exported,android:launchMode,android:process" />
+            android:theme="@style/Theme.Operit.RescueShell"
+            tools:replace="android:exported,android:launchMode,android:process,android:theme" />
 
         <activity
             android:name="com.wuxianpi.openhouse.servicecontrol.OpenHouseServiceControlActivity"

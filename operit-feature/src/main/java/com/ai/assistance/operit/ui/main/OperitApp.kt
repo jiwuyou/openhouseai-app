@@ -96,6 +96,8 @@ fun OperitApp(
     onCloseHostedOperit: () -> Unit = {},
     hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
     showHostedLifecycleActions: Boolean = true,
+    showTopBar: Boolean = true,
+    applyTopBarInsets: Boolean = true,
     onShortcutNavHandled: (Long) -> Unit = {},
     onCurrentNavItemChanged: (NavItem) -> Unit = {},
     onRouteNavHandled: (Long) -> Unit = {}
@@ -506,6 +508,8 @@ fun OperitApp(
                     onCloseHostedOperit = onCloseHostedOperit,
                     hostedCloseLabel = hostedCloseLabel,
                     showHostedLifecycleActions = showHostedLifecycleActions,
+                    showTopBar = showTopBar,
+                    applyTopBarInsets = applyTopBarInsets,
                     sidebarActions = { hostedSidebarActions() },
                     onOpenHostDesktop = onReturnToHostMainMenu,
                     onToggleSidebar = {
@@ -548,6 +552,8 @@ fun OperitApp(
                     onCloseHostedOperit = onCloseHostedOperit,
                     hostedCloseLabel = hostedCloseLabel,
                     showHostedLifecycleActions = showHostedLifecycleActions,
+                    showTopBar = showTopBar,
+                    applyTopBarInsets = applyTopBarInsets,
                     sidebarActions = { hostedSidebarActions() },
                     onOpenHostDesktop = onReturnToHostMainMenu,
                     navigateToTokenConfig = ::navigateToTokenConfig,

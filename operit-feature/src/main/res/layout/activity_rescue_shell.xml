@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rescue_shell_drawer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/rescue_shell_surface"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/rescue_shell_top_bar"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@color/rescue_shell_panel"
+            android:elevation="2dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp">
+
+            <Button
+                android:id="@+id/rescue_shell_menu"
+                android:layout_width="50dp"
+                android:layout_height="42dp"
+                android:background="@drawable/rescue_shell_button_background"
+                android:minWidth="0dp"
+                android:text="@string/rescue_shell_sidebar"
+                android:textAllCaps="false"
+                android:textColor="@color/rescue_shell_text" />
+
+            <TextView
+                android:id="@+id/rescue_shell_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/rescue_shell_openhouse"
+                android:textColor="@color/rescue_shell_text"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/rescue_shell_top_desktop"
+                android:layout_width="50dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/rescue_shell_button_background"
+                android:minWidth="0dp"
+                android:text="@string/rescue_shell_desktop"
+                android:textAllCaps="false"
+                android:textColor="@color/rescue_shell_text"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+
+        <FrameLayout
+            android:id="@+id/rescue_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/rescue_shell_navigation_drawer"
+        android:layout_width="288dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@color/rescue_shell_panel"
+        android:elevation="8dp"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/rescue_shell_drawer_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/rescue_shell_openhouse"
+            android:textColor="@color/rescue_shell_text"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/rescue_shell_subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/rescue_shell_subtitle"
+            android:textColor="@color/rescue_shell_text_secondary"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/rescue_shell_drawer_close"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/rescue_shell_button_background"
+            android:minWidth="0dp"
+            android:text="@string/rescue_shell_close_drawer"
+            android:textAllCaps="false"
+            android:textColor="@color/rescue_shell_text" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="18dp"
+            android:layout_weight="1"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <Button
+                    android:id="@+id/rescue_shell_nav_desktop"
+                    style="@style/RescueShellDrawerButton"
+                    android:text="@string/rescue_shell_desktop" />
+
+                <Button
+                    android:id="@+id/rescue_shell_nav_set_home"
+                    style="@style/RescueShellDrawerButton"
+                    android:enabled="false"
+                    android:text="@string/rescue_shell_set_home_disabled" />
+
+                <LinearLayout
+                    android:id="@+id/rescue_shell_workspace_apps"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="@string/rescue_shell_system"
+                    android:textColor="@color/rescue_shell_text_secondary"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/rescue_shell_nav_terminal"
+                    style="@style/RescueShellDrawerButton"
+                    android:text="@string/rescue_shell_terminal" />
+
+                <Button
+                    android:id="@+id/rescue_shell_nav_files"
+                    style="@style/RescueShellDrawerButton"
+                    android:text="@string/rescue_shell_files" />
+
+                <Button
+                    android:id="@+id/rescue_shell_nav_service"
+                    style="@style/RescueShellDrawerButton"
+                    android:text="@string/rescue_shell_service" />
+
+                <Button
+                    android:id="@+id/rescue_shell_nav_settings"
+                    style="@style/RescueShellDrawerButton"
+                    android:text="@string/rescue_shell_settings" />
+            </LinearLayout>
+        </ScrollView>
+
+        <Button
+            android:id="@+id/rescue_shell_nav_close"
+            style="@style/RescueShellDrawerButton"
+            android:text="@string/rescue_ai_close" />
+    </LinearLayout>
+</androidx.drawerlayout.widget.DrawerLayout>

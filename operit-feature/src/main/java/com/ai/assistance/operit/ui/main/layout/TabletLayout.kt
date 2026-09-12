@@ -66,6 +66,8 @@ fun TabletLayout(
         onCloseHostedOperit: () -> Unit = {},
         hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
         showHostedLifecycleActions: Boolean = true,
+        showTopBar: Boolean = true,
+        applyTopBarInsets: Boolean = true,
         sidebarActions: @Composable RowScope.() -> Unit = {},
         onOpenHostDesktop: () -> Unit = {},
         onToggleSidebar: () -> Unit,
@@ -216,6 +218,8 @@ fun TabletLayout(
                                 onToggleSidebar = onToggleSidebar,
                                 isHostedMode = isHostedMode,
                                 showHostedLifecycleActions = showHostedLifecycleActions,
+                                showTopBar = showTopBar,
+                                applyTopBarInsets = applyTopBarInsets,
                                 onOpenHostDesktop = onOpenHostDesktop,
                                 navigateToTokenConfig = navigateToTokenConfig,
                                 onGestureConsumed = { consumed ->

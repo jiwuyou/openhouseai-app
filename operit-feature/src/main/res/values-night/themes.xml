@@ -15,4 +15,15 @@
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
         <!-- Customize your theme here. -->
     </style>
+
+    <style name="Theme.Operit.RescueShell" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/rescue_shell_panel</item>
+        <item name="colorPrimaryVariant">@color/rescue_shell_surface</item>
+        <item name="colorOnPrimary">@color/rescue_shell_text</item>
+        <item name="android:windowBackground">@color/rescue_shell_surface</item>
+        <item name="android:statusBarColor">@color/rescue_shell_panel</item>
+        <item name="android:navigationBarColor">@color/rescue_shell_panel</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
 </resources>

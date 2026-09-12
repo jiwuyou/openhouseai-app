@@ -35,7 +35,7 @@ internal data class OpenHousePageManifest(
     val raw: String,
 )
 
-internal class BuiltInPageRegistry(context: Context) {
+class BuiltInPageRegistry(context: Context) {
     private val appContext = context.applicationContext
     private val pageDirectory = appContext.filesDir.resolve("openhouse")
     private val activeFile = pageDirectory.resolve("pages-active.json")
@@ -93,24 +93,24 @@ internal class BuiltInPageRegistry(context: Context) {
         return allowed.any { candidate -> host == candidate || host.endsWith(".$candidate") }
     }
 
-    fun customPages(): List<CustomPage> = customStore.load()
+    internal fun customPages(): List<CustomPage> = customStore.load()
 
-    fun addCustomPage(title: String, url: String, icon: String): CustomPage? =
+    internal fun addCustomPage(title: String, url: String, icon: String): CustomPage? =
         customStore.add(title, url, icon)
 
-    fun removeCustomPage(id: String): Boolean = customStore.remove(id)
+    internal fun removeCustomPage(id: String): Boolean = customStore.remove(id)
 
-    fun resolverSources(): List<ResolverSource> = sourceStore.load()
+    internal fun resolverSources(): List<ResolverSource> = sourceStore.load()
 
-    fun addResolverSource(url: String): Boolean = sourceStore.add(url)
+    internal fun addResolverSource(url: String): Boolean = sourceStore.add(url)
 
-    fun setResolverSourceEnabled(url: String, enabled: Boolean) = sourceStore.setEnabled(url, enabled)
+    internal fun setResolverSourceEnabled(url: String, enabled: Boolean) = sourceStore.setEnabled(url, enabled)
 
-    fun moveResolverSource(url: String, delta: Int) = sourceStore.move(url, delta)
+    internal fun moveResolverSource(url: String, delta: Int) = sourceStore.move(url, delta)
 
-    fun removeResolverSource(url: String): Boolean = sourceStore.remove(url)
+    internal fun removeResolverSource(url: String): Boolean = sourceStore.remove(url)
 
-    fun resetResolverSources() = sourceStore.reset()
+    internal fun resetResolverSources() = sourceStore.reset()
 
     fun refreshAsync(force: Boolean = false, onComplete: () -> Unit = {}) {
         val now = SystemClock.elapsedRealtime()

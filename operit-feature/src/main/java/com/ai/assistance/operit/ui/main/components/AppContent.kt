@@ -149,6 +149,8 @@ fun AppContent(
         onToggleSidebar: () -> Unit,
         isHostedMode: Boolean = false,
         showHostedLifecycleActions: Boolean = true,
+        showTopBar: Boolean = true,
+        applyTopBarInsets: Boolean = true,
         onOpenHostDesktop: () -> Unit = {},
         navigateToTokenConfig: () -> Unit,
         onLoading: (Boolean) -> Unit = {},
@@ -264,11 +266,12 @@ fun AppContent(
         // contentWindowInsets = WindowInsets(0) 让内容可以延伸到系统栏下方，使背景能够完全填充
         Scaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            topBar = {
+            topBar = if (showTopBar) {
+                {
                 // 单一工具栏 - 使用小型化的设计
                 // 使用 windowInsets 参数让 TopAppBar 自己处理状态栏的 insets
                 TopAppBar(
-                    windowInsets = WindowInsets.statusBars,
+                    windowInsets = if (applyTopBarInsets) WindowInsets.statusBars else WindowInsets(0, 0, 0, 0),
                     title = {
                         if (titleContent != null) {
                             titleContent.content()
@@ -378,6 +381,9 @@ fun AppContent(
                     ),
                     // Scaffold会处理 insets, 这里不再需要手动添加 modifier
                 )
+                }
+            } else {
+                {}
             },
             containerColor = Color.Transparent
         ) { innerPadding ->

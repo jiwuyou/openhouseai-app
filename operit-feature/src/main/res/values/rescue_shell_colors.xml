@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="rescue_shell_surface">#F5F7F8</color>
+    <color name="rescue_shell_panel">#FFFFFF</color>
+    <color name="rescue_shell_text">#182026</color>
+    <color name="rescue_shell_text_secondary">#59636B</color>
+    <color name="rescue_shell_border">#D9DFE3</color>
+    <color name="rescue_shell_accent_soft">#E3F3EE</color>
+</resources>

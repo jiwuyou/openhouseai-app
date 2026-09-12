@@ -37,4 +37,20 @@ class RescueHostedContractTest {
         assertTrue(!rescueBlock.contains("taskAffinity"))
         assertTrue(!rescueBlock.contains("excludeFromRecents"))
     }
+
+    @Test
+    fun rescueShellKeepsHostNavigationOutsideTheEmbeddedWorkspace() {
+        val layout = java.io.File("src/main/res/layout/activity_rescue_shell.xml").readText()
+        assertTrue(layout.contains("@+id/rescue_shell_menu"))
+        assertTrue(layout.contains("@+id/rescue_shell_top_desktop"))
+        assertTrue(layout.contains("@+id/rescue_shell_nav_desktop"))
+        assertTrue(layout.contains("@+id/rescue_shell_nav_set_home"))
+        assertTrue(layout.contains("@+id/rescue_shell_workspace_apps"))
+        assertTrue(layout.contains("@+id/rescue_shell_nav_terminal"))
+        assertTrue(layout.contains("@+id/rescue_shell_nav_files"))
+        assertTrue(layout.contains("@+id/rescue_shell_nav_service"))
+        assertTrue(layout.contains("@+id/rescue_shell_nav_settings"))
+        assertTrue(layout.contains("@+id/rescue_shell_nav_close"))
+        assertTrue(layout.contains("@+id/rescue_content"))
+    }
 }

@@ -19,4 +19,19 @@
     <string name="rescue_plugin_comment_confirm_title">发布 Agent 实测报告</string>
     <string name="rescue_plugin_comment_confirm_description">该评论由救援 AI 生成并保存在本机。点击后才会发送到插件市场。</string>
     <string name="rescue_plugin_comment_confirm_button">确认发布</string>
+    <string name="rescue_shell_menu">菜单</string>
+    <string name="rescue_shell_sidebar">侧栏</string>
+    <string name="rescue_shell_openhouse">OpenHouse</string>
+    <string name="rescue_shell_title">维修模式</string>
+    <string name="rescue_shell_subtitle">独立诊断与修复</string>
+    <string name="rescue_shell_wuxianpi">WuxianPi</string>
+    <string name="rescue_shell_desktop">桌面</string>
+    <string name="rescue_shell_model_config">模型配置</string>
+    <string name="rescue_shell_system">系统</string>
+    <string name="rescue_shell_terminal">终端</string>
+    <string name="rescue_shell_files">文件</string>
+    <string name="rescue_shell_service">服务控制</string>
+    <string name="rescue_shell_settings">设置</string>
+    <string name="rescue_shell_close_drawer">关闭</string>
+    <string name="rescue_shell_set_home_disabled">当前页面不能设为主页</string>
 </resources>

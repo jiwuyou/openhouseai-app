@@ -13,6 +13,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
@@ -90,6 +92,12 @@ data class OperitWorkspaceSpec(
     val routeNavRequestId: Long = 0L,
     val pluginLoadingState: PluginLoadingState? = null,
     val embeddedInWorkspace: Boolean = false,
+    /** Whether the shared Operit surface should render its own top app bar. */
+    val showTopBar: Boolean = true,
+    /** Whether the embedded top app bar should consume system-bar insets. */
+    val applyTopBarInsets: Boolean = true,
+    /** Lets an XML host own status/navigation bar styling while retaining Operit colors. */
+    val applySystemBars: Boolean = true,
     val onReturnToHostMainMenu: () -> Unit = {},
     val onCloseHostedOperit: () -> Unit = {},
     val hostedCloseLabel: String = DEFAULT_HOSTED_CLOSE_LABEL,
@@ -108,6 +116,10 @@ interface OperitWorkspaceContent {
     fun onResume()
     fun onPause()
     fun onBackPressed(): Boolean
+    /** Requests navigation inside an embedded workspace without exposing its router to hosts. */
+    fun requestNavigation(item: NavItem) {}
+    /** Requests a concrete internal screen route inside an embedded workspace. */
+    fun requestRoute(routeId: String) {}
     fun destroy()
 }
 
@@ -152,6 +164,8 @@ object OperitWorkspaceContentFactory {
                         onCloseHostedOperit = spec.onCloseHostedOperit,
                         hostedCloseLabel = spec.hostedCloseLabel,
                         showHostedLifecycleActions = !spec.embeddedInWorkspace,
+                        showTopBar = spec.showTopBar,
+                        applyTopBarInsets = spec.applyTopBarInsets,
                         onShortcutNavHandled = spec.onShortcutNavHandled,
                         onCurrentNavItemChanged = spec.onCurrentNavItemChanged,
                         onRouteNavHandled = spec.onRouteNavHandled,
@@ -164,7 +178,7 @@ object OperitWorkspaceContentFactory {
         }
 
         if (applyTheme) {
-            OperitTheme { body() }
+            OperitTheme(applySystemBars = spec.applySystemBars) { body() }
         } else {
             body()
         }
@@ -199,6 +213,10 @@ private class EmbeddedOperitWorkspaceContent(
     private var destroyed = false
     private var resumed = false
     private var initializationJob: Job? = null
+    private var shortcutNavRequest by mutableStateOf<NavItem?>(null)
+    private var shortcutNavRequestId by mutableStateOf(0L)
+    private var routeNavRequest by mutableStateOf<String?>(null)
+    private var routeNavRequestId by mutableStateOf(0L)
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -219,7 +237,16 @@ private class EmbeddedOperitWorkspaceContent(
             setViewTreeSavedStateRegistryOwner(activity)
             setViewTreeOnBackPressedDispatcherOwner(this@EmbeddedOperitWorkspaceContent)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            setContent { EmbeddedContent(initializationState, spec) }
+            setContent {
+                EmbeddedContent(
+                    state = initializationState,
+                    spec = spec,
+                    shortcutNavRequest = shortcutNavRequest,
+                    shortcutNavRequestId = shortcutNavRequestId,
+                    routeNavRequest = routeNavRequest,
+                    routeNavRequestId = routeNavRequestId,
+                )
+            }
         }
 
     init {
@@ -260,6 +287,18 @@ private class EmbeddedOperitWorkspaceContent(
         return embeddedBackDispatcher.dispatch()
     }
 
+    override fun requestNavigation(item: NavItem) {
+        if (destroyed) return
+        shortcutNavRequest = item
+        shortcutNavRequestId += 1L
+    }
+
+    override fun requestRoute(routeId: String) {
+        if (destroyed || routeId.isBlank()) return
+        routeNavRequest = routeId.trim()
+        routeNavRequestId += 1L
+    }
+
     override fun destroy() {
         if (destroyed) return
         onPause()
@@ -276,17 +315,28 @@ private class EmbeddedOperitWorkspaceContent(
 private fun EmbeddedContent(
     state: State<EmbeddedInitializationState>,
     spec: OperitWorkspaceSpec,
+    shortcutNavRequest: NavItem?,
+    shortcutNavRequestId: Long,
+    routeNavRequest: String?,
+    routeNavRequestId: Long,
 ) {
     when (val current = state.value) {
         EmbeddedInitializationState.Loading ->
-            OperitTheme {
+            OperitTheme(applySystemBars = spec.applySystemBars) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             }
-        EmbeddedInitializationState.Ready -> OperitWorkspaceContentFactory.Content(spec)
+        EmbeddedInitializationState.Ready -> OperitWorkspaceContentFactory.Content(
+            spec.copy(
+                shortcutNavRequest = shortcutNavRequest,
+                shortcutNavRequestId = shortcutNavRequestId,
+                routeNavRequest = routeNavRequest,
+                routeNavRequestId = routeNavRequestId,
+            ),
+        )
         is EmbeddedInitializationState.Failed ->
-            OperitTheme {
+            OperitTheme(applySystemBars = spec.applySystemBars) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Operit startup failed: ${current.message}")
                 }

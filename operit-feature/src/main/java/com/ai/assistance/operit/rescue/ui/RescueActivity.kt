@@ -8,32 +8,37 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
+import android.widget.Button
+import android.widget.FrameLayout
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.lifecycle.lifecycleScope
-import com.ai.assistance.operit.core.application.OperitApplication
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.host.control.OperitShutdownController
 import com.wuxianpi.openhouse.core.rescue.RescueControlProtocol
 import com.wuxianpi.openhouse.core.rescue.RescueControlStateStore
+import com.wuxianpi.openhouse.core.workspace.ComponentServiceSummary
+import com.wuxianpi.openhouse.core.workspace.WorkspaceCatalog
+import com.wuxianpi.openhouse.core.workspace.WorkspaceCatalogEntry
+import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
+import com.wuxianpi.openhouse.core.ProductRoute
+import com.wuxianpi.openhouse.core.HostEdition
+import com.wuxianpi.openhouse.feature.OpenHouseFeature
+import com.wuxianpi.openhouse.feature.OpenHouseFeatureHost
+import com.wuxianpi.openhouse.feature.OpenHouseFeatureHostProvider
+import com.wuxianpi.openhouse.feature.pages.BuiltInPageRegistry
+import com.wuxianpi.openhouse.feature.workspace.WorkspacePreferenceStore
+import com.wuxianpi.openhouse.feature.workspace.WorkspaceSidebar
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.rescue.remote.RescueAssistHostPhase
 import com.ai.assistance.operit.rescue.remote.RescueRemoteAssistController
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.MainActivity
 import com.ai.assistance.operit.ui.main.OperitHostMode
-import com.ai.assistance.operit.ui.theme.OperitTheme
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.workspace.OperitWorkspaceContentFactory
 import com.ai.assistance.operit.workspace.OperitWorkspaceSpec
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Entry point for the Android-local Rescue AI.
@@ -43,6 +48,16 @@ import kotlinx.coroutines.withContext
  * select ChatRuntimeSlot.RESCUE.  The normal WuxianPi/Node UI is not changed.
  */
 class RescueActivity : ComponentActivity() {
+    private lateinit var shellDrawer: DrawerLayout
+    private lateinit var rescueContentHost: FrameLayout
+    private lateinit var openHouseHost: OpenHouseFeatureHost
+    private lateinit var workspaceSidebar: WorkspaceSidebar
+    private lateinit var workspacePreferences: WorkspacePreferenceStore
+    private lateinit var pageRegistry: BuiltInPageRegistry
+    private var workspaceEntries: List<WorkspaceCatalogEntry> = emptyList()
+    private var serviceStates: Map<String, ComponentServiceSummary> = emptyMap()
+    private var pendingServiceIds: Set<String> = emptySet()
+    private var rescueContent: com.ai.assistance.operit.workspace.OperitWorkspaceContent? = null
     private var remoteAssistStopRequested = false
     private var rescueShutdownReceiverRegistered = false
 
@@ -101,36 +116,45 @@ class RescueActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         acceptPendingAction(intent)
         registerRescueShutdownReceiver()
-        OperitApplication.initializeUiProcess(applicationContext)
+        setContentView(R.layout.activity_rescue_shell)
+        shellDrawer = findViewById(R.id.rescue_shell_drawer)
+        rescueContentHost = findViewById(R.id.rescue_content)
+        openHouseHost = (application as? OpenHouseFeatureHostProvider)
+            ?.openHouseFeatureHost()
+            ?: error("OpenHouse host is unavailable")
+        findViewById<android.widget.TextView>(R.id.rescue_shell_subtitle).text = when (openHouseHost.edition()) {
+            HostEdition.TERMUX_EMBEDDED -> "AIO · 内置 Termux"
+            HostEdition.NATIVE_ANDROID -> "Native · 连接外部 Termux"
+        }
+        workspacePreferences = WorkspacePreferenceStore(this)
+        pageRegistry = BuiltInPageRegistry(this)
+        bindShell()
+        refreshWorkspaceSidebar(force = true)
+        rescueContent = OperitWorkspaceContentFactory.create(
+            this,
+            OperitWorkspaceSpec(
+                hostMode = OperitHostMode.RESCUE,
+                initialNavItem = NavItem.AiChat,
+                toolHandler = AIToolHandler.getInstance(this),
+                showTopBar = true,
+                applyTopBarInsets = false,
+                applySystemBars = false,
+                onReturnToHostMainMenu = ::returnToHostMainMenu,
+                onCloseHostedOperit = ::closeRescueAssistant,
+                hostedCloseLabel = getString(R.string.rescue_ai_close),
+            ),
+        ).also { rescueContentHost.addView(it.view) }
 
-        // The rescue process must initialize only the shared Operit environment.  Loading the Rust
-        // library itself remains lazy and is owned by RescuePiChatEngine on the first turn.
-        // Match MainActivity's startup ordering: initialize the shared Operit environment before
-        // composing any screen that may access it.  The Rust library remains lazy afterwards.
-        setContent {
-            OperitTheme {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                when {
+                    shellDrawer.isDrawerOpen(GravityCompat.START) ->
+                        shellDrawer.closeDrawer(GravityCompat.START)
+                    rescueContent?.onBackPressed() == true -> Unit
+                    else -> finish()
                 }
             }
-        }
-        lifecycleScope.launch {
-            withContext(Dispatchers.Default) {
-                OperitApplication.initializeMainApplication(applicationContext)
-            }
-            setContent {
-                OperitWorkspaceContentFactory.Content(
-                    OperitWorkspaceSpec(
-                        hostMode = OperitHostMode.RESCUE,
-                        initialNavItem = NavItem.AiChat,
-                        toolHandler = AIToolHandler.getInstance(this@RescueActivity),
-                        onReturnToHostMainMenu = ::returnToHostMainMenu,
-                        onCloseHostedOperit = ::closeRescueAssistant,
-                        hostedCloseLabel = getString(R.string.rescue_ai_close),
-                    )
-                )
-            }
-        }
+        })
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -141,10 +165,13 @@ class RescueActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        rescueContent?.onResume()
         RescueControlStateStore.markForeground(applicationContext)
+        if (::workspaceSidebar.isInitialized) bindWorkspaceSidebar()
     }
 
     override fun onPause() {
+        rescueContent?.onPause()
         if (!isFinishing && !OperitShutdownController.isShutdownInProgress()) {
             RescueControlStateStore.markBackground(applicationContext)
         }
@@ -165,7 +192,10 @@ class RescueActivity : ComponentActivity() {
             Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP,
         )
-        runCatching { startActivity(hostIntent) }
+        runCatching {
+            startActivity(hostIntent)
+            overridePendingTransition(0, 0)
+        }
             .onFailure { AppLogger.e(TAG, "Failed to return from Rescue AI to host main activity", it) }
     }
 
@@ -187,7 +217,152 @@ class RescueActivity : ComponentActivity() {
         if (isFinishing && !isChangingConfigurations) {
             stopRemoteAssistanceIfActive()
         }
+        pageRegistry.close()
+        rescueContent?.destroy()
+        rescueContent = null
         super.onDestroy()
+    }
+
+    private fun bindShell() {
+        shellDrawer.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerOpened(drawerView: android.view.View) {
+                if (drawerView.id == R.id.rescue_shell_navigation_drawer) {
+                    refreshWorkspaceSidebar(loadServices = true)
+                }
+            }
+        })
+        findViewById<Button>(R.id.rescue_shell_menu).setOnClickListener {
+            shellDrawer.openDrawer(GravityCompat.START)
+        }
+        findViewById<Button>(R.id.rescue_shell_top_desktop).setOnClickListener {
+            returnToHostMainMenu()
+        }
+        findViewById<Button>(R.id.rescue_shell_drawer_close).setOnClickListener {
+            shellDrawer.closeDrawer(GravityCompat.START)
+        }
+        findViewById<Button>(R.id.rescue_shell_nav_desktop).setOnClickListener {
+            shellDrawer.closeDrawer(GravityCompat.START)
+            returnToHostMainMenu()
+        }
+        findViewById<Button>(R.id.rescue_shell_nav_close).setOnClickListener { closeRescueAssistant() }
+        findViewById<Button>(R.id.rescue_shell_nav_terminal).setOnClickListener {
+            shellDrawer.closeDrawer(GravityCompat.START)
+            openHouseHost.launchTerminal(this)
+        }
+        findViewById<Button>(R.id.rescue_shell_nav_files).setOnClickListener {
+            shellDrawer.closeDrawer(GravityCompat.START)
+            openHouseHost.launchFiles(this)
+        }
+        findViewById<Button>(R.id.rescue_shell_nav_service).setOnClickListener {
+            shellDrawer.closeDrawer(GravityCompat.START)
+            openHouseHost.launchServiceControl(this)
+        }
+        findViewById<Button>(R.id.rescue_shell_nav_settings).setOnClickListener {
+            shellDrawer.closeDrawer(GravityCompat.START)
+            openHouseRoute(ProductRoute.SETTINGS)
+        }
+        workspaceSidebar = WorkspaceSidebar(
+            context = this,
+            container = findViewById(R.id.rescue_shell_workspace_apps),
+            onSelected = ::openWorkspaceDestination,
+            onCloseRescue = ::closeRescueAssistant,
+            onPinnedChanged = { entry, pinned ->
+                workspacePreferences.setPinned(entry.component, pinned)
+                bindWorkspaceSidebar()
+            },
+            onServiceRunningChanged = ::setWorkspaceServiceRunning,
+        )
+    }
+
+    private fun refreshWorkspaceSidebar(
+        loadServices: Boolean = false,
+        force: Boolean = false,
+    ) {
+        pageRegistry.refreshAsync(force = force) {
+            openHouseHost.refreshDesktopComponents {
+                workspaceEntries = WorkspaceCatalog.applications(
+                    openHouseHost.desktopComponents() + pageRegistry.components(),
+                    openHouseHost.capabilities(),
+                )
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    bindWorkspaceSidebar()
+                    if (loadServices) loadWorkspaceServiceStates()
+                }
+            }
+        }
+    }
+
+    private fun bindWorkspaceSidebar() {
+        if (!::workspaceSidebar.isInitialized) return
+        val pinned = workspaceEntries.asSequence()
+            .filter { workspacePreferences.isPinned(it.component) }
+            .mapTo(linkedSetOf()) { WorkspaceDestination.normalizeId(it.component.id) }
+        workspaceSidebar.bind(
+            workspaceEntries,
+            RescueControlStateStore.read(applicationContext).effectiveState,
+            pinned,
+            serviceStates,
+            pendingServiceIds,
+        )
+    }
+
+    private fun loadWorkspaceServiceStates() {
+        openHouseHost.loadComponentServiceStates(workspaceEntries.map { it.component }) { loaded ->
+            runOnUiThread {
+                serviceStates = loaded
+                bindWorkspaceSidebar()
+            }
+        }
+    }
+
+    private fun openWorkspaceDestination(destination: WorkspaceDestination) {
+        shellDrawer.closeDrawer(GravityCompat.START)
+        when (destination) {
+            WorkspaceDestination.Desktop -> returnToHostMainMenu()
+            is WorkspaceDestination.Route -> {
+                if (destination.route != ProductRoute.REPAIR) openHouseRoute(destination.route)
+            }
+            is WorkspaceDestination.Component -> openHouseComponent(destination.normalizedComponentId)
+        }
+    }
+
+    private fun openHouseRoute(route: ProductRoute) {
+        val intent = OpenHouseFeature.createIntent(this, route).apply {
+            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        runCatching {
+            startActivity(intent)
+            overridePendingTransition(0, 0)
+        }.onFailure { error -> AppLogger.e(TAG, "Failed to open OpenHouse route $route", error) }
+    }
+
+    private fun openHouseComponent(componentId: String) {
+        val intent = OpenHouseFeature.createIntent(this).apply {
+            putExtra(OpenHouseFeature.EXTRA_STARTUP_COMPONENT_ID, componentId)
+            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        runCatching {
+            startActivity(intent)
+            overridePendingTransition(0, 0)
+        }.onFailure { error ->
+            AppLogger.e(TAG, "Failed to open OpenHouse component $componentId", error)
+        }
+    }
+
+    private fun setWorkspaceServiceRunning(entry: WorkspaceCatalogEntry, running: Boolean) {
+        val id = WorkspaceDestination.normalizeId(entry.component.id)
+        if (id in pendingServiceIds) return
+        pendingServiceIds += id
+        bindWorkspaceSidebar()
+        openHouseHost.setComponentServicesRunning(entry.component, running) { result ->
+            runOnUiThread {
+                pendingServiceIds -= id
+                if (result.success) serviceStates -= id
+                bindWorkspaceSidebar()
+                if (shellDrawer.isDrawerOpen(GravityCompat.START)) loadWorkspaceServiceStates()
+            }
+        }
     }
 
     private fun registerRescueShutdownReceiver() {
