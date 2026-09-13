@@ -18,7 +18,6 @@ data class WorkspaceCatalogEntry(
 /** Builds the daily application switcher without depending on either Android host. */
 object WorkspaceCatalog {
     private val dailyRouteIds = linkedMapOf(
-        OpenHouseBuiltins.BASIC_ID to ProductRoute.BASIC,
         OpenHouseBuiltins.REPAIR_ID to ProductRoute.REPAIR,
     )
 

@@ -88,7 +88,7 @@ class WorkspaceContractsTest {
         )
 
         assertEquals(
-            listOf(ProductRoute.BASIC, ProductRoute.REPAIR),
+            listOf(ProductRoute.REPAIR),
             entries.mapNotNull { (it.destination as? WorkspaceDestination.Route)?.route },
         )
         assertTrue(entries.any { it.destination == WorkspaceDestination.Component("manual") })
@@ -102,8 +102,21 @@ class WorkspaceContractsTest {
             capabilities = HostCapabilities.full(),
         ).mapNotNull { (it.destination as? WorkspaceDestination.Route)?.route }
 
-        assertEquals(listOf(ProductRoute.BASIC, ProductRoute.REPAIR), routes)
+        assertEquals(listOf(ProductRoute.REPAIR), routes)
         assertFalse(ProductRoute.ADVANCED in routes)
+    }
+
+    @Test
+    fun workspaceCatalogDoesNotExposeBasicModeInSidebar() {
+        val routes = WorkspaceCatalog.applications(
+            dynamicComponents = emptyList(),
+            capabilities = HostCapabilities.full(),
+        ).mapNotNull {
+            (it.destination as? WorkspaceDestination.Route)?.route
+        }
+
+        assertFalse(ProductRoute.BASIC in routes)
+        assertTrue(ProductRoute.REPAIR in routes)
     }
 
     @Test
