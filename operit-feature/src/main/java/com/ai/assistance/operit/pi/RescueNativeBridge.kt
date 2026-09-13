@@ -10,6 +10,14 @@ object RescueNativeBridge {
 
     external fun nativePrompt(chatId: String, prompt: String, requestId: String): String
 
+    /** Sends a text prompt plus a JSON array of inline image blocks. */
+    external fun nativePromptWithContent(
+        chatId: String,
+        prompt: String,
+        imagesJson: String,
+        requestId: String,
+    ): String
+
     external fun nativeCancel(chatId: String): Boolean
 
     external fun nativeCompleteHostTool(requestId: String, resultJson: String): Boolean

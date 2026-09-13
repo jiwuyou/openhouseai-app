@@ -62,6 +62,8 @@ import com.ai.assistance.operit.rescue.ui.RescueRemoteAssistDialog
 import com.ai.assistance.operit.rescue.ui.PendingRescueActionHandler
 import com.ai.assistance.operit.rescue.ui.plugins.RescuePluginMarketActivity
 import com.ai.assistance.operit.rescue.ui.shouldShowRescueFirstUsePrompt
+import com.ai.assistance.operit.rescue.pi.RescueImageCapability
+import com.ai.assistance.operit.rescue.pi.resolveRescueImageCapability
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ApiProviderType
@@ -1740,6 +1742,7 @@ private fun RescueDynamicActionBar(
             }
         }
     }
+
 }
 
 @Composable
@@ -2043,7 +2046,10 @@ private fun ChatInputBottomBar(
         actualViewModel.showToast(context.getString(R.string.chat_queue_added))
     }
 
-    val sendMessage: (String?) -> Unit = { textOverride ->
+    data class PendingRescueImageSend(val textOverride: String?)
+    var pendingRescueImageSend by remember(currentChatId) { mutableStateOf<PendingRescueImageSend?>(null) }
+
+    fun dispatchSend(textOverride: String?, bypassRescueImageCheck: Boolean = false) {
         coroutineScope.launch {
             if (currentChatId.isNullOrBlank()) {
                 Toast.makeText(
@@ -2061,6 +2067,27 @@ private fun ChatInputBottomBar(
                     rescueSetupDismissed = false
                 }
                 return@launch
+            }
+
+            if (!bypassRescueImageCheck &&
+                inputMenuRuntime == "rescue" &&
+                attachments.any { it.mimeType.startsWith("image/", ignoreCase = true) }
+            ) {
+                when (resolveRescueImageCapability(context)) {
+                    RescueImageCapability.SUPPORTED -> Unit
+                    RescueImageCapability.UNSUPPORTED -> {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.rescue_image_capability_unsupported_message),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        return@launch
+                    }
+                    RescueImageCapability.UNKNOWN -> {
+                        pendingRescueImageSend = PendingRescueImageSend(textOverride)
+                        return@launch
+                    }
+                }
             }
 
             val requestedText = textOverride ?: userMessage.text
@@ -2133,6 +2160,8 @@ private fun ChatInputBottomBar(
             )
         }
     }
+
+    val sendMessage: (String?) -> Unit = { textOverride -> dispatchSend(textOverride) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -2335,6 +2364,27 @@ private fun ChatInputBottomBar(
                 },
             )
         }
+    }
+
+    pendingRescueImageSend?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { pendingRescueImageSend = null },
+            title = { Text(context.getString(R.string.rescue_image_capability_unknown_title)) },
+            text = { Text(context.getString(R.string.rescue_image_capability_unknown_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingRescueImageSend = null
+                        dispatchSend(pending.textOverride, bypassRescueImageCheck = true)
+                    },
+                ) { Text(context.getString(R.string.rescue_image_send_anyway)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRescueImageSend = null }) {
+                    Text(context.getString(R.string.rescue_image_send_cancel))
+                }
+            },
+        )
     }
 }
 

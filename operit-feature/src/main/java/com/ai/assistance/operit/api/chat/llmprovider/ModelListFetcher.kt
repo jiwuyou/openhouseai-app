@@ -458,7 +458,7 @@ object ModelListFetcher {
             for (i in 0 until dataArray.length()) {
                 val modelObj = dataArray.getJSONObject(i)
                 val id = modelObj.getString("id")
-                modelList.add(ModelOption(id = id, name = id))
+                modelList.add(ModelOption(id = id, name = id, input = parseInputModalities(modelObj)))
             }
         } catch (e: JSONException) {
             AppLogger.e(TAG, "解析OpenAI格式JSON失败: ${e.message}", e)
@@ -495,7 +495,7 @@ object ModelListFetcher {
                     else -> continue
                 }
                 val displayName = modelObj.optString("display_name", id)
-                modelList.add(ModelOption(id = id, name = displayName))
+                modelList.add(ModelOption(id = id, name = displayName, input = parseInputModalities(modelObj)))
             }
         } catch (e: JSONException) {
             AppLogger.e(TAG, "解析Anthropic模型JSON失败: ${e.message}", e)
@@ -548,7 +548,13 @@ object ModelListFetcher {
                     if (supportedMethods.contains("generateContent")) {
                         // 使用基本模型ID作为下拉列表中的选项
                         val finalId = if (baseModelId.isNotEmpty()) baseModelId else id
-                        modelList.add(ModelOption(id = finalId, name = displayName))
+                        modelList.add(
+                            ModelOption(
+                                id = finalId,
+                                name = displayName,
+                                input = parseInputModalities(modelObj),
+                            ),
+                        )
                     }
                 }
             }
@@ -571,7 +577,13 @@ object ModelListFetcher {
 
                     // 过滤只添加Gemini模型
                     if (id.contains("gemini")) {
-                        modelList.add(ModelOption(id = id, name = displayName))
+                        modelList.add(
+                            ModelOption(
+                                id = id,
+                                name = displayName,
+                                input = parseInputModalities(modelObj),
+                            ),
+                        )
                     }
                 }
             } else {
@@ -584,6 +596,34 @@ object ModelListFetcher {
         }
 
         return modelList.sortedBy { it.id }
+    }
+
+    /** Reads provider-declared input modalities without guessing from a model name. */
+    private fun parseInputModalities(model: JSONObject): List<String> {
+        fun arrayValues(value: Any?): List<String> = when (value) {
+            is org.json.JSONArray -> (0 until value.length()).mapNotNull { value.optString(it, null) }
+            else -> emptyList()
+        }
+
+        val direct = arrayValues(model.opt("input"))
+        if (direct.isNotEmpty()) return direct
+        val inputModalities = arrayValues(model.opt("input_modalities"))
+        if (inputModalities.isNotEmpty()) return inputModalities
+        val camelInputModalities = arrayValues(model.opt("inputModalities"))
+        if (camelInputModalities.isNotEmpty()) return camelInputModalities
+        val modalities = model.optJSONObject("modalities")
+        val nested = arrayValues(modalities?.opt("input"))
+        if (nested.isNotEmpty()) return nested
+        val architecture = model.optJSONObject("architecture")
+        val architectureModalities = arrayValues(architecture?.opt("input_modalities"))
+        if (architectureModalities.isNotEmpty()) return architectureModalities
+        val capabilities = model.optJSONObject("capabilities")
+        if (capabilities?.optBoolean("vision", false) == true ||
+            capabilities?.optBoolean("image", false) == true
+        ) {
+            return listOf("image")
+        }
+        return emptyList()
     }
 
     /**

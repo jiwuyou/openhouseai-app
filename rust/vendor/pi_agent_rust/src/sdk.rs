@@ -1227,6 +1227,26 @@ impl AgentSessionHandle {
             .await
     }
 
+    /// Send one user prompt with structured text/image content and abort support.
+    pub async fn prompt_with_content_with_abort(
+        &mut self,
+        message: impl Into<String>,
+        images: Vec<ImageContent>,
+        abort_signal: AbortSignal,
+        on_event: impl Fn(AgentEvent) + Send + Sync + 'static,
+    ) -> Result<AssistantMessage> {
+        let combined = self.make_combined_callback(on_event);
+        let mut content = Vec::new();
+        let message = message.into();
+        if !message.trim().is_empty() {
+            content.push(ContentBlock::Text(TextContent::new(message)));
+        }
+        content.extend(images.into_iter().map(ContentBlock::Image));
+        self.session
+            .run_with_content_with_abort(content, Some(abort_signal), combined)
+            .await
+    }
+
     /// Continue the current agent loop without adding a new user prompt.
     ///
     /// This is useful for retry/continuation flows where session history or

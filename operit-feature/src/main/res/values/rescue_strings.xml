@@ -34,4 +34,9 @@
     <string name="rescue_shell_settings">设置</string>
     <string name="rescue_shell_close_drawer">关闭</string>
     <string name="rescue_shell_set_home_disabled">当前页面不能设为主页</string>
+    <string name="rescue_image_capability_unknown_title">图片识别能力未知</string>
+    <string name="rescue_image_capability_unknown_message">当前模型可能不支持图片识别。是否仍然发送？</string>
+    <string name="rescue_image_capability_unsupported_message">当前模型可能不支持图片识别，请切换支持图片的模型后重试。</string>
+    <string name="rescue_image_send_anyway">仍然发送</string>
+    <string name="rescue_image_send_cancel">取消</string>
 </resources>

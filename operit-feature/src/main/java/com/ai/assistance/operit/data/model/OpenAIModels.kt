@@ -8,5 +8,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ModelOption(
     val id: String,
-    val name: String
+    val name: String,
+    /** Provider-declared input modalities, for example ["text", "image"]. */
+    val input: List<String> = emptyList(),
 )

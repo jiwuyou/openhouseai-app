@@ -59,6 +59,7 @@ import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.plugins.toolpkg.ToolPkgAiProviderRegistry
 import com.ai.assistance.operit.pi.RescuePiChatEngine
+import com.ai.assistance.operit.rescue.pi.RescueImageCapabilityStore
 import com.ai.assistance.operit.ui.common.input.bringIntoViewOnImeFocus
 import com.ai.assistance.operit.ui.features.settings.DebouncedModelConfigAutoSaveEffect
 import com.ai.assistance.operit.ui.features.settings.ModelConfigSaveCoordinator
@@ -133,6 +134,7 @@ private fun LocalModelApiSettingsSection(
     val isRescueWorkspace =
         LocalOperitWorkspaceIdentity.current.runtimeSlot == ChatRuntimeSlot.RESCUE
     val scope = rememberCoroutineScope()
+    val rescueImageCapabilityStore = remember(context) { RescueImageCapabilityStore(context) }
 
     // 区域告警可见性
     var showRegionWarning by remember { mutableStateOf(false) }
@@ -255,9 +257,9 @@ private fun LocalModelApiSettingsSection(
             llamaThreadCount = llamaThreadCountInput.toIntOrNull()?.coerceAtLeast(1) ?: 4,
             llamaContextSize = llamaContextSizeInput.toIntOrNull()?.coerceAtLeast(1) ?: 2048,
             llamaGpuLayers = llamaGpuLayersInput.toIntOrNull()?.coerceAtLeast(0) ?: 0,
-            enableDirectImageProcessing = enableDirectImageProcessingInput,
-            enableDirectAudioProcessing = enableDirectAudioProcessingInput,
-            enableDirectVideoProcessing = enableDirectVideoProcessingInput,
+            enableDirectImageProcessing = if (isRescueWorkspace) false else enableDirectImageProcessingInput,
+            enableDirectAudioProcessing = if (isRescueWorkspace) false else enableDirectAudioProcessingInput,
+            enableDirectVideoProcessing = if (isRescueWorkspace) false else enableDirectVideoProcessingInput,
             enableGoogleSearch = enableGoogleSearchInput,
             enableClaude1hPromptCache = enableClaude1hPromptCacheInput,
             enableToolCall = enableToolCallInput,
@@ -504,6 +506,16 @@ private fun LocalModelApiSettingsSection(
                     customHeadersJson = customHeadersDraft,
                     reload = reload,
                 )
+        }
+    }
+
+    fun rememberRescueModelCapabilities(models: List<ModelOption>) {
+        if (isRescueWorkspace && models.isNotEmpty()) {
+            rescueImageCapabilityStore.rememberModels(
+                configId = config.id,
+                providerId = selectedProviderTypeId,
+                models = models,
+            )
         }
     }
     // 移除了强制锁定模型名称的逻辑，允许用户自由修改
@@ -767,6 +779,7 @@ private fun LocalModelApiSettingsSection(
                                         if (result.isSuccess) {
                                             val models = result.getOrThrow()
                                             AppLogger.d(TAG, "模型列表获取成功，共 ${models.size} 个模型")
+                                            rememberRescueModelCapabilities(models)
                                             modelsList = models
                                             showModelsDialog = true
                                             showNotification(modelsListSuccessText.format(models.size))
@@ -820,25 +833,27 @@ private fun LocalModelApiSettingsSection(
                     }
             )
 
-            SettingsSwitchRow(
-                title = stringResource(R.string.enable_direct_image_processing),
-                subtitle = stringResource(R.string.enable_direct_image_processing_desc),
-                checked = enableDirectImageProcessingInput,
-                onCheckedChange = { enableDirectImageProcessingInput = it }
-            )
+            if (!isRescueWorkspace) {
+                SettingsSwitchRow(
+                    title = stringResource(R.string.enable_direct_image_processing),
+                    subtitle = stringResource(R.string.enable_direct_image_processing_desc),
+                    checked = enableDirectImageProcessingInput,
+                    onCheckedChange = { enableDirectImageProcessingInput = it },
+                )
 
-            SettingsSwitchRow(
-                title = stringResource(R.string.enable_direct_audio_processing),
-                subtitle = stringResource(R.string.enable_direct_audio_processing_desc),
-                checked = enableDirectAudioProcessingInput,
-                onCheckedChange = { enableDirectAudioProcessingInput = it }
-            )
-            SettingsSwitchRow(
-                title = stringResource(R.string.enable_direct_video_processing),
-                subtitle = stringResource(R.string.enable_direct_video_processing_desc),
-                checked = enableDirectVideoProcessingInput,
-                onCheckedChange = { enableDirectVideoProcessingInput = it }
-            )
+                SettingsSwitchRow(
+                    title = stringResource(R.string.enable_direct_audio_processing),
+                    subtitle = stringResource(R.string.enable_direct_audio_processing_desc),
+                    checked = enableDirectAudioProcessingInput,
+                    onCheckedChange = { enableDirectAudioProcessingInput = it },
+                )
+                SettingsSwitchRow(
+                    title = stringResource(R.string.enable_direct_video_processing),
+                    subtitle = stringResource(R.string.enable_direct_video_processing_desc),
+                    checked = enableDirectVideoProcessingInput,
+                    onCheckedChange = { enableDirectVideoProcessingInput = it },
+                )
+            }
 
             // Google Search Grounding 开关 (仅Gemini支持)
             if (selectedApiProvider == ApiProviderType.GOOGLE ||
@@ -919,7 +934,9 @@ private fun LocalModelApiSettingsSection(
                                             try {
                                                 val result = fetchAvailableModels(reload = true)
                                                 if (result.isSuccess) {
-                                                    modelsList = result.getOrThrow()
+                                                    val models = result.getOrThrow()
+                                                    rememberRescueModelCapabilities(models)
+                                                    modelsList = models
                                                 } else {
                                                     val errorMsg = result.exceptionOrNull()?.message ?: context.getString(R.string.unknown_error)
                                                     modelLoadError = context.getString(R.string.refresh_models_list_failed, errorMsg)

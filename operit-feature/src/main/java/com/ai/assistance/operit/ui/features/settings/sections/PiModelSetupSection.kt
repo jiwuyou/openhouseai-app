@@ -46,6 +46,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.model.PiModelBinding
@@ -53,6 +54,7 @@ import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.pi.PiModelEditorDraft
 import com.ai.assistance.operit.pi.PiModelRevisionConflictException
 import com.ai.assistance.operit.pi.PiModelSettingsAdapter
+import com.ai.assistance.operit.rescue.pi.RescueImageCapabilityStore
 import com.ai.assistance.operit.util.AppLogger
 import com.wuxianpi.pi.PiDiscoveredModel
 import com.wuxianpi.pi.PiModelApi
@@ -77,6 +79,8 @@ internal fun PiModelSetupSection(
     showNotification: (String) -> Unit,
 ) {
     val adapter = remember { PiModelSettingsAdapter.instance }
+    val context = LocalContext.current
+    val imageCapabilities = remember(context) { RescueImageCapabilityStore(context) }
     val scope = rememberCoroutineScope()
     var setup by remember(config.id) { mutableStateOf<PiModelSetupState?>(null) }
     var loadingSetup by remember(config.id) { mutableStateOf(true) }
@@ -99,6 +103,7 @@ internal fun PiModelSetupSection(
 
     fun hydrate(next: PiModelSetupState, binding: PiModelBinding?) {
         setup = next
+        imageCapabilities.rememberPiModels(config.id, next.models)
         val selectedProvider = binding?.provider
             ?: next.defaultModel?.provider
             ?: next.config.providers.keys.firstOrNull()

@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.pi
 
 import android.content.Context
+import android.util.Base64
 import com.ai.assistance.operit.api.chat.enhance.ConversationMarkupManager
 import com.ai.assistance.operit.data.model.ApiKeyAvailabilityStatus
 import com.ai.assistance.operit.data.model.ApiProviderType
@@ -11,6 +12,8 @@ import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import com.ai.assistance.operit.rescue.pi.RescueToolCatalog
 import com.ai.assistance.operit.rescue.pi.RescueToolDispatcher
 import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
+import com.ai.assistance.operit.rescue.pi.RescueImageCapability
+import com.ai.assistance.operit.rescue.pi.RescueImageCapabilityStore
 import com.ai.assistance.operit.rescue.plugins.RescuePluginContract
 import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
 import com.ai.assistance.operit.rescue.ui.RescueActionConversationStore
@@ -34,6 +37,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharedFlow
 import org.json.JSONArray
 import org.json.JSONObject
@@ -49,12 +53,23 @@ class RescuePiChatEngine private constructor(context: Context) {
         val chatId: String,
         val sessionKey: String = chatId,
         val message: String,
+        val images: List<ImageInput> = emptyList(),
         val userMessageTimestamp: Long? = null,
         val workingDirectory: String? = null,
         val forkFromSessionKey: String? = null,
         val forkUserMessage: String? = null,
         val onState: suspend (InputProcessingState) -> Unit,
         val onToolInvocation: suspend (String) -> Unit = {},
+    )
+
+    data class ImageInput(
+        val filePath: String,
+        val mimeType: String,
+    )
+
+    private data class EncodedImage(
+        val data: String,
+        val mimeType: String,
     )
 
     data class Usage(
@@ -88,6 +103,9 @@ class RescuePiChatEngine private constructor(context: Context) {
         private const val IDLE_POLL_DELAY_MS = 20L
         private const val TURN_EVENT_CAPACITY = 1024
         private const val STREAM_REPLAY_CHUNKS = 65_536
+        private const val MAX_IMAGES_PER_TURN = 4
+        private const val MAX_IMAGE_BYTES = 10L * 1024L * 1024L
+        private const val MAX_TOTAL_IMAGE_BYTES = 20L * 1024L * 1024L
         internal const val RESCUE_SYSTEM_PROMPT =
             """You are WuxianPi Rescue AI, a complete Android-resident assistant that remains available when the Termux Node Pi runtime is unavailable. Converse normally and use registered deterministic setup, Android, Termux, Ubuntu, file, HTTP, and repair tools when useful.
 
@@ -309,14 +327,23 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
                         AppLogger.w(TAG, "Unable to load Rescue plugin turn context", failure)
                         ""
                     }
-                val accepted =
+                val promptText = composeTurnMessage(request.message, turnContext)
+                val encodedImages = encodeImages(request.images)
+                val accepted = if (encodedImages.isEmpty()) {
+                    JSONObject(RescueNativeBridge.nativePrompt(request.sessionKey, promptText, requestId))
+                } else {
+                    val imagesJson = JSONArray(encodedImages.map { image ->
+                        JSONObject().put("data", image.data).put("mimeType", image.mimeType)
+                    }).toString()
                     JSONObject(
-                        RescueNativeBridge.nativePrompt(
+                        RescueNativeBridge.nativePromptWithContent(
                             request.sessionKey,
-                            composeTurnMessage(request.message, turnContext),
+                            promptText,
+                            imagesJson,
                             requestId,
-                        )
+                        ),
                     )
+                }
                 check(accepted.optBoolean("ok", false)) {
                     accepted.optString("error", "Pi Agent rejected the prompt")
                 }
@@ -422,7 +449,14 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
                         ?: "Unknown Pi Agent error"
                 val normalizedErrorChain = errorMessages.joinToString(" | ").replace(Regex("\\s+"), " ")
                 val message =
-                    if (normalizedErrorChain.contains("http 402", ignoreCase = true) ||
+                    if (request.images.isNotEmpty() &&
+                        (normalizedErrorChain.contains("image", ignoreCase = true) ||
+                            normalizedErrorChain.contains("vision", ignoreCase = true) ||
+                            normalizedErrorChain.contains("multimodal", ignoreCase = true) ||
+                            normalizedErrorChain.contains("modality", ignoreCase = true))
+                    ) {
+                        "当前模型可能不支持图片识别，请切换支持图片的模型后重试。"
+                    } else if (normalizedErrorChain.contains("http 402", ignoreCase = true) ||
                         normalizedErrorChain.contains("insufficient balance", ignoreCase = true)
                     ) {
                         "API 余额不足（HTTP 402，Insufficient Balance）。请更换有额度的模型/API 配置后重试。"
@@ -480,6 +514,11 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
         }
         val config = modelConfigStore.load()
         val api = providerApi(config)
+        val imageCapability = RescueImageCapabilityStore(appContext).resolve(
+            configId = modelConfigStore.getActiveConfigId(),
+            providerId = config.apiProviderTypeId,
+            modelId = config.modelName.substringBefore(',').trim(),
+        )
         val contextWindow = (config.contextLength * 1024).toInt().coerceAtLeast(4096)
         val compactionEnabled = config.enableSummary && contextWindow >= 4096
         val normalizedThreshold = config.summaryTokenThreshold.toDouble().coerceIn(0.1, 0.95)
@@ -506,6 +545,10 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
                 .put("provider", config.apiProviderTypeId)
                 .put("api", api)
                 .put("model", config.modelName.substringBefore(',').trim())
+                // Unknown capabilities remain enabled so the provider can be tried once; the UI
+                // asks for confirmation in that case. A known text-only model is blocked before
+                // a request is created.
+                .put("imageInputSupported", imageCapability != RescueImageCapability.UNSUPPORTED)
                 .put("baseUrl", config.apiEndpoint)
                 .put("apiKey", resolveApiKey(config))
                 .put("headers", parseJsonObject(config.customHeaders, "customHeaders"))
@@ -530,6 +573,27 @@ Rescue plugins provide updateable documents and ordered workflows, not new Andro
         sessionPluginContexts.putIfAbsent(request.sessionKey, pluginContext)
         openedSessionKeys.add(request.sessionKey)
     }
+
+    private suspend fun encodeImages(inputs: List<ImageInput>): List<EncodedImage> = withContext(Dispatchers.IO) {
+        if (inputs.isEmpty()) return@withContext emptyList()
+        require(inputs.size <= MAX_IMAGES_PER_TURN) { "一次最多发送 4 张图片" }
+        val output = ArrayList<EncodedImage>(inputs.size)
+        var totalBytes = 0L
+        inputs.forEach { input ->
+            val file = File(input.filePath)
+            require(file.isFile) { "图片文件不可读：${input.filePath}" }
+            val size = file.length()
+            if (size <= 0L || size > MAX_IMAGE_BYTES || totalBytes + size > MAX_TOTAL_IMAGE_BYTES) {
+                throw IllegalArgumentException("图片过大，单张不能超过 10MB，单次不能超过 20MB")
+            }
+            val mimeType = input.mimeType.trim().ifBlank { "image/jpeg" }
+            require(mimeType.startsWith("image/", ignoreCase = true)) { "维修模式只支持图片附件" }
+            output += EncodedImage(Base64.encodeToString(file.readBytes(), Base64.NO_WRAP), mimeType)
+            totalBytes += size
+        }
+        output
+    }
+
 
     private suspend fun pollNativeEvents() {
         while (engineScope.isActive) {

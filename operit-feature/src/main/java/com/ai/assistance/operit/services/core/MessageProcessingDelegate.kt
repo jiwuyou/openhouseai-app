@@ -948,6 +948,9 @@ class MessageProcessingDelegate(
                                     chatId = activeChatId,
                                     sessionKey = rescuePiChatEngine.getActiveSessionKey(activeChatId),
                                     message = requestMessageContent,
+                                    images = attachments
+                                        .filter { it.mimeType.startsWith("image/", ignoreCase = true) }
+                                        .map { RescuePiChatEngine.ImageInput(it.filePath, it.mimeType) },
                                     userMessageTimestamp = userMessage.timestamp.takeIf { userMessageAdded },
                                     workingDirectory = workspacePath,
                                     onState = { state ->

@@ -8,8 +8,8 @@ use jni::sys::{jboolean, jint, jstring};
 use pi::agent::AgentEvent;
 use pi::compaction::ResolvedCompactionSettings;
 use pi::model::{
-    AssistantMessage, AssistantMessageEvent, ContentBlock, Message, StopReason, TextContent, Usage,
-    UserContent, UserMessage,
+    AssistantMessage, AssistantMessageEvent, ContentBlock, ImageContent, Message, StopReason,
+    TextContent, Usage, UserContent, UserMessage,
 };
 use pi::models::ModelEntry;
 use pi::provider::{InputType, Model, ModelCost, Provider, StreamOptions};
@@ -138,6 +138,8 @@ struct SessionConfig {
     max_tool_iterations: usize,
     #[serde(default)]
     reasoning: bool,
+    #[serde(default = "default_image_input_supported")]
+    image_input_supported: bool,
     #[serde(default)]
     enable_compaction: bool,
     #[serde(default)]
@@ -152,6 +154,10 @@ const fn default_context_window() -> u32 {
 
 const fn default_max_tool_iterations() -> usize {
     50
+}
+
+const fn default_image_input_supported() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -284,6 +290,7 @@ impl Tool for AndroidToolProxy {
 enum SessionCommand {
     Prompt {
         prompt: String,
+        images: Vec<ImageContent>,
         request_id: String,
     },
     Compact {
@@ -423,7 +430,11 @@ fn run_session_thread(
 
     while let Ok(command) = command_rx.recv() {
         match command {
-            SessionCommand::Prompt { prompt, request_id } => {
+            SessionCommand::Prompt {
+                prompt,
+                images,
+                request_id,
+            } => {
                 controller.cancelled.store(false, Ordering::Release);
                 active_requests()
                     .lock()
@@ -439,19 +450,34 @@ fn run_session_thread(
                 let api_key = controller.api_key.clone();
                 let saw_agent_end = Arc::new(AtomicBool::new(false));
                 let callback_saw_end = Arc::clone(&saw_agent_end);
-                let result = runtime.block_on(handle.prompt_with_abort(
-                    prompt,
-                    abort_signal,
-                    move |event| {
-                        emit_agent_event(
-                            &chat_id,
-                            &event_request_id,
-                            &api_key,
-                            &callback_saw_end,
-                            event,
-                        );
-                    },
-                ));
+                let result = if images.is_empty() {
+                    runtime.block_on(
+                        handle.prompt_with_abort(prompt, abort_signal, move |event| {
+                            emit_agent_event(
+                                &chat_id,
+                                &event_request_id,
+                                &api_key,
+                                &callback_saw_end,
+                                event,
+                            );
+                        }),
+                    )
+                } else {
+                    runtime.block_on(handle.prompt_with_content_with_abort(
+                        prompt,
+                        images,
+                        abort_signal,
+                        move |event| {
+                            emit_agent_event(
+                                &chat_id,
+                                &event_request_id,
+                                &api_key,
+                                &callback_saw_end,
+                                event,
+                            );
+                        },
+                    ))
+                };
                 *controller
                     .abort
                     .lock()
@@ -579,6 +605,10 @@ async fn build_agent_session(
         .map(str::parse)
         .transpose()?;
     let max_tokens = config.max_tokens.unwrap_or(16_384);
+    let mut input = vec![InputType::Text];
+    if config.image_input_supported {
+        input.push(InputType::Image);
+    }
     let model = Model {
         id: config.model.clone(),
         name: config.model.clone(),
@@ -587,7 +617,7 @@ async fn build_agent_session(
         base_url: config.base_url.clone(),
         reasoning: config.reasoning
             || thinking.is_some_and(|level| level != pi::model::ThinkingLevel::Off),
-        input: vec![InputType::Text, InputType::Image],
+        input,
         cost: ModelCost {
             input: 0.0,
             output: 0.0,
@@ -1150,29 +1180,98 @@ pub extern "system" fn Java_com_ai_assistance_operit_pi_RescueNativeBridge_nativ
             json!({"ok": false, "error": "chatId is not open"}),
         );
     };
+    enqueue_prompt(
+        &mut env,
+        controller,
+        chat_id,
+        prompt,
+        Vec::new(),
+        request_id,
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_ai_assistance_operit_pi_RescueNativeBridge_nativePromptWithContent(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    chat_id: JString<'_>,
+    prompt: JString<'_>,
+    images_json: JString<'_>,
+    request_id: JString<'_>,
+) -> jstring {
+    let values = (
+        rust_string(&mut env, &chat_id),
+        rust_string(&mut env, &prompt),
+        rust_string(&mut env, &images_json),
+        rust_string(&mut env, &request_id),
+    );
+    let (Ok(chat_id), Ok(prompt), Ok(images_json), Ok(request_id)) = values else {
+        return json_response(
+            &mut env,
+            json!({"ok": false, "error": "invalid JNI string"}),
+        );
+    };
+    let images: Vec<ImageContent> = match serde_json::from_str(&images_json) {
+        Ok(images) => images,
+        Err(error) => {
+            return json_response(
+                &mut env,
+                json!({"ok": false, "error": format!("invalid image content: {error}")}),
+            );
+        }
+    };
+    if images
+        .iter()
+        .any(|image| image.data.trim().is_empty() || !image.mime_type.starts_with("image/"))
+    {
+        return json_response(
+            &mut env,
+            json!({"ok": false, "error": "invalid image content"}),
+        );
+    }
+    let controller = sessions()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&chat_id)
+        .cloned();
+    let Some(controller) = controller else {
+        return json_response(
+            &mut env,
+            json!({"ok": false, "error": "chatId is not open"}),
+        );
+    };
+    enqueue_prompt(&mut env, controller, chat_id, prompt, images, request_id)
+}
+
+fn enqueue_prompt(
+    env: &mut JNIEnv<'_>,
+    controller: Arc<SessionController>,
+    chat_id: String,
+    prompt: String,
+    images: Vec<ImageContent>,
+    request_id: String,
+) -> jstring {
     if controller
         .busy
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
     {
-        return json_response(&mut env, json!({"ok": false, "error": "session is busy"}));
+        return json_response(env, json!({"ok": false, "error": "session is busy"}));
     }
     if controller
         .command_tx
         .send(SessionCommand::Prompt {
             prompt,
+            images,
             request_id: request_id.clone(),
         })
         .is_err()
     {
         controller.busy.store(false, Ordering::Release);
-        return json_response(
-            &mut env,
-            json!({"ok": false, "error": "session worker stopped"}),
-        );
+        return json_response(env, json!({"ok": false, "error": "session worker stopped"}));
     }
     json_response(
-        &mut env,
+        env,
         json!({"ok": true, "chatId": chat_id, "requestId": request_id}),
     )
 }
@@ -1347,6 +1446,7 @@ mod tests {
             working_directory: "/tmp".to_string(),
             max_tool_iterations: 32,
             reasoning: false,
+            image_input_supported: true,
             enable_compaction: true,
             compaction_reserve_tokens: Some(16_000),
             compaction_keep_recent_tokens: Some(8_000),

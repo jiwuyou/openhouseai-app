@@ -89,6 +89,13 @@ data class ResolvedRescueModelConfig(
     }
 }
 
+/** Legacy direct-media flags are not user-configurable in Rescue. */
+private fun ModelConfigData.withRescueMediaPolicy(): ModelConfigData = copy(
+    enableDirectImageProcessing = false,
+    enableDirectAudioProcessing = false,
+    enableDirectVideoProcessing = false,
+)
+
 internal fun ModelConfigData.withRescueDeepSeekApiKey(apiKey: String): ModelConfigData {
     val normalizedKey = apiKey.trim()
     require(normalizedKey.isNotEmpty()) { "DeepSeek API key must not be blank" }
@@ -200,9 +207,10 @@ class RescueModelConfigStore(context: Context) {
     }
 
     suspend fun save(config: ModelConfigData) {
-        validateDirectConfig(config)
+        val normalized = config.withRescueMediaPolicy()
+        validateDirectConfig(normalized)
         modelConfigManager.saveModelConfig(
-            config.copy(piModelBinding = null, legacyCloudBackup = null)
+            normalized.copy(piModelBinding = null, legacyCloudBackup = null)
         )
     }
 
@@ -217,7 +225,7 @@ class RescueModelConfigStore(context: Context) {
                 RescueModelConfigurationIssue.MISSING_CONFIGURATION,
                 "Configure a model before starting Rescue AI",
             )
-        val updated = current.withRescueDeepSeekApiKey(normalizedKey)
+        val updated = current.withRescueDeepSeekApiKey(normalizedKey).withRescueMediaPolicy()
         validateDirectConfig(updated)
         modelConfigManager.saveModelConfig(updated)
         updated
@@ -231,13 +239,19 @@ class RescueModelConfigStore(context: Context) {
                     RescueModelConfigurationIssue.MISSING_CONFIGURATION,
                     "Configure a model before starting Rescue AI",
                 )
-        return ResolvedRescueModelConfig(selection, config)
+        val normalized = config.withRescueMediaPolicy()
+        if (normalized != config) {
+            modelConfigManager.saveModelConfig(
+                normalized.copy(piModelBinding = null, legacyCloudBackup = null),
+            )
+        }
+        return ResolvedRescueModelConfig(selection, normalized)
     }
 
     suspend fun loadResolved(): ResolvedRescueModelConfig =
         loadActiveRegistryConfig().requireRunnable()
 
-    suspend fun load(): ModelConfigData = loadResolved().selectedConfig
+    suspend fun load(): ModelConfigData = loadResolved().selectedConfig.withRescueMediaPolicy()
 
     private fun persistSelection(configId: String, modelIndex: Int) {
         check(
