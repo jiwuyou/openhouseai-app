@@ -65,6 +65,19 @@ internal class EmbeddedWebPagePool(
         return true
     }
 
+    fun loadActiveUrlWithUserAgent(address: String, userAgent: String): Boolean {
+        val page = activePage ?: return false
+        page.webView.settings.userAgentString = userAgent
+        navigate(page, address)
+        return true
+    }
+
+    fun setActiveUserAgent(userAgent: String): Boolean {
+        val page = activePage ?: return false
+        page.webView.settings.userAgentString = userAgent
+        return true
+    }
+
     internal val retainedPageCount: Int
         get() = pages.size
 

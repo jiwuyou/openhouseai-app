@@ -26,9 +26,6 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -1541,9 +1538,12 @@ class OpenHouseActivity : AppCompatActivity() {
             if (WorkspaceDestination.normalizeId(args.componentId) != DEEPSEEK_API_KEYS_COMPONENT_ID) {
                 return false
             }
-            if (!isDeepSeekTopUpUrl(tab.url)) return false
-            showDeepSeekRechargeChooser(tab.url)
-            return true
+            if (isDeepSeekTopUpUrl(tab.url)) {
+                showDeepSeekRechargeChooser(tab.url)
+                return true
+            }
+            webPagePool.setActiveUserAgent(MOBILE_PAYMENT_USER_AGENT)
+            return false
         }
 
         override fun shouldOpenInside(args: ComponentWebLaunchArgs, uri: Uri): Boolean =
@@ -1597,52 +1597,10 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun showDeepSeekPaymentPage(url: String, desktop: Boolean) {
-        val webView = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.useWideViewPort = true
-            settings.loadWithOverviewMode = true
-            settings.textZoom = 100
-            if (desktop) {
-                settings.userAgentString = DESKTOP_PAYMENT_USER_AGENT
-            }
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(
-                    view: WebView?,
-                    request: WebResourceRequest?,
-                ): Boolean {
-                    val uri = request?.url ?: return false
-                    val scheme = uri.scheme.orEmpty().lowercase()
-                    if (scheme in setOf("alipays", "alipay", "weixin", "weixins")) {
-                        return runCatching {
-                            startActivity(Intent(Intent.ACTION_VIEW, uri))
-                            true
-                        }.getOrDefault(false)
-                    }
-                    return false
-                }
-            }
-        }
-        val webContainer = FrameLayout(this).apply {
-            addView(
-                webView,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    dp(560),
-                ),
-            )
-        }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(if (desktop) "微信充值" else "支付宝充值（推荐）")
-            .setView(webContainer)
-            .setPositiveButton("关闭", null)
-            .create()
-        dialog.setOnDismissListener {
-            webView.stopLoading()
-            webView.destroy()
-        }
-        dialog.show()
-        webView.loadUrl(url)
+        webPagePool.loadActiveUrlWithUserAgent(
+            address = url,
+            userAgent = if (desktop) DESKTOP_PAYMENT_USER_AGENT else MOBILE_PAYMENT_USER_AGENT,
+        )
     }
 
     private fun trimRetainedContents(keep: Int) {
@@ -1747,6 +1705,9 @@ class OpenHouseActivity : AppCompatActivity() {
         const val DESKTOP_PAYMENT_USER_AGENT =
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        const val MOBILE_PAYMENT_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
         const val MAX_RETAINED_NATIVE_CONTENTS = 2
     }
 }
