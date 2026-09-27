@@ -1572,24 +1572,28 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun showDeepSeekRechargeChooser(url: String) {
+        lateinit var chooser: AlertDialog
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), 0, dp(8), 0)
         }
         panel.addView(body("两个选项都会打开同一个 DeepSeek 充值页面。"))
         panel.addView(actionButton("支付宝充值（推荐）") {
+            chooser.dismiss()
             showDeepSeekPaymentPage(url, desktop = false)
         })
         panel.addView(body("使用手机页面，可尝试直接跳转支付宝。"))
         panel.addView(actionButton("微信充值") {
+            chooser.dismiss()
             showDeepSeekPaymentPage(url, desktop = true)
         })
         panel.addView(body("使用桌面版页面。点击“去支付”后截屏二维码，再使用微信扫一扫从相册识别。"))
-        AlertDialog.Builder(this)
+        chooser = AlertDialog.Builder(this)
             .setTitle("选择充值方式")
             .setView(panel)
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+        chooser.show()
     }
 
     private fun showDeepSeekPaymentPage(url: String, desktop: Boolean) {
