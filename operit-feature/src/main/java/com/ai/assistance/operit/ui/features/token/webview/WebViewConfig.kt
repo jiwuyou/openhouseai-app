@@ -15,9 +15,19 @@ import android.webkit.WebViewClient
 
 /** WebView配置相关工具类 */
 object WebViewConfig {
+    const val MOBILE_USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+    const val DESKTOP_USER_AGENT =
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
     /** 创建一个预配置的WebView实例 */
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
-    fun createWebView(context: Context): WebView {
+    fun createWebView(
+        context: Context,
+        userAgent: String = MOBILE_USER_AGENT,
+    ): WebView {
         // Initialize the WebView
         return WebView(context).apply {
             // Configure WebView settings
@@ -41,8 +51,9 @@ object WebViewConfig {
                 setSupportMultipleWindows(true)
                 javaScriptCanOpenWindowsAutomatically = true
 
-                // 设置一个常见的移动浏览器User-Agent，以避免被某些服务（如Google登录）阻止
-                userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+                // 充值页面可传入桌面 User-Agent；普通页面默认使用移动 User-Agent。
+                userAgentString = userAgent
+                textZoom = 100
 
                 // 启用缩放控制
                 setSupportZoom(true)
@@ -113,7 +124,7 @@ object WebViewConfig {
                             isUserGesture: Boolean,
                             resultMsg: android.os.Message?
                         ): Boolean {
-                            val newWebView = WebView(view?.context ?: return false)
+                            val newWebView = WebViewConfig.createWebView(view?.context ?: return false, userAgent)
                             newWebView.webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(
                                     w: WebView?,

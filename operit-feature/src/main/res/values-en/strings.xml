@@ -7140,6 +7140,12 @@
     <string name="url_config_usage">Usage</string>
     <string name="url_config_top_up">Top Up</string>
     <string name="url_config_profile">Profile</string>
+    <string name="deepseek_recharge_choose_method">Choose a recharge method</string>
+    <string name="deepseek_recharge_same_page_hint">Both options open the same DeepSeek recharge page.</string>
+    <string name="deepseek_alipay_recharge">Recharge with Alipay (Recommended)</string>
+    <string name="deepseek_alipay_recharge_description">Use the mobile page. It may open Alipay directly.</string>
+    <string name="deepseek_wechat_recharge">Recharge with WeChat</string>
+    <string name="deepseek_wechat_recharge_description">Use the desktop page. Tap “Pay” first, then screenshot the QR code and scan it from your WeChat gallery.</string>
 
     <!-- FloatingChatService -->
     <string name="floating_chat_window_title">AI Assistant Floating Window</string>

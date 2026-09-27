@@ -7578,6 +7578,12 @@
     <string name="url_config_usage">用量</string>
     <string name="url_config_top_up">充值</string>
     <string name="url_config_profile">个人资料</string>
+    <string name="deepseek_recharge_choose_method">选择充值方式</string>
+    <string name="deepseek_recharge_same_page_hint">两个选项都会打开同一个 DeepSeek 充值页面。</string>
+    <string name="deepseek_alipay_recharge">支付宝充值（推荐）</string>
+    <string name="deepseek_alipay_recharge_description">使用手机页面，可尝试直接跳转支付宝。</string>
+    <string name="deepseek_wechat_recharge">微信充值</string>
+    <string name="deepseek_wechat_recharge_description">使用桌面版页面。点击“去支付”后截屏二维码，再使用微信扫一扫从相册识别。</string>
 
     <!-- FloatingChatService -->
     <string name="floating_chat_window_title">AI助手悬浮窗</string>
