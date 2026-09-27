@@ -1623,9 +1623,18 @@ class OpenHouseActivity : AppCompatActivity() {
                 }
             }
         }
+        val webContainer = FrameLayout(this).apply {
+            addView(
+                webView,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    dp(560),
+                ),
+            )
+        }
         val dialog = AlertDialog.Builder(this)
             .setTitle(if (desktop) "微信充值" else "支付宝充值（推荐）")
-            .setView(webView)
+            .setView(webContainer)
             .setPositiveButton("关闭", null)
             .create()
         dialog.setOnDismissListener {
