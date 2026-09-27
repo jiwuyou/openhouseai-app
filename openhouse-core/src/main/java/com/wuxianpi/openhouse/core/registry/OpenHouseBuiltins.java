@@ -20,17 +20,19 @@ public final class OpenHouseBuiltins {
     public static final String SETTINGS_ID = "settings";
     public static final String ABOUT_ID = "about-wuxianpi";
     public static final String SHARED_BROWSER_ID = "shared-browser";
+    public static final String FIRST_USE_ID = "openhouse.first-use";
 
     // These are the fixed entries supplied by the core registry. Host-specific entries such as
     // the shared browser are reserved separately because their Activity class is host-owned.
     private static final Set<String> PROTECTED_IDS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
         DESKTOP_ID, BASIC_ID, ADVANCED_ID, REPAIR_ID, TERMINAL_ID, FILES_ID,
-        SERVICE_CONTROL_ID, SETUP_ID, PERMISSIONS_ID, SETTINGS_ID, ABOUT_ID
+        SERVICE_CONTROL_ID, SETUP_ID, PERMISSIONS_ID, SETTINGS_ID, ABOUT_ID, FIRST_USE_ID
     )));
 
     private static final Set<String> RESERVED_IDS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
         DESKTOP_ID, BASIC_ID, ADVANCED_ID, REPAIR_ID, TERMINAL_ID, FILES_ID,
-        SERVICE_CONTROL_ID, SETUP_ID, PERMISSIONS_ID, SETTINGS_ID, ABOUT_ID, SHARED_BROWSER_ID
+        SERVICE_CONTROL_ID, SETUP_ID, PERMISSIONS_ID, SETTINGS_ID, ABOUT_ID, SHARED_BROWSER_ID,
+        FIRST_USE_ID
     )));
 
     private OpenHouseBuiltins() {}
@@ -44,6 +46,7 @@ public final class OpenHouseBuiltins {
         values.add(nativeRoute(BASIC_ID, "基础模式", "Operit UI 与主 Node Pi Runtime", "ai", 10, "brain"));
         values.add(nativeRoute(ADVANCED_ID, "高级 UI", "完整 Web 工作台", "ai", 20, "sparkles"));
         values.add(nativeRoute(REPAIR_ID, "维修模式", "独立诊断与修复", "tools", 30, "wrench"));
+        values.add(nativeRoute(FIRST_USE_ID, "首次使用", "配置维修助手并开始首次安装", "apps", 5, "sparkles"));
         values.add(new OpenHouseComponent(TERMINAL_ID, "终端", "打开 Termux 命令行",
             "tools", 35, "terminal", "终", 35, false, true, true,
             OpenHouseComponent.EntryType.TERMINAL, "", "", "", "", true,

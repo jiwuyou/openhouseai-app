@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.StartupTarget
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponentParser
+import com.wuxianpi.openhouse.core.registry.OpenHouseBuiltins
 import com.wuxianpi.openhouse.core.registry.RegistryManifest
 import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import org.junit.Assert.assertEquals
@@ -51,6 +52,17 @@ class StartupRouteStoreTest {
         store.setShowManualHint(false)
 
         assertFalse(StartupRouteStore(context).showManualHint())
+    }
+
+    @Test
+    fun newInstallStartsAtFirstUsePage() {
+        val store = StartupRouteStore(context)
+        store.initializeFirstUseHomeForNewInstall()
+
+        assertEquals(
+            WorkspaceDestination.Component(OpenHouseBuiltins.FIRST_USE_ID),
+            store.resolveDestination(OpenHouseBuiltins.components()),
+        )
     }
 
     @Test

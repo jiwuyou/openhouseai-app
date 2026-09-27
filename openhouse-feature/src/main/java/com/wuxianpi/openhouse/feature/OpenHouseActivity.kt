@@ -35,6 +35,7 @@ import androidx.lifecycle.Lifecycle
 import com.wuxianpi.openhouse.core.HostEdition
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.StartupTarget
+import com.wuxianpi.openhouse.core.registry.OpenHouseBuiltins
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.core.workspace.ComponentServiceSummary
 import com.wuxianpi.openhouse.core.workspace.ComponentWebResolution
@@ -104,6 +105,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private var rescueStateReceiverRegistered = false
     private var componentServiceStates: Map<String, ComponentServiceSummary> = emptyMap()
     private var pendingServiceActionIds: Set<String> = emptySet()
+    private var pendingComponentTabSelection: Pair<String, Int>? = null
     private var drawerVisible = false
     private var serviceRefreshGeneration = 0L
     private var setupAttention: OpenHouseSetupAttention? = null
@@ -128,6 +130,7 @@ class OpenHouseActivity : AppCompatActivity() {
         registerRescueStateReceiver()
         layoutStore = DesktopLayoutStore(this)
         startupStore = StartupRouteStore(this)
+        startupStore.initializeFirstUseHomeForNewInstall()
         workspacePreferences = WorkspacePreferenceStore(this)
         pageRegistry = BuiltInPageRegistry(this)
         floatingWindowStore = FloatingWindowStore(this)
@@ -502,7 +505,9 @@ class OpenHouseActivity : AppCompatActivity() {
 
     private fun isHomeEligible(destination: WorkspaceDestination): Boolean = when (destination) {
         WorkspaceDestination.Desktop -> true
-        is WorkspaceDestination.Component -> findWorkspaceComponent(destination.normalizedComponentId) != null
+        is WorkspaceDestination.Component ->
+            destination.normalizedComponentId != FIRST_USE_COMPONENT_ID &&
+                findWorkspaceComponent(destination.normalizedComponentId) != null
         is WorkspaceDestination.Route -> destination.route == ProductRoute.BASIC || destination.route == ProductRoute.ADVANCED
     }
 
@@ -676,7 +681,9 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun findWorkspaceComponent(normalizedId: String): OpenHouseComponent? =
-        registryComponents.firstOrNull { component ->
+        if (normalizedId == FIRST_USE_COMPONENT_ID) {
+            OpenHouseBuiltins.components().firstOrNull { it.id == FIRST_USE_COMPONENT_ID }
+        } else registryComponents.firstOrNull { component ->
             component.visible && component.hasEntry() &&
                 WorkspaceDestination.normalizeId(component.id) == normalizedId
         }
@@ -802,6 +809,10 @@ class OpenHouseActivity : AppCompatActivity() {
 
     private fun openWorkspaceComponent(component: OpenHouseComponent) {
         drawer.closeDrawer(GravityCompat.START)
+        if (WorkspaceDestination.normalizeId(component.id) == FIRST_USE_COMPONENT_ID) {
+            showFirstUsePage()
+            return
+        }
         if (component.entryType != OpenHouseComponent.EntryType.WEBVIEW) {
             host.launchDynamicComponent(this, component)
             return
@@ -853,8 +864,51 @@ class OpenHouseActivity : AppCompatActivity() {
             ),
             webHost,
         )
+        pendingComponentTabSelection
+            ?.takeIf { it.first == destination.normalizedComponentId }
+            ?.let { (_, index) ->
+                webPagePool.selectActiveTab(index)
+                pendingComponentTabSelection = null
+            }
         updateWebToolbarActions()
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) webPagePool.onResume()
+    }
+
+    private fun showFirstUsePage() {
+        val destination = WorkspaceDestination.Component(FIRST_USE_COMPONENT_ID)
+        workspaceNavigator.navigate(destination)
+        currentRoute = ProductRoute.DESKTOP
+        startupStore.recordLast(destination)
+        title.setText(R.string.oh_first_use)
+        doneEditing.visibility = View.GONE
+        setWebToolbarMode(false)
+        desktopView = null
+        pauseWorkspaceContent()
+        webPagePool.onPause()
+        content.removeAllViews()
+        content.addView(
+            FirstUsePageView(
+                context = this,
+                callbacks = object : FirstUsePageView.Callbacks {
+                    override fun onOpenDeepSeekApiKeys() = openDeepSeekApiKeysPage()
+                    override fun onOpenRescue() =
+                        host.launchAiMode(this@OpenHouseActivity, ProductRoute.REPAIR)
+                },
+            ),
+            matchFrame(),
+        )
+        updateSetCurrentHomeButton()
+    }
+
+    private fun openDeepSeekApiKeysPage() {
+        val componentId = DEEPSEEK_API_KEYS_COMPONENT_ID
+        val tabs = pageRegistry.tabsFor(componentId)
+        val index = tabs.indexOfFirst { tab ->
+            tab.title.contains("API", ignoreCase = true) ||
+                tab.url.substringBefore('?').trimEnd('/').endsWith("/api_keys")
+        }
+        pendingComponentTabSelection = if (index >= 0) componentId to index else null
+        openComponentAfterRefresh(componentId)
     }
 
     private fun showEditDialog(appId: String) {
@@ -1595,6 +1649,8 @@ class OpenHouseActivity : AppCompatActivity() {
         const val REGISTRY_REFRESH_DEBOUNCE_MS = 750L
         const val SERVICE_STATE_POLL_MS = 900L
         const val RESCUE_SHUTDOWN_RECHECK_MS = 1_500L
+        const val FIRST_USE_COMPONENT_ID = "openhouse.first-use"
+        const val DEEPSEEK_API_KEYS_COMPONENT_ID = "openhouse.api-keys"
         const val MAX_RETAINED_NATIVE_CONTENTS = 2
     }
 }

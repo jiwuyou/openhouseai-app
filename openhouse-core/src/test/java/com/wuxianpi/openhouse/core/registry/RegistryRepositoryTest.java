@@ -120,7 +120,7 @@ public class RegistryRepositoryTest {
 
     private static void assertAllFixedEntries(RegistrySnapshot snapshot) {
         for (String id : OpenHouseBuiltins.protectedIds()) assertNotNull(id, snapshot.find(id));
-        assertEquals(11, OpenHouseBuiltins.protectedIds().size());
+        assertEquals(12, OpenHouseBuiltins.protectedIds().size());
         OpenHouseComponent about = snapshot.find(OpenHouseBuiltins.ABOUT_ID);
         assertEquals("关于 OpenHouse", about.title);
         assertEquals(OpenHouseComponent.EntryType.NATIVE_PAGE, about.entryType);

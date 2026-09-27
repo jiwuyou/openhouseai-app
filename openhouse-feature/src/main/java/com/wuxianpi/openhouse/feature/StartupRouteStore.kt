@@ -26,6 +26,11 @@ class StartupRouteStore internal constructor(
         migrateLegacyPreferences(context.applicationContext)
     }
 
+    fun initializeFirstUseHomeForNewInstall() {
+        if (preferences.all.isNotEmpty()) return
+        setHomeDestination(WorkspaceDestination.Component(OpenHouseBuiltins.FIRST_USE_ID))
+    }
+
     fun selection(): StartupSelection {
         preferences.getString(KEY_DESTINATION, null)?.let(::parseSelection)?.let { return it }
         if (!preferences.contains(KEY_TARGET)) return StartupSelection.Automatic
@@ -143,7 +148,7 @@ class StartupRouteStore internal constructor(
             it.route in supportedRoutes && capabilities.supports(it.route)
         }
         is WorkspaceDestination.Component -> destination.takeIf { target ->
-            components.any { component ->
+            target.normalizedComponentId == OpenHouseBuiltins.FIRST_USE_ID || components.any { component ->
                 component.visible && component.hasEntry() &&
                     WorkspaceDestination.normalizeId(component.id) == target.normalizedComponentId
             }

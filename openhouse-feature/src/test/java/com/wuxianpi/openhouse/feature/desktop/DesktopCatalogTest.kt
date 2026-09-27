@@ -14,13 +14,15 @@ class DesktopCatalogTest {
         val merged = DesktopCatalog.merge(listOf(dynamic))
         val ids = merged.map { it.id }
 
-        assertEquals(OpenHouseBuiltins.components().size - 3, merged.size)
+        assertEquals(OpenHouseBuiltins.components().size - 4, merged.size)
         assertTrue(DesktopCatalog.fixed().all { it.id in ids })
         assertTrue(DesktopCatalog.ID_BASIC !in ids)
         assertTrue(DesktopCatalog.ID_ADVANCED !in ids)
         assertTrue(OpenHouseBuiltins.SETUP_ID !in ids)
         assertTrue(DesktopCatalog.isProtected(DesktopCatalog.ID_BASIC))
         assertTrue(DesktopCatalog.isProtected(OpenHouseBuiltins.SETUP_ID))
+        assertTrue(OpenHouseBuiltins.FIRST_USE_ID !in ids)
+        assertTrue(DesktopCatalog.isProtected(OpenHouseBuiltins.FIRST_USE_ID))
         assertEquals(
             OpenHouseComponent.EntryType.TERMINAL,
             merged.first { it.id == DesktopCatalog.ID_TERMINAL }.source.entryType,

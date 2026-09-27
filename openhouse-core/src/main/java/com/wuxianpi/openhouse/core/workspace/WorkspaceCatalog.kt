@@ -35,6 +35,12 @@ object WorkspaceCatalog {
             }
         }
 
+        builtins[OpenHouseBuiltins.FIRST_USE_ID]?.let { component ->
+            entries += component.toWorkspaceEntry(
+                WorkspaceDestination.Component(OpenHouseBuiltins.FIRST_USE_ID)
+            )
+        }
+
         val seen = OpenHouseBuiltins.protectedIds()
             .mapTo(linkedSetOf(), WorkspaceDestination::normalizeId)
         dynamicComponents.orEmpty()

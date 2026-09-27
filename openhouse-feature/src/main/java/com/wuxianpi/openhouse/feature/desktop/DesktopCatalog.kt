@@ -35,6 +35,7 @@ object DesktopCatalog {
         OpenHouseBuiltins.SETUP_ID,
         ID_BASIC,
         ID_ADVANCED,
+        OpenHouseBuiltins.FIRST_USE_ID,
     )
 
     private val fixedEntries = OpenHouseBuiltins.components()

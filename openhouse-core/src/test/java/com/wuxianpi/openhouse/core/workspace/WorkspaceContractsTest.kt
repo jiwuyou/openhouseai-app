@@ -4,6 +4,7 @@ import com.wuxianpi.openhouse.core.HostCapabilities
 import com.wuxianpi.openhouse.core.ProductRoute
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponent
 import com.wuxianpi.openhouse.core.registry.OpenHouseComponentParser
+import com.wuxianpi.openhouse.core.registry.OpenHouseBuiltins
 import com.wuxianpi.openhouse.core.registry.RegistryManifest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -93,6 +94,9 @@ class WorkspaceContractsTest {
         )
         assertTrue(entries.any { it.destination == WorkspaceDestination.Component("manual") })
         assertFalse(entries.any { it.destination == WorkspaceDestination.Component("hidden") })
+        assertTrue(entries.any {
+            it.destination == WorkspaceDestination.Component(OpenHouseBuiltins.FIRST_USE_ID)
+        })
     }
 
     @Test
