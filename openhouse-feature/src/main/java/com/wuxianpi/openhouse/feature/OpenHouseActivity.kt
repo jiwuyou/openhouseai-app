@@ -26,6 +26,9 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -1534,6 +1537,15 @@ class OpenHouseActivity : AppCompatActivity() {
             Toast.makeText(this@OpenHouseActivity, R.string.oh_address_copied, Toast.LENGTH_SHORT).show()
         }
 
+        override fun onTabSelected(args: ComponentWebLaunchArgs, tab: ComponentWebTab): Boolean {
+            if (WorkspaceDestination.normalizeId(args.componentId) != DEEPSEEK_API_KEYS_COMPONENT_ID) {
+                return false
+            }
+            if (!isDeepSeekTopUpUrl(tab.url)) return false
+            showDeepSeekRechargeChooser(tab.url)
+            return true
+        }
+
         override fun shouldOpenInside(args: ComponentWebLaunchArgs, uri: Uri): Boolean =
             pageRegistry.canOpenInside(args.componentId, uri)
     }
@@ -1550,6 +1562,74 @@ class OpenHouseActivity : AppCompatActivity() {
     private fun pauseWorkspaceContent() {
         activeWorkspaceContent?.onPause()
         activeWorkspaceContent = null
+    }
+
+    private fun isDeepSeekTopUpUrl(url: String): Boolean {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+        return uri.scheme.equals("https", ignoreCase = true) &&
+            uri.host.equals("platform.deepseek.com", ignoreCase = true) &&
+            uri.path.orEmpty().trimEnd('/') == "/top_up"
+    }
+
+    private fun showDeepSeekRechargeChooser(url: String) {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), 0, dp(8), 0)
+        }
+        panel.addView(body("两个选项都会打开同一个 DeepSeek 充值页面。"))
+        panel.addView(actionButton("支付宝充值（推荐）") {
+            showDeepSeekPaymentPage(url, desktop = false)
+        })
+        panel.addView(body("使用手机页面，可尝试直接跳转支付宝。"))
+        panel.addView(actionButton("微信充值") {
+            showDeepSeekPaymentPage(url, desktop = true)
+        })
+        panel.addView(body("使用桌面版页面。点击“去支付”后截屏二维码，再使用微信扫一扫从相册识别。"))
+        AlertDialog.Builder(this)
+            .setTitle("选择充值方式")
+            .setView(panel)
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showDeepSeekPaymentPage(url: String, desktop: Boolean) {
+        val webView = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+            settings.textZoom = 100
+            if (desktop) {
+                settings.userAgentString = DESKTOP_PAYMENT_USER_AGENT
+            }
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                ): Boolean {
+                    val uri = request?.url ?: return false
+                    val scheme = uri.scheme.orEmpty().lowercase()
+                    if (scheme in setOf("alipays", "alipay", "weixin", "weixins")) {
+                        return runCatching {
+                            startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            true
+                        }.getOrDefault(false)
+                    }
+                    return false
+                }
+            }
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(if (desktop) "微信充值" else "支付宝充值（推荐）")
+            .setView(webView)
+            .setPositiveButton("关闭", null)
+            .create()
+        dialog.setOnDismissListener {
+            webView.stopLoading()
+            webView.destroy()
+        }
+        dialog.show()
+        webView.loadUrl(url)
     }
 
     private fun trimRetainedContents(keep: Int) {
@@ -1651,6 +1731,9 @@ class OpenHouseActivity : AppCompatActivity() {
         const val RESCUE_SHUTDOWN_RECHECK_MS = 1_500L
         const val FIRST_USE_COMPONENT_ID = "openhouse.first-use"
         const val DEEPSEEK_API_KEYS_COMPONENT_ID = "openhouse.api-keys"
+        const val DESKTOP_PAYMENT_USER_AGENT =
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         const val MAX_RETAINED_NATIVE_CONTENTS = 2
     }
 }

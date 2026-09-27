@@ -40,6 +40,7 @@ internal class EmbeddedWebPagePool(
         fun onOpenExternal(uri: Uri) = Unit
         fun onCopyAddress(args: ComponentWebLaunchArgs, address: String) = Unit
         fun shouldOpenInside(args: ComponentWebLaunchArgs, uri: Uri): Boolean = true
+        fun onTabSelected(args: ComponentWebLaunchArgs, tab: com.wuxianpi.openhouse.feature.ComponentWebTab): Boolean = false
     }
 
     private val pages = LinkedHashMap<String, PageRecord>()
@@ -427,7 +428,11 @@ internal class EmbeddedWebPagePool(
                 textSize = 13f
                 alpha = if (currentUrl == tabUrl) 1f else 0.72f
                 setBackgroundResource(R.drawable.oh_button_background)
-                setOnClickListener { navigate(page, tabUrl) }
+                setOnClickListener {
+                    if (!callbacks.onTabSelected(page.args, tab)) {
+                        navigate(page, tabUrl)
+                    }
+                }
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     dp(42),
