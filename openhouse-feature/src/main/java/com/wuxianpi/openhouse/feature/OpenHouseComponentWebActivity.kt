@@ -33,13 +33,15 @@ class OpenHouseComponentWebActivity : AppCompatActivity() {
     private lateinit var floatingWindowStore: FloatingWindowStore
     private lateinit var drawer: DrawerLayout
     private lateinit var pageRefreshDrawer: PageRefreshDrawerController
+    private lateinit var webFileChooserController: WebFileChooserController
     private var returnToSmallAppUrl: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_component_web)
         host = OpenHouseFeatureHosts.from(this)
-        pagePool = EmbeddedWebPagePool(this, pageCallbacks())
+        webFileChooserController = WebFileChooserController(this)
+        pagePool = EmbeddedWebPagePool(this, pageCallbacks(), webFileChooserController)
         floatingWindowStore = FloatingWindowStore(this)
         bindViews()
         floatingWebViewHost = FloatingWebViewHost(
@@ -78,6 +80,7 @@ class OpenHouseComponentWebActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         pagePool.destroy()
+        webFileChooserController.cancelWebFileChooser()
         floatingWebViewHost.dispose()
         super.onDestroy()
     }

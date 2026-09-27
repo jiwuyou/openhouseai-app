@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
+import android.webkit.WebChromeClient
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -25,12 +26,14 @@ import com.wuxianpi.openhouse.core.workspace.WorkspaceDestination
 import com.wuxianpi.openhouse.feature.ComponentWebLaunchArgs
 import com.wuxianpi.openhouse.feature.ComponentWebLoadPhase
 import com.wuxianpi.openhouse.feature.ComponentWebPageState
+import com.wuxianpi.openhouse.feature.WebFileChooserHost
 import com.wuxianpi.openhouse.feature.R
 
 /** Shared, bounded WebView pool used by both the workspace and legacy Web Activity. */
 internal class EmbeddedWebPagePool(
     private val context: android.content.Context,
     private val callbacks: Callbacks,
+    private val fileChooserHost: WebFileChooserHost? = null,
     private val maxRetainedPages: Int = DEFAULT_MAX_RETAINED_PAGES,
 ) {
     interface Callbacks {
@@ -339,6 +342,22 @@ internal class EmbeddedWebPagePool(
                 } else {
                     true
                 }
+        }
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                view: WebView?,
+                filePathCallback: android.webkit.ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?,
+            ): Boolean {
+                if (filePathCallback == null || fileChooserParams == null) return false
+                val host = fileChooserHost
+                if (host == null) {
+                    filePathCallback.onReceiveValue(null)
+                    return false
+                }
+                host.launchWebFileChooser(fileChooserParams, filePathCallback)
+                return true
+            }
         }
     }
 

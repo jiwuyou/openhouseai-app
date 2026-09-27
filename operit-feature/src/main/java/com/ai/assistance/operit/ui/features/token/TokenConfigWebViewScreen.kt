@@ -5,6 +5,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +60,7 @@ import com.ai.assistance.operit.ui.features.token.payment.DeepSeekPaymentMode
 import com.ai.assistance.operit.ui.features.token.payment.isDeepSeekTopUpPage
 import com.ai.assistance.operit.ui.features.token.preferences.UrlConfigManager
 import com.ai.assistance.operit.ui.features.token.webview.WebViewConfig
+import com.wuxianpi.openhouse.feature.WebFileChooserController
 import com.ai.assistance.operit.ui.main.LocalTopBarActions
 import com.ai.assistance.operit.ui.main.components.LocalAppBarContentColor
 import com.ai.assistance.operit.ui.main.components.LocalIsCurrentScreen
@@ -72,6 +74,9 @@ fun TokenConfigWebViewScreen(onNavigateBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val urlConfigManager = remember { UrlConfigManager(context) }
+    val fileChooserHost = remember(context) {
+        (context as? ComponentActivity)?.let(::WebFileChooserController)
+    }
     val urlConfig by urlConfigManager.urlConfigFlow.collectAsState(
         initial = com.ai.assistance.operit.ui.features.token.model.UrlConfig()
     )
@@ -85,7 +90,7 @@ fun TokenConfigWebViewScreen(onNavigateBack: () -> Unit) {
     var paymentWebView by remember { mutableStateOf<WebView?>(null) }
     val currentPaymentWebView by rememberUpdatedState(paymentWebView)
 
-    val webView = remember { WebViewConfig.createWebView(context) }
+    val webView = remember { WebViewConfig.createWebView(context, fileChooserHost = fileChooserHost) }
     val navDestinations = remember(urlConfig) {
         urlConfig.tabs.take(4).mapIndexed { index, tabConfig ->
             NavDestination(
@@ -163,7 +168,7 @@ fun TokenConfigWebViewScreen(onNavigateBack: () -> Unit) {
             DeepSeekPaymentMode.MOBILE -> WebViewConfig.MOBILE_USER_AGENT
             DeepSeekPaymentMode.DESKTOP -> WebViewConfig.DESKTOP_USER_AGENT
         }
-        val view = WebViewConfig.createWebView(context, userAgent)
+        val view = WebViewConfig.createWebView(context, userAgent, fileChooserHost)
         view.webViewClient = createWebViewClient(
             onLoadingChanged = { isPaymentLoading = it },
         )

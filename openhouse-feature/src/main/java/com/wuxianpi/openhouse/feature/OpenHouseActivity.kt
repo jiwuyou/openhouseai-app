@@ -87,6 +87,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var floatingWindowStore: FloatingWindowStore
     private lateinit var floatingWebViewHost: FloatingWebViewHost
     private lateinit var pageRefreshDrawer: PageRefreshDrawerController
+    private lateinit var webFileChooserController: WebFileChooserController
     private lateinit var pageRegistry: BuiltInPageRegistry
     private val workspaceNavigator = WorkspaceNavigator()
     private val retainedContents = LinkedHashMap<String, WorkspaceContent>()
@@ -206,6 +207,7 @@ class OpenHouseActivity : AppCompatActivity() {
         residency.onDestroy()
         pageRegistry.close()
         floatingWebViewHost.dispose()
+        webFileChooserController.cancelWebFileChooser()
         releaseDesktopResources()
         super.onDestroy()
     }
@@ -281,7 +283,8 @@ class OpenHouseActivity : AppCompatActivity() {
                 setComponentServicesRunning(entry.component, running)
             },
         )
-        webPagePool = EmbeddedWebPagePool(this, workspaceWebCallbacks())
+        webFileChooserController = WebFileChooserController(this)
+        webPagePool = EmbeddedWebPagePool(this, workspaceWebCallbacks(), webFileChooserController)
         pageRefreshDrawer = PageRefreshDrawerController(drawer, webPagePool)
         webToolbarController = CollapsibleWebToolbarController(
             context = this,

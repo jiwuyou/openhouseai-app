@@ -12,6 +12,8 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.ValueCallback
+import com.wuxianpi.openhouse.feature.WebFileChooserHost
 
 /** WebView配置相关工具类 */
 object WebViewConfig {
@@ -27,6 +29,7 @@ object WebViewConfig {
     fun createWebView(
         context: Context,
         userAgent: String = MOBILE_USER_AGENT,
+        fileChooserHost: WebFileChooserHost? = null,
     ): WebView {
         // Initialize the WebView
         return WebView(context).apply {
@@ -118,13 +121,32 @@ object WebViewConfig {
             // Add console logger
             setWebChromeClient(
                     object : WebChromeClient() {
+                        override fun onShowFileChooser(
+                            view: WebView?,
+                            filePathCallback: ValueCallback<Array<android.net.Uri>>?,
+                            fileChooserParams: FileChooserParams?,
+                        ): Boolean {
+                            if (filePathCallback == null || fileChooserParams == null) return false
+                            val host = fileChooserHost
+                            if (host == null) {
+                                filePathCallback.onReceiveValue(null)
+                                return false
+                            }
+                            host.launchWebFileChooser(fileChooserParams, filePathCallback)
+                            return true
+                        }
+
                         override fun onCreateWindow(
                             view: WebView?,
                             isDialog: Boolean,
                             isUserGesture: Boolean,
                             resultMsg: android.os.Message?
                         ): Boolean {
-                            val newWebView = WebViewConfig.createWebView(view?.context ?: return false, userAgent)
+                            val newWebView = WebViewConfig.createWebView(
+                                view?.context ?: return false,
+                                userAgent,
+                                fileChooserHost,
+                            )
                             newWebView.webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(
                                     w: WebView?,
