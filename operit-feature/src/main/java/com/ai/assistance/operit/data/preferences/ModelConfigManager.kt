@@ -74,6 +74,7 @@ class ModelConfigManager(
         const val DEFAULT_CONFIG_ID = "default"
         const val DEFAULT_CONFIG_NAME = "model_config_default_name"
         const val PI_RUNTIME_PROVIDER_TYPE_ID = "PI_RUNTIME"
+        const val RESCUE_DEFAULT_MODEL_NAME = "deepseek-flash"
 
     }
 
@@ -117,8 +118,10 @@ class ModelConfigManager(
             return ModelConfigData(
                     id = DEFAULT_CONFIG_ID,
                     name = context.getString(R.string.model_config_default_name),
-                    apiProviderType = ApiProviderType.OPENAI_GENERIC,
-                    apiProviderTypeId = ApiProviderType.OPENAI_GENERIC.name,
+                    apiProviderType = ApiProviderType.DEEPSEEK,
+                    apiProviderTypeId = ApiProviderType.DEEPSEEK.name,
+                    apiEndpoint = ApiPreferences.DEFAULT_API_ENDPOINT,
+                    modelName = RESCUE_DEFAULT_MODEL_NAME,
                     contextLength = 256.0f,
                     maxContextLength = 256.0f,
                     enableSummaryByMessageCount = false,

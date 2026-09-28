@@ -94,7 +94,8 @@ fun ModelApiSettingsSection(
         customHeadersDraft: String = config.customHeaders,
         modelParametersDraft: List<ModelParameter<*>>? = null,
         onDraftChanged: (ModelConfigData) -> Unit = {},
-        navigateToMnnModelDownload: (() -> Unit)? = null
+        navigateToMnnModelDownload: (() -> Unit)? = null,
+        showAdvancedSettings: Boolean = true,
 ) {
     val isRescueWorkspace =
         LocalOperitWorkspaceIdentity.current.runtimeSlot == ChatRuntimeSlot.RESCUE
@@ -114,6 +115,7 @@ fun ModelApiSettingsSection(
             modelParametersDraft = modelParametersDraft,
             onDraftChanged = onDraftChanged,
             navigateToMnnModelDownload = navigateToMnnModelDownload,
+            showAdvancedSettings = showAdvancedSettings,
         )
     }
 }
@@ -128,7 +130,8 @@ private fun LocalModelApiSettingsSection(
         customHeadersDraft: String,
         modelParametersDraft: List<ModelParameter<*>>?,
         onDraftChanged: (ModelConfigData) -> Unit,
-        navigateToMnnModelDownload: (() -> Unit)? = null
+        navigateToMnnModelDownload: (() -> Unit)? = null,
+        showAdvancedSettings: Boolean = true,
 ) {
     val context = LocalContext.current
     val isRescueWorkspace =
@@ -877,13 +880,14 @@ private fun LocalModelApiSettingsSection(
                     )
             }
 
-            // Tool Call 开关
-            SettingsSwitchRow(
-                title = stringResource(R.string.enable_tool_call),
-                subtitle = stringResource(R.string.enable_tool_call_desc),
-                checked = enableToolCallInput,
-                onCheckedChange = { enableToolCallInput = it }
-            )
+            if (showAdvancedSettings) {
+                SettingsSwitchRow(
+                    title = stringResource(R.string.enable_tool_call),
+                    subtitle = stringResource(R.string.enable_tool_call_desc),
+                    checked = enableToolCallInput,
+                    onCheckedChange = { enableToolCallInput = it }
+                )
+            }
 
         }
     }

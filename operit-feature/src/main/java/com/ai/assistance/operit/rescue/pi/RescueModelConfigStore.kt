@@ -110,9 +110,9 @@ internal fun ModelConfigData.withRescueDeepSeekApiKey(apiKey: String): ModelConf
             ApiPreferences.DEFAULT_API_ENDPOINT
         },
         modelName = if (alreadyDeepSeek) {
-            modelName.ifBlank { ApiPreferences.DEFAULT_MODEL_NAME }
+            modelName.ifBlank { ModelConfigManager.RESCUE_DEFAULT_MODEL_NAME }
         } else {
-            ApiPreferences.DEFAULT_MODEL_NAME
+            ModelConfigManager.RESCUE_DEFAULT_MODEL_NAME
         },
         apiProviderType = ApiProviderType.DEEPSEEK,
         apiProviderTypeId = ApiProviderType.DEEPSEEK.name,

@@ -191,6 +191,11 @@ fun ModelConfigScreen(
     var selectedHeadersDraft by remember { mutableStateOf<String?>(null) }
     var selectedParametersDraft by remember { mutableStateOf<List<ModelParameter<*>>?>(null) }
     var rescueRegistryReady by remember { mutableStateOf(false) }
+    var showRescueAdvancedSettings by rememberSaveable(selectedConfigId) { mutableStateOf(false) }
+
+    LaunchedEffect(selectedConfigId) {
+        showRescueAdvancedSettings = false
+    }
 
     // 初始化配置，并默认定位到“对话功能模型”所使用的配置
     LaunchedEffect(Unit) {
@@ -698,55 +703,92 @@ fun ModelConfigScreen(
                                 selectedApiDraft = draft
                             }
                         },
-                        navigateToMnnModelDownload = navigateToMnnModelDownload
+                        navigateToMnnModelDownload = navigateToMnnModelDownload,
+                        showAdvancedSettings = !rescueContext || showRescueAdvancedSettings,
                     )
                 }
 
-                item {
-                    ContextSummarySettingsSection(
-                        config = config,
-                        configManager = configManager,
-                        scope = scope,
-                        showNotification = { message -> showNotification(message) }
-                    )
-                }
-
-                item {
-                    ModelParametersSection(
-                        config = config,
-                        configManager = configManager,
-                        showNotification = { message -> showNotification(message) },
-                        onDraftChanged = { parameters ->
-                            if (rescueContext && config.id == selectedConfigId) {
-                                selectedParametersDraft = parameters
-                            }
-                        },
-                    )
-                }
-
-                if (rescueContext || config.usesAndroidLocalModelEngine()) {
+                if (rescueContext) {
                     item {
-                        CustomHeadersSettingsSection(
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            ),
+                            onClick = { showRescueAdvancedSettings = !showRescueAdvancedSettings },
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.rescue_more_settings),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Icon(
+                                    imageVector = if (showRescueAdvancedSettings) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = if (showRescueAdvancedSettings) {
+                                        stringResource(R.string.rescue_more_settings_collapse)
+                                    } else {
+                                        stringResource(R.string.rescue_more_settings_expand)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (!rescueContext || showRescueAdvancedSettings) {
+                    item {
+                        ContextSummarySettingsSection(
                             config = config,
                             configManager = configManager,
-                            saveCoordinator = saveCoordinator,
+                            scope = scope,
+                            showNotification = { message -> showNotification(message) }
+                        )
+                    }
+
+                    item {
+                        ModelParametersSection(
+                            config = config,
+                            configManager = configManager,
                             showNotification = { message -> showNotification(message) },
-                            onDraftChanged = { headersJson ->
-                                if (config.id == selectedConfigId) {
-                                    selectedHeadersDraft = headersJson
+                            onDraftChanged = { parameters ->
+                                if (rescueContext && config.id == selectedConfigId) {
+                                    selectedParametersDraft = parameters
                                 }
                             },
                         )
                     }
+
+                    if (rescueContext || config.usesAndroidLocalModelEngine()) {
+                        item {
+                            CustomHeadersSettingsSection(
+                                config = config,
+                                configManager = configManager,
+                                saveCoordinator = saveCoordinator,
+                                showNotification = { message -> showNotification(message) },
+                                onDraftChanged = { headersJson ->
+                                    if (config.id == selectedConfigId) {
+                                        selectedHeadersDraft = headersJson
+                                    }
+                                },
+                            )
+                        }
+                    }
+
+                    item {
+                        AdvancedSettingsSection(
+                            config = config,
+                            configManager = configManager,
+                            showNotification = { message -> showNotification(message) }
+                        )
+                    }
                 }
 
-                item {
-                    AdvancedSettingsSection(
-                        config = config,
-                        configManager = configManager,
-                        showNotification = { message -> showNotification(message) }
-                    )
-                }
             }
 
             if (showSaveSuccessMessage) {
