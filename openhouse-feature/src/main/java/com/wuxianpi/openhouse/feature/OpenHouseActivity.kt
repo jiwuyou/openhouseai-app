@@ -569,6 +569,10 @@ class OpenHouseActivity : AppCompatActivity() {
 
     private fun showApkResourceOfferIfNeeded() {
         if (isFinishing || isDestroyed) return
+        // The first-use app is the onboarding surface. Do not cover it with
+        // the legacy APK-resource dialog; the attention banner remains
+        // available after the user visits the desktop or another page.
+        if (workspaceNavigator.current == WorkspaceDestination.Component(FIRST_USE_COMPONENT_ID)) return
         val attention = host.setupAttention() ?: return
         val firstInstall = attention == OpenHouseSetupAttention.FIRST_INSTALL
         AlertDialog.Builder(this)
@@ -937,6 +941,9 @@ class OpenHouseActivity : AppCompatActivity() {
                     }
                     override fun onOpenRescue() =
                         host.launchAiMode(this@OpenHouseActivity, ProductRoute.REPAIR)
+                    override fun onOpenFloatingGuide() {
+                        if (::firstUseGuideOverlay.isInitialized) firstUseGuideOverlay.show()
+                    }
                 },
             ),
             matchFrame(),

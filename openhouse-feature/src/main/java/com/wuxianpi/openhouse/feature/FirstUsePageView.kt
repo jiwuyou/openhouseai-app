@@ -16,6 +16,7 @@ class FirstUsePageView(
     interface Callbacks {
         fun onOpenDeepSeekApiKeys()
         fun onOpenRescue()
+        fun onOpenFloatingGuide()
     }
 
     private val body = LinearLayout(context).apply {
@@ -41,6 +42,7 @@ class FirstUsePageView(
                 "之后，维修助手会帮助你完成首次安装，也可以解答安装过程中的问题。\n\n" +
                 "首次安装时，维修助手配置好 API 后，会先帮助你完成完整的首次安装配置。"
         )
+        addButton("打开悬浮引导") { callbacks.onOpenFloatingGuide() }
         addSubheading("1. 如果你还不知道怎么获取大模型 API Key：")
         addButton("查看 DeepSeek 配置引导") { renderGuide() }
         addSubheading("2. 如果你已经拿到了 DeepSeek API Key，\n" +
@@ -69,6 +71,7 @@ class FirstUsePageView(
         )
         addButton("获取 DeepSeek API Keys 页面", callbacks::onOpenDeepSeekApiKeys)
         addButton("我已经复制，进入维修模式", callbacks::onOpenRescue)
+        addButton("打开悬浮引导") { callbacks.onOpenFloatingGuide() }
         addButton("返回首次使用") { renderIntro() }
     }
 

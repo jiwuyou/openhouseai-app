@@ -193,8 +193,7 @@
                 android:id="@+id/oh_first_use_guide_host"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:elevation="12dp"
-                android:visibility="gone" />
+                android:elevation="12dp" />
         </FrameLayout>
     </LinearLayout>
 
