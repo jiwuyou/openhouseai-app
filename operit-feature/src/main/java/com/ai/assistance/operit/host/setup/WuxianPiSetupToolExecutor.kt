@@ -44,6 +44,12 @@ class WuxianPiSetupToolExecutor(
                 )
             WuxianPiSetupContract.TOOL_OPEN_WUXIANPI ->
                 WuxianPiSetupContract.openWuxianPiAction()
+            WuxianPiSetupContract.TOOL_GET_OPENHOUSE_HOME ->
+                operations.getOpenHouseHome()
+            WuxianPiSetupContract.TOOL_LIST_OPENHOUSE_HOME_CANDIDATES ->
+                operations.listOpenHouseHomeCandidates()
+            WuxianPiSetupContract.TOOL_SET_OPENHOUSE_HOME ->
+                operations.setOpenHouseHome(args.getString("componentId"))
             else -> error("Unknown WuxianPi setup tool: $toolName")
         }
     }

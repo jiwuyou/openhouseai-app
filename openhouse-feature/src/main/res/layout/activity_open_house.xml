@@ -188,6 +188,13 @@
                 android:padding="13dp"
                 android:src="@drawable/oh_ic_menu"
                 android:visibility="gone" />
+
+            <FrameLayout
+                android:id="@+id/oh_first_use_guide_host"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:elevation="12dp"
+                android:visibility="gone" />
         </FrameLayout>
     </LinearLayout>
 

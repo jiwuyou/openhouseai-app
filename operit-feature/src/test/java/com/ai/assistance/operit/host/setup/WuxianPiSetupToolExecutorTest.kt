@@ -21,6 +21,8 @@ class WuxianPiSetupToolExecutorTest {
                     JSONObject()
                         .put("serviceManagerBaseUrl", "http://127.0.0.1:20087")
                         .put("token", "test-token")
+                } else if (toolName == WuxianPiSetupContract.TOOL_SET_OPENHOUSE_HOME) {
+                    JSONObject().put("componentId", "notes")
                 } else {
                     JSONObject()
                 }
@@ -77,6 +79,15 @@ class WuxianPiSetupToolExecutorTest {
             serviceManagerBaseUrl: String,
             token: String,
         ) = called(WuxianPiSetupContract.TOOL_WRITE_SERVICE_MANAGER_CONNECTION)
+
+        override suspend fun getOpenHouseHome() =
+            called(WuxianPiSetupContract.TOOL_GET_OPENHOUSE_HOME)
+
+        override suspend fun listOpenHouseHomeCandidates() =
+            called(WuxianPiSetupContract.TOOL_LIST_OPENHOUSE_HOME_CANDIDATES)
+
+        override suspend fun setOpenHouseHome(componentId: String) =
+            called(WuxianPiSetupContract.TOOL_SET_OPENHOUSE_HOME)
 
         private fun called(name: String): OperitHostOperationResult {
             calls += name

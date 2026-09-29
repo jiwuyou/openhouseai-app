@@ -35,6 +35,12 @@ class OperitHostOperationsSetupContractTest {
                     operations.ensureOpenHouseConnectionBridge(),
                 WuxianPiSetupContract.OPERATION_WRITE_SERVICE_MANAGER_CONNECTION to
                     operations.writeServiceManagerConnection("http://127.0.0.1:20087", "token"),
+                WuxianPiSetupContract.OPERATION_GET_OPENHOUSE_HOME to
+                    operations.getOpenHouseHome(),
+                WuxianPiSetupContract.OPERATION_LIST_OPENHOUSE_HOME_CANDIDATES to
+                    operations.listOpenHouseHomeCandidates(),
+                WuxianPiSetupContract.OPERATION_SET_OPENHOUSE_HOME to
+                    operations.setOpenHouseHome("notes"),
             )
 
         results.forEach { (operation, result) ->

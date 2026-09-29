@@ -4,6 +4,7 @@ import com.ai.assistance.operit.data.model.ApiKeyInfo
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -45,7 +46,7 @@ class RescueDeepSeekQuickSetupTest {
 
         assertEquals(ApiProviderType.DEEPSEEK, updated.apiProviderType)
         assertEquals(ApiPreferences.DEFAULT_API_ENDPOINT, updated.apiEndpoint)
-        assertEquals(ApiPreferences.DEFAULT_MODEL_NAME, updated.modelName)
+        assertEquals(ModelConfigManager.RESCUE_DEFAULT_MODEL_NAME, updated.modelName)
         assertEquals("new-key", updated.apiKey)
     }
 }

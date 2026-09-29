@@ -88,6 +88,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private lateinit var floatingWebViewHost: FloatingWebViewHost
     private lateinit var pageRefreshDrawer: PageRefreshDrawerController
     private lateinit var webFileChooserController: WebFileChooserController
+    private lateinit var firstUseGuideOverlay: FirstUseGuideOverlay
     private lateinit var pageRegistry: BuiltInPageRegistry
     private val workspaceNavigator = WorkspaceNavigator()
     private val retainedContents = LinkedHashMap<String, WorkspaceContent>()
@@ -112,6 +113,7 @@ class OpenHouseActivity : AppCompatActivity() {
     private var setupAttention: OpenHouseSetupAttention? = null
     private var webToolbarMode = false
     private var returnToSmallAppUrl: String? = null
+    private var pendingDeepSeekRechargeChooser = false
 
     private val servicePoll = Runnable {
         if (drawerVisible) refreshSidebarServiceStates()
@@ -285,6 +287,24 @@ class OpenHouseActivity : AppCompatActivity() {
         )
         webFileChooserController = WebFileChooserController(this)
         webPagePool = EmbeddedWebPagePool(this, workspaceWebCallbacks(), webFileChooserController)
+        firstUseGuideOverlay = FirstUseGuideOverlay(
+            this,
+            object : FirstUseGuideOverlay.Callbacks {
+                override fun openDeepSeekLogin() = openDeepSeekApiKeysPage()
+                override fun openDeepSeekApiKeys() = openDeepSeekApiKeysPage()
+                override fun openDeepSeekUsage() = openDeepSeekUsagePage()
+                override fun openDeepSeekRecharge() = openDeepSeekRechargePage()
+                override fun openRescue(apiKey: String) {
+                    firstUseGuideOverlay.hide()
+                    host.launchAiModeWithDeepSeekApiKey(this@OpenHouseActivity, apiKey)
+                }
+                override fun onDismissGuide() = Unit
+            },
+        )
+        findViewById<FrameLayout>(R.id.oh_first_use_guide_host).addView(
+            firstUseGuideOverlay,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
+        )
         pageRefreshDrawer = PageRefreshDrawerController(drawer, webPagePool)
         webToolbarController = CollapsibleWebToolbarController(
             context = this,
@@ -706,6 +726,7 @@ class OpenHouseActivity : AppCompatActivity() {
     }
 
     private fun showDesktop() {
+        if (::firstUseGuideOverlay.isInitialized) firstUseGuideOverlay.hide()
         if (::pageRefreshDrawer.isInitialized) pageRefreshDrawer.close()
         webMountGate.cancel()
         workspaceNavigator.navigate(WorkspaceDestination.Desktop)
@@ -816,6 +837,11 @@ class OpenHouseActivity : AppCompatActivity() {
             showFirstUsePage()
             return
         }
+        if (WorkspaceDestination.normalizeId(component.id) != DEEPSEEK_API_KEYS_COMPONENT_ID &&
+            ::firstUseGuideOverlay.isInitialized
+        ) {
+            firstUseGuideOverlay.hide()
+        }
         if (component.entryType != OpenHouseComponent.EntryType.WEBVIEW) {
             host.launchDynamicComponent(this, component)
             return
@@ -867,12 +893,24 @@ class OpenHouseActivity : AppCompatActivity() {
             ),
             webHost,
         )
+        val selectedTabUrl = pendingComponentTabSelection
+            ?.takeIf { it.first == destination.normalizedComponentId }
+            ?.let { (_, index) -> pageRegistry.tabsFor(component.id).getOrNull(index)?.url }
         pendingComponentTabSelection
             ?.takeIf { it.first == destination.normalizedComponentId }
             ?.let { (_, index) ->
                 webPagePool.selectActiveTab(index)
                 pendingComponentTabSelection = null
             }
+        if (destination.normalizedComponentId == DEEPSEEK_API_KEYS_COMPONENT_ID &&
+            ::firstUseGuideOverlay.isInitialized
+        ) {
+            firstUseGuideOverlay.show(firstUseGuideOverlay.step())
+            if (pendingDeepSeekRechargeChooser) {
+                pendingDeepSeekRechargeChooser = false
+                mainHandler.post { showDeepSeekRechargeChooser(selectedTabUrl ?: webPagePool.activeAddress) }
+            }
+        }
         updateWebToolbarActions()
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) webPagePool.onResume()
     }
@@ -893,13 +931,17 @@ class OpenHouseActivity : AppCompatActivity() {
             FirstUsePageView(
                 context = this,
                 callbacks = object : FirstUsePageView.Callbacks {
-                    override fun onOpenDeepSeekApiKeys() = openDeepSeekApiKeysPage()
+                    override fun onOpenDeepSeekApiKeys() {
+                        if (::firstUseGuideOverlay.isInitialized) firstUseGuideOverlay.setStep(FirstUseGuideOverlay.Step.API_KEYS)
+                        openDeepSeekApiKeysPage()
+                    }
                     override fun onOpenRescue() =
                         host.launchAiMode(this@OpenHouseActivity, ProductRoute.REPAIR)
                 },
             ),
             matchFrame(),
         )
+        if (::firstUseGuideOverlay.isInitialized) firstUseGuideOverlay.show()
         updateSetCurrentHomeButton()
     }
 
@@ -910,6 +952,24 @@ class OpenHouseActivity : AppCompatActivity() {
             tab.title.contains("API", ignoreCase = true) ||
                 tab.url.substringBefore('?').trimEnd('/').endsWith("/api_keys")
         }
+        pendingComponentTabSelection = if (index >= 0) componentId to index else null
+        openComponentAfterRefresh(componentId)
+    }
+
+    private fun openDeepSeekUsagePage() {
+        openDeepSeekTab { tab -> tab.title.contains("用量") || tab.title.contains("Usage", true) ||
+            tab.url.substringBefore('?').trimEnd('/').endsWith("/usage") }
+    }
+
+    private fun openDeepSeekRechargePage() {
+        pendingDeepSeekRechargeChooser = true
+        openDeepSeekTab { tab -> isDeepSeekTopUpUrl(tab.url) }
+    }
+
+    private fun openDeepSeekTab(predicate: (ComponentWebTab) -> Boolean) {
+        val componentId = DEEPSEEK_API_KEYS_COMPONENT_ID
+        val tabs = pageRegistry.tabsFor(componentId)
+        val index = tabs.indexOfFirst(predicate)
         pendingComponentTabSelection = if (index >= 0) componentId to index else null
         openComponentAfterRefresh(componentId)
     }

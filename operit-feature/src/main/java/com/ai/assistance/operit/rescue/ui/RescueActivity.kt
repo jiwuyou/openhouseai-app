@@ -14,6 +14,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.ComponentActivity
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
+import androidx.lifecycle.lifecycleScope
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.host.control.OperitShutdownController
 import com.wuxianpi.openhouse.core.rescue.RescueControlProtocol
@@ -33,12 +34,14 @@ import com.wuxianpi.openhouse.feature.workspace.WorkspaceSidebar
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.rescue.remote.RescueAssistHostPhase
 import com.ai.assistance.operit.rescue.remote.RescueRemoteAssistController
+import com.ai.assistance.operit.rescue.pi.RescueModelConfigStore
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.MainActivity
 import com.ai.assistance.operit.ui.main.OperitHostMode
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.workspace.OperitWorkspaceContentFactory
 import com.ai.assistance.operit.workspace.OperitWorkspaceSpec
+import kotlinx.coroutines.launch
 
 /**
  * Entry point for the Android-local Rescue AI.
@@ -75,6 +78,8 @@ class RescueActivity : ComponentActivity() {
         const val EXTRA_HOST_RETURN_INTENT = "com.wuxianpi.extra.RESCUE_HOST_RETURN_INTENT"
         const val EXTRA_PENDING_ACTION_ID = "com.wuxianpi.extra.RESCUE_ACTION_ID"
         const val EXTRA_PENDING_ACTION_PROMPT = "com.wuxianpi.extra.RESCUE_ACTION_PROMPT"
+        const val EXTRA_PREFILL_DEEPSEEK_API_KEY =
+            "com.wuxianpi.extra.PREFILL_DEEPSEEK_API_KEY"
         const val RESOURCE_UPDATE_PROMPT =
             "请检查 APK 配套状态；先使用最新版 APK 配套更新插件，只确认或修复 Android 私有 service-manager 连接，不更新 WuxianPi 或 Termux 运行资源。"
         const val RESCUE_PROCESS_SUFFIX = ":rescue_ui"
@@ -114,6 +119,7 @@ class RescueActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        consumePrefilledDeepSeekKey(intent)
         acceptPendingAction(intent)
         registerRescueShutdownReceiver()
         setContentView(R.layout.activity_rescue_shell)
@@ -160,7 +166,20 @@ class RescueActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        consumePrefilledDeepSeekKey(intent)
         acceptPendingAction(intent)
+    }
+
+    private fun consumePrefilledDeepSeekKey(source: Intent?) {
+        val key = source?.getStringExtra(EXTRA_PREFILL_DEEPSEEK_API_KEY)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return
+        source.removeExtra(EXTRA_PREFILL_DEEPSEEK_API_KEY)
+        lifecycleScope.launch {
+            runCatching { RescueModelConfigStore(this@RescueActivity).saveDeepSeekApiKey(key) }
+                .onFailure { error -> AppLogger.e(TAG, "Failed to prefill Rescue DeepSeek configuration", error) }
+        }
     }
 
     override fun onResume() {

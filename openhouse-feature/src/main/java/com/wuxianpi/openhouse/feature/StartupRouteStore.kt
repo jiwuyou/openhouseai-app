@@ -62,11 +62,27 @@ class StartupRouteStore internal constructor(
             is WorkspaceDestination.Component -> StartupSelection.Component(destination.normalizedComponentId)
             is WorkspaceDestination.Route -> StartupSelection.Route(destination.route)
         }
-        preferences.edit()
-            .putString(KEY_DESTINATION, encode(selection))
-            .putString(KEY_TARGET, targetFor(selection).persistenceKey())
+        homeEditor(selection)
             .apply()
     }
+
+    /**
+     * Persists a home destination before returning to a cross-process caller.
+     * ContentProvider.call() must not report success while the editor is still
+     * waiting to be flushed asynchronously.
+     */
+    fun setHomeDestinationBlocking(destination: WorkspaceDestination): Boolean {
+        val selection = when (destination) {
+            WorkspaceDestination.Desktop -> StartupSelection.Desktop
+            is WorkspaceDestination.Component -> StartupSelection.Component(destination.normalizedComponentId)
+            is WorkspaceDestination.Route -> StartupSelection.Route(destination.route)
+        }
+        return homeEditor(selection).commit()
+    }
+
+    private fun homeEditor(selection: StartupSelection): SharedPreferences.Editor = preferences.edit()
+            .putString(KEY_DESTINATION, encode(selection))
+            .putString(KEY_TARGET, targetFor(selection).persistenceKey())
 
     fun recordLast(route: ProductRoute) {
         recordLast(WorkspaceDestination.forRoute(route))

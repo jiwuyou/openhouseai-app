@@ -9,6 +9,7 @@ import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostOperations
 import com.ai.assistance.operit.host.setup.LoopbackInstallBundleServer
 import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridge
+import com.ai.assistance.operit.host.setup.OpenHouseHomeSettingsClient
 import com.ai.assistance.operit.host.setup.WuxianPiSetupContract
 import com.ai.assistance.operit.host.setup.WuxianPiConnectionStore
 import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
@@ -106,6 +107,15 @@ class NativeOperitHostOperations(context: Context) : OperitHostOperations {
             JSONObject().put("pageId", pageId),
         )
     }
+
+    override suspend fun getOpenHouseHome() =
+        OpenHouseHomeSettingsClient.getHome(appContext)
+
+    override suspend fun listOpenHouseHomeCandidates() =
+        OpenHouseHomeSettingsClient.listCandidates(appContext)
+
+    override suspend fun setOpenHouseHome(componentId: String) =
+        OpenHouseHomeSettingsClient.setHome(appContext, componentId)
 
     override suspend fun inspectWuxianPiSetup(): OperitHostOperationResult {
         val probe = NativeExternalHostInspector.inspect(appContext)

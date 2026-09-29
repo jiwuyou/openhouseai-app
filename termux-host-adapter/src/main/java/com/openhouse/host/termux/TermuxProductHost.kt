@@ -142,6 +142,21 @@ class TermuxProductHost(context: Context) : OpenHouseFeatureHost, OpenHouseFeatu
         activity.startActivity(intent)
     }
 
+    override fun launchAiModeWithDeepSeekApiKey(activity: Activity, apiKey: String) {
+        val intent = OperitAiLauncher.repairIntent(activity).apply {
+            putExtra(RescueActivity.EXTRA_PREFILL_DEEPSEEK_API_KEY, apiKey)
+            putExtra(RescueActivity.EXTRA_HOST_RETURN_ACTIVITY, OPENHOUSE_ACTIVITY_CLASS)
+            putExtra(
+                RescueActivity.EXTRA_HOST_RETURN_INTENT,
+                OpenHouseFeature.createDestinationIntent(
+                    activity,
+                    WorkspaceDestination.Component("openhouse.first-use"),
+                ),
+            )
+        }
+        activity.startActivity(intent)
+    }
+
     override fun hasPendingApkResourceOffer(): Boolean =
         ApkResourceOfferStore.get(appContext).current()?.requiresReminder == true
 

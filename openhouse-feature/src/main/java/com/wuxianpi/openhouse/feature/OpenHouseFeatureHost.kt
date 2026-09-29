@@ -75,6 +75,11 @@ interface OpenHouseFeatureHost {
         }
     }
 
+    /** Opens Rescue and pre-fills the user-provided DeepSeek key from first-use guidance. */
+    fun launchAiModeWithDeepSeekApiKey(activity: Activity, apiKey: String) {
+        launchAiMode(activity, ProductRoute.REPAIR)
+    }
+
     fun launchServiceControl(activity: Activity) = Unit
 
     fun launchTerminal(activity: Activity) = Unit

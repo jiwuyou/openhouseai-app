@@ -22,6 +22,9 @@ object WuxianPiSetupContract {
     const val TOOL_ENSURE_OPENHOUSE_CONNECTION_BRIDGE = "ensure_openhouse_connection_bridge"
     const val TOOL_WRITE_SERVICE_MANAGER_CONNECTION = "write_service_manager_connection"
     const val TOOL_OPEN_WUXIANPI = "open_wuxianpi"
+    const val TOOL_GET_OPENHOUSE_HOME = "get_openhouse_home"
+    const val TOOL_LIST_OPENHOUSE_HOME_CANDIDATES = "list_openhouse_home_candidates"
+    const val TOOL_SET_OPENHOUSE_HOME = "set_openhouse_home"
 
     const val OPERATION_INSPECT = "inspect_wuxianpi_setup"
     const val OPERATION_PREPARE_RUNTIME_HOST = "prepare_runtime_host"
@@ -37,6 +40,9 @@ object WuxianPiSetupContract {
     const val OPERATION_ENSURE_OPENHOUSE_CONNECTION_BRIDGE = "ensure_openhouse_connection_bridge"
     const val OPERATION_WRITE_SERVICE_MANAGER_CONNECTION = "write_service_manager_connection"
     const val OPERATION_OPEN_WUXIANPI = "open_wuxianpi"
+    const val OPERATION_GET_OPENHOUSE_HOME = "get_openhouse_home"
+    const val OPERATION_LIST_OPENHOUSE_HOME_CANDIDATES = "list_openhouse_home_candidates"
+    const val OPERATION_SET_OPENHOUSE_HOME = "set_openhouse_home"
 
     const val DETAIL_OPERATION = "operation"
     const val DETAIL_SUPPORTED = "supported"
@@ -64,6 +70,9 @@ object WuxianPiSetupContract {
             TOOL_ENSURE_OPENHOUSE_CONNECTION_BRIDGE,
             TOOL_WRITE_SERVICE_MANAGER_CONNECTION,
             TOOL_OPEN_WUXIANPI,
+            TOOL_GET_OPENHOUSE_HOME,
+            TOOL_LIST_OPENHOUSE_HOME_CANDIDATES,
+            TOOL_SET_OPENHOUSE_HOME,
         )
 
     fun openWuxianPiAction(): OperitHostOperationResult =

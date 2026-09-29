@@ -34,6 +34,18 @@ interface OperitHostOperations {
             error = "The active host does not support OpenHouse page navigation",
         )
 
+    /** Reads the effective OpenHouse startup destination from the OpenHouse process. */
+    suspend fun getOpenHouseHome(): OperitHostOperationResult =
+        unsupportedOpenHouseHome("get_openhouse_home")
+
+    /** Lists registered, visible OpenHouse component destinations that may be homes. */
+    suspend fun listOpenHouseHomeCandidates(): OperitHostOperationResult =
+        unsupportedOpenHouseHome("list_openhouse_home_candidates")
+
+    /** Sets a registered OpenHouse component as the startup destination without a UI prompt. */
+    suspend fun setOpenHouseHome(componentId: String): OperitHostOperationResult =
+        unsupportedOpenHouseHome("set_openhouse_home")
+
     fun pairingInstallerScript(baseUrl: String, token: String): String?
 
     suspend fun runtimeStatus(): OperitHostOperationResult
@@ -141,6 +153,17 @@ interface OperitHostOperations {
             WuxianPiSetupContract.OPERATION_WRITE_SERVICE_MANAGER_CONNECTION
         )
 }
+
+private fun unsupportedOpenHouseHome(operation: String): OperitHostOperationResult =
+    OperitHostOperationResult(
+        success = false,
+        details = JSONObject()
+            .put("operation", operation)
+            .put("supported", false)
+            .put("userActionRequired", false),
+        message = "OpenHouse home settings are unavailable",
+        error = "The active host does not support OpenHouse home settings",
+    )
 
 data class OperitHostOperationResult(
     val success: Boolean,

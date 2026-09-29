@@ -100,6 +100,27 @@ class RescueToolCatalog private constructor(
                         "After the setup-finish summary is shown, return a user-confirmed action card that opens the WuxianPi OpenHouse component. Do not open it automatically.",
                 ),
                 definition(
+                    name = WuxianPiSetupContract.TOOL_GET_OPENHOUSE_HOME,
+                    description =
+                        "Read the effective OpenHouse startup home from the OpenHouse process. This only reads state and does not navigate.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_LIST_OPENHOUSE_HOME_CANDIDATES,
+                    description =
+                        "List every registered, visible, usable OpenHouse small app that may be selected as the startup home. Use the returned exact id, not a guessed URL.",
+                ),
+                definition(
+                    name = WuxianPiSetupContract.TOOL_SET_OPENHOUSE_HOME,
+                    description =
+                        "Set a registered OpenHouse small app as the startup home immediately, without asking for a second confirmation. First use list_openhouse_home_candidates when the exact component id is not already known.",
+                    properties =
+                        JSONObject().put(
+                            "componentId",
+                            JSONObject().put("type", "string").put("description", "Exact registered OpenHouse component id"),
+                        ),
+                    required = JSONArray().put("componentId"),
+                ),
+                definition(
                     name = RescuePluginContract.TOOL_SEARCH,
                     description = "Search the online Rescue Plugin Hub for repair knowledge and workflows.",
                     properties =

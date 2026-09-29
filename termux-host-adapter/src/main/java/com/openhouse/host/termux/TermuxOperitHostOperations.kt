@@ -8,6 +8,7 @@ import com.ai.assistance.operit.host.OperitHostOperationResult
 import com.ai.assistance.operit.host.OperitHostCommandResult
 import com.ai.assistance.operit.host.OperitHostOperations
 import com.ai.assistance.operit.host.setup.LoopbackInstallBundleServer
+import com.ai.assistance.operit.host.setup.OpenHouseHomeSettingsClient
 import com.ai.assistance.operit.host.setup.OpenHouseConnectionBridge
 import com.ai.assistance.operit.host.setup.WuxianPiConnectionStore
 import com.ai.assistance.operit.host.terminal.HostTerminalSessionBackend
@@ -100,6 +101,15 @@ class TermuxOperitHostOperations(context: Context) : OperitHostOperations {
             JSONObject().put("pageId", pageId),
         )
     }
+
+    override suspend fun getOpenHouseHome() =
+        OpenHouseHomeSettingsClient.getHome(appContext)
+
+    override suspend fun listOpenHouseHomeCandidates() =
+        OpenHouseHomeSettingsClient.listCandidates(appContext)
+
+    override suspend fun setOpenHouseHome(componentId: String) =
+        OpenHouseHomeSettingsClient.setHome(appContext, componentId)
 
     override fun pairingInstallerScript(baseUrl: String, token: String): String =
         pairingScript(baseUrl, token)

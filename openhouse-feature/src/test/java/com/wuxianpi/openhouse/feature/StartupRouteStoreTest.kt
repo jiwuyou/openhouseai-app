@@ -82,6 +82,22 @@ class StartupRouteStoreTest {
     }
 
     @Test
+    fun blockingHomeWriteCanBeReadBackImmediately() {
+        val store = StartupRouteStore(context)
+        assertTrue(store.setHomeDestinationBlocking(WorkspaceDestination.Component("notes")))
+
+        assertEquals(
+            WorkspaceDestination.Component("notes"),
+            StartupRouteStore(context).selection().let { selection ->
+                when (selection) {
+                    is StartupSelection.Component -> WorkspaceDestination.Component(selection.componentId)
+                    else -> WorkspaceDestination.Desktop
+                }
+            },
+        )
+    }
+
+    @Test
     fun automaticSelectionUsesManifestHomeAndLastPageSupportsComponents() {
         val store = StartupRouteStore(context)
         val component = component("notes", home = true)
