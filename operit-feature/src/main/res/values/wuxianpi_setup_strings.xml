@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="rescue_first_use_action">首次使用，请点击这里引导完成初始化</string>
+    <string name="rescue_first_install_ready_message">模型配置已准备好。接下来需要完成 OpenHouse 的首次安装。准备好后，请点击下面的按钮开始；安装过程会按当前步骤逐一说明。</string>
+    <string name="rescue_first_install_start">启动首次安装流程</string>
 </resources>

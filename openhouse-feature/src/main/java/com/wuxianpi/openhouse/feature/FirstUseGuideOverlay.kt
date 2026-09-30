@@ -3,7 +3,6 @@ package com.wuxianpi.openhouse.feature
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.Color
 import android.graphics.Typeface
 import android.text.InputType
 import android.util.TypedValue
@@ -15,6 +14,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import com.wuxianpi.openhouse.feature.R
 import kotlin.math.abs
@@ -47,13 +47,27 @@ class FirstUseGuideOverlay(
         }
         elevation = dp(8).toFloat()
     }
+    private val header = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
     private val dragHandle = TextView(context).apply {
-        text = "⠿  首次使用引导                         ×"
+        text = "⠿  首次使用引导"
         setTextColor(ContextCompat.getColor(context, R.color.oh_text))
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
         setTypeface(typeface, Typeface.BOLD)
         setPadding(0, 0, 0, dp(8))
+        layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         setOnClickListener { if (isExpanded) collapse() else expand() }
+    }
+    private val closeButton = TextView(context).apply {
+        text = "×"
+        setTextColor(ContextCompat.getColor(context, R.color.oh_text))
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+        gravity = Gravity.CENTER
+        contentDescription = "退出首次安装引导"
+        setPadding(dp(8), 0, 0, dp(8))
+        setOnClickListener { confirmDismiss() }
     }
     private val status = TextView(context).apply {
         setTextColor(ContextCompat.getColor(context, R.color.oh_text_secondary))
@@ -71,6 +85,7 @@ class FirstUseGuideOverlay(
     private var startX = 0f
     private var startY = 0f
     private var dragging = false
+    private val stateStore = FirstUseGuideStateStore(context)
 
     init {
         visibility = View.GONE
@@ -78,22 +93,25 @@ class FirstUseGuideOverlay(
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             rightMargin = dp(12)
         })
-        card.addView(dragHandle, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        header.addView(dragHandle)
+        header.addView(closeButton, LinearLayout.LayoutParams(dp(32), dp(42)))
+        card.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         card.addView(status, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         card.addView(actions, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         dragHandle.setOnTouchListener(::handleDrag)
         render()
     }
 
-    fun show(initialStep: Step = Step.INTRO) {
+    fun show(initialStep: Step = stateStore.loadStep()) {
         step = initialStep
+        stateStore.saveStep(step)
         isExpanded = true
         visibility = View.VISIBLE
         val params = card.layoutParams as FrameLayout.LayoutParams
         params.width = dp(304)
         params.height = LayoutParams.WRAP_CONTENT
         card.layoutParams = params
-        dragHandle.text = "⠿  首次使用引导                         ×"
+        dragHandle.text = "⠿  首次使用引导"
         status.visibility = View.VISIBLE
         actions.visibility = View.VISIBLE
         card.visibility = View.VISIBLE
@@ -108,6 +126,7 @@ class FirstUseGuideOverlay(
 
     fun setStep(next: Step) {
         step = next
+        stateStore.saveStep(next)
         if (visibility != View.VISIBLE) visibility = View.VISIBLE
         render()
     }
@@ -122,7 +141,7 @@ class FirstUseGuideOverlay(
             Step.RECHARGE -> "账户余额不足或无法确认，请先完成充值。"
             Step.API_KEYS -> "请创建一个 API Key，复制完整密钥后返回这里。"
             Step.PASTE_KEY -> "请将刚才复制的 DeepSeek API Key 粘贴到下面。"
-            Step.ENTER_RESCUE -> "Key 已准备好，进入维修助手后会自动保存并开始首次安装。"
+            Step.ENTER_RESCUE -> "Key 已准备好。进入维修助手后，请点击“启动首次安装流程”开始安装。"
         }
         actions.removeAllViews()
         editKey = null
@@ -170,7 +189,7 @@ class FirstUseGuideOverlay(
             Step.ENTER_RESCUE -> addAction("返回首次使用说明") { setStep(Step.INTRO) }
         }
         addAction("收起") { collapse() }
-        addAction("关闭引导") { callbacks.onDismissGuide(); hide() }
+        addAction("退出引导") { confirmDismiss() }
         card.visibility = if (isExpanded) View.VISIBLE else View.GONE
     }
 
@@ -211,10 +230,26 @@ class FirstUseGuideOverlay(
         params.width = dp(304)
         params.height = LayoutParams.WRAP_CONTENT
         card.layoutParams = params
-        dragHandle.text = "⠿  首次使用引导                         ×"
+        dragHandle.text = "⠿  首次使用引导"
         status.visibility = View.VISIBLE
         actions.visibility = View.VISIBLE
         render()
+    }
+
+    private fun confirmDismiss() {
+        AlertDialog.Builder(context)
+            .setTitle("退出首次安装引导？")
+            .setMessage(
+                "首次安装尚未完成。现在退出后，WuxianPi 可能无法使用。\n\n" +
+                    "以后可从左上角侧栏 → 首次使用重新打开引导；进入维修模式后，也可从首次安装入口继续。",
+            )
+            .setNegativeButton("继续引导", null)
+            .setPositiveButton("确认退出") { _, _ ->
+                stateStore.markPaused()
+                callbacks.onDismissGuide()
+                hide()
+            }
+            .show()
     }
 
     private fun handleDrag(view: View, event: MotionEvent): Boolean {

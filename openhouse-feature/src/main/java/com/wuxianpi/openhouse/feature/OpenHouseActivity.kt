@@ -932,20 +932,7 @@ class OpenHouseActivity : AppCompatActivity() {
         webPagePool.onPause()
         content.removeAllViews()
         content.addView(
-            FirstUsePageView(
-                context = this,
-                callbacks = object : FirstUsePageView.Callbacks {
-                    override fun onOpenDeepSeekApiKeys() {
-                        if (::firstUseGuideOverlay.isInitialized) firstUseGuideOverlay.setStep(FirstUseGuideOverlay.Step.API_KEYS)
-                        openDeepSeekApiKeysPage()
-                    }
-                    override fun onOpenRescue() =
-                        host.launchAiMode(this@OpenHouseActivity, ProductRoute.REPAIR)
-                    override fun onOpenFloatingGuide() {
-                        if (::firstUseGuideOverlay.isInitialized) firstUseGuideOverlay.show()
-                    }
-                },
-            ),
+            FirstUsePageView(this),
             matchFrame(),
         )
         if (::firstUseGuideOverlay.isInitialized) firstUseGuideOverlay.show()

@@ -56,6 +56,7 @@ import com.ai.assistance.operit.rescue.plugins.RescuePluginManager
 import com.ai.assistance.operit.rescue.plugins.ActiveRescuePluginAction
 import com.ai.assistance.operit.rescue.ui.RESCUE_FIRST_USE_MESSAGE
 import com.ai.assistance.operit.rescue.ui.RescueFirstUsePrompt
+import com.ai.assistance.operit.rescue.ui.RescueOnboardingStore
 import com.ai.assistance.operit.rescue.ui.RescueModelSetupPrompt
 import com.ai.assistance.operit.rescue.ui.RESCUE_DEEPSEEK_PAGE_ID
 import com.ai.assistance.operit.rescue.ui.RescueRemoteAssistDialog
@@ -155,6 +156,8 @@ fun AIChatScreen(
         onGestureConsumed: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
+    RescueOnboardingStore.initialize(context)
+    val rescueFirstInstallPending by RescueOnboardingStore.pending.collectAsState()
     val workspaceIdentity = LocalOperitWorkspaceIdentity.current
     val density = LocalDensity.current
     val colorScheme = MaterialTheme.colorScheme
@@ -364,14 +367,16 @@ val actualViewModel: ChatViewModel =
     val currentChatView = remember(chatHistories, currentChatId) {
         chatHistories.find { it.id == currentChatId }
     }
+    var rescueFirstUseDismissed by rememberSaveable { mutableStateOf(false) }
     val showRescueFirstUsePrompt =
-        shouldShowRescueFirstUsePrompt(
-            isRescueContext = chatViewRuntime == "rescue",
-            hasCurrentConversation = !currentChatId.isNullOrBlank(),
-            persistedMessageCount = currentChatView?.messages?.size,
-            visibleMessageCount = chatHistory.size,
-            isHistoryLoading = isLoadingDisplayWindow,
-        )
+        !rescueFirstUseDismissed &&
+            (rescueFirstInstallPending || shouldShowRescueFirstUsePrompt(
+                isRescueContext = chatViewRuntime == "rescue",
+                hasCurrentConversation = !currentChatId.isNullOrBlank(),
+                persistedMessageCount = currentChatView?.messages?.size,
+                visibleMessageCount = chatHistory.size,
+                isHistoryLoading = isLoadingDisplayWindow,
+            ))
     val rescueModelReady =
         chatViewRuntime != "rescue" ||
             (isApiConfigInitialized &&
@@ -1346,6 +1351,10 @@ val actualViewModel: ChatViewModel =
                                 },
                                 onRequestAutoScrollToBottom = requestAutoScrollToBottom,
                                 showRescueFirstUsePrompt = showRescueFirstUsePrompt,
+                                onRescueFirstInstallStarted = {
+                                    rescueFirstUseDismissed = true
+                                    RescueOnboardingStore.markFirstInstallStarted(context)
+                                },
                                 rescueModelInitialized = isApiConfigInitialized,
                                 rescueModelReady = rescueModelReady,
                         )
@@ -1780,6 +1789,7 @@ private fun ChatInputBottomBar(
     onShowMemoryFolderDialog: () -> Unit,
     onRequestAutoScrollToBottom: () -> Unit,
     showRescueFirstUsePrompt: Boolean,
+    onRescueFirstInstallStarted: () -> Unit,
     rescueModelInitialized: Boolean,
     rescueModelReady: Boolean,
 ) {
@@ -2183,6 +2193,7 @@ private fun ChatInputBottomBar(
                         rescueSetupError = error
                         if (error == null) {
                             rescueSetupDismissed = true
+                            RescueOnboardingStore.markFirstInstallPending(context)
                             Toast.makeText(
                                 context,
                                 "DeepSeek 密钥已保存并立即生效",
@@ -2211,6 +2222,7 @@ private fun ChatInputBottomBar(
         if (showRescueFirstUsePrompt && rescueModelReady) {
             RescueFirstUsePrompt(
                 onClick = {
+                    onRescueFirstInstallStarted()
                     sendMessage(RESCUE_FIRST_USE_MESSAGE)
                     RescuePluginManager.get(context).prewarmFirstInstall()
                 },

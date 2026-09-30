@@ -119,6 +119,7 @@ class RescueActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        RescueOnboardingStore.initialize(this)
         consumePrefilledDeepSeekKey(intent)
         acceptPendingAction(intent)
         registerRescueShutdownReceiver()
@@ -178,6 +179,7 @@ class RescueActivity : ComponentActivity() {
         source.removeExtra(EXTRA_PREFILL_DEEPSEEK_API_KEY)
         lifecycleScope.launch {
             runCatching { RescueModelConfigStore(this@RescueActivity).saveDeepSeekApiKey(key) }
+                .onSuccess { RescueOnboardingStore.markFirstInstallPending(this@RescueActivity) }
                 .onFailure { error -> AppLogger.e(TAG, "Failed to prefill Rescue DeepSeek configuration", error) }
         }
     }

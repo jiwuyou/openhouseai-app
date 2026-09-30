@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.rescue.ui
 
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,20 +38,26 @@ fun RescueFirstUsePrompt(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.small,
-    ) {
-        Icon(
-            imageVector = Icons.Default.Build,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-        )
-        Spacer(modifier = Modifier.width(8.dp))
+    Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            text = stringResource(R.string.rescue_first_use_action),
-            modifier = Modifier.weight(1f),
+            text = stringResource(R.string.rescue_first_install_ready_message),
+            style = MaterialTheme.typography.bodyMedium,
         )
+        OutlinedButton(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.small,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Build,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.rescue_first_install_start),
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
